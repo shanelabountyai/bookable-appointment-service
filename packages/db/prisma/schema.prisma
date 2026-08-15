@@ -1,14 +1,673 @@
-// The entity model lands with A-003 — do not add models here first.
-// See docs/START-HERE.md Session 3 and docs/prds/07-decisions.md D-2/D-12/D-13.
+// Bookable — core data model (A-003).
 //
-// @db.Date is banned repo-wide (CLAUDE.md, D-3): a CalendarDay is CHAR(10),
-// never Postgres `date`. Enforce that when the first model lands here.
+// NORMATIVE: 00-master-prd.md §6/§8, 07-decisions.md (D-2, D-7, D-8, D-12..D-21),
+// docs/reviews/03-slot-engine-spec.md §4.
+//
+// RULES THIS FILE OBEYS, EACH OF WHICH COST A SIBLING BUILD A DEFECT:
+//
+//  * `@db.Date` is BANNED (D-3). A CalendarDay is `String @db.Char(10)` and a
+//    WallTime is `String @db.Char(5)`. Postgres `date` -> JS `Date` is the exact
+//    path that produced the rental build's silent day-west shift with ten green
+//    tests. You give up SQL date arithmetic to make the axis error unrepresentable.
+//  * Money is integer cents. Never a float, never a Decimal-that-becomes-a-float.
+//  * `businessId` is on every core table (D-13) — free now, touches every query
+//    if retrofitted.
+//  * Instants are `@db.Timestamptz(3)` and are CHECK-constrained to whole minutes
+//    in the migration: half-open [start, end) back-to-back booking depends on
+//    `A.blockedEnd = B.blockedStart` EXACTLY, and one stray millisecond turns
+//    "back-to-back" into a false conflict or a 1ms hole with every test green.
+//
+// WHAT PRISMA CANNOT EXPRESS, AND SO LIVES IN THE HAND-WRITTEN MIGRATION:
+//   1. `CREATE EXTENSION btree_gist` — required, or a text providerId has no
+//      gist operator class.
+//   2. The `appointment_no_overlap` EXCLUDE constraint (D-2/D-15).
+//   3. The `appointment_blocked_range` BEFORE INSERT OR UPDATE trigger that
+//      computes blockedStart/blockedEnd (they CANNOT be generated columns:
+//      `timestamptz + interval` is STABLE, not IMMUTABLE — verified).
+//   4. The `AppointmentEvent` append-only trigger.
+//   5. The whole-minute CHECK constraints.
+// NEVER `prisma db push` on this project, and never edit an applied migration.
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/client"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── enums ───────────────────────────
+
+/// D-7. Eight states, normative transition table in 00-master-prd.md §7.
+/// A Postgres enum rather than free text: adding a state is deliberately an
+/// ALTER TYPE, because "a status enum is never one edit" — every reader
+/// (constraint predicate, busy set, reminder eligibility, day-view filters)
+/// must be revisited. See packages/core/scheduling/status.ts, which is the
+/// single source of truth these values are asserted against by test.
+enum AppointmentStatus {
+  booked
+  confirmed
+  checked_in
+  in_progress
+  completed
+  no_show
+  cancelled
+  cancelled_late
+}
+
+/// D-9. Stamped on every mutation; without it there is no cutoff that applies
+/// to customers but not staff, and no audit log worth the name.
+enum Actor {
+  staff
+  customer_token
+  system
+}
+
+enum NotificationChannel {
+  email
+  sms
+}
+
+enum OutboxStatus {
+  pending
+  sent
+  failed
+  suppressed
+}
+
+/// P1-5: without a lifecycle the "who wants this slot?" panel fills with stale
+/// entries the front desk learns to ignore.
+enum WaitlistStatus {
+  active
+  fulfilled
+  expired
+  cancelled
+}
+
+/// D-12 affordance. Exactly one ACTIVE segment per service in v1.
+enum SegmentStatus {
+  active
+  retired
+}
+
+// ─────────────────────────── tenancy & config ───────────────────────────
+
+model Business {
+  id       String @id @default(cuid())
+  name     String
+  /// IANA zone id, "America/Chicago". Never a fixed offset or abbreviation —
+  /// neither survives a DST transition.
+  timezone String
+
+  // Policies (D-11, D-19, D-21).
+  slotIntervalMinutes       Int @default(15)
+  minimumLeadMinutes        Int @default(120)
+  /// Startup validation enforces minimumLeadMinutes >= cancellationCutoffMinutes
+  /// (D-11): otherwise a customer books 5 minutes out and is instantly unable to
+  /// cancel it — trapped by design, phone call required.
+  cancellationCutoffMinutes Int @default(120)
+  noShowBlockThreshold      Int @default(3)
+  /// D-21: 90 days, SELF-SERVE ONLY. Staff booking ignores the horizon.
+  bookingHorizonDays        Int @default(90)
+
+  // D-19: the SlotPolicy flags the engine reads. They live here because
+  // SLOT-04 requires tests on both arms, and hardcoding them in the engine
+  // makes that untestable without a migration.
+  bufferMayOverlapBreak    Boolean @default(true)
+  bufferMayExtendPastClose Boolean @default(true)
+  /// 'offer-both' | 'offer-earlier-only' (spec FB-7).
+  ambiguousLocalTime       String  @default("offer-both")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  staffUsers    StaffUser[]
+  providers     Provider[]
+  services      Service[]
+  resourceTypes ResourceType[]
+  resources     Resource[]
+  weeklyWindows WeeklyWindow[]
+  dateOverrides DateOverride[]
+  timeOff       TimeOff[]
+  adHocBlocks   AdHocBlock[]
+  clients       Client[]
+  appointments  Appointment[]
+  events        AppointmentEvent[]
+  outbox        NotificationOutbox[]
+  waitlist      WaitlistEntry[]
+  manageTokens  ManageToken[]
+}
+
+/// D-9. One shared owner credential in v1; multi-user staff auth and roles are
+/// Phase 3. Stated as minimal so nobody builds role machinery in month one.
+model StaffUser {
+  id           String   @id @default(cuid())
+  businessId   String
+  email        String
+  passwordHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, email])
+  @@index([businessId])
+}
+
+// ─────────────────────────── catalog ───────────────────────────
+
+model Provider {
+  id          String  @id @default(cuid())
+  businessId  String
+  displayName String
+  /// P1-3: a stylist quitting with three weeks booked is more common and harder
+  /// than deactivating a service, and had no field before this.
+  active      Boolean @default(true)
+  /// Ties in the "any provider" assignment rule are broken by this (SVC-02),
+  /// which makes the rule deterministic and therefore assertable.
+  displayOrder Int    @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  serviceProviders ServiceProvider[]
+  weeklyWindows    WeeklyWindow[]
+  dateOverrides    DateOverride[]
+  timeOff          TimeOff[]
+  adHocBlocks      AdHocBlock[]
+  appointments     Appointment[]
+
+  @@index([businessId, active])
+}
+
+model Service {
+  id                  String  @id @default(cuid())
+  businessId          String
+  name                String
+  durationMinutes     Int
+  bufferBeforeMinutes Int     @default(0)
+  bufferAfterMinutes  Int     @default(0)
+  priceCents          Int
+  active              Boolean @default(true)
+  displayOrder        Int     @default(0)
+  /// D-19 + D-11 resolver: `service.cutoff ?? business.cutoff`. Nullable means
+  /// "inherit", which is distinct from "zero".
+  cancellationCutoffMinutes Int?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business         Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  serviceProviders ServiceProvider[]
+  segments         ServiceSegment[]
+  lines            AppointmentServiceLine[]
+  waitlist         WaitlistEntry[]
+
+  @@index([businessId, active])
+}
+
+/// Qualification + per-provider overrides (SVC-02). An unassigned provider
+/// never appears in that service's booking flow.
+model ServiceProvider {
+  id                      String @id @default(cuid())
+  businessId              String
+  serviceId               String
+  providerId              String
+  durationOverrideMinutes Int?
+  priceOverrideCents      Int?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, providerId])
+  @@index([businessId])
+  @@index([providerId])
+}
+
+/// D-12 schema affordance ONLY. v1 has exactly one ACTIVE segment per service
+/// and the engine ignores this table entirely. It exists now because
+/// retrofitting segments onto a single-duration engine costs every query and a
+/// migration; the column and join cost nothing today.
+model ServiceSegment {
+  id              String        @id @default(cuid())
+  businessId      String
+  serviceId       String
+  ordinal         Int
+  durationMinutes Int
+  /// True for a processing gap (colour developing) — bookable provider time in
+  /// Phase 3, which is where a colourist's Saturday revenue lives.
+  isGap           Boolean       @default(false)
+  status          SegmentStatus @default(active)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, ordinal])
+  @@index([businessId])
+}
+
+/// D-12 + D-20 affordance ONLY: built, unreferenced by the engine in v1.
+/// For a 4-chair salon with 4 stylists the pool never binds, so consuming it
+/// would be enforcement theatre — and adding an axis to a LIVE exclusion
+/// constraint later is the migration D-12 exists to avoid.
+model ResourceType {
+  id         String @id @default(cuid())
+  businessId String
+  name       String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  resources Resource[]
+
+  @@unique([businessId, name])
+}
+
+model Resource {
+  id             String @id @default(cuid())
+  businessId     String
+  resourceTypeId String
+  name           String
+  active         Boolean @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  resourceType ResourceType @relation(fields: [resourceTypeId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+}
+
+// ─────────────────────────── availability (WALL-CLOCK RULES) ───────────────────────────
+// Everything in this section is on the CALENDAR axis: wall-clock strings, no
+// offsets, no instants. "I work Tuesdays 9-5" means 9-5 whatever the offset is
+// that week. Resolution to instants happens in packages/core/time, once, at the
+// boundary — and the engine unions windows AFTER resolution, never before
+// (spec DST-7).
+
+/// AVAIL-01 / AVAIL-04. `providerId = NULL` means this is a BUSINESS-level
+/// window (business hours); effective availability = business ∩ provider.
+model WeeklyWindow {
+  id         String  @id @default(cuid())
+  businessId String
+  providerId String?
+  /// 0 = Sunday .. 6 = Saturday.
+  weekday    Int
+  /// WallTime "09:00". CHAR(5), never a DateTime — this is a rule, not an occurrence.
+  open       String  @db.Char(5)
+  close      String  @db.Char(5)
+  /// Required, never inferred: `close <= open` with endsNextDay=false is
+  /// malformed and is refused at write time (AVAIL-01).
+  endsNextDay Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  breaks   WindowBreak[]
+
+  @@index([businessId, providerId, weekday])
+}
+
+/// Breaks belong to the WINDOW, not the day (spec OV-9). A provider with a
+/// split shift has two windows, and lunch belongs to exactly one of them.
+model WindowBreak {
+  id             String @id @default(cuid())
+  businessId     String
+  weeklyWindowId String
+  open           String @db.Char(5)
+  close          String @db.Char(5)
+
+  weeklyWindow WeeklyWindow @relation(fields: [weeklyWindowId], references: [id], onDelete: Cascade)
+
+  @@index([weeklyWindowId])
+  @@index([businessId])
+}
+
+/// AVAIL-02. A parent record so that "closed" is representable and DISTINCT
+/// from "no override" — `isClosed=true` with zero child windows. An override
+/// REPLACES the weekly pattern for that date entirely; it never merges.
+model DateOverride {
+  id         String  @id @default(cuid())
+  businessId String
+  providerId String?
+  /// CalendarDay "2026-03-08". CHAR(10) — NEVER @db.Date (D-3).
+  day        String  @db.Char(10)
+  isClosed   Boolean @default(false)
+  reason     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider?             @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  windows  DateOverrideWindow[]
+
+  /// AVAIL-02: two overrides on one date is a validation error, made structural.
+  @@unique([businessId, providerId, day])
+  @@index([businessId, day])
+}
+
+model DateOverrideWindow {
+  id             String  @id @default(cuid())
+  businessId     String
+  dateOverrideId String
+  open           String  @db.Char(5)
+  close          String  @db.Char(5)
+  endsNextDay    Boolean @default(false)
+
+  dateOverride DateOverride @relation(fields: [dateOverrideId], references: [id], onDelete: Cascade)
+
+  @@index([dateOverrideId])
+  @@index([businessId])
+}
+
+// ─────────────────────────── absences (INSTANT INTERVALS) ───────────────────────────
+// TimeOff and AdHocBlock are INSTANT intervals, and they are deliberately
+// OUTSIDE the exclusion constraint's table (D-2). That is not an oversight:
+// AVAIL-05 requires that blocking over an existing booking SURFACE the conflict
+// for a human to resolve, not be refused by the database. A constraint here
+// would make "Dana called in sick" impossible to record while she has bookings.
+
+model TimeOff {
+  id         String   @id @default(cuid())
+  businessId String
+  providerId String
+  startAt    DateTime @db.Timestamptz(3)
+  endAt      DateTime @db.Timestamptz(3)
+  reason     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, providerId, startAt, endAt])
+}
+
+model AdHocBlock {
+  id         String   @id @default(cuid())
+  businessId String
+  providerId String
+  startAt    DateTime @db.Timestamptz(3)
+  endAt      DateTime @db.Timestamptz(3)
+  reason     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, providerId, startAt, endAt])
+}
+
+// ─────────────────────────── people ───────────────────────────
+
+/// D-17 (answers OQ-2). `phone` is INDEXED, NOT UNIQUE.
+///
+/// A household shares a number. A unique index silently makes a mother and her
+/// teenage daughter ONE client: merged allergy notes (CLIENT-03 calls that a
+/// safety surface) and one shared rolling no-show counter, so the daughter's
+/// two no-shows block the mother from self-serve booking under CLIENT-04.
+/// Unwinding that after records have merged is data repair, not a migration.
+///
+/// name/phone/email are ALL nullable, which serves two needs at once:
+/// BOOK-04's "walk-in, no name" is a real row, and a deletion request is served
+/// by anonymizing in place — AppointmentEvent is append-only with Restrict FKs,
+/// so there is otherwise no deletion path through this schema at all.
+model Client {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String?
+  /// Normalized E.164 at write time.
+  phone      String?
+  email      String?
+  /// Pinned notes render on every appointment surface (CLIENT-03).
+  notes      String?
+  /// P2-3: consent is collected at booking time and cannot be backfilled —
+  /// without it you must assume none and re-ask everyone.
+  smsConsentAt DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business     Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  waitlist     WaitlistEntry[]
+
+  @@index([businessId, phone])
+  @@index([businessId, name])
+}
+
+// ─────────────────────────── the appointment ───────────────────────────
+
+model Appointment {
+  id         String @id @default(cuid())
+  businessId String
+  providerId String
+  /// NULLABLE — BOOK-04 requires booking with no client record ("walk-in, no
+  /// name", identity attached later).
+  clientId   String?
+
+  status AppointmentStatus @default(booked)
+
+  /// The occurrence, on the PHYSICAL axis. Whole minutes, CHECK-enforced.
+  startAt DateTime @db.Timestamptz(3)
+  endAt   DateTime @db.Timestamptz(3)
+
+  /// Buffer snapshots. Stored on the appointment (not read live from Service)
+  /// for the same reason as the price snapshot in D-18, and additionally
+  /// because the blocked-range trigger must be able to recompute the range on
+  /// UPDATE without re-deriving which service's buffers applied at booking time.
+  bufferBeforeMinutes Int @default(0)
+  bufferAfterMinutes  Int @default(0)
+
+  /// Body ± buffers. WRITTEN BY TRIGGER, never by application code — see the
+  /// migration. They cannot be generated columns: `timestamptz + interval` is
+  /// STABLE, not IMMUTABLE (verified against PG17), which disqualifies it from
+  /// GENERATED ALWAYS AS ... STORED. The exclusion constraint ranges over these,
+  /// so a buffer-only overlap is refused too.
+  blockedStart DateTime @db.Timestamptz(3)
+  blockedEnd   DateTime @db.Timestamptz(3)
+
+  /// D-8. A staff override writes a ZERO-WIDTH blocked range, which participates
+  /// in no `&&` and so satisfies the constraint without weakening it — and the
+  /// true intended range is preserved here.
+  isOverride          Boolean @default(false)
+  overrideReason      String?
+  /// D-16. The engine's busy-set query MUST read
+  /// COALESCE(overriddenFromRange, tstzrange(blockedStart, blockedEnd, '[)')).
+  /// Without that, a zero-width override row blocks nothing, the public flow
+  /// offers the overridden time, and a customer creates the accidental
+  /// double-book Goal 2 promises is impossible. Type is tstzrange, added in the
+  /// migration (Prisma has no range type).
+  overriddenFromRange Unsupported("tstzrange")?
+
+  /// BOOK-03(f). Makes the write path safely retryable.
+  idempotencyKey String?
+
+  /// P1-6. Denormalized business-zone labels, written alongside the instants by
+  /// the same code path. RPT-02 and the day view group by business date, and
+  /// deriving that from a timestamptz needs a zone conversion in every query.
+  /// Also gives Phase 3's tzdata-drift job (spec X-5) something to reconcile
+  /// against — without it, drift is undetectable for anything booked earlier.
+  startDay      String @db.Char(10)
+  startWallTime String @db.Char(5)
+
+  /// APPT-03/04: actual vs scheduled. A book that cannot represent "actually
+  /// started" is a paper-book generator (D-7).
+  confirmedAt DateTime? @db.Timestamptz(3)
+  checkedInAt DateTime? @db.Timestamptz(3)
+  startedAt   DateTime? @db.Timestamptz(3)
+  endedAt     DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  lines  AppointmentServiceLine[]
+  events AppointmentEvent[]
+  tokens ManageToken[]
+
+  @@unique([businessId, idempotencyKey])
+  /// The busy-set query is an instant-overlap predicate over these columns —
+  /// never `WHERE date(startAt) = day`, which misses the 23:30 booking running
+  /// past midnight and then double-books 00:00.
+  @@index([providerId, blockedStart, blockedEnd])
+  @@index([businessId, startDay])
+  @@index([businessId, status])
+  @@index([clientId])
+}
+
+/// Plural-shaped from day one (D-12): v1 flows create exactly one line, and
+/// VISIT work makes it many. Retrofitting plural lines onto a single-service
+/// appointment costs every query and a migration.
+model AppointmentServiceLine {
+  id            String @id @default(cuid())
+  businessId    String
+  appointmentId String
+  serviceId     String
+  ordinal       Int    @default(0)
+
+  /// D-18: SNAPSHOTTED at write time, never read live from Service /
+  /// ServiceProvider. Otherwise the owner raises prices in January and last
+  /// year's client history (CLIENT-02) and every historical report retroactively
+  /// change — and the old price is unrecoverable.
+  priceCents      Int
+  durationMinutes Int
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([appointmentId, ordinal])
+  @@index([businessId])
+  @@index([serviceId])
+}
+
+/// APPT-07. APPEND-ONLY, enforced by trigger in the migration — UPDATE and
+/// DELETE both raise. FKs into it are `onDelete: Restrict` on purpose: SetNull
+/// cascades hit the trigger and fail at runtime, which the rental build learned
+/// twice.
+model AppointmentEvent {
+  id            String @id @default(cuid())
+  businessId    String
+  appointmentId String
+
+  /// e.g. "booked", "rescheduled", "checked_in", "override_booked",
+  /// "notification_skipped_no_recipient". Rendered in plain language on the
+  /// appointment detail panel (A-027).
+  type      String
+  actor     Actor
+  /// Which staff user / token acted, when identifiable.
+  actorRef  String?
+  reason    String?
+  /// Both sides of a reschedule live here (D-6) — the row survives, so history
+  /// is in the log rather than in a dead row.
+  payload   Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, createdAt])
+  @@index([businessId, createdAt])
+}
+
+// ─────────────────────────── customer link & notifications ───────────────────────────
+
+/// D-5. Multi-use until `end + 24h`, scoped to ONE appointment, revocable by
+/// reissue, RE-POINTED (not reissued) on reschedule. Single-use was rejected:
+/// confirm-then-later-cancel and reschedule-twice are the ORDINARY customer
+/// workflow, and a single-use token fails on step two of every appointment.
+model ManageToken {
+  id            String @id @default(cuid())
+  businessId    String
+  appointmentId String
+  /// Store the hash, never the token.
+  tokenHash     String @unique
+
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@index([businessId])
+}
+
+/// D-14. The outbox + ChannelAdapter seam is Milestone 1 infrastructure, built
+/// BEFORE the first thing that sends — otherwise sending gets hand-rolled at
+/// call sites and the outbox arrives to find three of them.
+model NotificationOutbox {
+  id         String @id @default(cuid())
+  businessId String
+
+  /// P1-7: a reminder key MUST include the target instant
+  /// (`reminder-24h:{appointmentId}:{startAtEpochMs}`). Keyed on appointment id
+  /// alone, an appointment rescheduled INTO an already-processed window is never
+  /// reminded, and one rescheduled OUT keeps a reminder for a time that no
+  /// longer exists.
+  dedupeKey String @unique
+
+  channel   NotificationChannel
+  template  String
+  recipient String?
+  payload   Json
+  status    OutboxStatus @default(pending)
+  attempts  Int          @default(0)
+  lastError String?
+  sentAt    DateTime?    @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+}
+
+// ─────────────────────────── waitlist ───────────────────────────
+
+model WaitlistEntry {
+  id         String @id @default(cuid())
+  businessId String
+  clientId   String
+  serviceId  String
+  /// Empty = any qualified provider.
+  providerIds String[]
+  /// CalendarDay bounds — CHAR(10), never @db.Date.
+  fromDay    String @db.Char(10)
+  toDay      String @db.Char(10)
+  /// e.g. ["morning","saturday"].
+  dayParts   String[]
+
+  status    WaitlistStatus @default(active)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([businessId, status])
+  @@index([clientId])
 }

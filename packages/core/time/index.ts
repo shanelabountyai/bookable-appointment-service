@@ -11,5 +11,5 @@ export {
   wallTime,
   zoneId,
 } from './types';
-export { type Resolution, type ZonedLabel, addDays, localDayLengthMinutes, resolve, startOfDay, toLabel } from './zone';
+export { type Resolution, type ZonedLabel, addDays, fromDate, localDayLengthMinutes, resolve, startOfDay, toDate, toLabel } from './zone';
 export { type Clock, fixedClock, systemClock } from './clock';

@@ -125,6 +125,29 @@ export function localDayLengthMinutes(day: CalendarDay, zone: ZoneId): number {
   return (startOfDay(addDays(day, 1), zone) - startOfDay(day, zone)) / 60_000;
 }
 
+/**
+ * The ORM/driver bridge, and the ONLY sanctioned way to make a `Date` in this
+ * repo (`new Date(...)` is banned everywhere else by lint).
+ *
+ * Prisma and node-postgres speak `Date` for `timestamptz`. That is tolerable in
+ * exactly one direction — a `Date` built from epoch milliseconds carries no
+ * calendar interpretation and no process-timezone involvement, so it round-trips
+ * losslessly. What is NOT tolerable is `new Date('2026-03-08')`, which parses a
+ * calendar label through the process zone; these two functions exist so that
+ * distinction is enforced by the module boundary rather than by remembering it.
+ */
+export const toDate = (at: Instant): Date => new Date(at);
+
+/** Driver `Date` → Instant. Rejects an invalid Date rather than propagating NaN
+ *  into arithmetic that would silently produce garbage comparisons. */
+export const fromDate = (d: Date): Instant => {
+  const ms = d.getTime();
+  if (!Number.isFinite(ms)) {
+    throw new InvalidTimeValue(`fromDate received an invalid Date: ${String(d)}`);
+  }
+  return ms as Instant;
+};
+
 /** Day arithmetic on the CALENDAR axis. Adding 86_400_000 ms is correct on
  *  the physical axis and wrong on this one — after a transition every
  *  occurrence lands an hour off and drifts permanently (spec X-2). */

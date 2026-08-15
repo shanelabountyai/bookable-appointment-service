@@ -54,3 +54,37 @@ A-001 committed and pushed at 449c539
 - Verified identical results under `TZ=UTC`, `TZ=Pacific/Kiritimati`, `TZ=America/Chicago` and `TZ=Asia/Kathmandu` (29/29 in all four).
 A-002 committed and pushed at be75188
 PO review + D-15..D-21 committed and pushed at bafeab1
+
+
+---
+
+## A-003 — Core data model, the exclusion constraint, and the invariant tests
+
+**Built:**
+- `packages/db/prisma/schema.prisma` — 22 tables covering every §8 entity. `businessId` on every core table; money integer cents; `CalendarDay` as `CHAR(10)` and `WallTime` as `CHAR(5)` (never `@db.Date`); instants `@db.Timestamptz(3)`.
+- **The hand-written migration** (`20260815162006_core_data_model`) — Prisma-generated tables plus a hand-appended section containing the five things Prisma cannot express: `CREATE EXTENSION btree_gist`, the whole-minute + end-after-start + override-consistency CHECKs, the blocked-range trigger, the `appointment_no_overlap` EXCLUDE constraint, the `AppointmentEvent` append-only trigger, and the one-active-segment partial unique index.
+- `packages/core/scheduling/status.ts` — the single source of truth for the 8 states, `ACTIVE_STATUSES` derived from `SLOT_FREEING_STATUSES`, with a test asserting the LIVE database constraint predicate still matches it.
+- `packages/db/errors.ts` — `isSlotTakenError()`, with the verified reason it cannot be a `code` check.
+- `packages/db/constraint.test.ts` — 26 tests written with raw `pg`, bypassing the application entirely.
+- `packages/core/time/zone.ts` — added `toDate`/`fromDate`, the only sanctioned `new Date()` in the repo.
+- CI now generates the client and asserts all four hand-written objects exist in a database built from scratch.
+
+**Decided:**
+- **`blockedStart`/`blockedEnd` are written by a `BEFORE INSERT OR UPDATE` trigger, not by application code.** They cannot be generated columns — `timestamptz_pl_interval` is `STABLE`, verified, and Postgres rejects the column outright with "generation expression is not immutable". The trigger is strictly better than app-side computation because no ORM call, script or psql session can write an inconsistent range. It also recomputes on UPDATE, so a reschedule cannot leave a stale range (tested).
+- **Buffers are snapshotted onto `Appointment`.** Follows from the trigger: it must be able to recompute the range on UPDATE without re-deriving which service's buffers applied at booking time. Same reasoning as D-18's price snapshot.
+- **`status` is a Postgres ENUM.** Adding a state is deliberately an `ALTER TYPE`, because CLAUDE.md treats it as a grep-every-reader event.
+- **`WeeklyWindow.providerId` and `DateOverride.providerId` are nullable, meaning business-level.** AVAIL-04's "business hours ∩ provider hours" needs both patterns in one shape; a separate BusinessHours table would duplicate every column and every query.
+- **`packages/core/time` is now an explicit lint exception for `new Date()`**, owning `toDate`/`fromDate`. The ban stays absolute everywhere else — the repo has zero other `new Date(` call sites.
+
+**Verified against Postgres 17 rather than assumed** (each was flagged as unverified in the spec, or is a documented sibling-build defect):
+- `timestamptz_pl_interval` is `STABLE`; `tstzrange` is `IMMUTABLE`; generated columns are rejected.
+- `EXTRACT(EPOCH FROM ...)` is `IMMUTABLE`, so the whole-minute CHECK is legal; `date_trunc` would not have been.
+- The exclusion violation is SQLSTATE **`23P01`**; the append-only trigger surfaces **`23001`** (`restrict_violation`) — my first guess of `2F004` was wrong and the test caught it.
+- **Prisma surfaces `23P01` as `PrismaClientUnknownRequestError` with `code === undefined`** — NOT `P2002`, and there is no structured field carrying the SQLSTATE at all. Only the message string has it. The reflex `e.code === 'P2002'` silently falls through to a 500 while the race test still passes. `isSlotTakenError()` pins this with a test.
+- `btree_gist` is required: without it `"providerId" WITH =` fails with "data type text has no default operator class".
+
+**Left behind:**
+- The engine suite is still 37 red `NotImplementedError` — A-008, which is now the next item.
+- `ResourceType`/`Resource`/`ServiceSegment` exist and are unreferenced by the engine (D-12/D-20 affordances, deliberate).
+- No seed data — A-011.
+- The `bookable_shadow` database is created locally for the drift check; CI creates its own.

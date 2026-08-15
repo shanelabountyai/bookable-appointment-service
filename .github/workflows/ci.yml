@@ -48,6 +48,32 @@ jobs:
       - name: Apply migrations from scratch
         run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
 
+      - name: Generate Prisma client
+        run: npx prisma generate --schema packages/db/prisma/schema.prisma
+
+      # The hand-written objects Prisma cannot express (A-003). If a future
+      # migration drops one, the constraint tests would still pass against a
+      # stale database — this asserts they exist in a DB built from scratch.
+      - name: Assert the hand-written invariants exist
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bookable_ci -v ON_ERROR_STOP=1 <<'EOSQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='appointment_no_overlap') THEN
+              RAISE EXCEPTION 'appointment_no_overlap constraint is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_blocked_range') THEN
+              RAISE EXCEPTION 'appointment_blocked_range trigger is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_event_no_update_delete') THEN
+              RAISE EXCEPTION 'AppointmentEvent append-only trigger is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='btree_gist') THEN
+              RAISE EXCEPTION 'btree_gist extension is missing';
+            END IF;
+          END $$;
+          EOSQL
+
       - name: Drift check (schema.prisma vs migration history)
         run: >
           npx prisma migrate diff

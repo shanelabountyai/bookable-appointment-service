@@ -95,4 +95,54 @@ scheduling bug.
 
 ---
 
-<!-- Next entry: A-003 — data model & the exclusion constraint -->
+## A-003 — The data model and the no-double-booking invariant
+
+**What it is:** 22 tables, and one `EXCLUDE USING gist` constraint that makes
+overlapping appointments *unrepresentable* rather than merely checked-for.
+
+**Why it's not boilerplate — talking points:**
+- **The correctness guarantee is in the database, not the application.** The
+  headline requirement — "zero accidental double-bookings" — is enforced by a
+  partial GiST exclusion constraint on `(providerId, tstzrange(blockedStart,
+  blockedEnd, '[)'))`. Every code path is refused: the ORM, a migration, a
+  script, a `psql` session at 2am. The tests prove this by writing with a raw
+  Postgres client that knows nothing about the application's rules — an
+  ORM-level test would only prove the ORM behaves.
+- **`READ COMMITTED` with no retry loop, and that's a consequence, not a
+  shortcut.** Because the constraint exists, two concurrent overlapping inserts
+  resolve correctly without `SERIALIZABLE` and without the retry wrapper that
+  `40001` would force. The alternative design (SELECT-then-INSERT) is textbook
+  write skew and needs all of that machinery — machinery that, untested, is a
+  liability of its own.
+- **Half-open intervals, and why that's the single most important character.**
+  The range is `'[)'`. With `'[]'`, back-to-back appointments abut at a shared
+  endpoint and are rejected as conflicts — the salon could never book
+  consecutive clients, which is most of a working day. There is an explicit
+  test asserting back-to-back is *allowed*.
+- **Six Postgres behaviours verified by execution rather than assumed**, because
+  the spec flagged them as unverified and each one costs a day: generated
+  columns are impossible here (`timestamptz + interval` is `STABLE`, not
+  `IMMUTABLE`, and Postgres rejects the column outright); `EXTRACT(EPOCH ...)`
+  *is* immutable so a whole-minute CHECK is legal; `btree_gist` is mandatory;
+  and the append-only trigger surfaces `23001`, not the `2F004` I first guessed
+  — the test caught that.
+- **The ORM hides the error you most need to catch.** Prisma surfaces the
+  exclusion violation as `PrismaClientUnknownRequestError` with **`code`
+  undefined** — not `P2002` — with the SQLSTATE only inside the message string.
+  The natural `e.code === 'P2002'` check silently falls through to a 500 while
+  the race test still passes: the concurrency is correct and the user
+  experience is broken. Verified and pinned with a test.
+- **A structural fix for a real defect from a sibling build.** That project
+  added a status to an enum and four separate readers silently kept the old
+  list. Here every status list derives from one module, and a test reads the
+  *live* constraint definition out of `pg_constraint` and asserts it still
+  matches — so the SQL and the TypeScript cannot drift apart without going red.
+- **Staff can override; customers still cannot collide.** A knowing staff
+  double-book writes a zero-width range, which satisfies the constraint without
+  weakening it, while the true intended range is preserved in a separate column
+  for the day view and the availability engine. The constraint never lies, and
+  a customer booking the overridden time is still refused — both asserted.
+
+---
+
+<!-- Next entry: A-008 — the pure slot engine -->
