@@ -206,4 +206,14 @@ Not a backlog item. `docs/reviews/05-operator-review-milestone-1.md` at the clos
 **Sequencing changed:** A-025 now also builds the SETUP seed and validates `lead >= max(cutoffs)`; the provider-deactivation impact preview moved to A-019 (it cannot run before appointments exist); A-011 became the DENSITY seed and moved ahead of A-010; A-009's signature is staff-shaped from day one with self-serve as the restricted caller; A-009 gains a ninth race interleaving (staff override vs. concurrent self-serve). New item **A-028** (VISIT-01) after A-009.
 
 **Left behind:** R-8 (actor/audit on availability tables) routed to A-007, R-10 (client merge tombstone) to A-015 — both recorded on their owning rows rather than built now.
-M1 operator review applied at 4009482
+M1 operator review applied at **0747a85**.
+
+> **History note.** That commit is mislabelled `Record commit SHA (4009482)`.
+> The commit command carrying the real message contained unescaped double
+> quotes, so the shell split it and the commit failed; the SHA-record command
+> that followed then swept up the whole staged change set under its own
+> message. The content is correct and complete — see the entry above and
+> `git show --stat 0747a85` — only the subject line is wrong, and it is left
+> uncorrected rather than force-pushed over. Lesson applied: commit messages
+> of any length now go through a file (`git commit -F`), never an inline
+> double-quoted string.
