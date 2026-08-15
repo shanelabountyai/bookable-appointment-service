@@ -18,7 +18,8 @@
   "exports": {
     ".": "./index.ts",
     "./auth": "./auth/index.ts",
+    "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
-    "./errors": "./errors.ts"
+    "./settings": "./settings/index.ts"
   }
 }

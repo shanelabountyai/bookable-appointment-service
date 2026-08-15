@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { requireStaff } from '@/lib/auth/session';
 import { logout } from '@/lib/auth/actions';
 
@@ -22,9 +23,16 @@ export default async function StaffHome() {
         </p>
       </div>
 
-      <p className="text-zinc-500">
-        The day grid arrives with A-016. This page exists so the session guard has something real to protect.
-      </p>
+      <nav className="flex flex-col gap-2">
+        <Link href="/staff/settings" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Settings
+        </Link>
+        <Link href="/staff/providers" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Providers
+        </Link>
+      </nav>
+
+      <p className="text-zinc-500">The day grid arrives with A-016.</p>
 
       <form action={logout}>
         <button

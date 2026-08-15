@@ -6,4 +6,5 @@
 export * from './auth';
 export * from './notifications';
 export * from './scheduling';
+export * from './settings';
 export * from './time';

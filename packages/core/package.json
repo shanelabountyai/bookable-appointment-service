@@ -11,6 +11,7 @@
     "./auth": "./auth/index.ts",
     "./notifications": "./notifications/index.ts",
     "./scheduling": "./scheduling/index.ts",
+    "./settings": "./settings/index.ts",
     "./time": "./time/index.ts"
   }
 }

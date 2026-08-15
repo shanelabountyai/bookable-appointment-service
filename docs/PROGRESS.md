@@ -217,3 +217,27 @@ M1 operator review applied at **0747a85**.
 > uncorrected rather than force-pushed over. Lesson applied: commit messages
 > of any length now go through a file (`git commit -F`), never an inline
 > double-quoted string.
+
+
+---
+
+## A-025 — Business & provider setup
+
+**Built:**
+- `packages/core/settings/policy.ts` — pure validation. `validateBusinessPolicy` cross-checks `minimumLeadMinutes` against `max(business cutoff, every ACTIVE service's cutoff override)`; `validateServiceCutoff` guards the other write path; `worstCutoff` names the offender; `formatMinutes` renders owner-facing durations.
+- `packages/db/settings/business.ts` — `getBusinessSettings`/`updateBusinessSettings`, re-running validation at the data layer (a form is one caller; the invariant belongs to the data). Loads the active services itself so the cross-check cannot be skipped.
+- `packages/db/settings/providers.ts` — roster CRUD, `setProviderActive`, `countFutureAppointments`. Ordering is `displayOrder` then name, which is the order SVC-02's "any provider" tiebreak depends on.
+- `packages/db/settings/setup-seed.ts` — the SETUP seed (operator S-1): 1 business, 4 providers, 8 services, qualifications, weekly hours, 1 date override. Idempotent, deterministic, refuses production.
+- `apps/web/app/staff/settings` + `apps/web/app/staff/providers` + `lib/settings/actions.ts` — both behind `requireStaff()`.
+- 31 pure policy tests, 20 database tests, 6 new e2e specs. Suite is now 232 unit + 14 e2e.
+
+**Decided:**
+- **The lead/cutoff rule is enforced on BOTH write paths, not at startup.** D-11 said "startup validation", which cannot work once D-19 lets each service override the cutoff: the dangerous pair is created by editing *either* the business policy *or* a service, and a startup check only runs when nobody is editing anything. Both writers call the same pure validator.
+- **The validator takes the ACTIVE services as an argument** rather than reading them itself, so it stays pure and unit-testable, and the DB layer is the single place that decides what "active" means.
+- **`formatMinutes` prefers hours up to three days** — "24 hours notice", "48 hours notice" is how this trade states a cancellation policy. Rendering 1440 as "1 day" is arithmetically identical and reads as if written by someone who has never taken the call. A test pins it.
+- **The seed deliberately leaves Tess unqualified for colour work**, seeds Marcus a split shift, and gives everyone but Tess a midday break. A seed where every provider does every service at the same hours makes SVC-02's "an unassigned provider never appears" and AVAIL-01's "breaks belong to the window" untestable — which is most of what a seed is for.
+- **Deactivation writes `Provider.active` and nothing else** (operator S-2). The AVAIL-05 impact preview is A-019; `countFutureAppointments` exists and returns 0 until A-009 can create any, which is exactly why the preview is not built here.
+
+**Left behind:**
+- Provider reordering has a `displayOrder` field and an `updateProvider` path but no drag-to-reorder UI — the roster is four people and the field is settable; a sortable list is A-016's problem when the day grid needs column order.
+- No service catalogue UI — that is A-006, next. `validateServiceCutoff` is written and tested, waiting for its caller.
