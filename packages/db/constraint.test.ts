@@ -42,7 +42,14 @@ beforeEach(async () => {
   // Truncate rather than recreate: fast, and it proves the constraint survives
   // an empty table (a constraint dropped by a bad migration would still pass a
   // suite that only ever inserts one row).
-  await db.query('TRUNCATE "AppointmentEvent", "AppointmentServiceLine", "Appointment", "Provider", "Business" CASCADE');
+  // Every table, not a hand-picked subset: a partial list leaves rows that
+  // break whichever file runs next (see packages/db/testing/reset.ts).
+  await db.query(
+    'TRUNCATE "AppointmentEvent", "AppointmentServiceLine", "NotificationOutbox", "ManageToken", "Appointment", ' +
+      '"WaitlistEntry", "Client", "WindowBreak", "DateOverrideWindow", "DateOverride", "WeeklyWindow", "TimeOff", ' +
+      '"AdHocBlock", "ServiceProvider", "ServiceSegment", "Service", "Resource", "ResourceType", "Provider", ' +
+      '"StaffUser", "Business" RESTART IDENTITY CASCADE',
+  );
   const b = await db.query<{ id: string }>(
     `INSERT INTO "Business" (id, name, timezone, "updatedAt") VALUES ('biz1','Shear Genius','America/Chicago', now()) RETURNING id`,
   );

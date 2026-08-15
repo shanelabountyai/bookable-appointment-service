@@ -8,6 +8,7 @@ import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/not
 import { PrismaClient } from '../generated/client/index.js';
 import { dispatchPendingNotifications } from './dispatch';
 import { enqueueNotification } from './enqueue';
+import { resetDatabase } from '../testing';
 
 const prisma = new PrismaClient();
 let businessId: string;
@@ -42,8 +43,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await prisma.notificationOutbox.deleteMany();
-  await prisma.business.deleteMany();
+  await resetDatabase(prisma);
   const b = await prisma.business.create({ data: { name: 'Shear Genius', timezone: 'America/Chicago' } });
   businessId = b.id;
   delete process.env.NOTIFICATIONS_ENABLED;

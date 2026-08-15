@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PrismaClient } from '../generated/client/index.js';
 import { authenticateStaff, findStaffById } from './staff';
 import { seedStaffUser } from './seed-staff';
+import { resetDatabase } from '../testing';
 
 const prisma = new PrismaClient();
 const EMAIL = 'owner@shear-genius.test';
@@ -22,8 +23,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await prisma.staffUser.deleteMany();
-  await prisma.business.deleteMany();
+  await resetDatabase(prisma);
   const seeded = await seedStaffUser(prisma, { email: EMAIL, password: PASSWORD });
   staffUserId = seeded.staffUserId;
   businessId = seeded.businessId;

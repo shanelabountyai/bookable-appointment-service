@@ -238,6 +238,11 @@ M1 operator review applied at **0747a85**.
 - **The seed deliberately leaves Tess unqualified for colour work**, seeds Marcus a split shift, and gives everyone but Tess a midday break. A seed where every provider does every service at the same hours makes SVC-02's "an unassigned provider never appears" and AVAIL-01's "breaks belong to the window" untestable — which is most of what a seed is for.
 - **Deactivation writes `Provider.active` and nothing else** (operator S-2). The AVAIL-05 impact preview is A-019; `countFutureAppointments` exists and returns 0 until A-009 can create any, which is exactly why the preview is not built here.
 
+**Caught by CI, not by the local gate:**
+- **The dual-TZ run failed on Kiritimati while UTC passed — and it was not a timezone bug.** All 20 settings tests died in `beforeEach` with `Appointment_providerId_fkey`. Cause: each DB test file cleaned up its own tables with a hand-maintained `deleteMany()` order, so whichever file ran LAST left rows that broke the next file — and CI runs the whole suite twice against one database, so the second run inherited the first's leftovers. It read exactly like the bug class the dual-TZ gate exists to catch, which is the second time that has happened (A-004 was the first).
+- Fixed with `packages/db/testing/reset.ts`: one `TRUNCATE ... RESTART IDENTITY CASCADE` over every table, used by all four DB test files. CASCADE resolves the FK order itself, so no test has to know the graph or what ran before it. TRUNCATE is also the only thing that can reset `AppointmentEvent` at all — it is append-only by trigger, and the trigger refuses DELETE.
+- Verified by running the suite three times back-to-back against one database (the thing CI actually does and the local gate never did).
+
 **Left behind:**
 - Provider reordering has a `displayOrder` field and an `updateProvider` path but no drag-to-reorder UI — the roster is four people and the field is settable; a sortable list is A-016's problem when the day grid needs column order.
 - No service catalogue UI — that is A-006, next. `validateServiceCutoff` is written and tested, waiting for its caller.

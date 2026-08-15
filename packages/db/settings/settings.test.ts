@@ -15,6 +15,7 @@ import {
 } from './providers';
 import { CHAIR_COUNT, seedSetup } from './setup-seed';
 import { instantFromIso, toDate } from '../../core/time';
+import { resetDatabase } from '../testing';
 
 const prisma = new PrismaClient();
 let businessId: string;
@@ -41,13 +42,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await prisma.windowBreak.deleteMany();
-  await prisma.weeklyWindow.deleteMany();
-  await prisma.dateOverride.deleteMany();
-  await prisma.serviceProvider.deleteMany();
-  await prisma.service.deleteMany();
-  await prisma.provider.deleteMany();
-  await prisma.business.deleteMany();
+  await resetDatabase(prisma);
   const b = await prisma.business.create({ data: { name: 'Shear Genius', timezone: 'America/Chicago' } });
   businessId = b.id;
 });

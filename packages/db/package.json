@@ -20,6 +20,7 @@
     "./auth": "./auth/index.ts",
     "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
-    "./settings": "./settings/index.ts"
+    "./settings": "./settings/index.ts",
+    "./testing": "./testing/index.ts"
   }
 }
