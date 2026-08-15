@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci
+  DIRECT_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci
+  SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci_shadow
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+      - run: npm run typecheck
+
+      # Migrations from scratch against a throwaway Postgres, then drift check:
+      # schema.prisma must match what the committed migration history produces.
+      - name: Create throwaway databases
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE bookable_ci;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE bookable_ci_shadow;"
+
+      - name: Apply migrations from scratch
+        run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+
+      - name: Drift check (schema.prisma vs migration history)
+        run: >
+          npx prisma migrate diff
+          --from-migrations packages/db/prisma/migrations
+          --to-schema-datamodel packages/db/prisma/schema.prisma
+          --shadow-database-url "$SHADOW_DATABASE_URL"
+          --exit-code
+
+      # D-3: the suite must be byte-identical under any process TZ. A UTC-only
+      # CI hides exactly the bugs this project exists to catch.
+      - name: Unit suite — TZ=UTC
+        run: npm test
+        env:
+          TZ: UTC
+      - name: Unit suite — TZ=Pacific/Kiritimati
+        run: npm test
+        env:
+          TZ: Pacific/Kiritimati
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: e2e (production build, port 3300)
+        run: npm run test:e2e
+        env:
+          CI: true
+          PORT: 3300

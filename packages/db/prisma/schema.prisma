@@ -1,0 +1,14 @@
+// The entity model lands with A-003 — do not add models here first.
+// See docs/START-HERE.md Session 3 and docs/prds/07-decisions.md D-2/D-12/D-13.
+//
+// @db.Date is banned repo-wide (CLAUDE.md, D-3): a CalendarDay is CHAR(10),
+// never Postgres `date`. Enforce that when the first model lands here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

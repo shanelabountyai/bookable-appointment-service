@@ -1,0 +1,15 @@
+# Postgres from commit one (D-1). SQLite cannot express the D-2 exclusion
+# constraint and cannot exercise the race tests — see docs/reviews/03-slot-engine-spec.md §4.4.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: bookable
+      POSTGRES_PASSWORD: bookable
+      POSTGRES_DB: bookable_dev
+    ports:
+      - "5434:5432" # 5432+2: the storage/rental builds own the lower ports
+    volumes:
+      - bookable-pg:/var/lib/postgresql/data
+volumes:
+  bookable-pg:
