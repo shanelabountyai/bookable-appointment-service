@@ -218,6 +218,19 @@ describe('validation at the boundary — malformed input throws (§2, items 27�
     expect(() => wallTime('9:00')).toThrow(InvalidTimeValue);
   });
 
+  // One wall time must have exactly ONE representation, or `===`, Set
+  // membership, Map keys and dedupe are all subtly wrong — and A-003 would
+  // store two spellings of the same window open.
+  it('normalizes a wall time to HH:MM so equality is meaningful', () => {
+    expect(wallTime('09:00:00')).toBe(wallTime('09:00'));
+    expect(wallTime('09:00:00')).toBe('09:00');
+    expect(new Set([wallTime('14:30'), wallTime('14:30:00')]).size).toBe(1);
+  });
+
+  it('rejects a sub-minute wall time rather than silently truncating it', () => {
+    expect(() => wallTime('09:00:30')).toThrow(InvalidTimeValue);
+  });
+
   it('rejects a fixed offset or abbreviation as a zone id', () => {
     expect(() => zoneId('-05:00')).toThrow(InvalidTimeValue);
     expect(() => zoneId('CDT')).toThrow(InvalidTimeValue);

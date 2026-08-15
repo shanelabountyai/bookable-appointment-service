@@ -11,6 +11,7 @@ One backlog item per session, top to bottom, no skipping ahead:
 3. Run the gate: `npm run lint && npm run typecheck && npm test && PORT=3300 npm run test:e2e`
 4. Mark the item ✅ in `06-backlog.md`.
 5. Add the entry to `docs/PROGRESS.md` — what it built, what it decided, what it left behind.
+5b. Add the entry to `docs/RELEASE_NOTES.md` — the portfolio-facing version: what is genuinely engineered here rather than scaffolding, written for "walk me through something you built."
 6. Commit. Record the SHA in a small follow-up commit, never by amending (amending changes the SHA you just wrote down).
 
 ## Session 0 — verify the starter's red state

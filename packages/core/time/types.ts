@@ -49,18 +49,31 @@ export const calendarDay = (s: string): CalendarDay => {
   return s as CalendarDay;
 };
 
-/** "09:00" or "09:00:00". Rejects 24:00 and 25:00 — a working window that
- *  closes at "24:00" must be modelled with endsNextDay, not a 24th hour. */
+/** "09:00" or "09:00:00", NORMALIZED to "HH:MM". Rejects 24:00 and 25:00 — a
+ *  window closing at "24:00" is modelled with endsNextDay, not a 24th hour.
+ *
+ *  Normalization is not cosmetic. Returning the input unchanged would give one
+ *  wall time two non-equal representations, so `wallTime('09:00:00') !==
+ *  wallTime('09:00')` and every `===`, Set membership, Map key and dedupe on a
+ *  WallTime would be subtly wrong — including, once A-003 lands, two different
+ *  spellings of the same window open sitting in the database. Minute precision
+ *  matches what toLabel() emits, so the axis round-trips exactly. */
 export const wallTime = (s: string): WallTime => {
   if (!/^\d{2}:\d{2}(:\d{2})?$/.test(s)) {
     throw new InvalidTimeValue(`WallTime must be HH:MM or HH:MM:SS, got: ${s}`);
   }
+  let parsed: Temporal.PlainTime;
   try {
-    Temporal.PlainTime.from(s, { overflow: 'reject' });
+    parsed = Temporal.PlainTime.from(s, { overflow: 'reject' });
   } catch {
     throw new InvalidTimeValue(`WallTime is not a real time of day: ${s}`);
   }
-  return s as WallTime;
+  if (parsed.second !== 0 || parsed.millisecond !== 0) {
+    throw new InvalidTimeValue(
+      `WallTime is minute-precision; sub-minute components are not representable, got: ${s}`,
+    );
+  }
+  return parsed.toString({ smallestUnit: 'minute' }) as WallTime;
 };
 
 /** "America/Chicago". A fixed offset ("-05:00") or abbreviation ("CDT") is

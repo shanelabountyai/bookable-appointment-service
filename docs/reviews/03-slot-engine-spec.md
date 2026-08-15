@@ -474,6 +474,14 @@ ALTER TABLE "Appointment"
   WHERE (status <> 'cancelled');
 ```
 
+> **⚠ SUPERSEDED BY D-15 — do not copy the predicate above.** This literal SQL predates D-7's split of `cancelled_late` out of `cancelled`. The correct predicate is:
+>
+> ```sql
+>   WHERE (status NOT IN ('cancelled','cancelled_late'));
+> ```
+>
+> derived in code from the single status module, never hand-typed twice. With `<> 'cancelled'`, every late cancellation blocks its own slot **permanently** — the salon late-cancels a Saturday colour and can never resell it, which is exactly the perishable-supply loss the waitlist exists to recover. Note also that D-2's phrase "the terminal set" is *not* a safe substitute: `completed` and `no_show` are terminal but still **occupy** their time, so they must remain inside the constraint. Verified against Postgres 17 during A-003. The rest of this section stands as written.
+
 Notes that will cost you a day each if you skip them:
 
 - **`'[)'` is mandatory.** Half-open, matching §2 and BF-3. With `'[]'`, back-to-back appointments abut at a shared endpoint and are rejected as conflicts, and the salon can never book consecutive clients.
