@@ -115,3 +115,4 @@ A-003 committed and pushed at f9dd882
 - `daysWithAvailability`, the busy-set query and the horizon cap are A-026 (the adapter), deliberately — this item is the pure function only.
 - `'nonexistent-local-time'` is defined in the contract but never emitted by the grid: with window-open anchoring every candidate is a real instant by construction. It belongs to the booking POST validation path (DST-8), which is A-009.
 - Added `pretypecheck: clean:syncdupes`. `~/Documents` is iCloud-synced and duplicates Next's generated types as `routes.d 2.ts`, breaking typecheck with TS2300/TS6200 errors unrelated to the code. It had already cost two debugging detours.
+A-008 committed and pushed at 8352f7a
