@@ -2,7 +2,7 @@
   "name": "bookable",
   "version": "0.0.1",
   "private": true,
-  "description": "Appointment scheduling for a service business — Claude Code learning build #3. Start with docs/START-HERE.md.",
+  "description": "Appointment scheduling for a service business \u2014 Claude Code learning build #3. Start with docs/START-HERE.md.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -30,7 +30,9 @@
     "db:status:dev": "dotenv -e .env.local -- npm run migrate:status -w packages/db",
     "db:status:test": "dotenv -e .env.test -- npm run migrate:status -w packages/db",
     "db:status": "npm run db:status:test && npm run db:status:dev",
-    "db:reset:test": "dropdb --if-exists bookable_test && createdb bookable_test && npm run db:migrate:test"
+    "db:reset:test": "dropdb --if-exists bookable_test && createdb bookable_test && npm run db:migrate:test",
+    "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
+    "postinstall": "npm run db:generate"
   },
   "devDependencies": {
     "@types/pg": "^8.21.0",

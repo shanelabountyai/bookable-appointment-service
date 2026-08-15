@@ -117,7 +117,14 @@ const arbQuery = fc
     };
   });
 
-const RUNS = { numRuns: 300 };
+// Deterministic by construction, matching the repo convention that gate tests
+// never flake: a fixed seed means a failure here is always reproducible from the
+// same command. Random-seed exploration belongs in the nightly fuzz job (the
+// same split the spec uses for the race tests vs. the nightly SQL-invariant
+// fuzz) — set FC_RANDOM_SEED=1 to explore locally.
+const RUNS = process.env.FC_RANDOM_SEED
+  ? { numRuns: 300 }
+  : { numRuns: 300, seed: 20260815, endOnFailure: true };
 
 describe('§2.1–2.3 — purity, determinism, order-insensitivity', () => {
   it('returns an equal result for equal input, every time', () => {
@@ -246,16 +253,26 @@ describe('§2.9–2.16 — no returned slot ever violates a constraint', () => {
     );
   });
 
-  it('returned slots never overlap EACH OTHER’s blocked ranges when taken consecutively', () => {
-    // Not that the engine must return disjoint slots — it must not; adjacent
-    // candidates legitimately overlap. This asserts the weaker, real invariant:
-    // consecutive starts differ by at least one grid step.
+  it('consecutive starts WITHIN one window differ by a whole number of grid steps', () => {
+    // Deliberately scoped to a single window. The looser "any two consecutive
+    // slots are a grid step apart" is FALSE and a random seed caught it:
+    // windows 00:00-07:05 and 07:06-07:21 on a 60-minute grid legitimately
+    // yield starts at 07:00 and 07:06, six minutes apart, because each window
+    // anchors its own grid (D-4). Asserting the stronger property would have
+    // forced a "fix" that broke split-shift providers.
     fc.assert(
       fc.property(arbQuery, (q) => {
-        const { slots } = computeSlots(q);
+        const { slots, meta } = computeSlots(q);
         const step = q.grid.intervalMinutes * MIN;
+        const windowOf = (start: number) =>
+          meta.windowInstants.findIndex((w) => start >= w.start && start < w.end);
         for (let i = 1; i < slots.length; i++) {
-          expect(slots[i]!.start - slots[i - 1]!.start).toBeGreaterThanOrEqual(step);
+          const prev = slots[i - 1]!;
+          const curr = slots[i]!;
+          if (windowOf(prev.start) !== windowOf(curr.start)) continue;
+          const gap = curr.start - prev.start;
+          expect(gap).toBeGreaterThanOrEqual(step);
+          expect(gap % step).toBe(0);
         }
       }),
       RUNS,
