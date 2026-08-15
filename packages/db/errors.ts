@@ -22,13 +22,42 @@
 /** SQLSTATE 23P01, exclusion_violation. Not 23505. */
 export const EXCLUSION_VIOLATION = '23P01';
 
-/** True when the error is our no-overlap constraint refusing the write.
- *  Checks the constraint name too, so a future second exclusion constraint
- *  cannot be silently misread as a slot collision. */
+/** The constraint whose violation means "somebody just took that slot". */
+const NO_OVERLAP_CONSTRAINT = 'appointment_no_overlap';
+
+/**
+ * True when the error is our no-overlap constraint refusing the write.
+ *
+ * TWO DRIVERS, TWO ERROR SHAPES, and the difference is not cosmetic:
+ *
+ *   node-postgres : `code` is '23P01' and `constraint` names it. The MESSAGE
+ *                   does NOT contain the SQLSTATE at all.
+ *   Prisma        : no `code` (it is a PrismaClientUnknownRequestError — see
+ *                   the note above), and the SQLSTATE survives only inside
+ *                   the message string.
+ *
+ * Checking the message alone — which this did until the Milestone 1 operator
+ * review — therefore worked through Prisma and silently returned FALSE for a
+ * raw `pg` error. That was invisible because A-003's test exercised only the
+ * Prisma path. A-018/A-019's deferred multi-row transactions are the first
+ * callers likely to hold a driver-level error, and there the miss would turn
+ * a "that slot is taken" 409 into a 500.
+ *
+ * The constraint name is required either way, so a future second exclusion
+ * constraint cannot be misread as a slot collision.
+ */
 export function isSlotTakenError(error: unknown): boolean {
-  const message =
-    typeof error === 'object' && error !== null && 'message' in error ? String((error as { message: unknown }).message) : '';
-  return message.includes(EXCLUSION_VIOLATION) && message.includes('appointment_no_overlap');
+  if (typeof error !== 'object' || error === null) return false;
+  const e = error as { code?: unknown; constraint?: unknown; message?: unknown };
+
+  // Structured form (node-postgres, and any driver that sets SQLSTATE).
+  if (e.code === EXCLUSION_VIOLATION) {
+    return e.constraint === undefined || e.constraint === NO_OVERLAP_CONSTRAINT;
+  }
+
+  // String form (Prisma). Both parts required.
+  const message = typeof e.message === 'string' ? e.message : '';
+  return message.includes(EXCLUSION_VIOLATION) && message.includes(NO_OVERLAP_CONSTRAINT);
 }
 
 /**

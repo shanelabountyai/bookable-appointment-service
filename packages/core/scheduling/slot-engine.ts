@@ -25,6 +25,7 @@ import { addDays, localDayLengthMinutes, resolve, startOfDay, toLabel } from '..
 import type { CalendarDay, Instant, WallTime, ZoneId } from '../time/types';
 import { InvalidTimeValue } from '../time/types';
 import {
+  type BusyInterval,
   type Exclusion,
   type ExclusionReason,
   InvalidSlotQuery,
@@ -267,23 +268,32 @@ export function computeSlots(query: SlotQuery): SlotResult {
     // Body overlap and buffer-only overlap are DIFFERENT reasons, because an
     // absence test that cannot tell them apart passes when the engine is using
     // the wrong interval (BF-4).
+    // Each non-booking kind reports ITS OWN reason. Collapsing them all to
+    // 'overlaps-time-off' — which this engine did until the Milestone 1
+    // operator review — tells the front desk a stylist is away when she is
+    // standing right there with an ad-hoc block, or behind schedule. A screen
+    // that explains itself wrongly is worse than one that stays silent,
+    // because staff stop reading it.
     let bodyHitsBooking = false;
     let bufferHitsBooking = false;
-    let hitsTimeOff = false;
+    const otherKinds = new Set<BusyInterval['kind']>();
     for (const busy of query.busy) {
       if (!overlaps(blocked, busy)) continue;
       conflictIds.add(busy.id);
-      const isBooking = busy.kind === 'booking';
-      if (isBooking) {
+      if (busy.kind === 'booking') {
         if (overlaps(body, busy)) bodyHitsBooking = true;
         else bufferHitsBooking = true;
       } else {
-        hitsTimeOff = true;
+        otherKinds.add(busy.kind);
       }
     }
     if (bodyHitsBooking) reasons.push('overlaps-booking');
     else if (bufferHitsBooking) reasons.push('overlaps-buffer');
-    if (hitsTimeOff) reasons.push('overlaps-time-off');
+    // Ordered, not iteration-ordered: `reasons` is asserted with toEqual in
+    // the matrix, so it must not depend on the order of the busy array (§2.3).
+    if (otherKinds.has('time_off')) reasons.push('overlaps-time-off');
+    if (otherKinds.has('ad_hoc_block')) reasons.push('overlaps-block');
+    if (otherKinds.has('running-late')) reasons.push('provider-running-late');
 
     // ── now and lead time (§3.K) ──
     if (start < now) reasons.push('in-the-past');

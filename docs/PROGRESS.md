@@ -181,3 +181,29 @@ A-004 committed at 02edd72
 - **`apps/web` was still on create-next-app's `target: ES2017`** while the root tsconfig targets ES2022. Invisible until `transpilePackages` made apps/web compile `packages/core` — at which point the *older* target governed the *shared* code and the Temporal BigInt literal in `zone.ts` failed the production build. Fixed the target, and removed the BigInt entirely (`Temporal.Instant.fromEpochMilliseconds` was always the better call).
 - **The Playwright process had no `DATABASE_URL`.** The web server got it via `e2e:server`, but the test runner itself did not, so `globalSetup` could not seed the staff credential. Root `test:e2e` now wraps with the same first-wins dotenv layering as every other script.
 A-005 committed at d28e0c9
+
+
+---
+
+## Milestone 1 boundary — operator review, and the frozen things it caught
+
+Not a backlog item. `docs/reviews/05-operator-review-milestone-1.md` at the close of Milestone 1. Every load-bearing claim was verified against the code and the live database before acting; all confirmed.
+
+**Fixed in code (a defect in A-008 as shipped):**
+- **The engine reported EVERY non-booking busy kind as `overlaps-time-off`.** An `ad_hoc_block` told the front desk a stylist was away when she was standing there. The matrix missed it because no fixture used `ad_hoc_block` and the one time-off test asserted `toContain`, which passes for a dozen wrong reasons. Each kind now reports its own reason, in a stable order (the busy array's order must not leak into a `toEqual` assertion). 5 regression tests.
+- **`isSlotTakenError()` did not recognise a driver-level violation.** It matched only the message string — which carries the SQLSTATE through Prisma but NOT through node-postgres, where it lives in `error.code`. A-003's test exercised only the Prisma path, so the gap was invisible. Now checks the structured `code` first and falls back to the message, and requires the constraint name either way.
+
+**New decisions:**
+- **D-22 — running late is first-class.** A stored per-provider-per-day delta consumed by the engine as a `running-late` BusyInterval, NOT a rewrite of `startAt`. The contract vocabulary (`BusyInterval.kind`, `ExclusionReason`) landed immediately so A-026 cannot be written against the wrong shape; storage and UI are A-018.
+- **D-23 — multi-service visits are v1 (VISIT-01).** Resolves a direct §3/§10 contradiction where VISIT-01 was declared in scope and simultaneously listed as Phase 3, and existed nowhere else. The deciding argument is that the workaround is *refused by the database*: two adjacent appointments overlap once one service's `bufferAfter` meets the next one's `bufferBefore`, so staff would override on every combination booking and learn to ignore the override marker D-8 depends on.
+
+**Migration `20260815223953_operator_review_m1`:**
+- **The exclusion constraint is now `DEFERRABLE INITIALLY IMMEDIATE`.** "Put Mrs. Hall at 2, move Jenny to 3" is a routine desk move with NO order of single-row updates that avoids a transient overlap — it died with `23P01`, which the write path would report as "that slot is taken" while staff were trying to *move* it. Verified before and after: the swap fails today, succeeds inside `SET CONSTRAINTS ... DEFERRED`, and ordinary single-row booking is untouched (`condeferred = f`), so A-009's race interleavings are unaffected. Deferrability cannot be altered in place — `ALTER CONSTRAINT` is foreign-key only (verified) — so the constraint is dropped and re-added with a byte-identical predicate.
+- `NotificationOutbox.appointmentId` (nullable, indexed, `onDelete: Restrict`) — "was she actually told?" was otherwise a `LIKE` against a key format, and the reminder key deliberately embeds `startAtEpochMs`, so a rescheduled appointment's messages share no prefix.
+- `Appointment.notes` — the per-visit note had nowhere to go but the pinned client note, where it would bury the allergy line.
+- `Appointment.conflictAckAt`/`conflictAckReason` — the conflict stays derived; only the human acknowledgment is stored, because it is not derivable.
+
+**Sequencing changed:** A-025 now also builds the SETUP seed and validates `lead >= max(cutoffs)`; the provider-deactivation impact preview moved to A-019 (it cannot run before appointments exist); A-011 became the DENSITY seed and moved ahead of A-010; A-009's signature is staff-shaped from day one with self-serve as the restricted caller; A-009 gains a ninth race interleaving (staff override vs. concurrent self-serve). New item **A-028** (VISIT-01) after A-009.
+
+**Left behind:** R-8 (actor/audit on availability tables) routed to A-007, R-10 (client merge tombstone) to A-015 — both recorded on their owning rows rather than built now.
+M1 operator review applied at 4009482

@@ -46,7 +46,13 @@ export interface BusyInterval {
    *  BLOCKED range (body ± its own buffers), matching the D-2 constraint. */
   readonly start: Instant;
   readonly end: Instant;
-  readonly kind: 'booking' | 'time_off' | 'ad_hoc_block';
+  /**
+   * `running-late` is NOT an absence — it is the provider's current overrun,
+   * injected by the adapter (A-026) from the per-provider-per-day delta
+   * (D-22). It occupies time that the book still shows as free, which is the
+   * single thing a paper day-sheet does that software usually cannot.
+   */
+  readonly kind: 'booking' | 'time_off' | 'ad_hoc_block' | 'running-late';
   readonly id: string;
 }
 
@@ -108,6 +114,13 @@ export type ExclusionReason =
   | 'overlaps-booking'
   | 'overlaps-buffer'
   | 'overlaps-time-off'
+  /** An ad-hoc block, which is NOT time off. Reporting a block as time off
+   *  tells the front desk a stylist is away when she is standing there —
+   *  a screen that explains itself wrongly stops being read. */
+  | 'overlaps-block'
+  /** The provider is running behind and this candidate falls inside the
+   *  overrun (D-22). Distinct from time off for the same reason. */
+  | 'provider-running-late'
   | 'in-the-past'
   | 'inside-lead-time'
   | 'nonexistent-local-time'

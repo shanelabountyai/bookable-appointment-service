@@ -505,6 +505,22 @@ model Appointment {
   startDay      String @db.Char(10)
   startWallTime String @db.Char(5)
 
+  /// The PER-VISIT note (CLIENT-03), distinct from Client.notes. "Bring the
+  /// reference photo", "patch test done 12/4". Without it these go in the
+  /// pinned client note, where they accumulate forever and bury the allergy
+  /// line that is a genuine safety surface. (Operator review R-6.)
+  notes String?
+
+  /// AVAIL-05's "keep-flagged": the human acknowledgment that a conflict has
+  /// been dealt with ("we called her, she's coming anyway").
+  ///
+  /// The CONFLICT itself stays derived (appointment ∩ absence) — a stored
+  /// conflict flag goes stale and lies on the day it matters. Only the
+  /// acknowledgment is stored, because it is not derivable from anything.
+  /// Cleared whenever the overlapping absence changes. (Operator review R-7.)
+  conflictAckAt     DateTime? @db.Timestamptz(3)
+  conflictAckReason String?
+
   /// APPT-03/04: actual vs scheduled. A book that cannot represent "actually
   /// started" is a paper-book generator (D-7).
   confirmedAt DateTime? @db.Timestamptz(3)
@@ -519,9 +535,10 @@ model Appointment {
   provider Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
   client   Client?   @relation(fields: [clientId], references: [id], onDelete: Restrict)
 
-  lines  AppointmentServiceLine[]
-  events AppointmentEvent[]
-  tokens ManageToken[]
+  lines         AppointmentServiceLine[]
+  events        AppointmentEvent[]
+  tokens        ManageToken[]
+  notifications NotificationOutbox[]
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -628,6 +645,17 @@ model NotificationOutbox {
   /// longer exists.
   dedupeKey String @unique
 
+  /// Which appointment this is about, when it is about one. NULLABLE because
+  /// not every message has one (system/marketing messages later).
+  ///
+  /// APPT-07 promises the outbox is queryable per appointment — "was she
+  /// actually told?" is the question that settles an argument at the front
+  /// desk. The dedupeKey cannot serve: the reminder key deliberately embeds
+  /// startAtEpochMs (P1-7), so a rescheduled appointment's messages no longer
+  /// share a prefix and the query becomes a LIKE against a key format.
+  /// (Operator review R-4.)
+  appointmentId String?
+
   channel   NotificationChannel
   template  String
   recipient String?
@@ -640,9 +668,14 @@ model NotificationOutbox {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Restrict, not Cascade: the record that a client WAS told must outlive any
+  /// attempt to delete the appointment, for the same reason AppointmentEvent
+  /// is append-only.
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
 
   @@index([businessId, status])
+  @@index([appointmentId])
 }
 
 // ─────────────────────────── waitlist ───────────────────────────

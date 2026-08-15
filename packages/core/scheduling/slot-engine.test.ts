@@ -399,3 +399,59 @@ describe('monotonicity spot checks (§2.17–2.20 — full property tests arrive
     for (const s of long) expect(short.has(s)).toBe(true);
   });
 });
+
+/**
+ * Added after the Milestone 1 operator review (docs/reviews/05-*.md, R-1).
+ *
+ * The engine collapsed EVERY non-booking busy kind to 'overlaps-time-off'.
+ * The matrix never caught it because no fixture used `ad_hoc_block`, and the
+ * one time-off test asserted `toContain` — which passes for a dozen wrong
+ * reasons. These assert the reason EXACTLY, per the house rule.
+ */
+describe('each busy kind reports its own reason (operator review R-1)', () => {
+  const busyOf = (kind: BusyInterval['kind'], id: string): BusyInterval => ({
+    start: instantFromIso('2026-06-09T10:00:00-05:00'),
+    end: instantFromIso('2026-06-09T11:00:00-05:00'),
+    kind,
+    id,
+  });
+
+  it.each([
+    ['time_off', 'overlaps-time-off'],
+    ['ad_hoc_block', 'overlaps-block'],
+    ['running-late', 'provider-running-late'],
+  ] as const)('a %s interval excludes with exactly ["%s"]', (kind, reason) => {
+    const q = base({ busy: [busyOf(kind, `${kind}-1`)] });
+    expect(reasonsFor(q, '2026-06-09T10:00:00-05:00')).toEqual([reason]);
+    expect(starts(q)).not.toContain(instantFromIso('2026-06-09T10:00:00-05:00'));
+  });
+
+  it('a running-late overrun removes the slots the book still shows as free', () => {
+    // Dana is 40 minutes behind: her 10:00 is still running at 10:40, so the
+    // 10:15/10:30 candidates a customer can currently see are not real.
+    const overrun: BusyInterval = {
+      start: instantFromIso('2026-06-09T10:00:00-05:00'),
+      end: instantFromIso('2026-06-09T10:40:00-05:00'),
+      kind: 'running-late',
+      id: 'late-dana',
+    };
+    const q = base({
+      service: { durationMinutes: 30, bufferBeforeMinutes: 0, bufferAfterMinutes: 0 },
+      busy: [overrun],
+    });
+    expect(starts(q)).not.toContain(instantFromIso('2026-06-09T10:15:00-05:00'));
+    expect(starts(q)).not.toContain(instantFromIso('2026-06-09T10:30:00-05:00'));
+    // ...and the first genuinely free slot after the overrun IS offered.
+    expect(starts(q)).toContain(instantFromIso('2026-06-09T10:45:00-05:00'));
+    expect(reasonsFor(q, '2026-06-09T10:30:00-05:00')).toEqual(['provider-running-late']);
+  });
+
+  it('reports every applicable reason, in a stable order, regardless of busy order', () => {
+    const timeOff = busyOf('time_off', 'off1');
+    const block = busyOf('ad_hoc_block', 'blk1');
+    const late = busyOf('running-late', 'late1');
+    const expected = ['overlaps-time-off', 'overlaps-block', 'provider-running-late'];
+    expect(reasonsFor(base({ busy: [timeOff, block, late] }), '2026-06-09T10:00:00-05:00')).toEqual(expected);
+    expect(reasonsFor(base({ busy: [late, block, timeOff] }), '2026-06-09T10:00:00-05:00')).toEqual(expected);
+  });
+});

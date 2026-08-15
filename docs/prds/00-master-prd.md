@@ -33,7 +33,7 @@ Carried from draft v1, deliberately, with two additions:
 - **Native mobile app** — responsive web.
 - **Real SMS/email delivery** — every send goes through the notification outbox with a logging adapter (the D-15 seam from the rental build); real providers are a later one-line swap.
 - **Customer accounts/login** — customers act via tokenized links only. The `Client` record is a server-side entity keyed on phone, which requires no login (CLIENT-01).
-- **NEW: multi-provider service chains** ("colour with Dana, blow-dry with the assistant") — deferred to Phase 3. Single-provider multi-service visits ARE in scope (VISIT-01).
+- **NEW: multi-provider service chains** ("colour with Dana, blow-dry with the assistant") — deferred to Phase 3. Single-provider multi-service visits ARE in scope as **VISIT-01** (settled in **D-23**; §10's Phase-3 line refers to the multi-*provider* case only).
 - **NEW: named-seat resource assignment** — resources are capacity pools when they arrive (Phase 3); v1 carries the schema affordance only (D-12).
 
 ## 4. Personas
@@ -106,6 +106,10 @@ The full correctness specification, function signature, and ~90-case edge matrix
 - **CLIENT-03** Two note fields: long-lived client notes (formula, allergies — pinned on every appointment render) and per-appointment notes. Allergy note is a safety surface, not a convenience.
 - **CLIENT-04** Rolling 12-month no-show and late-cancel counts with appointment references, surfaced everywhere the client appears. Policy: after N no-shows (config, default 3), self-serve booking is blocked with "call us" — staff can always book them. Marking no-show is reversible with a reason (APPT-06).
 
+### VISIT — Multi-service visits (D-23)
+
+- **VISIT-01** One appointment may carry several services with the **same provider**, in order ("cut then colour"). The body duration is the sum of the lines' durations; buffers **do not stack between lines** — only the first line's `bufferBeforeMinutes` and the last line's `bufferAfterMinutes` apply to the visit's blocked range. One `Appointment`, one ordered `AppointmentServiceLine` per service, each snapshotting its own `priceCents`/`durationMinutes` (D-18). The slot engine needs no change: a composed visit is simply a longer service. Booking two adjacent appointments is NOT the supported path and never was — their blocked ranges overlap once one service's `bufferAfter` meets the next one's `bufferBefore`, so the database refuses it, and routing staff through a knowing override on every combination booking would make D-8's override marker meaningless. Multi-**provider** chains stay Phase 3.
+
 ### NOTIF — Notifications
 
 - **NOTIF-01** One outbox, one seam: every send is an outbox row (recipient, template, payload, dedupe key, status) written through a `ChannelAdapter`; v1 ships the logging adapter only. **No module hand-rolls its own sending** — the rental R-030 rule, enforced from item one because the confirmation email exists before the reminder job does.
@@ -167,4 +171,4 @@ Money is integer cents. UTC instants in the DB; `CalendarDay` stored as `CHAR(10
 
 ## 10. Phasing
 
-See `06-backlog.md` for the ordered, dependency-checked backlog with milestones and demo checkpoints. Headline: Milestone 1 = foundation (docs, time module, schema+constraint, outbox seam, staff session); Milestone 2 = the booking loop end to end (Golden Path 1); Milestone 3 = running the day (lifecycle, tokens, day grid, staff booking, impact workflow — Golden Path 2); Milestone 4 = the revenue leak (confirm loop, reminders, waitlist panel, dashboard). Phase 3 (post-v1): segmented durations + resources + multi-service visits (the schema affordances land in M1), multi-provider chains, real delivery adapters, roles.
+See `06-backlog.md` for the ordered, dependency-checked backlog with milestones and demo checkpoints. Headline: Milestone 1 = foundation (docs, time module, schema+constraint, outbox seam, staff session); Milestone 2 = the booking loop end to end (Golden Path 1); Milestone 3 = running the day (lifecycle, tokens, day grid, staff booking, impact workflow — Golden Path 2); Milestone 4 = the revenue leak (confirm loop, reminders, waitlist panel, dashboard). Phase 3 (post-v1): segmented durations + resources (the schema affordances land in M1), multi-**provider** chains, real delivery adapters, roles. Single-provider multi-service visits are **v1**, as VISIT-01 (D-23).

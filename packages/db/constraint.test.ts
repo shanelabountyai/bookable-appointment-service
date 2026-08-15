@@ -378,3 +378,140 @@ describe('detecting the violation through Prisma (verified, for A-009)', () => {
     }
   });
 });
+
+/**
+ * Added after the Milestone 1 operator review (docs/reviews/05-*.md, R-2).
+ *
+ * The constraint is now DEFERRABLE INITIALLY IMMEDIATE. The point of these
+ * tests is that BOTH halves hold: a multi-row rearrangement becomes possible,
+ * and nothing about ordinary single-row booking changes.
+ */
+describe('deferrable constraint — the Saturday swap (operator review R-2)', () => {
+  it('is DEFERRABLE but INITIALLY IMMEDIATE', async () => {
+    const { rows } = await db.query<{ condeferrable: boolean; condeferred: boolean }>(
+      `SELECT condeferrable, condeferred FROM pg_constraint WHERE conname = 'appointment_no_overlap'`,
+    );
+    expect(rows[0]!.condeferrable).toBe(true);
+    // INITIALLY IMMEDIATE: ordinary writes still check at statement end, so
+    // the race interleavings are untouched.
+    expect(rows[0]!.condeferred).toBe(false);
+  });
+
+  it('STILL refuses an overlap in an ordinary transaction that does not defer', async () => {
+    await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
+    const code = await sqlstateOf(() =>
+      insert({ id: 'b', start: '2026-06-09T10:30:00-05:00', end: '2026-06-09T11:30:00-05:00' }),
+    );
+    expect(code).toBe(EXCLUSION_VIOLATION);
+  });
+
+  // "Put Mrs. Hall at 2, move Jenny to 3." Impossible before this migration:
+  // no order of single-row updates avoids a transient overlap.
+  it('allows two clients to SWAP times inside one deferred transaction', async () => {
+    await insert({ id: 'hall', start: '2026-06-09T14:00:00-05:00', end: '2026-06-09T15:00:00-05:00' });
+    await insert({ id: 'jenny', start: '2026-06-09T15:00:00-05:00', end: '2026-06-09T16:00:00-05:00' });
+
+    await db.query('BEGIN');
+    await db.query('SET CONSTRAINTS appointment_no_overlap DEFERRED');
+    await db.query(
+      `UPDATE "Appointment" SET "startAt"='2026-06-09T15:00:00-05:00', "endAt"='2026-06-09T16:00:00-05:00' WHERE id='hall'`,
+    );
+    await db.query(
+      `UPDATE "Appointment" SET "startAt"='2026-06-09T14:00:00-05:00', "endAt"='2026-06-09T15:00:00-05:00' WHERE id='jenny'`,
+    );
+    await db.query('COMMIT');
+
+    const { rows } = await db.query<{ id: string; hhmm: string }>(
+      `SELECT id, to_char("startAt" AT TIME ZONE 'America/Chicago','HH24:MI') AS hhmm
+         FROM "Appointment" ORDER BY id`,
+    );
+    expect(rows).toEqual([
+      { id: 'hall', hhmm: '15:00' },
+      { id: 'jenny', hhmm: '14:00' },
+    ]);
+  });
+
+  // Deferring must not mean "unchecked". A genuine conflict still fails —
+  // just at COMMIT rather than at the statement.
+  it('still refuses a genuine conflict in a deferred transaction, at COMMIT time', async () => {
+    await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
+    await db.query('BEGIN');
+    await db.query('SET CONSTRAINTS appointment_no_overlap DEFERRED');
+    // This INSERT succeeds at statement time — the check is deferred.
+    await insert({ id: 'b', start: '2026-06-09T10:30:00-05:00', end: '2026-06-09T11:30:00-05:00' });
+    const code = await sqlstateOf(() => db.query('COMMIT'));
+    expect(code).toBe(EXCLUSION_VIOLATION);
+    await db.query('ROLLBACK').catch(() => {});
+
+    const { rows } = await db.query(`SELECT id FROM "Appointment"`);
+    expect(rows).toHaveLength(1); // the conflicting row did not survive
+  });
+
+  // The operator review predicted this path had never been exercised. It had
+  // not: the helper checked only the message string, which carries the
+  // SQLSTATE through Prisma but NOT through node-postgres, so it returned
+  // false for every driver-level violation. Both shapes now assert.
+  it('isSlotTakenError recognises a STATEMENT-time driver violation', async () => {
+    await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
+    let caught: unknown;
+    try {
+      await insert({ id: 'b', start: '2026-06-09T10:30:00-05:00', end: '2026-06-09T11:30:00-05:00' });
+    } catch (e) {
+      caught = e;
+    }
+    expect(isSlotTakenError(caught)).toBe(true);
+    // A different constraint must NOT read as a slot collision.
+    expect(isSlotTakenError({ code: '23P01', constraint: 'some_other_exclusion' })).toBe(false);
+    expect(isSlotTakenError({ code: '23505' })).toBe(false);
+  });
+  // isSlotTakenError() matches on the message string, and a COMMIT-time
+  // violation has never gone through it before.
+  it('isSlotTakenError still recognises a COMMIT-time violation', async () => {
+    await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
+    await db.query('BEGIN');
+    await db.query('SET CONSTRAINTS appointment_no_overlap DEFERRED');
+    await insert({ id: 'b', start: '2026-06-09T10:30:00-05:00', end: '2026-06-09T11:30:00-05:00' });
+    let caught: unknown;
+    try {
+      await db.query('COMMIT');
+    } catch (e) {
+      caught = e;
+    }
+    await db.query('ROLLBACK').catch(() => {});
+    expect(caught).toBeDefined();
+    expect(isSlotTakenError(caught)).toBe(true);
+  });
+});
+
+describe('operator review R-4/R-6/R-7 columns', () => {
+  it('links an outbox row to its appointment, and refuses to lose that record', async () => {
+    await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
+    await db.query(
+      `INSERT INTO "NotificationOutbox" (id,"businessId","appointmentId","dedupeKey",channel,template,payload,"updatedAt")
+       VALUES ('n1',$1,'a','confirmation:a','email'::"NotificationChannel",'appointment.confirmed','{}'::jsonb, now())`,
+      [businessId],
+    );
+    // "Was she actually told?" — one indexed lookup, not a LIKE against a key.
+    const { rows } = await db.query(`SELECT id FROM "NotificationOutbox" WHERE "appointmentId" = 'a'`);
+    expect(rows).toHaveLength(1);
+
+    // Restrict: the proof she was told outlives any delete attempt.
+    const code = await sqlstateOf(() => db.query(`DELETE FROM "Appointment" WHERE id='a'`));
+    expect(code).toBeTruthy();
+  });
+
+  it('carries a per-visit note and a conflict acknowledgment', async () => {
+    await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
+    await db.query(
+      `UPDATE "Appointment"
+          SET notes='Bring the reference photo',
+              "conflictAckAt"=now(), "conflictAckReason"='Called her, coming anyway'
+        WHERE id='a'`,
+    );
+    const { rows } = await db.query<{ notes: string; conflictAckReason: string }>(
+      `SELECT notes, "conflictAckReason" FROM "Appointment" WHERE id='a'`,
+    );
+    expect(rows[0]!.notes).toBe('Bring the reference photo');
+    expect(rows[0]!.conflictAckReason).toBe('Called her, coming anyway');
+  });
+});
