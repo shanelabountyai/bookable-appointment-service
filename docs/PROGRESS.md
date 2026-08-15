@@ -53,3 +53,4 @@ A-001 committed and pushed at 449c539
 - The engine suite is still 37 red `NotImplementedError` — unchanged, and every fixture in it passed through the newly *validating* constructors without an edit, which is the useful signal that validation did not break the contract.
 - Verified identical results under `TZ=UTC`, `TZ=Pacific/Kiritimati`, `TZ=America/Chicago` and `TZ=Asia/Kathmandu` (29/29 in all four).
 A-002 committed and pushed at be75188
+PO review + D-15..D-21 committed and pushed at bafeab1
