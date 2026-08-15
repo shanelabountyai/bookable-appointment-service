@@ -237,4 +237,52 @@ message.
 
 ---
 
-<!-- Next entry: A-005 — staff session --> 
+## A-005 — Staff session and the audit actor
+
+**What it is:** password hashing, a signed session cookie, and a route guard —
+built with the Node standard library and no auth dependency.
+
+**Why it's not boilerplate — talking points:**
+- **The scope decision is the interesting one.** A sibling project in this
+  series runs NextAuth with full role-based access control. Here the recorded
+  decision is deliberately "one shared credential, real session, actor stamped
+  on every mutation — and multi-user roles are explicitly a later phase."
+  Knowing which one a product needs *this month* is the judgment; building the
+  larger thing by reflex is the common failure.
+- **No auth library, and a reason rather than a preference.** Nothing a JWT
+  library offers — algorithm negotiation, JWKS, third-party verification —
+  applies when one server signs a cookie and the same server verifies it.
+  What is used instead: HMAC-SHA256 from `node:crypto`, with the expiry
+  *inside* the signature so it can't be extended by editing the cookie.
+- **Password hashing done properly, in ~40 lines.** scrypt with a random
+  per-password salt, constant-time comparison, OWASP-floor cost parameters,
+  and a self-describing stored format (`scrypt$N$r$p$salt$hash`) so the cost
+  can be raised later without invalidating existing hashes or locking anyone
+  out.
+- **The login form is not a user directory.** An unknown email and a wrong
+  password return the same message *and take the same time* — the
+  user-not-found branch verifies against a dummy hash specifically so it pays
+  the same ~100ms of deliberate scrypt work. There's a test for it, asserted
+  as a ratio rather than an absolute millisecond bound, because a tight timing
+  assertion on shared CI hardware is a flake generator.
+- **Session revocation with no revocation list.** The guard re-reads the staff
+  row on every request instead of trusting the cookie's contents, so deleting
+  a user invalidates their live sessions immediately — no denylist to keep,
+  no TTL to wait out.
+- **The security properties are asserted end-to-end, not assumed.** Playwright
+  specs prove an anonymous visitor never renders the protected content (not
+  merely has it hidden), that a *tampered* cookie is rejected rather than
+  trusted, and that the real cookie carries `HttpOnly`, `SameSite=Lax` and
+  `Secure` — the last one checked against a production build, because a
+  regression to `secure: false` is invisible locally and ships the session
+  cookie in clear text everywhere else.
+- **What was deliberately left undone, and written down.** There is no rate
+  limiter on login yet; scrypt's cost is the only brute-force control. That's
+  defensible for one credential on a single-tenant v1 and indefensible if it
+  goes unremarked, so it's recorded in the code and the log with the specific
+  upgrade path — a later item already needs the same limiter for a different
+  route, so it gets built once and shared.
+
+---
+
+<!-- Next entry: A-025 — business & provider setup -->  

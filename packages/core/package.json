@@ -3,8 +3,14 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "./scheduling/slot-engine.ts",
   "dependencies": {
     "temporal-polyfill": "^1.0.4"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./auth": "./auth/index.ts",
+    "./notifications": "./notifications/index.ts",
+    "./scheduling": "./scheduling/index.ts",
+    "./time": "./time/index.ts"
   }
 }

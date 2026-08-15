@@ -19,7 +19,7 @@
     "e2e:server": "npm run build:test && npm run start:test",
     "test": "dotenv -e .env.test -e .env.local -- vitest run",
     "test:watch": "dotenv -e .env.test -e .env.local -- vitest",
-    "test:e2e": "npm run test:e2e -w apps/web",
+    "test:e2e": "dotenv -e .env.test -e .env.local -- npm run test:e2e -w apps/web",
     "clean:syncdupes": "find apps/web/.next -name '* [0-9].*' -delete 2>/dev/null; true",
     "pretypecheck": "npm run clean:syncdupes",
     "typecheck": "tsc --noEmit && npm run typecheck -w apps/web",

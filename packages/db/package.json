@@ -14,5 +14,11 @@
   },
   "devDependencies": {
     "prisma": "^6"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./auth": "./auth/index.ts",
+    "./notifications": "./notifications/index.ts",
+    "./errors": "./errors.ts"
   }
 }

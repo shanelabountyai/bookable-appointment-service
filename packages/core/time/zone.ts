@@ -95,7 +95,7 @@ export interface ZonedLabel {
 /** Instant → its label in the business zone. The inverse direction of the
  *  axis crossing, and the only one permitted to produce a CalendarDay. */
 export function toLabel(at: Instant, zone: ZoneId): ZonedLabel {
-  const zdt = new Temporal.Instant(BigInt(at) * 1_000_000n).toZonedDateTimeISO(zone);
+  const zdt = Temporal.Instant.fromEpochMilliseconds(at).toZonedDateTimeISO(zone);
   return {
     day: calendarDay(zdt.toPlainDate().toString()),
     time: wallTime(zdt.toPlainTime().toString({ smallestUnit: 'minute' })),

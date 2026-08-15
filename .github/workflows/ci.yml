@@ -23,6 +23,11 @@ env:
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci
   DIRECT_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci
   SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci_shadow
+  # Signs the staff session cookie (D-9). A throwaway value for CI only — the
+  # app refuses to run without one rather than falling back to a default, and
+  # a real deployment sets a real secret. Safe to have in the workflow file
+  # BECAUSE it is worthless: it signs nothing that outlives the job.
+  SESSION_SECRET: ci-only-session-secret-not-used-anywhere-real
 
 jobs:
   gate:

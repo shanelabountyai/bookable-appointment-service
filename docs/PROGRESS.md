@@ -147,3 +147,36 @@ A-008 committed and pushed at 8352f7a
 - No cron/job runner yet to call `dispatchPendingNotifications()` — that's NOTIF-02/A-022.
 - No route or write path calls `enqueueNotification()` yet — nothing sends until BOOK-06 (A-009) exists to call it. This item's whole job was to have the seam ready before that.
 A-004 committed at 02edd72
+
+
+---
+
+## A-005 — Staff session, and the actor on every mutation
+
+**Built:**
+- `packages/core/auth/password.ts` — scrypt via `node:crypto`, no dependency. Random 16-byte salt per password, `timingSafeEqual` comparison, OWASP-floor parameters (N=2^14, r=8, p=1), stored self-describing as `scrypt$N$r$p$salt$hash` so cost can be raised later without locking anyone out. Exports `DUMMY_HASH_PROMISE` for the user-not-found branch.
+- `packages/core/auth/session.ts` — HMAC-SHA256 signed session tokens, `signSession`/`verifySession`. No JWT library: nothing it offers (algorithm negotiation, JWKS, third-party verifiers) applies when one server signs and verifies. Expiry lives *inside* the signature. Secret and `now` are parameters, so it is unit-testable with no environment and no clock. 8-hour TTL.
+- `packages/core/auth/actor.ts` — the `Actor` type (D-9), mirroring the Prisma enum as a plain union so `packages/core` stays free of `packages/db`.
+- `packages/db/auth/staff.ts` — `authenticateStaff` (timing-equalised) and `findStaffById`.
+- `packages/db/auth/seed-staff.ts` — creates/resets the single credential; **refuses to run with NODE_ENV=production**.
+- `apps/web/lib/auth/session.ts` — the cookie, and `requireStaff()` / `currentActor()`. The one place a cookie becomes an Actor.
+- `apps/web/lib/auth/actions.ts` — login/logout server actions, one generic error message for every failure.
+- `apps/web/app/staff/` — a genuinely protected page and a login form (`useActionState`, `aria-live` on the error).
+- Subpath `exports` maps on both packages plus `transpilePackages` — the packages ship TS source, so Next has to transpile them.
+- 28 pure auth tests + 10 database tests + 7 new e2e specs.
+
+**Decided:**
+- **scrypt over bcrypt/argon2.** It is in the standard library and memory-hard; argon2 would mean a native build step for a marginal gain over correctly-parameterised scrypt. No new dependency for a security primitive.
+- **A hand-rolled signed cookie over NextAuth.** D-9 says this explicitly — "stated as minimal so nobody builds Auth.js role machinery in month one". The sibling rental build uses NextAuth + full RBAC; copying it here would be building Phase 3 in Milestone 1.
+- **`SESSION_SECRET` missing is a hard failure, never a default.** A fallback secret means every deployment that forgot to set one shares the same forgeable signing key.
+- **`currentStaff()` re-reads the StaffUser row on every call** rather than trusting the cookie's contents, so deleting a staff user invalidates their live sessions on the next request with no revocation list to maintain.
+- **One error message for unknown-email and wrong-password, and equal timing for both.** `authenticateStaff` verifies against `DUMMY_HASH_PROMISE` when no user is found, so the two branches cost the same ~100ms of scrypt — otherwise the login form is a user-enumeration oracle. Asserted as a ratio (<5x), not an absolute millisecond bound, because a tight timing assertion on shared CI hardware is a flake generator.
+
+**Left behind:**
+- **`ponytail:` no rate limiting or lockout on login.** The scrypt cost is the only brute-force control today. Reasonable for one shared credential on a single-tenant v1, but explicitly *not* a substitute for a limiter. Upgrade path recorded in `staff.ts`: A-013 already needs a `RateLimitCounter` with an advisory-lock consume for the manage-token route — build it once there and call it here too. **This is the most important thing to remember from this item.**
+- No password *change* flow — A-025 (owner settings) is where that belongs.
+- `currentActor()` exists and is tested, but nothing mutates yet, so nothing calls it. A-009/A-012 are its first real consumers.
+
+**Found and fixed along the way:**
+- **`apps/web` was still on create-next-app's `target: ES2017`** while the root tsconfig targets ES2022. Invisible until `transpilePackages` made apps/web compile `packages/core` — at which point the *older* target governed the *shared* code and the Temporal BigInt literal in `zone.ts` failed the production build. Fixed the target, and removed the BigInt entirely (`Temporal.Instant.fromEpochMilliseconds` was always the better call).
+- **The Playwright process had no `DATABASE_URL`.** The web server got it via `e2e:server`, but the test runner itself did not, so `globalSetup` could not seed the staff credential. Root `test:e2e` now wraps with the same first-wins dotenv layering as every other script.

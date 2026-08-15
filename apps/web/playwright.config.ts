@@ -5,6 +5,9 @@ import { defineConfig, devices } from '@playwright/test';
 // when debugging a single failing spec — never for the full sweep.
 export default defineConfig({
   testDir: './e2e',
+  // Seeds the single staff credential the auth specs sign in with, against
+  // the TEST database.
+  globalSetup: './e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
