@@ -89,3 +89,29 @@ PO review + D-15..D-21 committed and pushed at bafeab1
 - No seed data — A-011.
 - The `bookable_shadow` database is created locally for the drift check; CI creates its own.
 A-003 committed and pushed at f9dd882
+
+
+---
+
+## A-008 — The slot engine (pure)
+
+**Built:**
+- `computeSlots(SlotQuery) -> SlotResult` in `packages/core/scheduling/slot-engine.ts`. All 37 pre-written starter tests green.
+- `slot-engine.properties.test.ts` — 21 fast-check property tests covering the §2 invariants: purity, order-insensitivity of both `busy` and `windows`, slot shape, grid alignment, "never returns a slot overlapping a busy blocked range", "never outside a window or crossing close", "never before now/lead", four monotonicity laws (busy, duration, buffer, now), explain/slot agreement, and the DST-day accounting.
+- Total suite is now 115 tests, identical under `TZ=UTC` and `TZ=Pacific/Kiritimati`.
+
+**Decided:**
+- **Candidate-then-filter, not interval-subtraction** (spec §1.3). Costs short-circuiting; buys accumulated exclusion reasons, which is what converts the matrix from smoke tests into real tests — absence assertions otherwise pass for a dozen wrong reasons.
+- **A `gap` resolves to the instant AFTER the gap for BOTH window edges.** This is what makes DST-7 work: split rows 01:00–02:00 and 03:00–04:00 become [07:00Z,08:00Z) and [08:00Z,09:00Z), which union into one contiguous window. Taking `earlier` for the close creates a one-hour phantom hole and silently loses every long booking on the transition morning — confirmed by mutation test.
+- **An `ambiguous` edge takes `earlier` for an open and `later` for a close** — the widest honest reading of "open 01:00–02:00" on a day when both happen twice. The doubled hour is real capacity (FB-1).
+- **Touching windows are merged**, not just overlapping ones: `a.end === b.start` is contiguous in physical time and treating them as two windows would reject any service spanning the join.
+- **`InvalidTimeValue` now extends `InvalidSlotQuery`.** DEG-12 (`zoneId('CST')`) throws inside the argument expression, before `computeSlots` is ever called, so the engine cannot be the thing that throws. Rather than weaken A-002's validation or edit the starter's normative test, the narrower error became a subclass of the broader one. Definition moved to `time/types.ts` (re-exported from `scheduling/types.ts`, so no import site changed) because a subclass must be declared where its parent lives without an import cycle.
+
+**Verified, not assumed:**
+- **Generator sanity:** 500 generated queries produced 245 non-empty results (max 154 slots). Property tests that only ever see empty slot lists pass vacuously; this one does not.
+- **Mutation-tested the suite's teeth**, three deliberate bugs, all caught: half-open -> closed intervals (6 failures), checking the body instead of the blocked range so buffers stop mattering (2 failures), and the DST-7 gap-close bug (1 failure).
+
+**Left behind:**
+- `daysWithAvailability`, the busy-set query and the horizon cap are A-026 (the adapter), deliberately — this item is the pure function only.
+- `'nonexistent-local-time'` is defined in the contract but never emitted by the grid: with window-open anchoring every candidate is a real instant by construction. It belongs to the booking POST validation path (DST-8), which is A-009.
+- Added `pretypecheck: clean:syncdupes`. `~/Documents` is iCloud-synced and duplicates Next's generated types as `routes.d 2.ts`, breaking typecheck with TS2300/TS6200 errors unrelated to the code. It had already cost two debugging detours.

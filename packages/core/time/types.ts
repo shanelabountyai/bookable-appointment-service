@@ -25,9 +25,35 @@ export type ZoneId = string & { readonly __zoneId: unique symbol };
 /** Epoch milliseconds UTC. The only representation of a moment in this system. */
 export type Instant = number & { readonly __instant: unique symbol };
 
-/** Thrown by every constructor here. Malformed input fails loudly at the
- *  boundary rather than becoming a plausible-but-wrong instant downstream. */
-export class InvalidTimeValue extends Error {
+/**
+ * Malformed input to the scheduling system. Defined here rather than in
+ * scheduling/types.ts (which re-exports it, so every import site is unchanged)
+ * because it is the BASE of InvalidTimeValue below, and the subclass must be
+ * declared where its parent is available without an import cycle.
+ *
+ * The rule this expresses (spec §2, items 27–39): malformed input THROWS;
+ * semantically-empty input returns an empty slot list. A closed Sunday is not
+ * an error; a negative buffer is.
+ */
+export class InvalidSlotQuery extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidSlotQuery';
+  }
+}
+
+/**
+ * Thrown by every constructor here. Malformed input fails loudly at the
+ * boundary rather than becoming a plausible-but-wrong instant downstream.
+ *
+ * It EXTENDS InvalidSlotQuery deliberately. These constructors validate at the
+ * outermost edge, so `zoneId('CST')` throws while a query object is still being
+ * built — before the engine ever sees it. A caller that asks "did this query get
+ * rejected?" must get a yes in both cases, or an abbreviation-as-zone would look
+ * like an infrastructure fault rather than the bad input it is. The narrower
+ * class is still available when the distinction matters.
+ */
+export class InvalidTimeValue extends InvalidSlotQuery {
   constructor(message: string) {
     super(message);
     this.name = 'InvalidTimeValue';

@@ -19,6 +19,7 @@
 export {
   type CalendarDay,
   type Instant,
+  InvalidSlotQuery,
   InvalidTimeValue,
   type WallTime,
   type ZoneId,
@@ -132,10 +133,7 @@ export interface SlotResult {
 }
 
 /** Malformed input (vs semantically-empty input, which returns empty slots).
- *  The rule (spec §2, items 27–39): malformed THROWS; "nothing available" returns []. */
-export class InvalidSlotQuery extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'InvalidSlotQuery';
-  }
-}
+ *  The rule (spec §2, items 27–39): malformed THROWS; "nothing available"
+ *  returns []. DEFINED in ../time/types.ts so that InvalidTimeValue can extend
+ *  it without an import cycle; re-exported here because this file is the
+ *  engine's published contract. */

@@ -145,4 +145,57 @@ overlapping appointments *unrepresentable* rather than merely checked-for.
 
 ---
 
-<!-- Next entry: A-008 — the pure slot engine -->
+## A-008 — The slot engine
+
+**What it is:** One pure function — `computeSlots(query) -> slots` — that answers
+"when can this client book this service with this provider on this day?"
+correctly on the two days a year when the clock is not a bijection.
+
+**Why it's not boilerplate — talking points:**
+- **It is a pure function, and that is a design decision with teeth.** No I/O, no
+  clock, no ambient timezone: `now` is a parameter. That is what makes a
+  daylight-saving bug reproducible in a unit test in June instead of being
+  discovered by a customer in March.
+- **Integer arithmetic on the physical axis, deliberately library-free.** Wall
+  clock times are converted to instants exactly once, at the window edges, and
+  everything after that — grid stepping, overlap tests, buffer maths — is
+  integer epoch-millisecond comparison. The physical axis has no DST, so the
+  hot loop is DST-proof by construction. A lint rule enforces that the Temporal
+  library cannot be imported into the engine at all.
+- **The subtlest bug in the codebase, and the test that catches it.** On
+  spring-forward morning a provider's hours may be stored as two rows
+  (01:00–02:00 and 03:00–04:00) because 02:00 does not exist. Those must union
+  into ONE continuous three-hour window on the instant axis — if the code
+  resolves the 02:00 close to the instant *before* the gap instead of after, it
+  sees a phantom one-hour hole and silently refuses every appointment long
+  enough to span it. The engine takes the later instant for both edges, and a
+  mutation test proves the suite catches the alternative.
+- **The doubled hour is treated as real capacity.** On fall-back day 01:00–01:59
+  happens twice; naive implementations deduplicate by wall-clock label and
+  silently delete an hour of bookable, revenue-generating time. Here both
+  occurrences are offered as distinct slots carrying distinct offsets, and
+  policy decides whether to show both — a business decision, made explicitly,
+  rather than a default inherited from a date library.
+- **Exclusions are explained, and that's a testing argument, not a UX one.**
+  Almost every assertion about a scheduling engine is an assertion of absence,
+  and `expect(slots).not.toContain('11:00')` passes if you typo the date, if the
+  fixture has no hours, or if the engine threw and you swallowed it. The engine
+  reports *why* each candidate was rejected, so tests assert
+  `reasons == ['overlaps-buffer']` — which fails when the mechanism is wrong
+  even though the outcome looks right. Explanations are suppressed on public
+  routes, because "overlaps-booking" tells an anonymous visitor exactly when
+  the provider is with a client.
+- **58 engine tests: a hand-built edge matrix plus 21 property tests.** The
+  properties assert the laws (a returned slot never overlaps a busy interval;
+  adding a booking never *adds* availability; increasing duration never adds a
+  slot) across thousands of generated queries weighted toward the transition
+  days and a leap day.
+- **The property tests were themselves validated two ways** — because a property
+  test that silently generates empty results passes everything and proves
+  nothing. First, generator sanity: 500 queries, 245 with non-empty results, up
+  to 154 slots. Second, mutation testing: three deliberate bugs injected into
+  the engine, all three caught.
+
+---
+
+<!-- Next entry: A-006 — service catalog -->
