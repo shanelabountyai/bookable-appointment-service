@@ -241,3 +241,4 @@ M1 operator review applied at **0747a85**.
 **Left behind:**
 - Provider reordering has a `displayOrder` field and an `updateProvider` path but no drag-to-reorder UI — the roster is four people and the field is settable; a sortable list is A-016's problem when the day grid needs column order.
 - No service catalogue UI — that is A-006, next. `validateServiceCutoff` is written and tested, waiting for its caller.
+A-025 committed at 0294254
