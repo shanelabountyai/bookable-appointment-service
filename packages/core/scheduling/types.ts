@@ -9,38 +9,27 @@
  *  - Exactly ONE module (packages/core/time/zone.ts, built in A-002) converts
  *    between the axes, and its resolve() returns unique | gap | ambiguous —
  *    never a bare Instant.
+ *
+ * The axis types and their constructors are DEFINED in packages/core/time and
+ * re-exported here, so the engine contract still reads as one file while there
+ * is exactly one definition of each brand (A-002). The constructors now
+ * validate — `calendarDay('2027-02-29')` throws instead of silently becoming
+ * March 1.
  */
+export {
+  type CalendarDay,
+  type Instant,
+  InvalidTimeValue,
+  type WallTime,
+  type ZoneId,
+  calendarDay,
+  instant,
+  instantFromIso,
+  wallTime,
+  zoneId,
+} from '../time/types';
 
-// ── The calendar axis. No offset. No instant. Not orderable against Instant. ──
-/** ISO-8601 calendar date, "2026-03-08". A label on a wall calendar. */
-export type CalendarDay = string & { readonly __calendarDay: unique symbol };
-/** ISO-8601 local time of day, "09:00". No date, no zone. */
-export type WallTime = string & { readonly __wallTime: unique symbol };
-/** IANA zone id, "America/Chicago". Never a fixed offset or abbreviation. */
-export type ZoneId = string & { readonly __zoneId: unique symbol };
-
-// ── The physical axis. One number line. No calendar meaning. ──
-/** Epoch milliseconds UTC. The only representation of a moment in this system. */
-export type Instant = number & { readonly __instant: unique symbol };
-
-// Constructors for fixtures and boundaries. Validation arrives with A-002;
-// these are deliberately thin so the red suite can run before the time module exists.
-export const calendarDay = (s: string): CalendarDay => s as CalendarDay;
-export const wallTime = (s: string): WallTime => s as WallTime;
-export const zoneId = (s: string): ZoneId => s as ZoneId;
-export const instant = (epochMs: number): Instant => epochMs as Instant;
-/** Fixture helper: parse an offset-bearing ISO string to an Instant. The offset
- *  is REQUIRED — a zoneless string is exactly the bug this type system forbids. */
-export const instantFromIso = (iso: string): Instant => {
-  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(iso)) {
-    throw new Error(`instantFromIso requires an explicit offset, got: ${iso}`);
-  }
-  // Starter fixture helper only, guarded by the offset check above (never a
-  // zoneless/local parse). A-002 replaces this with the temporal-polyfill
-  // conversion module.
-  // eslint-disable-next-line no-restricted-syntax
-  return Date.parse(iso) as Instant;
-};
+import type { CalendarDay, Instant, WallTime, ZoneId } from '../time/types';
 
 export interface WorkingWindow {
   readonly open: WallTime;

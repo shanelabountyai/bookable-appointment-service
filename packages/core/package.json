@@ -3,5 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "./scheduling/slot-engine.ts"
+  "main": "./scheduling/slot-engine.ts",
+  "dependencies": {
+    "temporal-polyfill": "^1.0.4"
+  }
 }
