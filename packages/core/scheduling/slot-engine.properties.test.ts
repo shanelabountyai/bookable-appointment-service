@@ -122,6 +122,12 @@ const arbQuery = fc
 // same command. Random-seed exploration belongs in the nightly fuzz job (the
 // same split the spec uses for the race tests vs. the nightly SQL-invariant
 // fuzz) — set FC_RANDOM_SEED=1 to explore locally.
+/** 300 generated cases per property is real work — 1-3s locally, several times
+ *  that on a CI runner. Vitest's 5s default is sized for unit tests, so these
+ *  get their own budget rather than the suite losing coverage to fit it. Unit
+ *  tests keep the tight default, where a hang should fail fast. */
+const PROP_TIMEOUT = 60_000;
+
 const RUNS = process.env.FC_RANDOM_SEED
   ? { numRuns: 300 }
   : { numRuns: 300, seed: 20260815, endOnFailure: true };
@@ -134,7 +140,7 @@ describe('§2.1–2.3 — purity, determinism, order-insensitivity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('is insensitive to the order of the busy array', () => {
     fc.assert(
@@ -144,7 +150,7 @@ describe('§2.1–2.3 — purity, determinism, order-insensitivity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('is insensitive to the order of the windows array', () => {
     fc.assert(
@@ -154,7 +160,7 @@ describe('§2.1–2.3 — purity, determinism, order-insensitivity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe('§2.4–2.8 — the shape of every returned slot', () => {
@@ -167,7 +173,7 @@ describe('§2.4–2.8 — the shape of every returned slot', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('blocked range is exactly body ± the SERVICE’s own buffers', () => {
     fc.assert(
@@ -179,7 +185,7 @@ describe('§2.4–2.8 — the shape of every returned slot', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('slots are strictly increasing and never duplicated', () => {
     fc.assert(
@@ -191,7 +197,7 @@ describe('§2.4–2.8 — the shape of every returned slot', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('every slot start sits on the grid relative to a window open', () => {
     fc.assert(
@@ -210,7 +216,7 @@ describe('§2.4–2.8 — the shape of every returned slot', () => {
       ),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe('§2.9–2.16 — no returned slot ever violates a constraint', () => {
@@ -226,7 +232,7 @@ describe('§2.9–2.16 — no returned slot ever violates a constraint', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('NEVER returns a slot outside a working window, or one that crosses close', () => {
     fc.assert(
@@ -239,7 +245,7 @@ describe('§2.9–2.16 — no returned slot ever violates a constraint', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('NEVER returns a slot before now, or inside the lead time', () => {
     fc.assert(
@@ -251,7 +257,7 @@ describe('§2.9–2.16 — no returned slot ever violates a constraint', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('consecutive starts WITHIN one window differ by a whole number of grid steps', () => {
     // Deliberately scoped to a single window. The looser "any two consecutive
@@ -277,7 +283,7 @@ describe('§2.9–2.16 — no returned slot ever violates a constraint', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe('§2.17–2.20 — monotonicity', () => {
@@ -297,7 +303,7 @@ describe('§2.17–2.20 — monotonicity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('increasing the duration NEVER adds a slot', () => {
     fc.assert(
@@ -311,7 +317,7 @@ describe('§2.17–2.20 — monotonicity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('increasing a buffer NEVER adds a slot', () => {
     fc.assert(
@@ -325,7 +331,7 @@ describe('§2.17–2.20 — monotonicity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('advancing `now` NEVER adds a slot', () => {
     fc.assert(
@@ -336,7 +342,7 @@ describe('§2.17–2.20 — monotonicity', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe('§2 — explanations agree with results', () => {
@@ -351,7 +357,7 @@ describe('§2 — explanations agree with results', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('every exclusion carries at least one reason — never an empty array', () => {
     fc.assert(
@@ -362,7 +368,7 @@ describe('§2 — explanations agree with results', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   // Calendar privacy (spec §1.3): 'overlaps-booking' tells an anonymous visitor
   // exactly when the provider is with a client. Turning explain off must remove
@@ -375,7 +381,7 @@ describe('§2 — explanations agree with results', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('turning explain on never changes the slots themselves', () => {
     fc.assert(
@@ -384,7 +390,7 @@ describe('§2 — explanations agree with results', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe('§2 — DST-day accounting', () => {
@@ -396,7 +402,7 @@ describe('§2 — DST-day accounting', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 
   it('window instants are disjoint, ordered, and non-empty after the union', () => {
     fc.assert(
@@ -411,5 +417,5 @@ describe('§2 — DST-day accounting', () => {
       }),
       RUNS,
     );
-  });
+  }, PROP_TIMEOUT);
 });
