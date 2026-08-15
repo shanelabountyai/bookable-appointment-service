@@ -116,3 +116,33 @@ A-003 committed and pushed at f9dd882
 - `'nonexistent-local-time'` is defined in the contract but never emitted by the grid: with window-open anchoring every candidate is a real instant by construction. It belongs to the booking POST validation path (DST-8), which is A-009.
 - Added `pretypecheck: clean:syncdupes`. `~/Documents` is iCloud-synced and duplicates Next's generated types as `routes.d 2.ts`, breaking typecheck with TS2300/TS6200 errors unrelated to the code. It had already cost two debugging detours.
 A-008 committed and pushed at 8352f7a
+
+
+---
+
+## A-004 — Notification outbox + `ChannelAdapter`
+
+**Built:**
+- `packages/core/notifications/adapter.ts` — the `ChannelAdapter` contract (`supports`/`send`), `OutboundMessage`, `SendResult`, `ChannelSendError`. Deliberately dependency-free — no Prisma import — so `packages/core` stays independent of `packages/db`; `NotificationChannel` is a plain `'email' | 'sms'` union rather than the Prisma-generated enum.
+- `packages/core/notifications/logging-adapter.ts` — the only adapter this build runs on. Logs every send to the console; the outbox row already exists before it's ever called.
+- `packages/db/notifications/config.ts` — `notificationConfig()`: `NOTIFICATIONS_ENABLED` (kill switch, default true) and `NOTIFICATIONS_SANDBOX_TO` (redirect). Read per call, not cached, so a flip takes effect on the next call.
+- `packages/db/notifications/enqueue.ts` — `enqueueNotification(db, input)`, the decide-and-record half. Idempotent on `dedupeKey`: a second call with the same key returns the *first* decision unchanged (verified — a different payload on the retry does not overwrite). Never throws for a missing recipient (P2-4's walk-in-no-phone case) or a killed switch — both are recorded as `suppressed` with a reason. Takes `Prisma.TransactionClient | PrismaClient`, so a caller's booking write and its confirmation enqueue commit or roll back together (verified with a deliberately-failing transaction).
+- `packages/db/notifications/dispatch.ts` — `dispatchPendingNotifications(prisma, adapter, limit)`, the send half. Re-checks the kill switch before touching anything queued (verified: flipping it mid-backlog halts already-`pending` rows, not just future enqueues). Applies the sandbox redirect only to the actual `send()` call — the outbox row's `recipient` column always keeps the true intended address (verified).
+- `packages/db/notifications/provider.ts` — the one line that wires in a real driver later.
+- `packages/db/index.ts` — the Prisma client singleton (new; nothing needed it before this item).
+- `packages/db/errors.ts` — added `isUniqueViolation()`, verified against a real P2002 (`PrismaClientKnownRequestError`, `meta.target: ['dedupeKey']`) — confirming a plain `@unique` field behaves nothing like the exclusion constraint's invisible `23P01` from A-003.
+- 15 new tests (2 pure adapter tests, 13 against the real database).
+
+**Decided:**
+- **The kill switch is applied in `enqueue()`, not only in `dispatch()`.** "Notifications are still decided and recorded" (the property that makes "why didn't this go out" answerable) requires the decision to exist even for a notification that was never going to send. `dispatch()` re-checks it anyway, so an already-queued backlog halts within one call, not just future enqueues.
+- **The sandbox redirect applies only at `dispatch()` time.** It changes where a real send goes, never what's on the record — enqueue always writes the true intended `recipient`.
+- **No claim-before-send row locking in `dispatch()`, marked `ponytail:`.** Two concurrent dispatchers could pick up the same row. Deferred because nothing calls dispatch from more than one place yet (no cron exists — that's A-022). Upgrade path recorded in the code: an `UPDATE ... WHERE status='pending' RETURNING` claim, or a fifth `sending` status.
+- **`OutboundMessage` carries `template`/`payload` raw, no `subject`/`body`.** The `NotificationOutbox` schema (frozen in A-003) has no subject/body columns — only `template: String` and `payload: Json` — and no template-rendering vocabulary exists yet. Inventing one now would be exactly the speculative work the schema's own shape already declines to assume.
+
+**Verified, not assumed:**
+- A plain `@unique` field (`dedupeKey`) surfaces through Prisma as `PrismaClientKnownRequestError`/`P2002`/`meta.target` — the opposite of A-003's exclusion-constraint finding, confirmed by probe before writing `isUniqueViolation()`.
+
+**Left behind — and the thing that mattered most this item:**
+- **Adding this item's second Postgres-touching test file broke A-003's, under BOTH timezones, with two different failure counts (6 vs 8) that looked at first like a real timezone bug.** It wasn't: vitest runs test files in parallel by default, and `constraint.test.ts` and the new `notifications.test.ts` both truncate/delete overlapping tables in `beforeEach` against the one shared local Postgres database — a real, reproducible deadlock and FK violations from two files racing each other, not from the code under test. Confirmed by running each file alone (both pass) and both together with file-parallelism forced off (both pass, together, three times). Fixed with `fileParallelism: false` in `vitest.config.ts`, which removes the race class for every future DB-touching test file too, not just these two.
+- No cron/job runner yet to call `dispatchPendingNotifications()` — that's NOTIF-02/A-022.
+- No route or write path calls `enqueueNotification()` yet — nothing sends until BOOK-06 (A-009) exists to call it. This item's whole job was to have the seam ready before that.

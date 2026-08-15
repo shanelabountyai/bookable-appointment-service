@@ -30,3 +30,29 @@ export function isSlotTakenError(error: unknown): boolean {
     typeof error === 'object' && error !== null && 'message' in error ? String((error as { message: unknown }).message) : '';
   return message.includes(EXCLUSION_VIOLATION) && message.includes('appointment_no_overlap');
 }
+
+/**
+ * True when a plain `@unique` column refused a duplicate write (Prisma P2002).
+ *
+ * Unlike the exclusion constraint above, this one DOES surface through
+ * Prisma's known-error mapping — verified: `PrismaClientKnownRequestError`,
+ * `code: 'P2002'`, `meta.target` naming the field. Confirmed against
+ * NotificationOutbox.dedupeKey specifically, since A-004 is its first caller.
+ *
+ * Pass `target` to scope the check to one field (e.g. `'dedupeKey'`) when a
+ * model has more than one unique constraint and "which one fired" matters —
+ * omit it to match any P2002.
+ *
+ * Not typed against Prisma's error class via `instanceof`: importing
+ * `Prisma.PrismaClientKnownRequestError` for that pulls the generated
+ * client's runtime into every module that wants to catch a duplicate. The
+ * error code is Prisma's stable public contract; the class identity is not
+ * worth the import.
+ */
+export function isUniqueViolation(error: unknown, target?: string): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false;
+  if ((error as { code?: unknown }).code !== 'P2002') return false;
+  if (!target) return true;
+  const meta = (error as { meta?: { target?: unknown } }).meta;
+  return Array.isArray(meta?.target) && meta.target.includes(target);
+}

@@ -198,4 +198,43 @@ correctly on the two days a year when the clock is not a bijection.
 
 ---
 
-<!-- Next entry: A-006 — service catalog -->
+## A-004 — The notification seam
+
+**What it is:** one path every outbound notification goes through —
+`enqueueNotification()` decides and records, `dispatchPendingNotifications()`
+sends — built before anything in the product actually needs to send a
+message.
+
+**Why it's not boilerplate — talking points:**
+- **Built in the wrong order on purpose.** The confirmation email doesn't
+  exist yet; this does. Building the seam first, rather than retrofitting it
+  once three call sites have already hand-rolled their own sending, is a
+  structural decision carried over from a defect in a sibling project.
+- **A kill switch that is still honest while it's off.** Setting
+  `NOTIFICATIONS_ENABLED=false` doesn't skip writing the outbox row — it
+  writes the row and marks it suppressed, with a reason. "What would have
+  gone out during the incident" stays answerable, which a switch that simply
+  skips the write cannot do. Verified that flipping the switch mid-backlog
+  halts everything already queued, not just future decisions.
+- **A sandbox redirect that never contaminates the record.** Point
+  `NOTIFICATIONS_SANDBOX_TO` at a test inbox and every send goes there — but
+  the outbox row keeps the real, intended recipient. A staging environment
+  can exercise the entire path against real-looking client data and still
+  never reach an actual phone number.
+- **Idempotency proven, not just implemented.** Two enqueue calls with the
+  same dedupe key produce exactly one row — verified with a *second* call
+  carrying a *different* payload, confirming the first decision wins outright
+  rather than merely deduplicating on later fields.
+- **A dual-timezone test run caught a real bug that had nothing to do with
+  time.** Adding this item's database-backed test file made the *previous*
+  item's test file fail too — under both `TZ=UTC` and `TZ=Pacific/Kiritimati`,
+  with two different failure counts. It looked exactly like the class of bug
+  this project's whole CI design exists to catch. It wasn't one: two test
+  files sharing a local Postgres database, both truncating tables in
+  parallel, produced a genuine Postgres deadlock. Diagnosed by isolating each
+  file (both pass alone) before touching any code, then fixed at the config
+  level so it can't recur for the next database test file either.
+
+---
+
+<!-- Next entry: A-005 — staff session --> 
