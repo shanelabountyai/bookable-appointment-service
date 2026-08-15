@@ -88,3 +88,4 @@ PO review + D-15..D-21 committed and pushed at bafeab1
 - `ResourceType`/`Resource`/`ServiceSegment` exist and are unreferenced by the engine (D-12/D-20 affordances, deliberate).
 - No seed data — A-011.
 - The `bookable_shadow` database is created locally for the drift check; CI creates its own.
+A-003 committed and pushed at f9dd882
