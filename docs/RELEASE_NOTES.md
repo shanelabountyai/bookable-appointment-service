@@ -533,4 +533,39 @@ calendar.
 
 ---
 
-<!-- Next entry: A-010 — customer booking flow -->  
+## Customer booking — five screens, and the browser never touches a date
+
+The public booking flow: pick a service, pick a stylist, pick a day, pick a
+time, leave a name and a phone number. Two text fields, no account, no page
+reloads, and it works entirely from the keyboard with a screen reader
+announcing the times as they change (checked by axe on all five screens).
+
+- **Every date is formatted on the server, in the salon's timezone.** The
+  browser is sent "Tuesday 9 June" already written out, never a raw date to
+  interpret. The first draft had the browser working out weekdays itself — the
+  arithmetic was right, but it is the wrong place for it: the customer's
+  timezone is not the salon's, so a visitor in Auckland would have been offered
+  a day the salon hadn't reached yet.
+- **The day list starts from the salon's today, not the visitor's.** The same
+  point, from the other direction, and the reason the window is decided by the
+  server rather than passed up from the page.
+- **A phone number alone doesn't identify a customer.** The name has to match
+  too. Households share a number, and matching on the number alone would mean a
+  mother booking for her daughter silently inherits her mother's record — notes,
+  history, no-show count and all.
+- **The confirmation carries the exact moment, never a date-and-time pair.** On
+  the night the clocks go back, "01:30" happens twice; a form that posts back
+  "01:30" is a coin flip between two real appointments.
+
+**The bug worth reading about.** All seven tests failed against a database that
+visibly had services in it. The cause: the page had no changing input, so the
+framework rendered it *once when the site was built* and served the service
+list as frozen HTML. In production that means a salon adds a service and never
+sees it appear — and retires one and keeps selling it until the next deploy.
+It cannot be reproduced on a development server, which rebuilds every request;
+it only shows up because this project's end-to-end suite deliberately runs
+against a real production build. That convention paid for itself here.
+
+---
+
+<!-- Next entry: A-012 — appointment state machine -->  

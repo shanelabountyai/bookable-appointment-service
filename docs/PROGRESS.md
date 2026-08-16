@@ -415,3 +415,30 @@ A-028 committed at 47097d0
 - The seed takes ~4 seconds because every appointment goes through a real transaction with an advisory lock. Fine for a seed; it is why the tests share one seeding rather than reseeding per test.
 - **The unexplained single failure recorded under A-028 did not recur** across the many full runs this item required. Still unexplained, still recorded there.
 A-011 committed at 1596d7a
+
+---
+
+## A-010 — Customer booking flow UI
+
+**Built:**
+- `apps/web/app/book/page.tsx` + `booking-flow.tsx` — five screens (service → who → day → time → details), two required text inputs, no page reloads.
+- `apps/web/lib/booking/public-actions.ts` — the public server actions, every one calling the engine with `audience: 'public'` so the booking horizon applies and `explain` is withheld.
+- `apps/web/e2e/booking.spec.ts` — 7 specs: end-to-end booking verified in the database, the five-screen/two-input contract, keyboard-only time selection, the live region, a D-10 lexicon assertion, axe on all five screens, and server-side validation with the browser's `required` stripped off.
+
+**Decided:**
+- **The browser never handles a date.** `listDaysWithOpenings` computes the window from *today in the salon's zone* and returns each day with its label already formatted (`{ day, label }`). The first draft had the client deriving weekday names with Zeller's congruence — correct arithmetic, wrong place: a hand-rolled calendar in a client component is the axis crossing of D-3 waiting to be rewritten by hand, and the one conversion module already does it. The visitor's "today" is also not the salon's, so a customer in Auckland would otherwise be offered a day the salon has not reached.
+- **No pre-loaded days on the server.** Days depend on service *and* provider, neither known at page load, so pre-computing them was a slot grid nobody asked for.
+- **`confirmAppointment` takes the calendar day explicitly** rather than slicing it off the instant. `at` is UTC, so a 23:00 Chicago appointment carries *tomorrow's* UTC date and the "here are other times" fallback would list the wrong day. Caught before it shipped, and the parameter carries the reasoning in a comment.
+- **A match on phone alone does not reuse a client.** The name must match too (D-17): a household shares a number, and a mother booking for her daughter would otherwise silently inherit the mother's record, her notes and her no-show count.
+
+**The bug the production build caught, which a dev server never would:**
+- `/book` had no dynamic input, so Next prerendered it **at build time** and shipped the service catalogue as static HTML. All seven specs failed on an empty service list against a database that plainly had one — the page had been built before the row existed. In production this means a salon adding a service never sees it appear, and one retiring a service keeps selling it until the next deploy. Fixed with `export const dynamic = 'force-dynamic'`. This is precisely the defect class the "e2e runs against a production build" convention exists to expose; the dev server renders every request and would have stayed green.
+
+**Also fixed:**
+- The live-region text was written from a `useEffect`. It is a pure function of state, so it is now derived during render — an effect would only have been a second copy that can disagree. (Lint caught it; the lint was right.)
+- `readableDay` was briefly exported from a `'use server'` module, where every export must be an async function.
+
+**Left behind:**
+- "Anyone available" is not offered yet — the customer picks a named provider. The action layer is already plural-shaped for it.
+- The confirmation screen promises a manage link that A-013's tokens have not built yet.
+- Multi-service visits compose in `packages/core` (A-028) but the customer flow still books one service; the actions take `serviceIds` arrays throughout, so the UI is the only thing missing.
