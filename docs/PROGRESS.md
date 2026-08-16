@@ -302,3 +302,4 @@ A-006 committed at 9c6022d
 **Left behind:**
 - The availability UI takes time off as offset-bearing ISO text (D-4 forbids a `{date, time}` payload). Correct but unfriendly; a proper picker that composes an instant belongs with the day grid (A-016), which is the first surface where staff enter times routinely.
 - `daysWithAvailability` and the busy-set query that feeds `SlotQuery` are A-026, as sequenced.
+A-007 committed at 7dce285
