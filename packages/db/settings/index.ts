@@ -14,4 +14,19 @@ export {
   setProviderActive,
   updateProvider,
 } from './providers';
+export {
+  DeactivationRequiresConfirm,
+  type QualificationRow,
+  type SaveServiceInput,
+  ServiceRejected,
+  type ServiceRow,
+  countServiceFutureAppointments,
+  createService,
+  listQualifications,
+  listServices,
+  qualifyProvider,
+  setServiceActive,
+  unqualifyProvider,
+  updateService,
+} from './services';
 export { CHAIR_COUNT, type SetupSeedResult, seedSetup } from './setup-seed';

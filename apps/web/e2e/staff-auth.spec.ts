@@ -1,6 +1,5 @@
-import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { STAFF_EMAIL, STAFF_PASSWORD } from './global-setup';
+import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 /**
  * A-005 / D-9. The acceptance criterion is "staff routes refuse

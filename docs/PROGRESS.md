@@ -247,3 +247,27 @@ M1 operator review applied at **0747a85**.
 - Provider reordering has a `displayOrder` field and an `updateProvider` path but no drag-to-reorder UI — the roster is four people and the field is settable; a sortable list is A-016's problem when the day grid needs column order.
 - No service catalogue UI — that is A-006, next. `validateServiceCutoff` is written and tested, waiting for its caller.
 A-025 committed at 0294254
+
+
+---
+
+## A-006 — Service catalog
+
+**Built:**
+- `packages/core/settings/service.ts` — pure validation: `validateService` (name/duration/buffers/price), `validateQualificationOverride` (SVC-02's per-provider duration/price overrides — independently optional, either/both/neither), `effectiveDurationMinutes`/`effectivePriceCents` (override-or-base resolution).
+- `packages/db/settings/services.ts` — CRUD re-validating at the data layer (cutoff check reuses A-025's `validateServiceCutoff`, so a service saved here is held to the same D-11/D-19 rule as the business settings form); `qualifyProvider`/`unqualifyProvider` (upsert-based — re-ticking an already-qualified provider updates her overrides rather than erroring); `countServiceFutureAppointments` and `DeactivationRequiresConfirm` for SVC-03.
+- `apps/web/app/staff/services` — add/edit/deactivate, and per-service qualification management, all behind `requireStaff()`.
+- 23 pure tests, 22 database tests, 6 e2e specs. Suite is now 277 unit + 20 e2e.
+
+**Decided:**
+- **SVC-03's confirm gate is proven against a REAL appointment row**, inserted directly against the database (the same bypass-the-app pattern `constraint.test.ts` uses), rather than by constructing the error class. A-009 does not exist yet to create an appointment through the app, so this is the honest way to prove the gate actually fires — not just that the class has the right shape.
+- **Both `setServiceActive` and `unqualifyProvider` share the same `DeactivationRequiresConfirm` gate**, scoped by an optional `providerId` on `countServiceFutureAppointments`. SVC-03 names both cases ("deactivating a service, or unassigning a provider") as one rule; giving them two separate mechanisms would have been two chances to get the count wrong.
+- **The "any provider" assignment algorithm (fewest booked minutes, SVC-02) is deliberately not built here.** It needs real bookings to compute against, which don't exist before A-009 — the same reasoning A-025 already established for the impact preview (operator S-2).
+
+**Found and fixed — the third occurrence of one bug class:**
+- **CI's dual-timezone run failed again**, the same way as A-025: all 20 new database tests died in `beforeEach` on a foreign-key violation, because each DB test file was still clearing its own tables in a hand-maintained order. Root-caused this time rather than patched per-file: added `packages/db/testing/reset.ts`, one `TRUNCATE ... RESTART IDENTITY CASCADE` over every table, and every DB test file (including A-004's and A-005's) now calls it. CASCADE resolves the foreign-key order itself, so no test file has to know the graph.
+- **The same pollution class showed up a THIRD time, in e2e.** `fullyParallel: true` let different spec files mutate the same global provider/service rows concurrently — A-025's provider spec and A-006's qualification spec both use "Dana" — producing strict-mode locator violations that had nothing to do with either feature. `fullyParallel: false` alone was not enough (it only serializes tests *within* one file; different files still ran across Playwright's worker pool). Fixed properly with `workers: 1` plus a shared `apps/web/e2e/fixtures.ts` that resets and reseeds the database in a `beforeEach` before every single test — replacing the one-time `globalSetup`, which only reset once for the whole suite and let state accumulate test over test. Every spec file now imports `test`/`expect` from `./fixtures`. As a side effect the suite got faster (52s → 12s): a small, freshly-reset dataset renders quicker than an ever-growing one.
+- Two of the four e2e failures along the way were genuine test-authoring bugs, not pollution: a `getByText('Colour')` assertion matched the rejected service's own name *inside the error message it was checking*, and `li:has-text('Cut')` matched every card because "Cancellation **Cut**off" is a substring collision — fixed by scoping to an exact-text filter on the service-name element instead of a whole-subtree substring match.
+
+**Left behind:**
+- No `/staff/services/[id]` detail page — everything lives in one expandable card per service on the list page, which is enough for eight services and gets crowded well before eighty; A-016 era problem if it ever matters.

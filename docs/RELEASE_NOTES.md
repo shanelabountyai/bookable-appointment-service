@@ -285,4 +285,62 @@ built with the Node standard library and no auth dependency.
 
 ---
 
-<!-- Next entry: A-025 — business & provider setup -->  
+## A-025 — Business & provider setup
+
+**What it is:** owner-configurable business policy and the provider roster,
+built around one specific trap the previous milestone's operator review
+surfaced.
+
+**Why it's not boilerplate — talking points:**
+- **A real trap, closed by construction rather than by a form hint.** The
+  product's cancellation-cutoff rule was specified as "startup validation" —
+  but a later decision let each individual service override the cutoff, and
+  startup validation cannot catch a pair created by editing either side after
+  the fact. Set a service's cutoff longer than the business lead time — both
+  individually reasonable settings — and a client can book a slot she is
+  structurally unable to cancel, then get charged a late-cancellation fee she
+  had no way to avoid, counted by the product's own no-show tracking. Fixed by
+  making the invariant a shared pure function, called from both write paths,
+  that names the offending service in the error.
+- **Domain-accurate error messages, and a test that enforces it.** A duration
+  formatter deliberately renders "24 hours" rather than "1 day" for a
+  cancellation policy, because that's how the trade actually states one — and
+  a test pins the exact wording so a refactor can't silently drift it back to
+  the technically-correct-but-tone-deaf version.
+- **A seed built to expose bugs, not hide them.** The setup seed gives one
+  provider a split shift, gives everyone but one a midday break, and makes one
+  provider unqualified for half the catalog — because a seed where every
+  provider works identical hours and does every service makes entire
+  categories of bug invisible to every screen built against it afterward.
+
+---
+
+## A-006 — Service catalog
+
+**What it is:** service CRUD, per-provider duration/price overrides, and
+deactivation that never deletes — with the confirmation gate proven against a
+real row rather than assumed to work.
+
+**Why it's not boilerplate — talking points:**
+- **A gate tested against reality, not against its own class definition.**
+  The rule "deactivating a service with future appointments requires
+  confirmation" has no real bookings to test against yet — the booking write
+  path doesn't exist. Rather than constructing the error object directly (which
+  proves the class has a field, not that the gate fires), the test inserts a
+  real appointment row straight into the database, bypassing the application
+  entirely, and proves the actual function refuses and then yields under
+  confirmation.
+- **The same defect, caught for the third time, and fixed differently each
+  time it escalated.** A CI failure that looks exactly like a timezone bug
+  and isn't one had already happened twice this project (parallel unit-test
+  files racing each other; sequential unit-test runs leaving pollution for the
+  next). This time it was end-to-end tests: different browser specs mutating
+  the same global rows with no per-test isolation. Rather than patch the
+  symptom a third time, the fix generalized: every e2e spec now resets the
+  database in a `beforeEach`, the same discipline the unit suite already had.
+  The suite got noticeably faster as a direct consequence — proof the fix
+  was addressing real waste, not just correctness.
+
+---
+
+<!-- Next entry: A-007 — availability model -->  

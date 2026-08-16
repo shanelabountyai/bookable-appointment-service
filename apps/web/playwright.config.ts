@@ -5,10 +5,24 @@ import { defineConfig, devices } from '@playwright/test';
 // when debugging a single failing spec — never for the full sweep.
 export default defineConfig({
   testDir: './e2e',
-  // Seeds the single staff credential the auth specs sign in with, against
-  // the TEST database.
-  globalSetup: './e2e/global-setup.ts',
-  fullyParallel: true,
+  // NOT fullyParallel. Every spec shares ONE app instance and ONE local
+  // Postgres test database (CLAUDE.md), and nothing here gives a test its own
+  // tenant — the provider roster and service catalog are genuinely global
+  // rows. Two specs mutating them concurrently (A-025's provider test and
+  // A-006's qualification test both add "Dana") interleave into strict-mode
+  // locator violations and count mismatches that have nothing to do with
+  // either feature. Same bug class, same fix, as vitest's fileParallelism
+  // false in vitest.config.ts: eliminate the race rather than add unique
+  // suffixes to every piece of test data forever. The suite runs in ~15-25s
+  // either way, so serial execution costs nothing that matters here.
+  //
+  // fullyParallel: false ALONE is not enough — it only serializes tests
+  // WITHIN one spec file. Different files still run across Playwright's
+  // default worker pool concurrently, which is what actually produced the
+  // remaining collisions (settings.spec.ts and services.spec.ts both mutate
+  // the shared provider/business rows). workers: 1 is the real fix.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
