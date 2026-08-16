@@ -467,3 +467,33 @@ Full transcript and findings: `docs/reviews/06-demo-checkpoint-1.md`. Walked 202
 - **What was done instead:** a permanent diagnostic in 1d printing the error code, meta and message on the failing path only. Every contention failure Postgres can raise there arrives as the same error class, so the previous assertion could only ever report "not SlotTaken" — which is why two investigations produced no diagnosis. The next occurrence will produce one.
 - Production is not exposed by the hypothesised path: the real booking path always takes the advisory lock, and `__unsafeSkipSerialization` is a test-only seam. The lock-free path 1d defends is what A-018/A-019's deferred multi-row moves will use, which is where mapping contention errors will need deciding on evidence.
 Demo checkpoint 1 committed at 8a6c6c4
+
+---
+
+## A-012 — Appointment state machine
+
+**Built:**
+- `packages/core/scheduling/transitions.ts` — the §7 table as data, and `canTransition(from, to, context)` as the one decision point. Pure; the engine's companion module `status.ts` owns the status SETS, this one owns the EDGES.
+- `packages/db/appointments/transition.ts` — `transitionAppointment`: resolves the cutoff from real rows, applies the decision, writes the actual timestamps, appends the event. One transaction.
+- 103 pure tests + 18 integration tests + 2 new drift guards. 536 unit tests total, identical under both timezones.
+
+**Decided:**
+- **The test transcribes the PRD, it does not read the implementation.** The §7 grid in `transitions.test.ts` is written out as a text table so it diffs by eye against `00-master-prd.md` §7. A parameterised test that walks the implementation's own structure proves only that the structure is self-consistent — it would have happily confirmed a wrong table. All 64 ordered pairs are asserted, including the diagonal and including `booked` as a destination.
+- **The system actor is powerless, on purpose.** No automatic transition exists in v1: nothing marks an appointment `no_show` because the clock passed it, because a stylist running forty minutes late would watch the book cancel her afternoon. A test asserts this so adding an automatic transition has to be a decision.
+- **A customer inside the cutoff is reclassified, not blocked.** `cancelled` is refused and `cancelled_late` is allowed (APPT-05). Refusing outright just produces a no-show instead, which is strictly worse for the salon and loses the data the `cancelled_late` split exists to capture.
+- **The cutoff boundary resolves toward the salon.** Exactly on the cutoff counts as inside — recoverable by a phone call, where the reverse silently loses a chargeable slot. Decided once, in one function, with the reasoning at the call site.
+- **The write is conditional on the status it was decided against** (`UPDATE ... WHERE id = ? AND status = ?`). Under `READ COMMITTED` two front-desk taps can both read `booked` and both write, producing one status and two events that disagree. Same reflex as the exclusion constraint: never check-then-write as the mechanism.
+- **A correction may clear timestamps but never stamp them.** Correcting to `no_show` clears the arrival times, because a client who never arrived cannot have a check-in time, and the prior values move into the event payload. Correcting the other way sets nothing: the correction happens up to seven days later, so writing `now` as `endedAt` would be a fabricated measurement that a utilization report would then average in.
+- **`status_corrected` is a distinct event type** from `status_changed`. "We got this wrong" is a different fact from "this happened", and A-027 renders them differently.
+
+**A bug caught in my own code before it shipped:** `timestampsFor` set `endedAt: now` for any transition to `completed` — including the APPT-06 correction, which is exactly the fabricated measurement the comment three lines above it forbade. Fixed by passing the correction flag in.
+
+**Structural guards added (the "a status enum is never one edit" rule):**
+- The live Postgres `AppointmentStatus` enum is asserted equal to `APPOINTMENT_STATUSES`. The existing guard proved the *constraint* agreed with the module; nothing proved the *enum* did, so a ninth status added to `schema.prisma` alone would have left every derived list ignorant of a value rows can hold.
+- The transcribed §7 grid is asserted to have a row and column for every status, so a new state fails with "row X is missing columns" rather than an unreadable `.includes` error.
+
+**Verified by mutation (5 of 5 caught):** opening a closed cell, dropping the after-start precondition on `no_show`, widening the seven-day boundary by one tick, letting a customer perform terminal corrections, and flipping the cutoff boundary to strictly-after.
+
+**Left behind:**
+- No UI. A-016's day grid and A-027's detail panel are the surfaces; wiring buttons here would be speculative.
+- `transitionAppointment` opens its own transaction, so it cannot yet be composed inside a caller's. A-014's reschedule is a same-row UPDATE and does not need it; A-018's multi-row column push will, and that is where the seam gets opened deliberately.

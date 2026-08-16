@@ -12,7 +12,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from 'pg';
-import { ACTIVE_STATUSES, SLOT_FREEING_STATUSES } from '../core/scheduling/status';
+import { ACTIVE_STATUSES, APPOINTMENT_STATUSES, SLOT_FREEING_STATUSES } from '../core/scheduling/status';
 import { isSlotTakenError } from './errors';
 import { instantFromIso, toDate } from '../core/time';
 
@@ -187,6 +187,25 @@ describe('the partial predicate — which statuses free the slot (D-15)', () => 
     for (const status of ACTIVE_STATUSES) {
       expect(def).not.toContain(`'${status}'`);
     }
+  });
+
+  /**
+   * The other half of the same guard, and the half that was missing.
+   *
+   * The test above proves the CONSTRAINT agrees with the module. This proves
+   * the ENUM does. Without it, a ninth status added to `schema.prisma` and not
+   * to `status.ts` leaves every derived list — the busy set, reminder
+   * eligibility, the §7 transition table — silently ignorant of a status rows
+   * can actually hold, which is the rental `VERIFIED` defect exactly.
+   */
+  it('the LIVE AppointmentStatus enum matches APPOINTMENT_STATUSES in the status module', async () => {
+    const { rows } = await db.query<{ label: string }>(
+      `SELECT e.enumlabel AS label
+         FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'AppointmentStatus'
+        ORDER BY e.enumsortorder`,
+    );
+    expect(rows.map((r) => r.label)).toEqual([...APPOINTMENT_STATUSES]);
   });
 });
 

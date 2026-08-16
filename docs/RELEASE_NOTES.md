@@ -611,4 +611,57 @@ investigations produced nothing. The next one will produce a diagnosis instead.
 
 ---
 
-<!-- Next entry: A-012 — appointment state machine -->  
+## The appointment lifecycle, and testing a table against the document
+
+Eight states — booked, confirmed, checked in, in progress, completed, no-show,
+cancelled, and cancelled-late — with a written table saying exactly who may
+move an appointment where, and when. Every one of the 64 possible moves is
+tested.
+
+**The test transcribes the spec rather than reading the code.** The table in
+the test file is written out as text, so it can be diffed by eye against the
+product document it came from. This matters more than it sounds: a test that
+loops over the implementation's own table proves only that the table is
+consistent with itself. It would confirm a *wrong* table just as cheerfully.
+
+Some decisions in it that came from thinking about a real salon:
+
+- **Nothing marks an appointment as a no-show automatically.** A stylist
+  running forty minutes behind would otherwise watch the system cancel her
+  afternoon. The "system" actor exists and is deliberately given no power here,
+  with a test to make adding that power a conscious decision.
+- **A customer cancelling too late isn't blocked — it's reclassified.**
+  Refusing outright just produces a no-show instead, which is worse for the
+  salon and destroys the very data that separating "cancelled" from "cancelled
+  late" exists to capture.
+- **On the exact cutoff boundary, the salon wins.** Being told your
+  cancellation counts as late is fixable with a phone call; the reverse quietly
+  costs a chargeable slot.
+- **A correction can erase a timestamp but never invent one.** Marking a
+  no-show as "actually she was here" happens up to a week later, so recording
+  *now* as when the appointment ended would be a made-up measurement that later
+  turns up averaged into a utilisation report. It records nothing instead, and
+  says why.
+- **Completed and no-show appointments still occupy their time.** Only the two
+  cancellation states release it. Getting this backwards would put a gap in the
+  day view where a client was actually sitting.
+
+**Two people at the front desk.** Both tapping "check in" on the same client is
+an ordinary Saturday. The update is conditional on the status it was decided
+against, so the database itself picks the winner and the loser gets told who
+got there first — rather than both succeeding and writing two contradictory
+entries in the history.
+
+**A guard added for a bug that hasn't happened yet.** Adding a ninth state to
+the database without adding it to the code would previously have left several
+derived lists silently ignorant of a value that real rows could hold — the
+exact defect that bit an earlier project in this series. The live database enum
+is now asserted against the code's list on every run.
+
+**Verified by deliberately breaking it.** Five sabotages — opening a forbidden
+move, removing a precondition, shifting a deadline by one millisecond, giving
+customers a staff-only power, flipping a boundary — and all five were caught.
+
+---
+
+<!-- Next entry: A-013 — manage token -->  

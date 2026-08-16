@@ -43,7 +43,7 @@ Single, strictly-ordered build backlog: every item is buildable when reached, fo
 
 | # | ID | Item | PRD/Feature | Size | Depends on | Phase |
 |---|---|---|---|---|---|---|
-| 16 | A-012 | Appointment state machine: 8 states, the §7 table as one parameterised test over all pairs, terminal corrections (staff, ≤7d, reason), busy-set membership per D-7, append-only event log wired to every transition | APPT-01, 05, 06, 07; D-7 | M | A-009, A-005 | MVP |
+| 16 | ✅ A-012 | Appointment state machine: 8 states, the §7 table as one parameterised test over all pairs, terminal corrections (staff, ≤7d, reason), busy-set membership per D-7, append-only event log wired to every transition | APPT-01, 05, 06, 07; D-7 | M | A-009, A-005 | MVP |
 | 17 | A-013 | Manage token: scoped, multi-use to `end + 24h`, revoke-on-reissue, rate-limited, lexicon test (no internal identifiers) | TOKEN-01..03; D-5, D-10 | M | A-012, A-004 | MVP |
 | 18 | A-014 | Reschedule: same-row update in one transaction, engine re-run inside, both-sides event, cutoff applies to token actor, token re-points | APPT-05; D-6, D-11 | M | A-013 | MVP |
 | 19 | A-015 | Client record: phone-keyed, merge-with-history, client notes (pinned) + **per-visit appointment notes** (`Appointment.notes`, added at the M1 boundary — operator R-6), history view, "rebook last visit" , **`mergedIntoClientId` tombstone** so the losing record's phone still finds the survivor (operator R-10) | CLIENT-01..03 | M | A-012 | MVP |

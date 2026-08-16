@@ -1,6 +1,15 @@
 export { computeSlots } from './slot-engine';
 export { type ComposedVisit, InvalidVisit, type VisitLine, composeVisit, isSingleService } from './visit';
 export {
+  CORRECTION_WINDOW_MS,
+  type TransitionContext,
+  type TransitionDecision,
+  type TransitionRefusal,
+  canTransition,
+  isCorrection,
+  possibleTransitionsFrom,
+} from './transitions';
+export {
   ACTIVE_STATUSES,
   APPOINTMENT_STATUSES,
   type AppointmentStatus,

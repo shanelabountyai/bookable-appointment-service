@@ -17,6 +17,7 @@
   },
   "exports": {
     ".": "./index.ts",
+    "./appointments": "./appointments/index.ts",
     "./auth": "./auth/index.ts",
     "./availability": "./availability/index.ts",
     "./booking": "./booking/index.ts",
