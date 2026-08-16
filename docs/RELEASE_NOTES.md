@@ -464,4 +464,36 @@ unlikely.
 
 ---
 
-<!-- Next entry: A-028 — multi-service visits -->  
+## A-028 — Multi-service visits
+
+**What it is:** "cut then colour" as one appointment rather than two — which is
+half the sample salon's Saturday, and which the database actively refuses to
+model the obvious way.
+
+**Why it's not boilerplate — talking points:**
+- **The interesting rule is a subtraction, not an addition.** Durations sum,
+  but the buffers between services do *not* stack. A buffer protects the gap
+  between two clients — tidying the chair, washing the bowl. Inside one visit
+  the client never leaves, so the second service's "10 minutes before" is time
+  the stylist is already standing there with her. Stacking them would quietly
+  add half an hour of dead time to every combination booking, and the salon
+  would just notice its day stopped fitting.
+- **It required no change to the scheduling engine at all.** Because a
+  composed visit is simply a longer service with one buffer at each end, the
+  whole feature lands as a composition function plus a plural field — which is
+  the payoff for having shaped the data model plurally from the start, before
+  anything needed it.
+- **Order is part of the meaning.** Since the buffers come from the two ends,
+  "cut then colour" and "colour then cut" produce genuinely different blocked
+  ranges. That means caller order has to survive the round trip through the
+  database, where the obvious query returns rows in storage order and would
+  silently reorder someone's appointment. There is a test for it.
+- **The old field was replaced, not supplemented.** Adding an optional
+  "additional services" list beside the existing single one would have been the
+  smaller diff and the worse design — two ways to express one thing is the kind
+  of flexibility that quietly rots. Changing the canonical shape made the
+  compiler enumerate every call site, which is exactly what should happen.
+
+---
+
+<!-- Next entry: A-011 — density seed -->  

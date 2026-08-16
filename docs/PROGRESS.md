@@ -361,3 +361,27 @@ All three mutations are now caught, verified over repeated runs.
 - One service line per appointment; VISIT-01's multi-service composition is A-028.
 - The busy-set query window is ±24h around the day, so an appointment longer than ~24 hours would be missed by the engine (the constraint would still refuse it). Not reachable with any seeded service; worth widening when segmented durations land.
 A-009 committed at a3ebf4c
+
+
+---
+
+## A-028 — Multi-service visits (VISIT-01)
+
+**Built:**
+- `packages/core/scheduling/visit.ts` — `composeVisit`, pure. Duration is the SUM of the lines; `bufferBefore` comes from the FIRST line and `bufferAfter` from the LAST. Inner buffers do not stack.
+- `packages/db/scheduling/slot-query.ts` and `packages/db/booking/book.ts` now take `serviceIds: readonly string[]` and compose the visit before handing the engine a single service.
+- One ordered `AppointmentServiceLine` per service, each snapshotting its own `priceCents`/`durationMinutes` (D-18).
+- 9 pure composition tests + 7 database tests. Suite is now 395 unit + 30 e2e.
+
+**Decided:**
+- **Buffers do not stack between lines, and that is the whole item.** A buffer protects the gap between two *clients* — tidying the chair, washing the bowl. Inside one visit the client never leaves, so the colour's "10 minutes before" is time the stylist is already standing with her. Stacking would silently add 25 minutes of dead time to every cut+colour and the salon would wonder why its book stopped fitting. Consequence: the engine needed **no change** — a composed visit is just a longer service with one buffer at each end.
+- **`serviceIds` replaced `serviceId` outright** rather than sitting alongside it as an optional `additionalServiceIds`. Two ways to say the same thing is exactly the dead flexibility that rots; `AppointmentServiceLine` has been plural-shaped since A-003 (D-12) for the same reason. The compiler listed every call site, which is what a canonical shape change should do.
+- **Caller order is preserved through both the adapter and the write path.** A `findMany` returns database order, which would silently reorder the client's appointment — and since buffers come from the ends, "cut then colour" and "colour then cut" are genuinely different blocked ranges. There is a test for exactly that.
+
+**Verified, not assumed:**
+- Mutation-tested the composition rule, both caught: stacking the inner buffers (5 failures) and taking the buffers from the wrong ends (5 failures).
+
+**Open — an unexplained single test failure:**
+- During the first dual-timezone run after this item, `TZ=Pacific/Kiritimati` reported **1 failed / 394 passed** while `TZ=UTC` passed cleanly. I could not reproduce it: 18 subsequent full runs (10 Kiritimati-only, plus 5 UTC-then-Kiritimati pairs replicating the exact original sequence) were all clean, and the failing test name was not captured before the output rolled.
+- **This is recorded rather than dismissed.** This project's own rule is that a flaky test is a broken test, not a retry candidate. The most likely candidates are the new concurrency tests — 1f holds a session-level advisory lock while another transaction blocks on it, and 8b races two identical idempotency keys — but that is a hypothesis, not a diagnosis, and I am not claiming a fix I did not make.
+- **If it recurs, capture the test name first**: `npm test 2>&1 | tee /tmp/run.log` and read `/tmp/run.log`, rather than re-running and losing the evidence.

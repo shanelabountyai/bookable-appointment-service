@@ -8,11 +8,14 @@
 import { resolveAvailableWindows, toMinuteWindow, toWindowInput } from '../../core/availability';
 import {
   type BusyInterval,
+  type ComposedVisit,
   type Slot,
   type SlotPolicy,
   type SlotQuery,
   type SlotResult,
+  type VisitLine,
   calendarDay,
+  composeVisit,
   computeSlots,
   instant,
   wallTime,
@@ -38,7 +41,17 @@ export class SlotQueryUnavailable extends Error {
 export interface BuildSlotQueryArgs {
   businessId: string;
   providerId: string;
-  serviceId: string;
+  /**
+   * The services in this visit, IN ORDER (VISIT-01, D-23). One entry is the
+   * ordinary case; several compose into a single longer body with one buffer
+   * at each end.
+   *
+   * Plural rather than a `serviceId` with an optional `additionalServiceIds`
+   * beside it: two ways to say the same thing is exactly the dead flexibility
+   * that rots. `AppointmentServiceLine` has been plural-shaped since A-003
+   * (D-12) for the same reason.
+   */
+  serviceIds: readonly string[];
   /** The calendar day being browsed, in the BUSINESS's calendar — never
    *  derived from the customer's browser (spec §1.3). */
   day: string;
@@ -78,20 +91,9 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
   const business = await db.business.findUnique({ where: { id: args.businessId } });
   if (!business) throw new SlotQueryUnavailable(`No such business: ${args.businessId}`);
 
-  const link = await db.serviceProvider.findFirst({
-    where: { serviceId: args.serviceId, providerId: args.providerId },
-    include: { service: true, provider: true },
-  });
-  // SVC-02: "an unassigned provider never appears in that service's booking
-  // flow". Not an empty result — an explicit refusal, because a caller asking
-  // for an impossible pair has a bug, and returning "no slots" would hide it.
-  if (!link) {
-    throw new SlotQueryUnavailable(
-      `Provider ${args.providerId} is not qualified for service ${args.serviceId}.`,
-    );
-  }
-  if (!link.provider.active || !link.service.active) {
-    return emptyQuery(args, business, link, audience, false);
+  const links = await loadVisitLinks(db, args.providerId, args.serviceIds);
+  if (!links.provider.active || links.rows.some((l) => !l.service.active)) {
+    return emptyQuery(args, business, links.visit, audience, false);
   }
 
   const day = calendarDay(args.day);
@@ -102,7 +104,7 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
   // the front desk pre-books a year out for a wedding and that is normal.
   const beyondHorizon =
     audience === 'public' && startOfDay(day, zone) > nowInstant + business.bookingHorizonDays * 24 * 60 * MIN;
-  if (beyondHorizon) return emptyQuery(args, business, link, audience, true);
+  if (beyondHorizon) return emptyQuery(args, business, links.visit, audience, true);
 
   const resolved = await resolveDayWindowsFor(db, {
     businessId: args.businessId,
@@ -111,11 +113,10 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
     zone: business.timezone,
   });
 
-  const durationMinutes = effectiveDurationMinutes(link.service.durationMinutes, link.durationOverrideMinutes);
   const service = {
-    durationMinutes,
-    bufferBeforeMinutes: link.service.bufferBeforeMinutes,
-    bufferAfterMinutes: link.service.bufferAfterMinutes,
+    durationMinutes: links.visit.durationMinutes,
+    bufferBeforeMinutes: links.visit.bufferBeforeMinutes,
+    bufferAfterMinutes: links.visit.bufferAfterMinutes,
   };
 
   const busy = resolved.windows.length === 0
@@ -198,7 +199,7 @@ function policyOf(business: { bufferMayOverlapBreak: boolean; bufferMayExtendPas
 function emptyQuery(
   args: BuildSlotQueryArgs,
   business: { timezone: string; slotIntervalMinutes: number; minimumLeadMinutes: number; bufferMayOverlapBreak: boolean; bufferMayExtendPastClose: boolean; ambiguousLocalTime: string },
-  link: { service: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number }; durationOverrideMinutes: number | null },
+  visit: ComposedVisit,
   audience: 'public' | 'staff',
   beyondHorizon: boolean,
 ): BuiltSlotQuery {
@@ -208,9 +209,9 @@ function emptyQuery(
       day: calendarDay(args.day),
       businessZone: zoneId(business.timezone),
       service: {
-        durationMinutes: effectiveDurationMinutes(link.service.durationMinutes, link.durationOverrideMinutes),
-        bufferBeforeMinutes: link.service.bufferBeforeMinutes,
-        bufferAfterMinutes: link.service.bufferAfterMinutes,
+        durationMinutes: visit.durationMinutes,
+        bufferBeforeMinutes: visit.bufferBeforeMinutes,
+        bufferAfterMinutes: visit.bufferAfterMinutes,
       },
       windows: [],
       busy: [],
@@ -221,6 +222,48 @@ function emptyQuery(
       ...(audience === 'staff' ? { explain: true } : {}),
     },
   };
+}
+
+/**
+ * Loads every service in the visit, resolves this provider's overrides
+ * (SVC-02), and composes them into one body (VISIT-01).
+ *
+ * Preserves the CALLER's order — the buffers come from the ends, so
+ * "cut then colour" and "colour then cut" are genuinely different visits.
+ * A findMany would return them in database order and silently reorder the
+ * client's appointment.
+ */
+async function loadVisitLinks(db: Db, providerId: string, serviceIds: readonly string[]) {
+  if (serviceIds.length === 0) {
+    throw new SlotQueryUnavailable('A visit needs at least one service.');
+  }
+
+  const found = await db.serviceProvider.findMany({
+    where: { providerId, serviceId: { in: [...serviceIds] } },
+    include: { service: true, provider: true },
+  });
+
+  const byService = new Map(found.map((row) => [row.serviceId, row]));
+  const rows = serviceIds.map((serviceId) => {
+    const row = byService.get(serviceId);
+    // SVC-02: "an unassigned provider never appears in that service's booking
+    // flow". An explicit refusal, not an empty result — a caller asking for an
+    // impossible pair has a bug, and "no slots" would hide it.
+    if (!row) {
+      throw new SlotQueryUnavailable(`Provider ${providerId} is not qualified for service ${serviceId}.`);
+    }
+    return row;
+  });
+
+  const lines: VisitLine[] = rows.map((row) => ({
+    serviceId: row.serviceId,
+    durationMinutes: effectiveDurationMinutes(row.service.durationMinutes, row.durationOverrideMinutes),
+    bufferBeforeMinutes: row.service.bufferBeforeMinutes,
+    bufferAfterMinutes: row.service.bufferAfterMinutes,
+    priceCents: row.priceOverrideCents ?? row.service.priceCents,
+  }));
+
+  return { rows, lines, visit: composeVisit(lines), provider: rows[0]!.provider };
 }
 
 /** A-007's chain, converted into the branded WallTime shape SlotQuery wants. */

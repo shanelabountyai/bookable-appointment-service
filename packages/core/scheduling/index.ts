@@ -1,4 +1,5 @@
 export { computeSlots } from './slot-engine';
+export { type ComposedVisit, InvalidVisit, type VisitLine, composeVisit, isSingleService } from './visit';
 export {
   ACTIVE_STATUSES,
   APPOINTMENT_STATUSES,

@@ -26,7 +26,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '../../core/auth';
-import { type Slot, computeSlots } from '../../core/scheduling';
+import { type Slot, type VisitLine, composeVisit, computeSlots } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { effectivePriceCents, effectiveDurationMinutes } from '../../core/settings';
 import { enqueueNotification } from '../notifications';
@@ -40,7 +40,9 @@ const MIN = 60_000;
 export interface BookAppointmentInput {
   businessId: string;
   providerId: string;
-  serviceId: string;
+  /** The services in this visit, IN ORDER (VISIT-01, D-23). One entry is the
+   *  ordinary case. Order matters: buffers come from the ends. */
+  serviceIds: readonly string[];
   /** NULLABLE — BOOK-04's "walk-in, no name". Identity attaches later. */
   clientId?: string | null;
   /** The slot's identity is its INSTANT (D-4). No `{date, time}` pair ever
@@ -138,7 +140,7 @@ export async function bookAppointment(
         const { query } = await buildSlotQuery(tx, {
           businessId: input.businessId,
           providerId: input.providerId,
-          serviceId: input.serviceId,
+          serviceIds: input.serviceIds,
           day: businessDay,
           now: input.now,
           audience,
@@ -242,14 +244,28 @@ async function writeAppointment(
   audience: 'public' | 'staff',
   isOverride: boolean,
 ): Promise<BookedAppointment> {
-  const link = await tx.serviceProvider.findFirstOrThrow({
-    where: { serviceId: input.serviceId, providerId: input.providerId },
+  // Loaded in the CALLER's order, not the database's — the buffers come from
+  // the ends, so reordering the lines would change the appointment.
+  const found = await tx.serviceProvider.findMany({
+    where: { providerId: input.providerId, serviceId: { in: [...input.serviceIds] } },
     include: { service: true },
   });
+  const byService = new Map(found.map((row) => [row.serviceId, row]));
+  const links = input.serviceIds.map((serviceId) => {
+    const row = byService.get(serviceId);
+    if (!row) throw new BookingRejected('serviceIds', `Provider is not qualified for service ${serviceId}.`);
+    return row;
+  });
 
-  const durationMinutes = effectiveDurationMinutes(link.service.durationMinutes, link.durationOverrideMinutes);
-  const priceCents = effectivePriceCents(link.service.priceCents, link.priceOverrideCents);
-  const endAt = toDate(instant(fromDate(input.startAt) + durationMinutes * MIN));
+  const lines: VisitLine[] = links.map((row) => ({
+    serviceId: row.serviceId,
+    durationMinutes: effectiveDurationMinutes(row.service.durationMinutes, row.durationOverrideMinutes),
+    bufferBeforeMinutes: row.service.bufferBeforeMinutes,
+    bufferAfterMinutes: row.service.bufferAfterMinutes,
+    priceCents: effectivePriceCents(row.service.priceCents, row.priceOverrideCents),
+  }));
+  const visit = composeVisit(lines);
+  const endAt = toDate(instant(fromDate(input.startAt) + visit.durationMinutes * MIN));
 
   const business = await tx.business.findUniqueOrThrow({
     where: { id: input.businessId },
@@ -266,8 +282,10 @@ async function writeAppointment(
       endAt,
       // Snapshotted onto the appointment so the blocked-range trigger can
       // recompute on UPDATE without re-deriving which buffers applied.
-      bufferBeforeMinutes: link.service.bufferBeforeMinutes,
-      bufferAfterMinutes: link.service.bufferAfterMinutes,
+      // The VISIT's buffers, not any single line's: inner buffers do not
+      // stack, because the client never leaves the chair between services.
+      bufferBeforeMinutes: visit.bufferBeforeMinutes,
+      bufferAfterMinutes: visit.bufferAfterMinutes,
       isOverride,
       overrideReason: isOverride ? (input.overrideReason ?? null) : null,
       idempotencyKey: input.idempotencyKey ?? null,
@@ -281,15 +299,16 @@ async function writeAppointment(
       blockedStart: input.startAt,
       blockedEnd: endAt,
       lines: {
-        create: {
+        // One ordered line per service, EACH snapshotting its own price and
+        // duration (D-18): a January price rise must not rewrite last year's
+        // history, and a per-visit total would lose which service cost what.
+        create: lines.map((line, ordinal) => ({
           businessId: input.businessId,
-          serviceId: input.serviceId,
-          ordinal: 0,
-          // D-18: snapshotted at write time. A January price rise must not
-          // rewrite last year's history.
-          priceCents,
-          durationMinutes,
-        },
+          serviceId: line.serviceId,
+          ordinal,
+          priceCents: line.priceCents,
+          durationMinutes: line.durationMinutes,
+        })),
       },
       events: {
         create: {
@@ -349,7 +368,7 @@ async function freshAlternatives(
     const { query } = await buildSlotQuery(prisma, {
       businessId: input.businessId,
       providerId: input.providerId,
-      serviceId: input.serviceId,
+      serviceIds: input.serviceIds,
       day: businessDayOf(input.startAt, business.timezone),
       now: input.now,
       audience,

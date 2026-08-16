@@ -20,6 +20,7 @@ import { resetDatabase } from '../testing';
 import { createWeeklyWindow, upsertDateOverride } from '../availability';
 import { isSlotTakenError } from '../errors';
 import { bookAppointment } from './book';
+import { computeDaySlots } from '../scheduling';
 import { SlotTaken } from './errors';
 
 const prisma = new PrismaClient();
@@ -92,13 +93,16 @@ const book = (over: Partial<Parameters<typeof bookAppointment>[1]> = {}) =>
   bookAppointment(prisma, {
     businessId,
     providerId,
-    serviceId,
+    serviceIds: [serviceId],
     startAt: TEN_AM,
     now: NOW,
     actor: ACTOR,
     audience: 'staff',
     ...over,
   } as Parameters<typeof bookAppointment>[1]);
+
+const computeDaySlotsFor = async (serviceIds: string[]) =>
+  (await computeDaySlots(prisma, { businessId, providerId, serviceIds, day: DAY, now: NOW, audience: 'staff' })).slots;
 
 const countAt = async () => prisma.appointment.count({ where: { status: { notIn: ['cancelled', 'cancelled_late'] } } });
 
@@ -437,7 +441,7 @@ describe('BOOK-03 — the deterministic race matrix', () => {
     async () => {
       // A fails inside its transaction (an unqualified service id), so its
       // transaction rolls back after taking the lock.
-      await expect(book({ serviceId: 'no-such-service' })).rejects.toThrow();
+      await expect(book({ serviceIds: ['no-such-service'] })).rejects.toThrow();
       expect(await countAt()).toBe(0);
 
       await expect(book({ idempotencyKey: 'after-rollback' })).resolves.toMatchObject({ deduplicated: false });
@@ -614,4 +618,124 @@ describe.skipIf(!process.env.FUZZ)('nightly concurrency fuzz', () => {
     },
     120_000,
   );
+});
+
+/**
+ * A-028 — multi-service visits (VISIT-01, D-23).
+ *
+ * Half the sample salon's Saturday is cut+colour, and the workaround staff
+ * would otherwise reach for — two adjacent appointments — is REFUSED by the
+ * database once one service's bufferAfter meets the next one's bufferBefore.
+ * Routing every combination booking through a knowing override would make
+ * D-8's override marker meaningless.
+ */
+describe('VISIT-01 — one appointment, several services', () => {
+  let colourId: string;
+
+  beforeEach(async () => {
+    // Cut is 60min +15 after (from the outer fixture). Colour is 120min,
+    // 10 before / 20 after — unequal on purpose, so whose-buffer bugs cannot
+    // hide (CLAUDE.md).
+    const colour = await prisma.service.create({
+      data: {
+        businessId,
+        name: 'Colour',
+        durationMinutes: 120,
+        bufferBeforeMinutes: 10,
+        bufferAfterMinutes: 20,
+        priceCents: 14000,
+      },
+    });
+    colourId = colour.id;
+    await prisma.serviceProvider.create({ data: { businessId, serviceId: colourId, providerId } });
+    // The composed visit is 180 minutes, so open the day wide enough for it.
+    for (const p of [null, providerId]) {
+      await upsertDateOverride(
+        prisma,
+        { businessId, providerId: p, day: DAY, isClosed: false, windows: [{ open: '09:00', close: '20:00', endsNextDay: false }] },
+        STAFF,
+      );
+    }
+  });
+
+  it('books cut+colour as ONE appointment with one ordered line per service', async () => {
+    const booked = await book({ serviceIds: [serviceId, colourId], startAt: at('2026-06-09T10:00:00-05:00'), idempotencyKey: 'visit' });
+
+    // 60 + 120 = 180 minutes of body.
+    expect(booked.endAt.getTime() - booked.startAt.getTime()).toBe(180 * 60_000);
+
+    const lines = await prisma.appointmentServiceLine.findMany({
+      where: { appointmentId: booked.id },
+      orderBy: { ordinal: 'asc' },
+    });
+    expect(lines).toHaveLength(1 + 1);
+    expect(lines.map((l) => l.serviceId)).toEqual([serviceId, colourId]);
+    // D-18: each line snapshots its OWN price and duration, so a later price
+    // rise cannot rewrite this visit's history and "which service cost what"
+    // survives.
+    expect(lines.map((l) => l.priceCents)).toEqual([5500, 14000]);
+    expect(lines.map((l) => l.durationMinutes)).toEqual([60, 120]);
+    expect(await prisma.appointment.count()).toBe(1);
+  });
+
+  // The rule the whole item turns on.
+  it('does NOT stack the inner buffers — the visit takes the first before and the last after', async () => {
+    const booked = await book({ serviceIds: [serviceId, colourId], startAt: at('2026-06-09T10:00:00-05:00'), idempotencyKey: 'buffers' });
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: booked.id } });
+    // Cut goes first (0 before), colour last (20 after). The cut's 15-after
+    // and the colour's 10-before are INSIDE the visit and must not apply.
+    expect(row.bufferBeforeMinutes).toBe(0);
+    expect(row.bufferAfterMinutes).toBe(20);
+
+    // Blocked range = body ± the visit's own buffers only: 10:00 → 13:00 +20.
+    expect(row.blockedStart.toISOString()).toBe(at('2026-06-09T10:00:00-05:00').toISOString());
+    expect(row.blockedEnd.toISOString()).toBe(at('2026-06-09T13:20:00-05:00').toISOString());
+  });
+
+  it('ORDER matters — reversing the services changes the blocked range', async () => {
+    const booked = await book({ serviceIds: [colourId, serviceId], startAt: at('2026-06-09T10:00:00-05:00'), idempotencyKey: 'reversed' });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: booked.id } });
+    // Colour first (10 before), cut last (15 after).
+    expect(row.bufferBeforeMinutes).toBe(10);
+    expect(row.bufferAfterMinutes).toBe(15);
+    const lines = await prisma.appointmentServiceLine.findMany({
+      where: { appointmentId: booked.id },
+      orderBy: { ordinal: 'asc' },
+    });
+    expect(lines.map((l) => l.serviceId)).toEqual([colourId, serviceId]);
+  });
+
+  it('offers slots for the COMPOSED duration, not the first service alone', async () => {
+    const single = await computeDaySlotsFor([serviceId]);
+    const visit = await computeDaySlotsFor([serviceId, colourId]);
+    // A 180-minute visit fits in fewer places than a 60-minute cut.
+    expect(visit.length).toBeLessThan(single.length);
+    // And the last offered visit start must leave room for all 180 minutes.
+    const lastVisit = visit[visit.length - 1]!;
+    expect(lastVisit.end - lastVisit.start).toBe(180 * 60_000);
+  });
+
+  it('the composed visit still collides with a neighbouring booking', async () => {
+    await book({ serviceIds: [serviceId], startAt: at('2026-06-09T12:00:00-05:00'), idempotencyKey: 'neighbour' });
+    // A 10:00 cut+colour runs to 13:00 and would swallow the 12:00 booking.
+    await expect(
+      book({ serviceIds: [serviceId, colourId], startAt: at('2026-06-09T10:00:00-05:00'), idempotencyKey: 'clash' }),
+    ).rejects.toBeInstanceOf(SlotTaken);
+    expect(await overlappingPairs()).toBe(0);
+  });
+
+  it('refuses a visit containing a service the provider is not qualified for', async () => {
+    const unqualified = await prisma.service.create({
+      data: { businessId, name: 'Massage', durationMinutes: 30, priceCents: 8000 },
+    });
+    await expect(
+      book({ serviceIds: [serviceId, unqualified.id], startAt: at('2026-06-09T10:00:00-05:00'), idempotencyKey: 'unqual' }),
+    ).rejects.toThrow();
+    expect(await prisma.appointment.count()).toBe(0);
+  });
+
+  it('refuses an empty visit', async () => {
+    await expect(book({ serviceIds: [], idempotencyKey: 'empty' })).rejects.toThrow();
+  });
 });

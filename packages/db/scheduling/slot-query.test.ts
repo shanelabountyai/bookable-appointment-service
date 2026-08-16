@@ -96,9 +96,9 @@ async function insertAppointment(opts: {
 }
 
 const build = (over: Partial<Parameters<typeof buildSlotQuery>[1]> = {}) =>
-  buildSlotQuery(prisma, { businessId, providerId, serviceId, day: DAY, now: NOW, ...over });
+  buildSlotQuery(prisma, { businessId, providerId, serviceIds: [serviceId], day: DAY, now: NOW, ...over });
 
-const slotsAt = async (over = {}) => (await computeDaySlots(prisma, { businessId, providerId, serviceId, day: DAY, now: NOW, ...over })).slots;
+const slotsAt = async (over = {}) => (await computeDaySlots(prisma, { businessId, providerId, serviceIds: [serviceId], day: DAY, now: NOW, ...over })).slots;
 
 describe('window resolution (A-007 chain → SlotQuery)', () => {
   it('intersects business and provider hours', async () => {
@@ -235,7 +235,7 @@ describe('the busy set — D-16, the override hole', () => {
     // The engine reports them with DIFFERENT reasons — conflating them tells
     // the front desk a stylist is away when she is standing right there.
     const result = await computeDaySlots(prisma, {
-      businessId, providerId, serviceId, day: DAY, now: NOW, audience: 'staff',
+      businessId, providerId, serviceIds: [serviceId], day: DAY, now: NOW, audience: 'staff',
     });
     const reasonAt = (time: string) =>
       result.excluded.find((e) => e.label.time === time)?.reasons ?? [];
@@ -283,7 +283,7 @@ describe('explain is never exposed to the public (spec §1.3)', () => {
     expect((await build({ audience: 'public' })).query.explain).toBeUndefined();
     // A route that FORGETS to pass an audience must get the safe treatment.
     expect((await build()).query.explain).toBeUndefined();
-    expect((await computeDaySlots(prisma, { businessId, providerId, serviceId, day: DAY, now: NOW })).excluded).toEqual([]);
+    expect((await computeDaySlots(prisma, { businessId, providerId, serviceIds: [serviceId], day: DAY, now: NOW })).excluded).toEqual([]);
   });
 
   it('enables explain for staff', async () => {
@@ -297,7 +297,7 @@ describe('SLOT-07 — daysWithAvailability', () => {
     const days = await daysWithAvailability(prisma, {
       businessId,
       providerId,
-      serviceId,
+      serviceIds: [serviceId],
       now: NOW,
       fromDay: '2026-06-08',
       toDay: '2026-06-14',
@@ -308,7 +308,7 @@ describe('SLOT-07 — daysWithAvailability', () => {
   it('drops a day whose only window is fully booked', async () => {
     await insertAppointment({ id: 'allday', start: '2026-06-09T09:00:00-05:00', end: '2026-06-09T17:00:00-05:00' });
     const days = await daysWithAvailability(prisma, {
-      businessId, providerId, serviceId, now: NOW, fromDay: '2026-06-08', toDay: '2026-06-14',
+      businessId, providerId, serviceIds: [serviceId], now: NOW, fromDay: '2026-06-08', toDay: '2026-06-14',
     });
     expect(days).toEqual([]);
   });
@@ -320,7 +320,7 @@ describe('SLOT-07 — daysWithAvailability', () => {
     const days = await daysWithAvailability(prisma, {
       businessId,
       providerId,
-      serviceId,
+      serviceIds: [serviceId],
       now: toDate(instantFromIso('2026-10-25T00:00:00-05:00')),
       fromDay: '2026-10-31',
       toDay: '2026-11-02',
@@ -330,7 +330,7 @@ describe('SLOT-07 — daysWithAvailability', () => {
 
   it('returns nothing for an inverted range rather than spinning', async () => {
     const days = await daysWithAvailability(prisma, {
-      businessId, providerId, serviceId, now: NOW, fromDay: '2026-06-14', toDay: '2026-06-08',
+      businessId, providerId, serviceIds: [serviceId], now: NOW, fromDay: '2026-06-14', toDay: '2026-06-08',
     });
     expect(days).toEqual([]);
   });
