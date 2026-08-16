@@ -329,3 +329,34 @@ A-007 committed at 7dce285
 - **`running-late` BusyIntervals are not produced yet.** The engine vocabulary exists (D-22, added at the M1 boundary) but the per-provider-per-day delta has no storage until A-018, so there is nothing for the adapter to read. The shape is ready; the row is not.
 - No caching. `daysWithAvailability` over a 90-day horizon runs the engine 90 times, each with its own queries. Correct and fast enough for a 4-chair salon; the obvious fix when it matters is one busy-set query for the whole range rather than one per day.
 A-026 committed at 59ee9b7
+
+
+---
+
+## A-009 — The booking write path
+
+**Built:**
+- `packages/db/booking/book.ts` — `bookAppointment`, STAFF-shaped from day one (operator S-3): nullable client, injected actor, `isOverride` + reason, no horizon cap, with self-serve as the restricted caller passing `audience: 'public'`.
+- `packages/db/booking/errors.ts` — `SlotTaken` (409 with refreshed alternatives), `SlotNotOffered`, `BookingRejected`.
+- Writes: appointment + snapshotted service line (D-18) + `AppointmentEvent` + confirmation enqueued through the outbox *inside the same transaction* (BOOK-06/D-14), with a manage-link placeholder until A-013.
+- `races.test.ts` — 15 tests: the spec's eight interleavings, the operator's ninth, plus three the mutation testing forced me to add. The nightly SQL-invariant fuzz (50 concurrent bookings, asserting zero overlapping pairs) runs under `FUZZ=1`.
+- Suite is now 379 unit + 30 e2e.
+
+**Decided — D-24, the advisory lock:**
+- The write path takes a transaction-scoped advisory lock on `(providerId, businessDay)` before re-running the engine. **Not** the correctness mechanism for overlap — the D-2 constraint remains that. It closes the one gap the constraint deliberately does not cover: a staff override stores a zero-width range, so the constraint does not defend overridden time and only the in-transaction re-check does. Two concurrent transactions would otherwise both pass and both commit (operator R-9).
+- **Consequence:** the spec's scripted "A reads, B reads, B commits, A writes → 23P01" interleaving is no longer reachable through the write path. The loser now re-runs the engine after the winner commits and finds the time occupied. An occupied slot maps to the same `SlotTaken` → 409 as a constraint violation, so the caller cannot tell which defence fired.
+
+**Two real bugs the mutation testing found — and it found them by NOT failing:**
+- **The advisory lock keyed on `floor(epochMs / 86_400_000)` — a UTC day bucket, not a business day.** In America/Chicago an 18:45 and a 19:15 booking on the same evening straddle UTC midnight, land in different buckets, and were never serialized against each other — precisely the case the lock exists for. An axis crossing (D-3) hiding inside a lock key. Test 1e pins it.
+- **`bookAppointment` read the system clock.** The engine already refuses to (CLAUDE.md); a write path that reads it instead is the same defect one layer out, and cannot be tested against a fixed booking date without waiting for that date. `now` is now an injected parameter.
+
+**On the mutation testing itself:**
+Three mutations initially SURVIVED — removing the 23P01 mapping, removing the lock, and breaking the lock key. That meant those behaviours were asserted nowhere. Fixing it required understanding *why* each was unreachable:
+- The 23P01 mapping is unreachable through the normal path *because* the lock works, so it needed an explicit, deliberately-ugly `__unsafeSkipSerialization` seam. Untested defence-in-depth is just an untested branch.
+- The lock is invisible for ordinary bookings *because* the constraint already guarantees exactly-one. Its value is only visible in the override race, so test 1f scripts that by holding the very lock the write path takes, from a separate session, forcing the ordering rather than sampling it.
+All three mutations are now caught, verified over repeated runs.
+
+**Left behind:**
+- The manage link is a placeholder string until A-013 mints real scoped tokens.
+- One service line per appointment; VISIT-01's multi-service composition is A-028.
+- The busy-set query window is ±24h around the day, so an appointment longer than ~24 hours would be missed by the engine (the constraint would still refuse it). Not reachable with any seeded service; worth widening when segmented durations land.

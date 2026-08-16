@@ -19,6 +19,7 @@
     ".": "./index.ts",
     "./auth": "./auth/index.ts",
     "./availability": "./availability/index.ts",
+    "./booking": "./booking/index.ts",
     "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
     "./scheduling": "./scheduling/index.ts",

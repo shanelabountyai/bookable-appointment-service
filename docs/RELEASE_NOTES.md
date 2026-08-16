@@ -421,4 +421,47 @@ project after the no-double-booking constraint itself.
 
 ---
 
-<!-- Next entry: A-009 — booking write path -->  
+## A-009 — The booking write path
+
+**What it is:** the transaction that turns a chosen slot into an appointment —
+and the concurrency story that makes double-booking impossible rather than
+unlikely.
+
+**Why it's not boilerplate — talking points:**
+- **Three defences, in a deliberate order.** A database exclusion constraint
+  (absolute, enforced against every path including a `psql` session), an
+  advisory lock scoped to one provider-day, and an engine re-run inside the
+  transaction. The lock is explicitly *not* the correctness mechanism — it
+  exists to close the one gap the constraint deliberately does not cover,
+  because a staff override stores a zero-width range so the constraint won't
+  refuse it, which means only the re-check defends that time.
+- **The race tests script interleavings rather than sampling them.** Two real
+  database connections, explicit happens-before edges, no `setTimeout` and no
+  polling — including one that proves a blocked transaction *fails* when the
+  winner commits, and one that proves it *succeeds* when the winner rolls
+  back. That second case is the difference between a system where an
+  abandoned checkout frees the slot and one where it kills it forever.
+- **Mutation testing found two real bugs by NOT failing.** Deliberately
+  breaking the code and watching the tests still pass is the only way to learn
+  that a behaviour is asserted nowhere. It surfaced that the advisory lock
+  bucketed by *UTC* day rather than business day — so two bookings on the same
+  evening either side of UTC midnight were never serialized, exactly the case
+  the lock existed for — and that the write path read the system clock, making
+  it untestable against a fixed date.
+- **Reaching unreachable code, honestly.** Once the lock works, the
+  constraint-violation path becomes unreachable through the normal flow, which
+  makes its error mapping untestable. Rather than delete the mapping or assert
+  it by inspection, there is a deliberately ugly, clearly-named test seam that
+  skips serialization — because untested defence-in-depth is just an untested
+  branch, and the requirement was explicitly to provoke a *real* constraint
+  violation and prove it becomes a clean "that time has just been taken"
+  rather than a 500.
+- **The confirmation is enqueued inside the booking transaction.** A booking
+  can never commit without its confirmation, nor a confirmation without its
+  booking — and a walk-in with no phone number on file still books
+  successfully, with the notification recorded as suppressed rather than the
+  booking failing.
+
+---
+
+<!-- Next entry: A-028 — multi-service visits -->  
