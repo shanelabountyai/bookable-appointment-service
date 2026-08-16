@@ -568,4 +568,47 @@ against a real production build. That convention paid for itself here.
 
 ---
 
+## The milestone checkpoint that found the bug no test could
+
+At the end of each milestone the whole flow gets walked end to end, against
+real seeded data, before anything moves on. It is a scheduled habit, not a
+reaction to something looking wrong — the previous build in this series found
+four defects that way, every one of them inside work already marked complete.
+
+This one found a good bug, and it is worth understanding *why* it was
+invisible.
+
+Every notification the system had ever recorded — 228 of them — was **orphaned
+from the appointment it was about**. The database column linking them existed,
+was indexed, and had a foreign key protecting it. Nothing ever wrote it.
+
+Three separate pieces of work touched that link, and **every one of them was
+correct on its own**: one added the column, one built the notification recorder
+(which was never given the field to store), and one recorded the booking
+confirmation, putting the appointment's id inside the message payload. That
+last detail is what made it invisible — the id genuinely was in the row, in
+plain sight, in every test output. It just wasn't the kind of value you can
+look anything up by. The screen that will ask "was this customer actually
+told?" would have been built against a query that always returns nothing.
+
+No test was wrong. The assertion that would have caught it didn't belong to any
+of the three items — it belonged to the seam between them, which is exactly
+what a checkpoint walks and what nothing else does.
+
+**A second finding, in the fix for the first.** The regression test written to
+lock the bug down included one assertion that passed *with the fix removed* — a
+different safeguard was blocking the operation first, so the test could never
+have failed for the reason it claimed. It was deleted rather than kept. A true
+assertion that cannot fail is worse than no test, because it reads like
+coverage.
+
+**And one thing deliberately left unfixed.** A rare test failure recurred during
+this work and was finally pinned to a specific test — but 23 consecutive clean
+runs later, the cause is still unknown. Rather than ship a plausible-sounding
+fix, the test now prints exactly what it received when it fails. Every failure
+of that kind previously arrived looking identical, which is why two separate
+investigations produced nothing. The next one will produce a diagnosis instead.
+
+---
+
 <!-- Next entry: A-012 — appointment state machine -->  

@@ -443,3 +443,26 @@ A-011 committed at 1596d7a
 - The confirmation screen promises a manage link that A-013's tokens have not built yet.
 - Multi-service visits compose in `packages/core` (A-028) but the customer flow still books one service; the actions take `serviceIds` arrays throughout, so the UI is the only thing missing.
 A-010 committed at 32409f8
+
+---
+
+## Demo checkpoint 1 — walked at the Milestone 2 boundary
+
+Full transcript and findings: `docs/reviews/06-demo-checkpoint-1.md`. Walked 2026-08-16, scripted rather than clicked so the record is transcript rather than recollection. Four of five narrated steps passed on the first walk.
+
+**The defect it found — every outbox row orphaned from its appointment.**
+- `NotificationOutbox.appointmentId` was never written. 228 seeded rows, all `NULL`. The column, its index and its `onDelete: Restrict` were added at the M1 boundary on the operator's recommendation (R-4) so A-027 can answer "was she actually told?" in one indexed lookup — and nothing ever populated them.
+- **Three items touched it and each was correct in isolation.** A-003 added the column and index. A-004 built a correct `enqueueNotification` whose `EnqueueInput` simply had no such field. A-009 enqueued the confirmation inside the booking transaction, passing the appointment id **in the payload JSON** — which looks identical in a passing test and is unusable as a lookup.
+- **A-009 had no test of its outbox enqueue at all.** Its tests are the race tests, which assert appointment rows. A-004's tests exercise enqueue thoroughly, but enqueue was never asked to store an appointment id. The missing assertion belonged to neither item; it belonged to the seam. That is the exact failure class rental's checkpoint predicted (D-28).
+- Fixed by adding `appointmentId` to `EnqueueInput` and passing it from `book.ts`. `packages/db/booking/confirmation.test.ts` is the regression suite; reverting the one-line fix fails 5 of its 6 tests.
+
+**A bad test, found in the fix written for the finding.** The regression suite originally asserted "refuses to delete an announced appointment". It passed — and passed with the fix reverted, because `AppointmentEvent`'s own `onDelete: Restrict` blocks the delete first and the event log is append-only by trigger, so the outbox's restrict can never be observed alone. A true assertion that cannot fail for its stated reason reads like coverage and isn't. Removed, with a note in the file so it does not get helpfully re-added.
+
+**A stale example in the checkpoint's own prose, deliberately not "fixed".** The backlog narrates "11:15 first after the 10:00 booking"; the engine offers 11:00 and is right — the seeded Cut is 45 minutes with a 10-minute after-buffer, so the 10:00 blocks 10:00–10:55. `11:15` is the answer for the 60-minute/15-minute service used in `races.test.ts`, which is what the prose predates. Recorded rather than changed in either direction.
+
+**The A-028 flake, now half-diagnosed and honestly still open.**
+- It recurred once during this item's gate, under `TZ=Pacific/Kiritimati`, and this time the test name was captured: `races.test.ts` **1d** — "a constraint violation through the write path maps to SlotTaken, not a 500". The rejection was a raw `PrismaClientUnknownRequestError` instead of `SlotTaken`.
+- **It is not timezone-related.** 6 runs of the file alone and 17 full suites — 23 consecutive clean runs — did not reproduce it. Both observed occurrences were simply the second suite run of a gate, i.e. under load.
+- **No fix has been applied, because the cause is still unknown.** The plausible story is that 1d deliberately disables D-24's advisory lock, so its two lock-free writers can deadlock and Postgres raises `40P01` where the test expects `23P01` — which `book.ts` does not map. That is a hypothesis, and asserting it as a cause is precisely the mistake CLAUDE.md warns about.
+- **What was done instead:** a permanent diagnostic in 1d printing the error code, meta and message on the failing path only. Every contention failure Postgres can raise there arrives as the same error class, so the previous assertion could only ever report "not SlotTaken" — which is why two investigations produced no diagnosis. The next occurrence will produce one.
+- Production is not exposed by the hypothesised path: the real booking path always takes the advisory lock, and `__unsafeSkipSerialization` is a test-only seam. The lock-free path 1d defends is what A-018/A-019's deferred multi-row moves will use, which is where mapping contention errors will need deciding on evidence.

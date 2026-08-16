@@ -35,6 +35,8 @@ Single, strictly-ordered build backlog: every item is buildable when reached, fo
 | 14 | ✅ A-011 | **Density seed** per §9 spec: appointments against the A-025 setup seed — fixed anchor spanning both DST transitions, per-provider density targets (one ~85% booked, one ~40%, one fully booked 3 consecutive days, one split-shift with mid-window time off), ≥1 client with no-show history, deterministic. **Moved ahead of A-010** so the customer UI is built against a realistic book — a full day, a day with one slot left, the doubled fall-back hour — instead of an empty calendar where every screen looks fine (operator S-1) | §9 | S | A-009 | MVP |
 | 15 | ✅ A-010 | Customer booking flow UI: ≤5 screens / ≤3 required inputs, phone-first identity, instant-keyed slot POST, WCAG 2.1 AA incl. keyboard slot grid + live region (axe in the spec) | BOOK-01; D-4, D-10 | M | A-009 | MVP |
 
+> **✅ Demo checkpoint 1 — walked 2026-08-16, and it found one real defect** (every outbox row orphaned from its appointment). Full transcript and findings: `docs/reviews/06-demo-checkpoint-1.md`.
+>
 > **Demo checkpoint 1.** Against the seed: a customer picks a colour with Dana, sees Tuesday's slots with the 12–1 break absent and 11:15 first after the 10:00 booking, books, and the outbox holds one confirmation with a manage link. The scripted race for an *overlapping non-identical* slot yields exactly one winner and a 409 with alternatives. A direct SQL insert of an overlapping appointment is refused by the database. The suite passes under `TZ=Pacific/Kiritimati`. **Walk it when the milestone closes, not when convenient** — rental D-28: all four of its checkpoint-1 defects were invisible from inside the items that introduced them.
 
 ## Milestone 3: Running the day (Golden Path 2)

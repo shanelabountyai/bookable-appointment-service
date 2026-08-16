@@ -27,6 +27,22 @@ export interface EnqueueInput {
    * reschedule doesn't silently keep or drop a reminder for the wrong time.)
    */
   dedupeKey: string;
+  /**
+   * The appointment this notification is ABOUT, as a real foreign key.
+   *
+   * Not optional-because-nobody-needs-it: this is what makes "was she actually
+   * told?" one indexed lookup on the appointment detail panel (operator R-4),
+   * and what makes `onDelete: Restrict` protect a notified appointment from
+   * deletion. Absent only for notifications that genuinely have no appointment
+   * — a future business-level announcement.
+   *
+   * Demo checkpoint 1 found this missing: the column and its index were added
+   * at the M1 boundary and NOTHING ever wrote them, so all 228 seeded outbox
+   * rows carried `appointmentId = NULL`. The id was in the payload JSON, which
+   * looks identical in a passing test and is unusable as a lookup. Invisible
+   * from inside A-003, A-004 and A-009 alike — each was correct on its own.
+   */
+  appointmentId?: string | null;
   channel: NotificationChannel;
   template: string;
   /** The address to send to. `null`/absent means no address is on file — the
@@ -64,6 +80,7 @@ export async function enqueueNotification(db: Db, input: EnqueueInput): Promise<
       data: {
         businessId: input.businessId,
         dedupeKey: input.dedupeKey,
+        appointmentId: input.appointmentId ?? null,
         channel: input.channel,
         template: input.template,
         recipient,

@@ -320,6 +320,29 @@ describe('BOOK-03 — the deterministic race matrix', () => {
       // Without serialization both pass their engine re-check, so the
       // constraint is what refuses the loser.
       expect(rejected).toHaveLength(1);
+
+      // A PERMANENT DIAGNOSTIC, not debugging left behind.
+      //
+      // This test failed once, on 2026-08-16, during a full-suite run under
+      // TZ=Pacific/Kiritimati: the rejection was a raw
+      // PrismaClientUnknownRequestError instead of SlotTaken. It did not
+      // reproduce in the 23 runs that followed (6 of this file alone, 17 full
+      // suites), so the cause is UNKNOWN and nothing has been "fixed" on the
+      // strength of a plausible story.
+      //
+      // What makes it expensive is that the assertion below reports only the
+      // CLASS, and every contention failure Postgres can raise here —
+      // 23P01 arriving unmapped, a 40P01 deadlock between the two lock-free
+      // writers this test deliberately creates, a P2028 timeout — arrives as
+      // that same class. So the next occurrence would be as uninformative as
+      // the last. Printing the code and message costs nothing on the passing
+      // path and turns a repeat into a diagnosis instead of a third
+      // investigation.
+      if (!(rejected[0]!.reason instanceof SlotTaken)) {
+        const e = rejected[0]!.reason as { code?: unknown; meta?: unknown; message?: unknown };
+        console.log(`1d ESCAPED: ${e?.constructor?.name} code=${String(e?.code)} meta=${JSON.stringify(e?.meta)}`);
+        console.log(`1d MESSAGE: ${String(e?.message).replace(/\s+/g, ' ')}`);
+      }
       expect(rejected[0]!.reason).toBeInstanceOf(SlotTaken);
       expect(await countAt()).toBe(1);
       expect(await overlappingPairs()).toBe(0);

@@ -336,6 +336,8 @@ async function writeAppointment(
     // Derived from the FACT, not the attempt: a retry must collapse onto the
     // same row (P1-7's shape).
     dedupeKey: `confirmation:${appointment.id}`,
+    // The FK, not just the id inside the payload — see EnqueueInput.
+    appointmentId: appointment.id,
     channel: client?.email ? 'email' : 'sms',
     template: 'appointment.confirmed',
     // Absent for a walk-in with no record — enqueue records it suppressed
