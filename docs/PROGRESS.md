@@ -271,3 +271,4 @@ A-025 committed at 0294254
 
 **Left behind:**
 - No `/staff/services/[id]` detail page — everything lives in one expandable card per service on the list page, which is enough for eight services and gets crowded well before eighty; A-016 era problem if it ever matters.
+A-006 committed at 9c6022d
