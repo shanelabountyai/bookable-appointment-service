@@ -442,3 +442,4 @@ A-011 committed at 1596d7a
 - "Anyone available" is not offered yet — the customer picks a named provider. The action layer is already plural-shaped for it.
 - The confirmation screen promises a manage link that A-013's tokens have not built yet.
 - Multi-service visits compose in `packages/core` (A-028) but the customer flow still books one service; the actions take `serviceIds` arrays throughout, so the UI is the only thing missing.
+A-010 committed at 32409f8
