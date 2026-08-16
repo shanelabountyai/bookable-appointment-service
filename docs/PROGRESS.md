@@ -414,3 +414,4 @@ A-028 committed at 47097d0
 **Left behind:**
 - The seed takes ~4 seconds because every appointment goes through a real transaction with an advisory lock. Fine for a seed; it is why the tests share one seeding rather than reseeding per test.
 - **The unexplained single failure recorded under A-028 did not recur** across the many full runs this item required. Still unexplained, still recorded there.
+A-011 committed at 1596d7a
