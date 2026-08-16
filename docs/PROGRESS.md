@@ -497,3 +497,4 @@ Demo checkpoint 1 committed at 8a6c6c4
 **Left behind:**
 - No UI. A-016's day grid and A-027's detail panel are the surfaces; wiring buttons here would be speculative.
 - `transitionAppointment` opens its own transaction, so it cannot yet be composed inside a caller's. A-014's reschedule is a same-row UPDATE and does not need it; A-018's multi-row column push will, and that is where the seam gets opened deliberately.
+A-012 committed at 5894d2b
