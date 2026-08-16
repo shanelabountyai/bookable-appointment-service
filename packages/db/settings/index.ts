@@ -30,3 +30,11 @@ export {
   updateService,
 } from './services';
 export { CHAIR_COUNT, type SetupSeedResult, seedSetup } from './setup-seed';
+export {
+  DEMO_WEEK,
+  type DensitySeedResult,
+  FALL_BACK_DAY,
+  SEED_ANCHOR_DAY,
+  SPRING_FORWARD_DAY,
+  seedDensity,
+} from './density-seed';

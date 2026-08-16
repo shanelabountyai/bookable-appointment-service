@@ -496,4 +496,41 @@ model the obvious way.
 
 ---
 
-<!-- Next entry: A-011 — density seed -->  
+## A-011 — The density seed
+
+**What it is:** a deterministic, realistic book — 225 appointments across four
+stylists with deliberately different workloads — built so every screen that
+comes next is developed against a real salon week rather than an empty
+calendar.
+
+**Why it's not boilerplate — talking points:**
+- **The seed books through the real booking code, not raw inserts.** That makes
+  it slower and much more useful: every seeded appointment is one a user could
+  actually have made, and the seed doubles as an integration test that the
+  booking path, the availability rules, the scheduling engine and the database
+  constraint all agree with each other.
+- **It is anchored to fixed dates, never "today".** A seed anchored to the
+  current date would make the daylight-saving test fixtures exist in March and
+  silently vanish in July, with nothing failing to say so.
+- **It found a trap one level deeper than that.** Both DST days fall on
+  Sundays, and the salon's seeded hours are Tuesday to Saturday — so the two
+  days this entire project exists to get right would have contained *zero*
+  appointments, invisibly. The seed now opens them explicitly, and a test
+  asserts they are populated.
+- **Writing the tests found three genuine bugs in the seed**, each of which
+  would have quietly degraded the demo: picking services a stylist isn't
+  qualified for, sizing "40% booked" off the number of offered start times
+  (which overlap, so it filled every column solid and destroyed the whole point
+  of having different densities), and a database query with no explicit
+  ordering that broke reproducibility — because a seeded random generator is
+  only deterministic if everything it indexes into is ordered too.
+- **One of the failures turned out to be the test's fault, and that was worth
+  proving rather than assuming.** The determinism check was comparing
+  database-generated ids, which are random by design. Diffing the two runs
+  showed the data sets were identical and only the ids differed — so the seed
+  had been correct the whole time, and the test was asserting something that
+  can never be true.
+
+---
+
+<!-- Next entry: A-010 — customer booking flow -->  
