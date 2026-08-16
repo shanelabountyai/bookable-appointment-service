@@ -328,3 +328,4 @@ A-007 committed at 7dce285
 **Left behind:**
 - **`running-late` BusyIntervals are not produced yet.** The engine vocabulary exists (D-22, added at the M1 boundary) but the per-provider-per-day delta has no storage until A-018, so there is nothing for the adapter to read. The shape is ready; the row is not.
 - No caching. `daysWithAvailability` over a 90-day horizon runs the engine 90 times, each with its own queries. Correct and fast enough for a 4-chair salon; the obvious fix when it matters is one busy-set query for the whole range rather than one per day.
+A-026 committed at 59ee9b7
