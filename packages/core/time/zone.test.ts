@@ -9,7 +9,7 @@
  * nothing here may consult the process zone.
  */
 import { describe, expect, it } from 'vitest';
-import { addDays, localDayLengthMinutes, resolve, startOfDay, toLabel } from './zone';
+import { addDays, localDayLengthMinutes, resolve, startOfDay, toLabel, weekdayOf } from './zone';
 import { InvalidTimeValue, calendarDay, instantFromIso, wallTime, zoneId } from './types';
 
 const CHI = zoneId('America/Chicago');
@@ -240,5 +240,19 @@ describe('validation at the boundary — malformed input throws (§2, items 27�
   it('rejects a zoneless ISO string — D-4, a slot identity carries its offset', () => {
     expect(() => instantFromIso('2026-06-09T09:00:00')).toThrow(InvalidTimeValue);
     expect(() => instantFromIso('2026-06-09')).toThrow(InvalidTimeValue);
+  });
+});
+
+describe('weekdayOf — the calendar axis, 0 = Sunday', () => {
+  it.each([
+    ['2026-06-07', 0, 'Sunday'],
+    ['2026-06-08', 1, 'Monday'],
+    ['2026-06-09', 2, 'Tuesday'],
+    ['2026-06-13', 6, 'Saturday'],
+    ['2026-03-08', 0, 'spring-forward Sunday'],
+    ['2026-11-01', 0, 'fall-back Sunday'],
+    ['2028-02-29', 2, 'a leap day'],
+  ])('%s is weekday %i (%s)', (day, expected) => {
+    expect(weekdayOf(calendarDay(day))).toBe(expected);
   });
 });

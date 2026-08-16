@@ -148,6 +148,22 @@ export const fromDate = (d: Date): Instant => {
   return ms as Instant;
 };
 
+/**
+ * Which day of the week a calendar day falls on, 0 = Sunday .. 6 = Saturday.
+ *
+ * A pure calendar-axis operation, so it lives here rather than at any call
+ * site that happens to need it — deriving a weekday means parsing a date, and
+ * every place that does that independently is another chance to parse it
+ * through the process timezone (D-3).
+ *
+ * Temporal counts 1 = Monday .. 7 = Sunday; the schema and JS both use
+ * 0 = Sunday, so this converts once, here, rather than at each reader.
+ */
+export function weekdayOf(day: CalendarDay): number {
+  const dayOfWeek = Temporal.PlainDate.from(day, { overflow: 'reject' }).dayOfWeek;
+  return dayOfWeek === 7 ? 0 : dayOfWeek;
+}
+
 /** Day arithmetic on the CALENDAR axis. Adding 86_400_000 ms is correct on
  *  the physical axis and wrong on this one — after a transition every
  *  occurrence lands an hour off and drifts permanently (spec X-2). */

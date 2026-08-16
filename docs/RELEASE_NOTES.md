@@ -382,4 +382,43 @@ against the business's own opening hours.
 
 ---
 
-<!-- Next entry: A-026 — availability → SlotQuery adapter -->  
+## A-026 — The availability adapter
+
+**What it is:** the seam where the availability rules, the appointment rows and
+the pure slot engine finally meet — and the single highest-risk query in the
+project after the no-double-booking constraint itself.
+
+**Why it's not boilerplate — talking points:**
+- **One query with two independent ways to be silently wrong, both guarded and
+  both mutation-tested.** First, it must be an *instant-overlap* predicate
+  rather than a date filter: a booking starting 23:30 and running past midnight
+  belongs to both days, and a date filter drops it from the second one, after
+  which the engine cheerfully offers midnight to the next customer. Second, and
+  subtler, it must read the override column — a staff double-book deliberately
+  stores a **zero-width** time range so the database constraint stays absolute
+  without refusing the override, which means a busy-set built the obvious way
+  returns an interval occupying no time at all, and the public booking page
+  then offers the exact slot staff knowingly overbooked.
+- **The proof that the test proves anything.** The override test asserts the
+  *fixture* first — that the row's own range really is empty and the override
+  column really is populated — before asserting the query picks it up. Without
+  that, the test would pass just as happily against a fixture that was written
+  wrong, which is the most common way a test about an edge case ends up
+  testing nothing.
+- **Deliberately mutation-tested.** Two real bugs injected: dropping the
+  override handling, and hand-typing a status list that forgets that
+  "completed" and "no-show" appointments still occupy their time. Both caught.
+- **The unsafe option is not the default.** One flag controls both whether the
+  booking horizon applies and whether internal exclusion reasons are exposed —
+  and it defaults to the *public*, restricted treatment. A route that forgets
+  to set it gets the safe behaviour, rather than leaking "overlaps-booking" to
+  an anonymous visitor, which would tell them precisely when a stylist is with
+  a client.
+- **The date picker runs the real engine, not an approximation.** Computing
+  "which days have availability" a cheaper way produces a calendar that greys
+  out days the booking page will happily sell, or offers days it then refuses —
+  a class of bug users experience as the software being broken.
+
+---
+
+<!-- Next entry: A-009 — booking write path -->  

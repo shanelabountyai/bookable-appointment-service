@@ -303,3 +303,28 @@ A-006 committed at 9c6022d
 - The availability UI takes time off as offset-bearing ISO text (D-4 forbids a `{date, time}` payload). Correct but unfriendly; a proper picker that composes an instant belongs with the day grid (A-016), which is the first surface where staff enter times routinely.
 - `daysWithAvailability` and the busy-set query that feeds `SlotQuery` are A-026, as sequenced.
 A-007 committed at 7dce285
+
+
+---
+
+## A-026 — Availability → SlotQuery adapter
+
+**Built:**
+- `packages/db/scheduling/busy-set.ts` — `findBusyAppointments`, raw SQL because neither `tstzrange`, `&&` nor `COALESCE` over a range type is expressible through Prisma. Status filter derived from `ACTIVE_STATUSES`, the same module the exclusion constraint's predicate comes from (D-15).
+- `packages/db/scheduling/slot-query.ts` — `buildSlotQuery` (business policy + zone, per-provider service overrides, A-007's resolved windows, the busy set), `computeDaySlots`, and `daysWithAvailability` (SLOT-07).
+- `packages/core/time` — added `weekdayOf`, because deriving a weekday means parsing a date and every call site that does it independently is another chance to parse through the process timezone (D-3).
+- 19 database tests. Suite is now 364 unit + 30 e2e.
+
+**Decided:**
+- **`audience` defaults to `'public'`, the SAFE value.** It controls two things: the D-21 horizon cap and whether `explain` is set. A route that forgets to pass it gets the restricted treatment — the direction a mistake should fail in, since `explain` leaking `overlaps-booking` to an anonymous visitor tells them exactly when the provider is with a client (spec §1.3). Enforced here *as well as* at the route, because "enforced at the route" is one forgotten line away from a leak.
+- **An unqualified provider is an explicit refusal, not an empty result.** SVC-02 says such a provider never appears in that service's flow; a caller asking for an impossible pair has a bug, and returning "no slots" would hide it. A deactivated provider or service *does* return empty, because that is a real, temporary state rather than a programming error.
+- **`daysWithAvailability` runs the same pure engine, once per day, rather than a cheaper approximation.** A date picker computed a different way is a date picker that greys out a day the booking page will sell, or offers one it then refuses. It walks days with `addDays` on the calendar axis, never by adding 86_400_000 ms, and carries a 400-iteration guard so an inverted range cannot spin.
+- **The busy-set query range is widened by the service's own buffers and a day either side.** A candidate's blocked range extends past the window on both sides, so a booking sitting just outside the window can still collide with the first or last candidate; querying only the window would miss it.
+
+**Verified, not assumed:**
+- **Mutation-tested the two ways this query is silently wrong**, both caught: dropping the `COALESCE` so an override's zero-width range blocks nothing (the D-16 hole — 1 failure), and hand-typing a status list that forgets `no_show`/`completed` (1 failure).
+- The D-16 test asserts the fixture *itself* first — that the row's own blocked range really is empty and `overriddenFromRange` really is set — so it cannot pass because the fixture was written wrong.
+
+**Left behind:**
+- **`running-late` BusyIntervals are not produced yet.** The engine vocabulary exists (D-22, added at the M1 boundary) but the per-provider-per-day delta has no storage until A-018, so there is nothing for the adapter to read. The shape is ready; the row is not.
+- No caching. `daysWithAvailability` over a 90-day horizon runs the engine 90 times, each with its own queries. Correct and fast enough for a 4-chair salon; the obvious fix when it matters is one busy-set query for the whole range rather than one per day.

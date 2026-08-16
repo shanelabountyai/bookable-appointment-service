@@ -1,0 +1,77 @@
+/**
+ * THE BUSY-SET QUERY (A-026, D-16).
+ *
+ * The single highest-risk query in the project after the exclusion constraint
+ * itself, and it has two ways to be silently wrong. Both are guarded here and
+ * both have a test.
+ *
+ * 1. IT IS AN INSTANT-OVERLAP PREDICATE, NEVER `WHERE date(startAt) = day`.
+ *    A booking that starts 23:30 and runs past midnight belongs to BOTH days.
+ *    A date filter drops it from the second one, and the engine — seeing
+ *    nothing in the way — cheerfully offers 00:00 to the next customer.
+ *
+ * 2. IT READS `COALESCE("overriddenFromRange", tstzrange(blocked...))`.
+ *    A staff override (D-8) stores a ZERO-WIDTH blocked range so the exclusion
+ *    constraint stays absolute without refusing the override. That empty range
+ *    overlaps nothing, so a busy set built from `blockedStart/blockedEnd`
+ *    alone returns the override as an interval that blocks no time at all —
+ *    and the public booking flow then offers the exact slot staff knowingly
+ *    double-booked, letting a customer create the accidental conflict Goal 2
+ *    promises is impossible. `overriddenFromRange` carries the TRUE range and
+ *    this query is the reader D-16 exists for.
+ *
+ * Raw SQL rather than the Prisma query builder because neither `tstzrange`,
+ * `&&`, nor `COALESCE` over a range type is expressible through it.
+ */
+import { ACTIVE_STATUSES } from '../../core/scheduling';
+import type { Prisma, PrismaClient } from '../generated/client/index.js';
+
+type Db = Prisma.TransactionClient | PrismaClient;
+
+export interface BusyRow {
+  id: string;
+  start: Date;
+  end: Date;
+  kind: 'booking';
+}
+
+/**
+ * Every appointment occupying any part of [windowStart, windowEnd) for this
+ * provider.
+ *
+ * The status filter is derived from `ACTIVE_STATUSES` — the same single module
+ * the exclusion constraint's predicate is derived from (D-15). `completed` and
+ * `no_show` still OCCUPY their time; only `cancelled`/`cancelled_late` free
+ * it. Hand-typing the list here would be the "a status enum is never one edit"
+ * trap that this project structurally prevents everywhere else.
+ */
+export async function findBusyAppointments(
+  db: Db,
+  args: { providerId: string; windowStart: Date; windowEnd: Date },
+): Promise<BusyRow[]> {
+  const rows = await db.$queryRawUnsafe<{ id: string; start: Date; end: Date }[]>(
+    `
+    SELECT a."id",
+           lower(COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))) AS "start",
+           upper(COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))) AS "end"
+      FROM "Appointment" a
+     WHERE a."providerId" = $1
+       AND a."status"::text = ANY($4::text[])
+       AND COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))
+           && tstzrange($2::timestamptz, $3::timestamptz, '[)')
+     ORDER BY "start"
+    `,
+    args.providerId,
+    args.windowStart,
+    args.windowEnd,
+    [...ACTIVE_STATUSES],
+  );
+
+  // A row whose range is empty on BOTH sides (a zero-width blocked range with
+  // no overriddenFromRange) cannot occupy time and is dropped rather than
+  // handed to the engine as a zero-length interval — which would subtract
+  // nothing and merely look like a bug in the engine instead of here.
+  return rows
+    .filter((r) => r.start !== null && r.end !== null && r.end > r.start)
+    .map((r) => ({ id: r.id, start: r.start, end: r.end, kind: 'booking' as const }));
+}
