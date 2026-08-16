@@ -360,3 +360,4 @@ All three mutations are now caught, verified over repeated runs.
 - The manage link is a placeholder string until A-013 mints real scoped tokens.
 - One service line per appointment; VISIT-01's multi-service composition is A-028.
 - The busy-set query window is ±24h around the day, so an appointment longer than ~24 hours would be missed by the engine (the constraint would still refuse it). Not reachable with any seeded service; worth widening when segmented durations land.
+A-009 committed at a3ebf4c
