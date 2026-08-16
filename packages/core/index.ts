@@ -4,6 +4,7 @@
  *  `/notifications`) over this barrel: they keep an import graph readable and
  *  stop a UI component pulling the slot engine in to use a date helper. */
 export * from './auth';
+export * from './availability';
 export * from './notifications';
 export * from './scheduling';
 export * from './settings';

@@ -311,6 +311,14 @@ model WeeklyWindow {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+
+  /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
+  /// covers appointments and stops at the appointment boundary, so "who
+  /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
+  /// system stop offering 4:30?" had no answer at all. Availability edits are
+  /// destructive UPDATEs, so without this the previous state is simply gone.
+  createdByActor Actor?  @default(staff)
+  actorRef       String?
   business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   provider Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
   breaks   WindowBreak[]
@@ -348,6 +356,14 @@ model DateOverride {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+
+  /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
+  /// covers appointments and stops at the appointment boundary, so "who
+  /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
+  /// system stop offering 4:30?" had no answer at all. Availability edits are
+  /// destructive UPDATEs, so without this the previous state is simply gone.
+  createdByActor Actor?  @default(staff)
+  actorRef       String?
   business Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
   provider Provider?             @relation(fields: [providerId], references: [id], onDelete: Cascade)
   windows  DateOverrideWindow[]
@@ -389,6 +405,14 @@ model TimeOff {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+
+  /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
+  /// covers appointments and stops at the appointment boundary, so "who
+  /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
+  /// system stop offering 4:30?" had no answer at all. Availability edits are
+  /// destructive UPDATEs, so without this the previous state is simply gone.
+  createdByActor Actor?  @default(staff)
+  actorRef       String?
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
@@ -406,6 +430,14 @@ model AdHocBlock {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+
+  /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
+  /// covers appointments and stops at the appointment boundary, so "who
+  /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
+  /// system stop offering 4:30?" had no answer at all. Availability edits are
+  /// destructive UPDATEs, so without this the previous state is simply gone.
+  createdByActor Actor?  @default(staff)
+  actorRef       String?
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 

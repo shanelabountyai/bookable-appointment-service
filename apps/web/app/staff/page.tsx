@@ -33,6 +33,9 @@ export default async function StaffHome() {
         <Link href="/staff/services" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Services
         </Link>
+        <Link href="/staff/availability" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Availability
+        </Link>
       </nav>
 
       <p className="text-zinc-500">The day grid arrives with A-016.</p>

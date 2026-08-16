@@ -18,6 +18,7 @@
   "exports": {
     ".": "./index.ts",
     "./auth": "./auth/index.ts",
+    "./availability": "./availability/index.ts",
     "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
     "./settings": "./settings/index.ts",

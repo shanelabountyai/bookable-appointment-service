@@ -343,4 +343,43 @@ real row rather than assumed to work.
 
 ---
 
-<!-- Next entry: A-007 — availability model -->  
+## A-007 — The availability model
+
+**What it is:** the precedence chain that decides when a provider is actually
+available — weekly hours, per-date overrides, breaks, time off — resolved
+against the business's own opening hours.
+
+**Why it's not boilerplate — talking points:**
+- **The whole chain is computed in wall-clock minutes, and that is the design
+  decision.** A window is minutes-from-local-midnight (an overnight close of
+  `02:00` is 1560, not 120), so the arithmetic never touches a timezone at all.
+  "Dana works Tuesdays 9–5" is a claim about the wall clock that stays true
+  whatever the offset does that week — resolving it to actual instants is one
+  separate, already-tested step. Keeping those two apart is what makes the
+  daylight-saving edge cases someone else's solved problem rather than this
+  module's recurring bug.
+- **"Closed" and "no override" are deliberately different states.** A day with
+  an explicit closure and a day with no special rule both produce zero
+  available hours, but they are not the same fact, and collapsing them is how a
+  public holiday silently becomes an ordinary working day next year. The schema
+  represents both and the resolver preserves the distinction.
+- **An override replaces, never merges.** "Open 10–2 on Christmas Eve" means
+  exactly 10–2 — not 10–2 plus the usual 9–5. Easy to get wrong, and the wrong
+  version books clients into hours nobody agreed to work.
+- **Availability is the intersection of business and provider hours, not the
+  union.** The salon being open is a precondition for a stylist working, so one
+  business holiday closes everyone's day regardless of their individual
+  patterns — with an explicit test for exactly that.
+- **Recording time off over existing appointments SUCCEEDS, on purpose.**
+  "Dana called in sick" must never be refused because she has nine appointments
+  booked; what happens to those nine is a decision for a person, surfaced as an
+  impact preview. There is a test asserting the *absence* of a refusal — the
+  requirement is that nothing is silently cancelled, so the non-refusal is
+  tested as deliberately as any behaviour.
+- **The tests were mutation-checked.** Three deliberate bugs injected into the
+  precedence logic — intersection turned into union, override merging instead
+  of replacing, and out-of-range breaks silently dropped — all three caught.
+
+---
+
+<!-- Next entry: A-026 — availability → SlotQuery adapter -->  

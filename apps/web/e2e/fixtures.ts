@@ -24,23 +24,48 @@ import { resetDatabase } from '@bookable/db/testing';
 export const STAFF_EMAIL = 'owner@shear-genius.test';
 export const STAFF_PASSWORD = 'e2e-staff-password';
 
-export const test = base;
-
-test.beforeEach(async () => {
-  const prisma = new PrismaClient();
-  try {
-    await resetDatabase(prisma);
-    await seedStaffUser(prisma, { email: STAFF_EMAIL, password: STAFF_PASSWORD });
-    // Known policy baseline, so a spec asserting "not 60" or "shorter than
-    // the lead time" is meaningful and reproducible run over run.
-    const business = await prisma.business.findFirstOrThrow();
-    await prisma.business.update({
-      where: { id: business.id },
-      data: { minimumLeadMinutes: 120, cancellationCutoffMinutes: 120, bookingHorizonDays: 90, noShowBlockThreshold: 3 },
-    });
-  } finally {
-    await prisma.$disconnect();
-  }
+/**
+ * An AUTO FIXTURE, not `test.beforeEach()`.
+ *
+ * That distinction is the whole reason this file works. A bare
+ * `test.beforeEach(...)` at module scope here registers the hook against
+ * whichever spec file happens to import this module FIRST — Node caches the
+ * module, so the registration statement never runs again and every other spec
+ * file silently gets no reset at all. That failed exactly as you would expect
+ * and no more obviously: each spec file passed when run alone, and the suite
+ * failed as soon as two files ran together, with data leaking from one test
+ * into the next inside whichever file lost the race.
+ *
+ * `auto: true` is per-test by construction: Playwright sets the fixture up
+ * before every test that uses this `test` object, in every file, regardless of
+ * import order.
+ */
+export const test = base.extend<{ freshDatabase: void }>({
+  freshDatabase: [
+    async ({}, use) => {
+      const prisma = new PrismaClient();
+      try {
+        await resetDatabase(prisma);
+        await seedStaffUser(prisma, { email: STAFF_EMAIL, password: STAFF_PASSWORD });
+        // Known policy baseline, so a spec asserting "not 60" or "shorter than
+        // the lead time" is meaningful and reproducible run over run.
+        const business = await prisma.business.findFirstOrThrow();
+        await prisma.business.update({
+          where: { id: business.id },
+          data: {
+            minimumLeadMinutes: 120,
+            cancellationCutoffMinutes: 120,
+            bookingHorizonDays: 90,
+            noShowBlockThreshold: 3,
+          },
+        });
+      } finally {
+        await prisma.$disconnect();
+      }
+      await use();
+    },
+    { auto: true },
+  ],
 });
 
 export { expect };

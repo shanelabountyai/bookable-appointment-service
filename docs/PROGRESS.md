@@ -272,3 +272,33 @@ A-025 committed at 0294254
 **Left behind:**
 - No `/staff/services/[id]` detail page — everything lives in one expandable card per service on the list page, which is enough for eight services and gets crowded well before eighty; A-016 era problem if it ever matters.
 A-006 committed at 9c6022d
+
+
+---
+
+## A-007 — Availability model
+
+**Built:**
+- `packages/core/availability/windows.ts` — the precedence chain, pure and entirely on the CALENDAR axis. Windows are minutes-from-local-midnight integers (an overnight close of `02:00` is 1560, not 120), so the arithmetic is DST-agnostic by construction: "Dana works Tuesdays 9–5" is a rule about the wall clock and stays true whatever the offset does that week. Resolution to instants is one later step and belongs to `packages/core/time`.
+- `toMinuteWindow` (AVAIL-01 validation), `unionWindows`, `intersectWindows` (AVAIL-04), `effectiveWindows` (AVAIL-02's override-replaces rule), `resolveAvailableWindows` (the whole wall-clock chain), `toWindowInput` (back to the shape `SlotQuery` wants).
+- `packages/db/availability/` — `resolveDayWindows` (business ∩ provider for one day), `findAbsences` (instant-overlap predicate), and writes for weekly windows, date overrides, time off and ad-hoc blocks, each stamped with an actor.
+- Migration `20260816010658_availability_audit_columns` — `createdByActor`/`actorRef` on `WeeklyWindow`, `DateOverride`, `TimeOff`, `AdHocBlock` (operator R-8).
+- `apps/web/app/staff/availability` — business-level and per-provider hours, date overrides, time off/blocks, all behind `requireStaff()`.
+- 39 pure tests, 22 database tests, 10 e2e specs. Suite is now 338 unit + 30 e2e.
+
+**Decided:**
+- **The pure module never touches instants, zones or Temporal.** Only the first two lines of AVAIL-03's chain (business override-or-weekly ∩ provider override-or-weekly) are wall-clock; everything below them — breaks aside — is on the physical axis and is the engine's job. That is why time off and ad-hoc blocks are returned as instant intervals here and subtracted by the engine, not folded into windows.
+- **`resolveDayWindows` takes `weekday` as a parameter rather than deriving it from the day string.** Deriving it would mean parsing a date, which is exactly the axis crossing D-3 forbids this module from making. The caller already holds a zone.
+- **`upsertDateOverride` replaces child windows wholesale.** An override replaces the pattern (AVAIL-02); a half-updated set of child windows would be a pattern nobody chose.
+- **Nothing in the availability write path checks for appointments it strands** (D-2/AVAIL-03). Recording "Dana called in sick" must always succeed even with nine appointments booked; surfacing those nine is A-019's impact preview. There is an explicit test asserting time off over an existing appointment is ACCEPTED and the appointment is untouched — the absence of a refusal is the requirement, so it is tested as one.
+
+**Verified, not assumed:**
+- **Mutation-tested the precedence chain**, three deliberate bugs, all caught: intersection → union (6 failures — the business-holiday rule), override merging instead of replacing (1), and silently dropping a break that falls outside its window (1).
+
+**Found and fixed — the fourth and final form of the isolation bug:**
+- The shared e2e fixture added in A-006 **was not running for most spec files**. A bare `test.beforeEach()` at module scope in a shared module registers against whichever spec file imports it FIRST — Node caches the module, so the registration statement never runs again and every other file silently gets no reset. It failed in the least obvious way possible: every spec file passed when run alone, and the suite failed only when two files ran together, with data leaking between tests inside whichever file lost the race. Replaced with a proper Playwright **auto fixture** (`base.extend(..., { auto: true })`), which is per-test by construction in every file regardless of import order. Confirmed with two consecutive full-suite runs.
+- Two more genuine locator bugs, found by reading Playwright's captured DOM rather than guessing: `getByText('Time off')` matched four elements (heading, explanatory paragraph, `<option>`, and the row), and the earlier `main > ul > li` count assertion was masking the real leak rather than measuring anything.
+
+**Left behind:**
+- The availability UI takes time off as offset-bearing ISO text (D-4 forbids a `{date, time}` payload). Correct but unfriendly; a proper picker that composes an instant belongs with the day grid (A-016), which is the first surface where staff enter times routinely.
+- `daysWithAvailability` and the busy-set query that feeds `SlotQuery` are A-026, as sequenced.
