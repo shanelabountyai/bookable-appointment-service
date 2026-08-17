@@ -567,3 +567,4 @@ A-013 committed at 7cec2c9
 - Staff have no reschedule surface yet — A-016's grid and A-027's detail panel are where it belongs, and the write path is already staff-shaped.
 - The customer's DAY list uses the live service duration (via `daysWithAvailability`) while the TIME list uses the snapshot. They differ only if the catalogue changed since booking, and only in whether a day appears at all; the times a customer can actually pick are always the snapshot's.
 - `SlotTaken` from a reschedule carries no alternatives. Unlike a first booking the customer still has her appointment, so the honest answer is "that time went, yours is unchanged" — a list of alternatives here would invite a second attempt at the exact moment the first failed.
+A-014 committed at 27208cd
