@@ -702,3 +702,4 @@ A-017 committed at 5616d8c
 - Check-in and in-progress still have no buttons; A-012 built the transitions and A-027's detail panel is where the controls belong. The timestamps they write are already what the delta is *not* derived from (D-22).
 - The push starts at the next appointment, not an arbitrary time the user picks. "From here" in a salon means "from the client who has not sat down yet", and a time picker would be a second way to say the same thing.
 - Running EARLY is not modelled. Nobody is kept waiting by it.
+A-018 committed at 6526fde
