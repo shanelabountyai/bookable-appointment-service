@@ -23,6 +23,7 @@
     "./booking": "./booking/index.ts",
     "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
+    "./rate-limit": "./rate-limit.ts",
     "./scheduling": "./scheduling/index.ts",
     "./settings": "./settings/index.ts",
     "./testing": "./testing/index.ts"

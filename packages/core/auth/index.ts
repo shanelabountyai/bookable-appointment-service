@@ -1,4 +1,11 @@
 export { type Actor, type ActorType, customerTokenActor, staffActor, systemActor } from './actor';
+export {
+  MANAGE_TOKEN_GRACE_MS,
+  type MintedManageToken,
+  hashManageToken,
+  manageTokenExpiry,
+  mintManageToken,
+} from './manage-token';
 export { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './password';
 export {
   MissingSessionSecret,

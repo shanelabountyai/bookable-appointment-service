@@ -29,6 +29,7 @@ import type { Actor } from '../../core/auth';
 import { type Slot, type VisitLine, composeVisit, computeSlots } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { effectivePriceCents, effectiveDurationMinutes } from '../../core/settings';
+import { issueManageToken } from '../appointments';
 import { enqueueNotification } from '../notifications';
 import { buildSlotQuery } from '../scheduling';
 import { isSlotTakenError } from '../errors';
@@ -326,10 +327,18 @@ async function writeAppointment(
 
   // BOOK-06 — enqueued INSIDE the transaction (D-14's whole design): a booking
   // must never commit without its confirmation, nor a confirmation without its
-  // booking. The manage link is a placeholder until A-013 mints real tokens.
+  // booking. The manage token is minted in the same breath and for the same
+  // reason: a confirmation whose link does not work is worse than no link.
   const client = input.clientId
     ? await tx.client.findUnique({ where: { id: input.clientId }, select: { email: true, phone: true } })
     : null;
+
+  const { token } = await issueManageToken(tx, {
+    businessId: input.businessId,
+    appointmentId: appointment.id,
+    endAt: appointment.endAt,
+    now: input.now,
+  });
 
   await enqueueNotification(tx, {
     businessId: input.businessId,
@@ -347,15 +356,15 @@ async function writeAppointment(
     payload: {
       appointmentId: appointment.id,
       startAt: appointment.startAt.toISOString(),
-      manageUrl: `/manage/${MANAGE_LINK_PLACEHOLDER}`,
+      // The RAW token, which exists only here and in the message. Nothing
+      // reads it back out of the outbox to act on — the row is the record of
+      // what was sent (operator R-4), so the link in it has to be the real one.
+      manageUrl: `/manage/${token}`,
     },
   });
 
   return { ...appointment, deduplicated: false };
 }
-
-/** A-013 replaces this with a real scoped, expiring token. */
-const MANAGE_LINK_PLACEHOLDER = 'token-placeholder';
 
 async function freshAlternatives(
   prisma: PrismaClient,

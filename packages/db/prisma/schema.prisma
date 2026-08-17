@@ -736,3 +736,32 @@ model WaitlistEntry {
   @@index([businessId, status])
   @@index([clientId])
 }
+
+// ─────────────────────────── infrastructure ───────────────────────────
+
+/// A-013. One counter per rate-limit key, for TOKEN-02's "the route is
+/// rate-limited (it returns PII)".
+///
+/// NO `businessId`, and that is deliberate rather than an oversight of the
+/// rule: the key is usually a client IP, which belongs to no tenant, and a
+/// column that would have to be filled with a lie is worse than an absent one.
+/// This is infrastructure, not a §8 entity — nothing in the domain reads it.
+///
+/// A DATABASE TABLE rather than an in-process Map because the deploy target is
+/// serverless (Vercel): every instance would hold its own Map, so the real
+/// limit would be N x the configured one, silently, with the multiplier set by
+/// autoscaling. A counter that lies about the number it enforces is worse than
+/// none, because it is trusted.
+model RateLimitCounter {
+  /// e.g. "manage:203.0.113.7". Namespaced by the caller so two limiters can
+  /// never share a bucket.
+  key String @id
+
+  /// When the current window opened — the FIRST request in it, not a clock
+  /// boundary. A fixed boundary lets a caller spend a full window's budget at
+  /// 11:59:59 and another at 12:00:00.
+  windowStart DateTime @db.Timestamptz(3)
+  count       Int
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}

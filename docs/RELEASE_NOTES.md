@@ -664,4 +664,75 @@ customers a staff-only power, flipping a boundary — and all five were caught.
 
 ---
 
-<!-- Next entry: A-013 — manage token -->  
+## The link in the text message
+
+Every confirmation carries a link that opens that one appointment. No login, no
+password, no account — which is exactly why the interesting decisions here are
+all about what the link *cannot* do.
+
+**It stays usable, deliberately.** The obvious design is a link that burns on
+first use. It was considered and rejected: confirming and then cancelling two
+days later, or rescheduling twice, is the *ordinary* thing customers do, so a
+single-use link fails on step two of almost every appointment — and the salon
+answers the phone instead. Single-use is right where a link starts a session
+(a staff password reset); it is wrong where a link *is* the session. The
+controls that replace it are scope, expiry, revocation and a rate limit.
+
+**It is a lookup, not a message.** The staff session cookie is a signed payload
+that anyone holding it can read. That shape is unusable for a customer link,
+because the URL is a customer surface and no internal identifier is allowed to
+reach one. This link is 256 random bits: it contains nothing, it is looked up.
+
+**The database stores a hash, never the link.** Deliberately a fast hash rather
+than the slow one used for the staff password — the slow one exists to make a
+*guessable* secret expensive to guess, and random 256-bit values are not
+guessable. Paying that cost on every tap of a link from a text message would
+buy nothing. The hash is there so a stolen database is not a folder of live
+links.
+
+**Expired, revoked, and never-existed all give the same sentence.** Anything
+that told the difference would confirm to a script that one of its guesses had
+named a real appointment.
+
+**Sending a new link kills the old one.** A phone number corrected at the front
+desk means the message that went to the wrong number stops working.
+
+**Expiry is 24 physical hours after the appointment ends** — not "the next day
+at the same time". Tested across both clock changes: 24 hours after a 4pm
+Saturday appointment is 5pm on the wall in March and 3pm in November. The
+calendar-day version of this passes every test written in any month except two.
+
+**The rate limit is in the database, not in memory.** The deploy target runs
+many instances, so an in-memory counter would enforce N times the configured
+limit, with N decided by autoscaling — a limiter that lies about the number it
+enforces is worse than none, because it gets trusted. It is also a single SQL
+statement rather than a read followed by a write, for the same reason the
+booking path leans on a database constraint: two simultaneous requests must not
+both read 9 and both write 10. A test fires twelve at once and asserts none is
+lost.
+
+**The limit lives on the gate, not on the page** — so it cannot be walked
+around by skipping the page and posting the action directly — and it is spent
+*before* the link is looked up, so a guessing loop pays for its guesses.
+
+**Cancelling never re-decides the cutoff.** The page asks to cancel; the
+appointment lifecycle's own refusal is what reclassifies it as a late
+cancellation. A second copy of that rule on a customer screen is exactly the
+kind of duplicated status logic that quietly diverges.
+
+**A test reads the rendered page, not the code.** It asserts that this
+customer's appointment id, client id, provider id and business id appear
+nowhere in the HTML, along with the internal status values and table names — a
+component can be perfect while a layout, an error boundary or a stray attribute
+puts an identifier in the markup. The cancel button sends the link back rather
+than an appointment id, so there is nothing in the page to lift.
+
+**And a flaw caught in a test before it could become a "flaky" one.** The first
+version asserted a success message that lives inside the form the page removes
+when it refreshes — a race against a re-render that would have failed once a
+month and been blamed on the browser. It asserts the refreshed page instead,
+which is what the customer actually sees.
+
+---
+
+<!-- Next entry: A-014 — reschedule -->  

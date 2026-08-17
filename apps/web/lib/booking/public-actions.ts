@@ -13,7 +13,8 @@
  * crosses this boundary. The only ids returned are the ones the next request
  * must echo back.
  */
-import { addDays, calendarDay, fromDate, instantFromIso, toDate, toLabel, weekdayOf, zoneId } from '@bookable/core/time';
+import { addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
 import { SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
@@ -104,22 +105,6 @@ export async function listDaysWithOpenings(serviceId: string, providerId: string
     toDay: addDays(today, DAYS_AHEAD),
   });
   return days.map((day) => ({ day, label: readableDay(day) }));
-}
-
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-] as const;
-
-/** "Tuesday 9 June". The weekday comes from the ONE conversion module.
- *
- *  NOT exported: every export from a `'use server'` module must be an async
- *  function, and this is neither async nor something a client should call. */
-function readableDay(day: string): string {
-  const [, month, dayOfMonth] = day.split('-');
-  const weekday = WEEKDAYS[weekdayOf(calendarDay(day))]!;
-  return `${weekday} ${Number(dayOfMonth)} ${MONTHS[Number(month) - 1]!}`;
 }
 
 export async function listTimesOn(serviceId: string, providerId: string, day: string): Promise<OfferedTime[]> {

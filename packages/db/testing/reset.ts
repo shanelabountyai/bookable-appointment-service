@@ -49,6 +49,9 @@ const TABLES = [
   'Provider',
   'StaffUser',
   'Business',
+  // Infrastructure, no foreign keys — but a counter left at its limit by one
+  // test would refuse the next test's first request.
+  'RateLimitCounter',
 ] as const;
 
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {

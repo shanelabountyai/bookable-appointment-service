@@ -18,6 +18,7 @@ import { staffActor } from '../../core/auth';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
+import { verifyManageToken } from '../appointments';
 import { bookAppointment } from './book';
 
 const prisma = new PrismaClient();
@@ -115,6 +116,30 @@ describe('the booking confirmation is reachable FROM the appointment', () => {
     expect(payload.manageUrl).toContain('/manage/');
     // D-4: the instant, never a {date, time} pair.
     expect(payload.startAt).toBe(appointment.startAt.toISOString());
+  });
+
+  /**
+   * A-013's seam, written for the same reason as the foreign key above: every
+   * part was correct in isolation while the thing that joins them was a
+   * placeholder string. The assertion is not "a token exists" but "the link we
+   * actually sent her opens HER appointment".
+   */
+  it('sends a link that opens the appointment it is about', async () => {
+    const appointment = await book();
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { appointmentId: appointment.id } });
+    const token = String((row.payload as { manageUrl: string }).manageUrl).replace('/manage/', '');
+
+    const grant = await verifyManageToken(prisma, token, NOW);
+    expect(grant?.appointmentId).toBe(appointment.id);
+  });
+
+  it('mints one live token per booking, and no token for a deduplicated retry', async () => {
+    const first = await book({ idempotencyKey: 'retry-me' });
+    await book({ idempotencyKey: 'retry-me' });
+    // A second token would silently revoke the first — the link already in the
+    // customer's hand would stop working because she double-tapped Confirm.
+    expect(await prisma.manageToken.count({ where: { appointmentId: first.id, revokedAt: null } })).toBe(1);
+    expect(await prisma.manageToken.count({ where: { appointmentId: first.id } })).toBe(1);
   });
 
   it('writes exactly one confirmation when the same booking is retried', async () => {

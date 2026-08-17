@@ -498,3 +498,41 @@ Demo checkpoint 1 committed at 8a6c6c4
 - No UI. A-016's day grid and A-027's detail panel are the surfaces; wiring buttons here would be speculative.
 - `transitionAppointment` opens its own transaction, so it cannot yet be composed inside a caller's. A-014's reschedule is a same-row UPDATE and does not need it; A-018's multi-row column push will, and that is where the seam gets opened deliberately.
 A-012 committed at 5894d2b
+
+---
+
+## A-013 — Manage token
+
+**Built:**
+- `packages/core/auth/manage-token.ts` — mint / hash / expiry. Pure, and the third credential in that folder alongside the staff password and the staff session.
+- `packages/db/appointments/manage-token.ts` — `issueManageToken` (revokes on reissue), `verifyManageToken`, `repointManageTokens`, `revokeManageTokens`.
+- `packages/db/rate-limit.ts` + `RateLimitCounter` table — one-statement atomic counter, first DB-backed limiter in the repo.
+- `apps/web/lib/manage/token-gate.ts` — the gate both the page and the cancel action come through.
+- `apps/web/app/manage/[token]/` — the customer's page, and cancel.
+- `apps/web/lib/customer-format.ts` — D-10's "one formatter for customer-facing times", moved out of `public-actions.ts` where a second copy was about to be written.
+- A-009's `MANAGE_LINK_PLACEHOLDER` is gone: the booking write path mints the real token inside its transaction.
+- 7 pure + 21 integration tests (+2 on the booking seam), 6 e2e. 564 unit tests total, identical under both timezones.
+
+**Decided:**
+- **The token is a LOOKUP value, not a signed one.** The staff session is an HMAC-signed payload anyone holding it can read; that shape is unusable here, because the URL is a customer surface and D-10 forbids an internal identifier reaching one. 256 random bits carry nothing and are looked up by hash.
+- **sha256, not scrypt.** scrypt's cost exists to make a *guessable* secret expensive to guess. A CSPRNG token is not guessable, so the cost would buy nothing and would be paid on every tap of a link from an SMS. The hash is there so a database dump is not a folder of live links.
+- **Every failure is one outcome.** Unknown, revoked and expired all return `null` from `verifyManageToken` and produce the same sentence — TOKEN-02's non-enumerating message. A differentiated error is the oracle a random token exists to deny.
+- **Exactly ON the expiry is dead.** An expiry is the first instant the link stops working; "one millisecond later" is a boundary nobody can state in a sentence.
+- **The grace is a physical 24 hours, not "tomorrow at the same time".** Tested across both DST transitions: 24 physical hours after a Saturday 16:00 appointment lands at 17:00 on the wall after spring-forward and 15:00 after fall-back. A calendar-day implementation passes every month except two.
+- **`repointManageTokens` ships here, not in A-014.** Reschedule owns the *move*; this module owns `end + 24h`. Writing that arithmetic a second time in A-014 is how two surfaces come to disagree about when a link dies.
+- **The rate limiter is a database table, not an in-process Map.** The deploy target is serverless: every instance would hold its own Map, so the enforced limit would be N x the configured one with N set by autoscaling. A counter that lies about the number it enforces is worse than none, because it is trusted.
+- **The limiter is one statement** (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`), no transaction and no lock. Read-then-write under `READ COMMITTED` lets two requests both read 9 and both write 10 — the same check-then-write reflex the exclusion constraint exists to avoid. A concurrency test asserts 12 concurrent calls lose no count.
+- **The limiter is in the GATE, not on the page**, so the limit the page enforces cannot be walked around by posting the cancel action directly. It is consumed *before* the token is looked up, so a guessing loop pays for its guesses.
+- **Cancel ships here.** A-014 owns reschedule and A-021 owns confirm; no row owned cancel, and a token that grants nothing cannot be tested for scope. It is ~15 lines on top of A-012's state machine.
+- **The cancel path never computes a cutoff.** It asks for `cancelled`, and A-012's own refusal (`inside-cancellation-cutoff`) is what selects `cancelled_late`. A second cutoff calculation on a customer surface is precisely the duplicated status logic the transitions module exists to prevent.
+- **The status→copy map is a total `Record<AppointmentStatus, string>`**, so a ninth state is a compile error rather than a blank line on a customer's screen. `cancelled` and `cancelled_late` deliberately read the same: the split is the salon's revenue record, not a label for the person who cancelled.
+- **The cancel form carries the TOKEN back, not an appointment id** — so there is no internal identifier in the markup at all, and the form holds no authority of its own.
+- **`Referrer-Policy: no-referrer` on `/manage/*`, and `noindex`.** The link's authority is its URL, so the URL must not travel in a `Referer` header or sit in a search index.
+
+**A flaw caught in my own test before the sweep finished:** the cancel spec asserted the action's success sentence, which lives inside the form that `revalidatePath` unmounts — a race against a re-render that would have been a "flaky test" later. It now asserts the re-rendered page state instead, which is the real feedback a customer sees.
+
+**Left behind:**
+- Confirm and reschedule are not wired to the token yet — A-021 and A-014 own them, and both come through `openManageLink` when they land.
+- The limiter's window is fixed, not sliding: a caller can spend the budget either side of a boundary, up to 2x the limit. Marked `ponytail:` with the upgrade path. Irrelevant against bulk PII retrieval, which is what it defends.
+- The caller key is the first hop of `x-forwarded-for`; behind a proxy that does not set it, everyone shares one bucket. Vercel always sets it, so the ceiling bites only in local dev.
+- `authenticateStaff`'s `ponytail:` note asked for exactly this machinery so staff login could use it too. Not wired — one shared credential with a ~100ms scrypt cost is not the surface under threat, and doing it unasked is A-013 building A-005's item.
