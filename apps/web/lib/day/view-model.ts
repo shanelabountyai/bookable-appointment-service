@@ -80,7 +80,7 @@ export function toGridModel(view: DayView, now: Date, dayLabel: string): GridMod
     totalMinutes: total,
     ticks: hourTicks(view, zone, from, total),
     nowTop,
-    columns: view.columns.map((column) => toColumn(column, { minutesFrom, clock, range })),
+    columns: view.columns.map((column) => toColumn(column, { minutesFrom, clock, range }, view.day)),
   };
 }
 
@@ -92,7 +92,7 @@ interface Formatters {
   range: (start: Date, end: Date) => string;
 }
 
-function toColumn(column: DayColumn, f: Formatters): GridColumn {
+function toColumn(column: DayColumn, f: Formatters, day: string): GridColumn {
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
       key: `break-${i}`,
@@ -122,7 +122,11 @@ function toColumn(column: DayColumn, f: Formatters): GridColumn {
       minutes: gap.minutes,
       time: f.range(gap.start, gap.end),
       title: `${gap.minutes} min free`,
-      label: `${gap.minutes} minutes free, ${f.range(gap.start, gap.end)}`,
+      // A-017 gave the gap somewhere to go, which is what A-016 deliberately
+      // waited for. The link carries the INSTANT (D-4), never a wall label:
+      // on the day the clocks go back, "01:30" names two of these.
+      href: `/staff/book?provider=${column.providerId}&at=${encodeURIComponent(gap.start.toISOString())}&day=${day}`,
+      label: `Book ${gap.minutes} minutes free, ${f.range(gap.start, gap.end)}, with ${column.providerName}`,
     })),
     ...column.appointments.map((appointment) => {
       const who = appointment.clientName ?? 'Walk-in';

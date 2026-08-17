@@ -62,6 +62,18 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         </nav>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {/* BOOK-04's walk-in: the client is standing at the desk, so the
+            entry point is one tap from the day and asks the engine who can
+            take her rather than making the front desk scan four columns. */}
+        <Link
+          href={`/staff/book?walkin=1&day=${day}`}
+          className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Walk-in
+        </Link>
+      </div>
+
       <nav aria-label="View" className="flex flex-wrap gap-2 text-sm">
         <Link
           href={link(day, null)}

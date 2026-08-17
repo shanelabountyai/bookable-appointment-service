@@ -118,17 +118,25 @@ function Item({ item }: { item: GridItem }) {
   const shell = 'absolute inset-x-1 overflow-hidden rounded-sm px-2 py-1 text-xs';
 
   if (item.kind !== 'appointment') {
-    return (
-      <li
-        className={`${shell} ${DECORATION[item.kind]}`}
-        style={style}
-        // A gap and a break are information, not targets — until A-017 gives
-        // them somewhere to go, a focusable element that does nothing when
-        // activated is worse than plain text.
-        aria-label={item.label}
-      >
+    const body = (
+      <>
         <span className="font-medium">{item.title}</span>
         {item.detail ? <span className="ml-1 text-zinc-600 dark:text-zinc-400">{item.detail}</span> : null}
+      </>
+    );
+    return (
+      <li className={`${shell} ${DECORATION[item.kind]}`} style={style}>
+        {/* A-017 gave gaps somewhere to go, so they are links now. Breaks and
+            absences stay plain text: there is nothing to do with a lunch
+            break, and a focusable element that does nothing when activated is
+            worse than no target at all. */}
+        {item.href ? (
+          <Link href={item.href} className="block h-full focus:outline-2 focus:outline-offset-2" aria-label={item.label}>
+            {body}
+          </Link>
+        ) : (
+          <span aria-label={item.label}>{body}</span>
+        )}
       </li>
     );
   }
@@ -185,7 +193,7 @@ const STATUS_COLOUR = {
 } satisfies Record<keyof typeof STATUS_WORDS, string>;
 
 const DECORATION: Record<Exclude<GridItem['kind'], 'appointment'>, string> = {
-  gap: 'border border-dashed border-zinc-400 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300',
+  gap: 'border border-dashed border-zinc-400 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800',
   break: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
   absence: 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
 };

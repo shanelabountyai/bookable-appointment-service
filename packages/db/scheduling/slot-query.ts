@@ -145,7 +145,16 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
       busy,
       grid: { intervalMinutes: business.slotIntervalMinutes, anchor: 'window-open' },
       now: nowInstant,
-      minimumLeadMinutes: business.minimumLeadMinutes,
+      // THE LEAD TIME IS A SELF-SERVE RULE (D-25), like the horizon above.
+      //
+      // D-11 exists to close one specific trap: a customer books a slot five
+      // minutes out and is instantly inside the cancellation cutoff, unable to
+      // undo it without ringing — the failure this product exists to
+      // eliminate. Staff are not bound by the cutoff either (APPT-05), so the
+      // trap cannot close on them. Applying it to them instead breaks
+      // BOOK-04's walk-in outright: a front desk that cannot book the person
+      // standing in front of it is a paper diary with extra steps.
+      minimumLeadMinutes: audience === 'staff' ? 0 : business.minimumLeadMinutes,
       policy: policyOf(business),
       // NEVER for the public. Enforced here as well as at the route, because
       // "enforced at the route" is one forgotten line away from a leak.

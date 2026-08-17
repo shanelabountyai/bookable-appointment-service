@@ -636,3 +636,36 @@ A-015 committed at d100979
 - The client chip carries phone and pinned note; the no-show **flags** the row also asks for are CLIENT-04, which A-020 builds.
 - `loadDayView` runs one round of queries per provider concurrently (`ponytail:` noted). The roster is bounded by the chair count (D-20); batching by `providerId IN (...)` is the fix if that ever changes.
 A-016 committed at ef24fe1
+
+---
+
+## A-017 — Staff booking & override
+
+**Built:**
+- `packages/db/booking/walk-in.ts` — `walkInOptions` (who can take her, soonest first) and `clientAlreadyBookedAround` (D-17's soft note).
+- `apps/web/lib/booking/staff-actions.ts` — the UNRESTRICTED caller: nullable client, no horizon, no lead time, exclusion reasons visible, override available with a reason.
+- `/staff/book` — one page, two entry modes (from a gap, or walk-in), sharing everything after the first choice.
+- A-016's day-grid gaps are links now, carrying the INSTANT.
+- D-25 recorded in `07-decisions.md`.
+- 19 integration + 9 e2e. 710 unit tests total.
+
+**Decided:**
+- **D-25: the lead time is a self-serve rule.** D-11 introduced it to close one trap — a customer books five minutes out and is instantly inside the cancellation cutoff, unable to undo it without ringing. That trap cannot close on staff, who are not bound by the cutoff either (APPT-05). Applying it to them breaks BOOK-04's walk-in outright: with the seeded 120-minute lead time the front desk could not book the person standing in front of it, and every walk-in would have to be routed through a BOOK-05 override — which would make the override marker meaningless.
+- **The refusal is a STEP, not a dead end** (D-8's hardest-won point). The engine's reasons are shown in the front desk's own words, with the override box beside them: "she already has a client then", not "outside-working-window".
+- **One action for both paths.** An override is the same booking with a reason attached; a separate `overrideBooking` action would be a second write path to keep in step.
+- **"Starting now" means AS SOON AS POSSIBLE**, not this exact minute. The engine's earliest offered slot is almost never `now` to the second, and booking off-grid would either mark an ordinary walk-in as an override or leave a sliver nobody can sell.
+- **The walk-in returns a LIST.** "Priya at 2:15 or Dana at 3:00" is a choice made out loud with the client present; a function that picked would be overruled half the time.
+- **A walk-in provider must be qualified for the WHOLE visit** (VISIT-01), not just the first service.
+- **Service selection order is the visit order** — the buffers come from the ends, so "cut then colour" is a different appointment from "colour then cut".
+- **D-17's clash note is computed at search time**, so it is visible while choosing rather than after booking — and it never blocks: one number can be a household, and even the same client twice is the salon's call.
+
+**Two real defects the e2e specs caught, both mine:**
+1. **A misnamed Prisma relation reached the browser as a 500.** `providers` instead of `serviceProviders`, inside a `...(x ? {…} : {})` spread — which widens the object and stops TypeScript checking the keys in it. Rewritten as a plain conditional so the compiler checks both branches. The lesson generalises: a conditional spread into a typed query object is a hole in the typechecker.
+2. **"Book outside hours" was the one BOOK-05 case with no way past.** The engine explains CANDIDATES, and a time outside every working window is never a candidate — so it refused with an EMPTY reason list, and the panel gated the override on having reasons. The first case BOOK-05 names was a flat refusal, which is precisely what D-8 exists to prevent. The override is now offered on any engine refusal, with reasons as decoration rather than a gate.
+
+**A third, in the spec itself:** it pinned A-016's fixed Tuesday, which is in the past — rendering a past day is fine, booking one is correctly refused as `in-the-past`. The spec now walks forward to the next Tuesday the seeded roster works.
+
+**Left behind:**
+- No "change the time" list on the booking page: it books the instant it was opened with. Picking a different time is what the day grid is for, and a second slot picker here would be a second answer to "when is she free?".
+- Editing an existing appointment (status controls, notes) is A-027's detail panel.
+- The client search creates a record with the typed text as BOTH name and phone when it looks like neither; `normalizePhone` drops non-digits, so a name-only entry simply gets a null phone. Good enough for the desk; A-020's flags surface will want a proper two-field create.

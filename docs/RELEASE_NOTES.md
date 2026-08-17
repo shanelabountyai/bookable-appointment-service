@@ -897,4 +897,53 @@ next to the constant, so nobody lightens it back.
 
 ---
 
-<!-- Next entry: A-027 — appointment detail panel -->  
+## Booking from the desk, including the bookings a system is supposed to refuse
+
+The front desk can now book from the day grid: tap a gap, pick the services,
+find the client by any part of her name or number — or book her with no record
+at all, because "walk-in, no name" is a real appointment and identity attaches
+later.
+
+**The lead time turned out to be the wrong shape.** The salon requires two
+hours' notice, which exists to stop a customer booking a slot five minutes out
+and finding herself instantly unable to cancel it. Applied to staff, the same
+rule made the headline walk-in feature impossible: the front desk could not
+book the person standing in front of them. It is now a self-serve rule, like
+the booking horizon already was. The alternative — routing every walk-in
+through the override path — would have made the override marker meaningless,
+which is the thing that makes it worth having.
+
+**A refusal is a step, not a wall.** This is the operator's hardest-won point:
+every scheduling platform he abandoned died of a flat refusal. So when the
+engine says no, it says *why* in the words the desk uses — "she already has a
+client then", "it runs into another appointment's buffer" — with the override
+box beside it. Typing a reason is the whole ceremony, and it is what makes the
+marker on that appointment mean something to whoever asks next week.
+
+**And the one case that got this wrong.** Booking *outside working hours* is
+the first override the requirements name, and it was the only one with no way
+past. The reason is subtle: the engine explains the times it *considered*, and
+a time outside every working window is never considered at all — so it came
+back with no explanation, and the screen only offered the override when there
+was an explanation to show. The most important override was the one you
+couldn't reach. Caught by the end-to-end test, fixed by making the override
+available on any refusal.
+
+**A hole in the type checker, found the hard way.** A database query filtered
+on a relation by the wrong name. It should have been a compile error, and it
+wasn't, because the filter was spread in from a conditional — which widens the
+object and stops the compiler checking what is inside it. It reached the
+browser as a server error instead. Rewritten as a plain conditional so both
+branches are checked. Worth remembering as a rule: a conditional spread into a
+typed query object is a blind spot.
+
+**Two smaller judgements worth stating.** "Starting now" means *as soon as
+possible*, not this exact minute — booking off the salon's own grid would
+either flag an ordinary walk-in as an override or leave a four-minute sliver
+nobody can sell. And the walk-in returns a *list* of who could take her,
+because "Priya at 2:15 or Dana at 3:00" is a choice made out loud with the
+client standing there.
+
+---
+
+<!-- Next entry: A-018 — check-in & running late -->
