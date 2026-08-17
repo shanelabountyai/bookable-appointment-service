@@ -669,3 +669,4 @@ A-016 committed at ef24fe1
 - No "change the time" list on the booking page: it books the instant it was opened with. Picking a different time is what the day grid is for, and a second slot picker here would be a second answer to "when is she free?".
 - Editing an existing appointment (status controls, notes) is A-027's detail panel.
 - The client search creates a record with the typed text as BOTH name and phone when it looks like neither; `normalizePhone` drops non-digits, so a name-only entry simply gets a null phone. Good enough for the desk; A-020's flags surface will want a proper two-field create.
+A-017 committed at 5616d8c
