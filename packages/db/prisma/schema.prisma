@@ -138,6 +138,7 @@ model Business {
   outbox        NotificationOutbox[]
   waitlist      WaitlistEntry[]
   manageTokens  ManageToken[]
+  runningLate   ProviderRunningLate[]
 }
 
 /// D-9. One shared owner credential in v1; multi-user staff auth and roles are
@@ -179,6 +180,7 @@ model Provider {
   timeOff          TimeOff[]
   adHocBlocks      AdHocBlock[]
   appointments     Appointment[]
+  runningLate      ProviderRunningLate[]
 
   @@index([businessId, active])
 }
@@ -757,6 +759,51 @@ model WaitlistEntry {
 
   @@index([businessId, status])
   @@index([clientId])
+}
+
+/// A-018 / D-22. HOW FAR BEHIND a provider is running, right now, on one
+/// business day.
+///
+/// A STORED DELTA, never a rewrite of `startAt`. The Milestone 1 operator
+/// review's headline finding (R-1): the schema could record that an
+/// appointment RAN late but not that the day IS late — so at 11:05 with Dana
+/// forty minutes behind, the website is still selling her 11:15 while that
+/// client sits in the waiting area, and the desk falls back to a sticky note.
+/// A shadow calendar is what kills this product by week two.
+///
+/// Rewriting `startAt` instead would change the time on the confirmation the
+/// client is already holding. "Push the column" (APPT-04) is the separate,
+/// audited action that deliberately does rewrite it.
+///
+/// Deriving the delta from `startedAt` alone was rejected: check-in discipline
+/// collapses exactly when the desk is three deep, which is when the delta
+/// matters most.
+model ProviderRunningLate {
+  id         String @id @default(cuid())
+  businessId String
+  providerId String
+  /// The BUSINESS calendar day — CHAR(10), never @db.Date (D-3).
+  day        String @db.Char(10)
+
+  /// How far behind, in minutes. Always positive: running EARLY is not a
+  /// thing a salon needs to model — nobody is kept waiting by it.
+  minutes Int
+
+  /// D-9. Who said so, and when — "Dana is 40 behind" is a claim somebody
+  /// made, and at 6pm the question is who.
+  setByActor Actor
+  actorRef   String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  /// One per provider per day. Clearing it DELETES the row: absent means "on
+  /// time", which is the state that needs no explanation.
+  @@unique([providerId, day])
+  @@index([businessId, day])
 }
 
 // ─────────────────────────── infrastructure ───────────────────────────

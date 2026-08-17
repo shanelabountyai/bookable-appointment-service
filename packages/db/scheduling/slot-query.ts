@@ -24,6 +24,7 @@ import { type Instant, addDays, fromDate, startOfDay, toDate, weekdayOf } from '
 import { effectiveDurationMinutes } from '../../core/settings';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { findAbsences, resolveDayWindows } from '../availability';
+import { findRunningLate, runningLateInterval } from '../day/running-late';
 import { findBusyAppointments } from './busy-set';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -127,12 +128,14 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
   const busy = resolved.windows.length === 0
     ? []
     : await loadBusy(db, {
+        businessId: args.businessId,
         providerId: args.providerId,
         day,
         zone,
         windows: resolved.windows,
         service,
         excludeAppointmentId: args.excludeAppointmentId ?? null,
+        now: args.now,
       });
 
   return {
@@ -325,9 +328,11 @@ async function loadBusy(
     providerId: string;
     day: ReturnType<typeof calendarDay>;
     zone: ReturnType<typeof zoneId>;
+    businessId: string;
     windows: SlotQuery['windows'];
     service: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number };
     excludeAppointmentId: string | null;
+    now: Date;
   },
 ): Promise<BusyInterval[]> {
   // The widest span the day's candidates can possibly touch. Local midnight to
@@ -338,7 +343,7 @@ async function loadBusy(
   const windowStart = toDate(instant(dayStart - args.service.bufferBeforeMinutes * MIN - 24 * 60 * MIN));
   const windowEnd = toDate(instant(dayEnd + args.service.bufferAfterMinutes * MIN + 24 * 60 * MIN));
 
-  const [appointments, absences] = await Promise.all([
+  const [appointments, absences, late] = await Promise.all([
     findBusyAppointments(db, {
       providerId: args.providerId,
       windowStart,
@@ -346,7 +351,16 @@ async function loadBusy(
       excludeAppointmentId: args.excludeAppointmentId,
     }),
     findAbsences(db, { providerId: args.providerId, windowStart, windowEnd }),
+    // D-22. Keyed on the business day, so it can only ever apply to the day it
+    // was set for — a delta does not survive to tomorrow, and nothing has to
+    // remember to clear it overnight.
+    findRunningLate(db, { businessId: args.businessId, day: args.day }),
   ]);
+
+  const overrun = late
+    .filter((row) => row.providerId === args.providerId)
+    .map((row) => runningLateInterval(row, args.now))
+    .filter((interval): interval is NonNullable<typeof interval> => interval !== null);
 
   return [
     ...appointments.map((a) => ({
@@ -364,6 +378,10 @@ async function loadBusy(
       kind: a.kind,
       id: a.id,
     })),
+    // D-22's overrun, with its OWN kind: the engine excludes it as
+    // `provider-running-late`, so the day view can say "Dana is behind"
+    // rather than the flatly wrong "she is unavailable".
+    ...overrun,
   ] satisfies BusyInterval[];
 }
 

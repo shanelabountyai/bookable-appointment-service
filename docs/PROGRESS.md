@@ -670,3 +670,35 @@ A-016 committed at ef24fe1
 - Editing an existing appointment (status controls, notes) is A-027's detail panel.
 - The client search creates a record with the typed text as BOTH name and phone when it looks like neither; `normalizePhone` drops non-digits, so a name-only entry simply gets a null phone. Good enough for the desk; A-020's flags surface will want a proper two-field create.
 A-017 committed at 5616d8c
+
+---
+
+## A-018 — Check-in & running late
+
+**Built:**
+- Migration: `ProviderRunningLate` — one row per provider per business day, with actor and timestamp.
+- `packages/db/day/running-late.ts` — set / clear / read, and `runningLateInterval`, which is how the engine sees it.
+- `packages/db/day/push-column.ts` — `previewPush` and `pushColumn`, one transaction with `SET CONSTRAINTS appointment_no_overlap DEFERRED`.
+- `slot-query.ts` feeds the delta to the engine as a `running-late` BusyInterval; the day view carries it; the grid shows "+40 min" and projected starts.
+- 20 integration + 6 e2e. 730 unit tests total.
+
+**Decided:**
+- **The delta and the push are deliberately different mechanisms, and the tests can tell them apart.** The delta says "Dana is forty behind" and moves nothing; the push rewrites `startAt` and tells everybody. A test that could not distinguish them would let one quietly become the other — which is how the confirmation a client is holding ends up disagreeing with the book.
+- **Zero clears rather than storing a zero.** "On time" is the absence of a claim; a stored zero renders as "+0 min", which reads as a system that thinks lateness is interesting when it is not.
+- **The overrun runs from NOW, not from the appointment that caused it.** The claim being made is "the next forty minutes of this column are already spoken for" — which is exactly what a paper day-sheet conveys and software usually cannot. It needs no cleanup job: the interval simply stops covering anything once it is worked off.
+- **Keyed on the business day**, so a delta cannot survive to tomorrow and nothing has to remember to clear it overnight.
+- **Projected starts are shown BESIDE the scheduled time, never instead of it** — and only for appointments that have not started. She was booked for 14:00 and her confirmation still says so.
+- **The push previews through the SAME function it executes with.** A separate "check" function is the one that eventually disagrees with the action.
+- **A push that would put anything past closing is refused whole.** APPT-04's "refuses silently-lossy shifts": a column that half-moved is worse than one that did not, and the preview names the client who is stuck.
+- **The deferral is scoped to that one transaction.** `SET CONSTRAINTS ... DEFERRED` is the only place in the codebase that asks for it; everywhere else the check stays immediate, so nothing else silently gains the same latitude.
+- **The manage link follows a pushed appointment** rather than being reissued — she is holding the message it arrived in (TOKEN-02).
+- **A 480-minute cap on the delta**, because the only way to type 400 is by accident and the delta would then hide the rest of the day from the booking page.
+
+**Verified by mutation:** removing `SET CONSTRAINTS ... DEFERRED` breaks the back-to-back push (two tests). The deferral is load-bearing, not decoration.
+
+**Two fixture mistakes of my own, both correct behaviour underneath:** a three-appointment push whose last item genuinely ended past closing (the refusal was right), and a spec that skipped `typecheck` between writing and running — the branded `Instant` type caught a bare number in the production build, which is exactly what it is for.
+
+**Left behind:**
+- Check-in and in-progress still have no buttons; A-012 built the transitions and A-027's detail panel is where the controls belong. The timestamps they write are already what the delta is *not* derived from (D-22).
+- The push starts at the next appointment, not an arbitrary time the user picks. "From here" in a salon means "from the client who has not sat down yet", and a time picker would be a second way to say the same thing.
+- Running EARLY is not modelled. Nobody is kept waiting by it.

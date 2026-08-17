@@ -14,7 +14,7 @@ import 'server-only';
  */
 import type { DayColumn, DayView } from '@bookable/db/day';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
-import { type ZoneId, fromDate, toLabel } from '@bookable/core/time';
+import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
 
 const MIN = 60_000;
 
@@ -35,6 +35,11 @@ export interface GridItem {
   pinnedNote?: string;
   status?: AppointmentStatus;
   isOverride?: boolean;
+  /** APPT-03's projected start: what time this is REALLY likely to begin,
+   *  given how far behind she is. Shown beside the scheduled time, never
+   *  instead of it — the client was booked for 14:00 and her confirmation
+   *  still says so. */
+  projected?: string;
   href?: string;
   /** The whole chip as one sentence, for a screen reader and for the
    *  accessible name of the link. */
@@ -45,6 +50,11 @@ export interface GridColumn {
   providerId: string;
   providerName: string;
   closed: boolean;
+  /** D-22, for the column header's "Dana +38". */
+  runningLateMinutes: number | null;
+  /** APPT-04's "from here": the first appointment still ahead of `now`, as an
+   *  INSTANT. Null when there is nothing left in the column to push. */
+  pushFrom: string | null;
   items: GridItem[];
   /** Where this provider's working hours sit, for shading the column. */
   windows: { top: number; minutes: number }[];
@@ -70,6 +80,10 @@ export function toGridModel(view: DayView, now: Date, dayLabel: string): GridMod
   const minutesFrom = (at: Date) => (fromDate(at) - from) / MIN;
   const clock = (at: Date) => toLabel(fromDate(at), zone).time;
   const range = (start: Date, end: Date) => `${clock(start)}–${clock(end)}`;
+  /** A time moved forward by N minutes, formatted — the projected start. On
+   *  the PHYSICAL axis, so a projection across a DST transition lands where
+   *  the clock will actually be. */
+  const shift = (at: Date, minutes: number) => clock(toDate(instant(fromDate(at) + minutes * MIN)));
 
   const nowMinutes = (fromDate(now) - from) / MIN;
   const nowTop = nowMinutes >= 0 && nowMinutes <= total ? nowMinutes : null;
@@ -80,7 +94,7 @@ export function toGridModel(view: DayView, now: Date, dayLabel: string): GridMod
     totalMinutes: total,
     ticks: hourTicks(view, zone, from, total),
     nowTop,
-    columns: view.columns.map((column) => toColumn(column, { minutesFrom, clock, range }, view.day)),
+    columns: view.columns.map((column) => toColumn(column, { minutesFrom, clock, range, shift }, view.day, now)),
   };
 }
 
@@ -90,9 +104,10 @@ interface Formatters {
   minutesFrom: (at: Date) => number;
   clock: (at: Date) => string;
   range: (start: Date, end: Date) => string;
+  shift: (at: Date, minutes: number) => string;
 }
 
-function toColumn(column: DayColumn, f: Formatters, day: string): GridColumn {
+function toColumn(column: DayColumn, f: Formatters, day: string, now: Date): GridColumn {
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
       key: `break-${i}`,
@@ -142,6 +157,12 @@ function toColumn(column: DayColumn, f: Formatters, day: string): GridColumn {
         pinnedNote: appointment.clientNotes ?? undefined,
         status: appointment.status as AppointmentStatus,
         isOverride: appointment.isOverride,
+        // Only for what has not started yet: projecting a time onto an
+        // appointment already in the chair is noise, and projecting onto a
+        // finished one is wrong.
+        ...(column.runningLateMinutes && appointment.status === 'booked'
+          ? { projected: f.shift(appointment.startAt, column.runningLateMinutes) }
+          : {}),
         href: appointment.clientId ? `/staff/clients/${appointment.clientId}` : undefined,
         label: [
           `${f.range(appointment.startAt, appointment.endAt)}, ${who}`,
@@ -149,6 +170,9 @@ function toColumn(column: DayColumn, f: Formatters, day: string): GridColumn {
           STATUS_WORDS[appointment.status as AppointmentStatus],
           appointment.isOverride ? 'booked as an override' : '',
           appointment.clientNotes ? `note: ${appointment.clientNotes}` : '',
+          column.runningLateMinutes && appointment.status === 'booked'
+            ? `likely ${f.shift(appointment.startAt, column.runningLateMinutes)}`
+            : '',
         ]
           .filter(Boolean)
           .join(', '),
@@ -160,6 +184,14 @@ function toColumn(column: DayColumn, f: Formatters, day: string): GridColumn {
     providerId: column.providerId,
     providerName: column.providerName,
     closed: column.closed,
+    runningLateMinutes: column.runningLateMinutes,
+    // "From here" means the next appointment, not an arbitrary clock time:
+    // pushing starts at the first client who has not sat down yet.
+    pushFrom:
+      column.appointments
+        .filter((a) => a.startAt.getTime() >= now.getTime() && !CANCELLED.has(a.status))
+        .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())[0]
+        ?.startAt.toISOString() ?? null,
     // CHRONOLOGICAL DOM ORDER, whatever the visual layering. The items are
     // absolutely positioned, so tab order and screen-reader order come from
     // here — sorting by anything else makes the column read out of sequence.
@@ -191,6 +223,8 @@ function hourTicks(view: DayView, zone: ZoneId, from: number, total: number): { 
   }
   return ticks;
 }
+
+const CANCELLED = new Set(['cancelled', 'cancelled_late']);
 
 /** For the accessible name. The visible chip shows a colour and a short word;
  *  a screen reader gets the sentence. */

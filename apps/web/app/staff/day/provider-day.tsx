@@ -52,6 +52,12 @@ export function ProviderDay({ column }: { column: GridColumn }) {
               reads in bright sunlight on a phone. */}
           {item.status ? <span className="ml-auto text-sm">{STATUS_TEXT[item.status]}</span> : null}
 
+          {item.projected ? (
+            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
+              Running behind — likely {item.projected}
+            </p>
+          ) : null}
+
           {item.pinnedNote ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</p>
           ) : null}

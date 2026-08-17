@@ -946,4 +946,47 @@ client standing there.
 
 ---
 
-<!-- Next entry: A-018 — check-in & running late -->
+## The thing a paper day-sheet does that software usually cannot
+
+At 11:05 Dana is forty minutes behind. Her 10:00 client is still in the chair,
+and the website is cheerfully selling her 11:15 to somebody else. That was the
+headline finding of an operator review of this project: the system could record
+that an appointment *ran* late, but not that the day *is* late. The desk's
+answer to that gap is a sticky note — a shadow calendar, which is what kills a
+scheduling product by week two.
+
+So "running late" is now a first-class, stored value: one number per stylist
+per day, with the name of whoever said it. The availability engine consumes it
+as an interval covering the next forty minutes of her column, and the reason it
+gives back is *provider-running-late* rather than a flat "unavailable" — so the
+day view can say "Dana is behind" instead of implying she has gone home.
+
+**It deliberately does not move anything.** Rewriting the appointment times
+would change the time on the confirmation the client is already holding, and
+would destroy the answer to "she was booked for 2 and seen at 2:40". The
+projected start appears *beside* the scheduled one, never instead of it.
+
+**Pushing the column is the other half, and it is a different mechanism on
+purpose.** When it is not coming back — Dana is an hour down and the afternoon
+has to move — "push from here" shifts everything still to come, in one
+transaction, and tells every client whose time changed. That is the action that
+*does* rewrite the times, and it is audited with a reason.
+
+**Why it needs a database feature most projects never touch.** Shifting three
+back-to-back appointments moves the first onto the second's old slot
+mid-transaction. The no-overlap rule refuses that — correctly, in isolation.
+Every ordering fails somewhere, and "just order the statements correctly" is a
+rule the next person will not know. So the check is deferred to the moment the
+transaction commits: the intermediate states are allowed and the final state is
+still absolutely enforced. It is scoped to that one transaction, so nothing
+else in the system quietly gains the same latitude — and removing that single
+line breaks the test that proves it, which is how we know it is load-bearing
+rather than decoration.
+
+**All or nothing.** If any appointment would end up past closing time, the
+whole push is refused and the preview names the client who is stuck. A column
+that half-moved is worse than one that did not move at all.
+
+---
+
+<!-- Next entry: A-019 — availability-change impact workflow -->

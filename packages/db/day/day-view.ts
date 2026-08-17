@@ -23,6 +23,7 @@
 import { type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
+import { findRunningLate } from './running-late';
 import { findBusyAppointments } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -70,6 +71,9 @@ export interface DayGap {
 export interface DayColumn {
   providerId: string;
   providerName: string;
+  /** D-22. How far behind she is running right now, if anybody has said so.
+   *  Null is "on time", which is the state that needs no explanation. */
+  runningLateMinutes: number | null;
   /** No hours at all today — a closed day, not an empty one. The distinction
    *  is what stops the grid inviting a booking into a day off. */
   closed: boolean;
@@ -115,8 +119,24 @@ export async function loadDayView(
   const from = toDate(instant(startOfDay(day, zone) - 24 * 60 * MIN));
   const to = toDate(instant(startOfDay(addDays(day, 1), zone) + 24 * 60 * MIN));
 
+  // One read for the whole day rather than one per column: the delta table is
+  // keyed by (provider, day), so the day's rows are a single indexed lookup.
+  const late = await findRunningLate(db, { businessId: args.businessId, day: args.day });
+  const lateByProvider = new Map(late.map((row) => [row.providerId, row.minutes]));
+
   const columns = await Promise.all(
-    providers.map((provider) => loadColumn(db, { ...args, provider, zone, day, weekday, from, to })),
+    providers.map((provider) =>
+      loadColumn(db, {
+        ...args,
+        provider,
+        zone,
+        day,
+        weekday,
+        from,
+        to,
+        runningLateMinutes: lateByProvider.get(provider.id) ?? null,
+      }),
+    ),
   );
 
   return {
@@ -147,6 +167,7 @@ async function loadColumn(
     from: Date;
     to: Date;
     now: Date;
+    runningLateMinutes: number | null;
   },
 ): Promise<DayColumn> {
   const [resolved, busy, absences, rows] = await Promise.all([
@@ -236,6 +257,7 @@ async function loadColumn(
   return {
     providerId: args.provider.id,
     providerName: args.provider.displayName,
+    runningLateMinutes: args.runningLateMinutes,
     closed: resolved.closed,
     windows: windowSpans.map(toDateSpan),
     breaks: breakSpans.map(toDateSpan),

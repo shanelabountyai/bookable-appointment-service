@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { STATUS_WORDS } from '@/lib/day/view-model';
+import { ColumnControls } from './column-controls';
 
 /**
  * The day grid (A-016, Goal 3).
@@ -64,11 +65,24 @@ export function DayGrid({ model }: { model: GridModel }) {
 
 function Column({ column, model, height }: { column: GridColumn; model: GridModel; height: number }) {
   return (
-    <section className="min-w-52 flex-1" aria-label={`${column.providerName}${column.closed ? ', not working today' : ''}`}>
-      <h2 className="sticky top-0 z-10 bg-white pb-2 text-sm font-semibold dark:bg-zinc-950">
+    <section
+      className="min-w-52 flex-1"
+      aria-label={`${column.providerName}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
+    >
+      <h2 className="text-sm font-semibold">
         {column.providerName}
         {column.closed ? <span className="ml-2 font-normal text-zinc-500">off today</span> : null}
       </h2>
+
+      {column.closed ? null : (
+        <ColumnControls
+          providerId={column.providerId}
+          providerName={column.providerName}
+          day={model.day}
+          runningLateMinutes={column.runningLateMinutes}
+          pushFrom={column.pushFrom}
+        />
+      )}
 
       <div className="relative rounded-md border border-zinc-200 dark:border-zinc-800" style={{ height }}>
         {/* Working hours, shaded. Decorative: the same information is in every
@@ -147,6 +161,12 @@ function Item({ item }: { item: GridItem }) {
         {item.time} {item.title}
       </span>
       {item.detail ? <span className="block truncate opacity-80">{item.detail}</span> : null}
+      {/* APPT-03's projected start, BESIDE the scheduled time rather than
+          instead of it: she was booked for 14:00 and her confirmation still
+          says so. */}
+      {item.projected ? (
+        <span className="block truncate font-medium text-amber-900 dark:text-amber-200">→ likely {item.projected}</span>
+      ) : null}
       {item.pinnedNote ? (
         // CLIENT-03's safety surface. Marked, not merely present: the front
         // desk has to be able to spot it without reading every chip.
