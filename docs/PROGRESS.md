@@ -635,3 +635,4 @@ A-015 committed at d100979
 - No status controls on the chip — A-027's detail panel owns those, and A-018 owns check-in.
 - The client chip carries phone and pinned note; the no-show **flags** the row also asks for are CLIENT-04, which A-020 builds.
 - `loadDayView` runs one round of queries per provider concurrently (`ponytail:` noted). The roster is bounded by the chair count (D-20); batching by `providerId IN (...)` is the fix if that ever changes.
+A-016 committed at ef24fe1
