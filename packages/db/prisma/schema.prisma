@@ -471,6 +471,22 @@ model Client {
   /// without it you must assume none and re-ask everyone.
   smsConsentAt DateTime? @db.Timestamptz(3)
 
+  /// A-015 / operator R-10. When this record LOST a merge, it stays as a
+  /// tombstone pointing at the survivor instead of being deleted.
+  ///
+  /// The row has to survive: it is what the losing record's phone number still
+  /// finds. A salon merges "Ada Chen 5125550101" into "Ada Chen-Marsh
+  /// 5125550199" and six weeks later Ada rings from the old number — deleting
+  /// the loser makes that number unknown to the salon, which is exactly the
+  /// moment the front desk needs it to work. Deleting is also impossible in
+  /// practice: `AppointmentEvent` is append-only with `onDelete: Restrict`.
+  ///
+  /// Chains are flattened rather than followed: merging B into C re-points
+  /// every tombstone already aimed at B, so resolution is always ONE hop and
+  /// no recursive query — or cycle — is possible.
+  mergedIntoClientId String?
+  mergedAt           DateTime? @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
@@ -478,8 +494,14 @@ model Client {
   appointments Appointment[]
   waitlist     WaitlistEntry[]
 
+  /// Restrict, not Cascade: a survivor that could be deleted out from under
+  /// its tombstones would leave the old phone number pointing at nothing.
+  mergedInto   Client?  @relation("ClientMerge", fields: [mergedIntoClientId], references: [id], onDelete: Restrict)
+  mergedFrom   Client[] @relation("ClientMerge")
+
   @@index([businessId, phone])
   @@index([businessId, name])
+  @@index([mergedIntoClientId])
 }
 
 // ─────────────────────────── the appointment ───────────────────────────

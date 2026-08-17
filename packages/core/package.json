@@ -10,6 +10,7 @@
     ".": "./index.ts",
     "./auth": "./auth/index.ts",
     "./availability": "./availability/index.ts",
+    "./clients": "./clients/index.ts",
     "./notifications": "./notifications/index.ts",
     "./scheduling": "./scheduling/index.ts",
     "./settings": "./settings/index.ts",

@@ -173,3 +173,14 @@ export function addDays(day: CalendarDay, days: number): CalendarDay {
   }
   return calendarDay(Temporal.PlainDate.from(day, { overflow: 'reject' }).add({ days }).toString());
 }
+
+/** Whole days from `from` to `to`, negative when `to` is earlier. The same
+ *  axis as `addDays` and its inverse: subtracting two instants and dividing by
+ *  86_400_000 gives 0.958… of a day across a spring-forward, which rounds to
+ *  the wrong answer exactly twice a year. */
+export function daysBetween(from: CalendarDay, to: CalendarDay): number {
+  return Temporal.PlainDate.from(from, { overflow: 'reject' }).until(
+    Temporal.PlainDate.from(to, { overflow: 'reject' }),
+    { largestUnit: 'day' },
+  ).days;
+}

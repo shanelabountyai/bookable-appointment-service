@@ -13,12 +13,13 @@
  * crosses this boundary. The only ids returned are the ones the next request
  * must echo back.
  */
-import { addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { type CalendarDay, addDays, calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
 import { SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
+import { isPlausiblePhone, normalizePhone } from '@bookable/core/clients';
 
 export interface OfferedTime {
   /** The appointment's identity is its INSTANT (D-4). An offset-bearing ISO
@@ -90,10 +91,18 @@ export interface OpenDay {
  * their own today would be shown a day the salon has not reached yet. The
  * business's own calendar is the only one that decides (spec §1.3).
  */
-export async function listDaysWithOpenings(serviceId: string, providerId: string): Promise<OpenDay[]> {
+export async function listDaysWithOpenings(
+  serviceId: string,
+  providerId: string,
+  /** CLIENT-02's "jump the slot search to the natural interval". Clamped to
+   *  today: a client last seen a year ago would otherwise open the list on a
+   *  day the salon cannot sell, and a hand-edited URL could ask for 1999. */
+  fromDay?: string,
+): Promise<OpenDay[]> {
   const business = await theBusiness();
   const now = new Date();
   const today = toLabel(fromDate(now), zoneId(business.timezone)).day;
+  const start = startDayFor(fromDay, today);
 
   const days = await daysWithAvailability(prisma, {
     businessId: business.id,
@@ -101,10 +110,25 @@ export async function listDaysWithOpenings(serviceId: string, providerId: string
     serviceIds: [serviceId],
     now,
     audience: 'public',
-    fromDay: today,
-    toDay: addDays(today, DAYS_AHEAD),
+    fromDay: start,
+    toDay: addDays(start, DAYS_AHEAD),
   });
   return days.map((day) => ({ day, label: readableDay(day) }));
+}
+
+/** The suggested start, clamped to today and to a day that actually parses.
+ *  `fromDay` arrives from a URL, so "2026-13-99" and "" are both ordinary
+ *  input here rather than errors worth showing anyone.
+ *
+ *  NOT exported: every export from a `'use server'` module must be async. */
+function startDayFor(fromDay: string | undefined, today: CalendarDay): CalendarDay {
+  if (!fromDay) return today;
+  try {
+    const day = calendarDay(fromDay);
+    return day > today ? day : today;
+  } catch {
+    return today;
+  }
 }
 
 export async function listTimesOn(serviceId: string, providerId: string, day: string): Promise<OfferedTime[]> {
@@ -165,7 +189,7 @@ export async function confirmAppointment(input: {
   const name = input.name.trim();
   const phone = normalizePhone(input.phone);
   if (name.length === 0) fieldErrors.name = 'Please give us a name for the appointment.';
-  if (phone.length < 7) fieldErrors.phone = 'Please give us a phone number we can reach you on.';
+  if (!isPlausiblePhone(phone)) fieldErrors.phone = 'Please give us a phone number we can reach you on.';
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
   let startAt: Date;
@@ -215,13 +239,4 @@ export async function confirmAppointment(input: {
   }
 
   return { ok: true, message: 'Your appointment is confirmed.' };
-}
-
-/** Digits only, keeping a leading +. Deliberately forgiving: a customer typing
- *  (512) 555-0101 and 5125550101 is the same person, and refusing one of them
- *  costs a booking. */
-function normalizePhone(raw: string): string {
-  const trimmed = raw.trim();
-  const digits = trimmed.replace(/[^\d]/g, '');
-  return trimmed.startsWith('+') ? `+${digits}` : digits;
 }

@@ -568,3 +568,36 @@ A-013 committed at 7cec2c9
 - The customer's DAY list uses the live service duration (via `daysWithAvailability`) while the TIME list uses the snapshot. They differ only if the catalogue changed since booking, and only in whether a day appears at all; the times a customer can actually pick are always the snapshot's.
 - `SlotTaken` from a reschedule carries no alternatives. Unlike a first booking the customer still has her appointment, so the honest answer is "that time went, yours is unchanged" — a list of alternatives here would invite a second attempt at the exact moment the first failed.
 A-014 committed at 27208cd
+
+---
+
+## A-015 — Client record
+
+**Built:**
+- `packages/core/clients/` — `normalizePhone`/`isPlausiblePhone` (moved out of the booking flow before a second copy was written) and `naturalIntervalDays`.
+- `packages/core/time/zone.ts` — `daysBetween`, the calendar-axis inverse of `addDays`.
+- `packages/db/clients/clients.ts` — lookup, search, history, pinned note, `mergeClients`, `rebookSuggestion`.
+- Migration: `Client.mergedIntoClientId`/`mergedAt` — R-10's tombstone.
+- `/staff/clients` and `/staff/clients/[id]` — search, pinned note, history, merge panel, rebook.
+- Booking flow accepts a server-resolved prefill, so "rebook last visit" opens on the day list.
+- 10 pure + 32 integration + 7 e2e. 661 unit tests total.
+
+**Decided:**
+- **Every lookup returns a LIST, and nothing in the module ever decides two records are the same person.** D-17 is the reason: a household shares a number, and collapsing a mother and daughter merges an allergy note with a no-show counter. The code only carries out a decision a human made.
+- **The losing record survives a merge as a tombstone.** Deleting it makes the old number unknown to the salon at exactly the moment it is needed — six weeks later, when she rings from it. Deleting is impossible anyway: `AppointmentEvent` is append-only with `Restrict` FKs.
+- **Merge chains are FLATTENED, not followed.** Merging B into C re-points every tombstone already aimed at B, so resolution is one hop forever — no recursive query, no cycle, and no depth guard to get wrong.
+- **Notes are concatenated, never replaced.** The one failure here that hurts somebody is a merge that silently drops "allergic to PPD" because the survivor already had a note. Contact details fill gaps only: overwriting the survivor's phone with the loser's would undo the decision staff just made.
+- **`clientHistory` includes no-shows and late cancels.** Hiding them makes the front desk look unprepared, and it is the same data A-020's counter reads — two sources would eventually disagree about one appointment.
+- **The rebook interval is her own rhythm**, read from the gap between her last two kept visits, on the calendar axis. Six weeks is six weeks whatever the clocks did in between; the millisecond version floors to 41 days every spring. Default 28 days when there is no rhythm to read — short, so the front desk scrolls forward to correct it, which is the cheaper direction to be wrong in.
+- **The prefill is resolved server-side and handed over whole**, and every failure (retired service, departed stylist, hand-edited URL) falls back to the normal flow rather than erroring a public page.
+- **The staff client page deliberately does NOT follow D-10's lexicon.** It shows the real status, because "no-show" is the word the front desk and the reports use; D-10 governs customer surfaces.
+
+**A vacuous test of my own, caught by mutation:** "ignores cancelled appointments" put the cancelled visit EARLIER than the kept one, so `ORDER BY startAt DESC` picked the right answer regardless — it passed with the status filter deleted. Rewritten with the cancelled visit as the most recent, where it actually bites.
+
+**Verified by mutation (4 of 4 caught, after the fix above):** replacing notes instead of concatenating, dropping the chain flattening, overwriting the survivor's contact details, and counting cancelled visits as the last visit.
+
+**Left behind:**
+- No standalone "create client" screen. The booking flow creates them, and A-017's staff booking owns choose-or-create at the point it is actually needed.
+- No merge audit beyond the tombstone itself (`mergedIntoClientId` + `mergedAt`). `AppointmentEvent` is appointment-scoped and there is no client-scoped log; adding one for a single event type would be scaffolding.
+- "Rebook" lands in the CUSTOMER booking flow, so it is capped by the self-serve horizon and cannot override. A-017 replaces the destination; the suggestion it carries is already computed here.
+- The soft "this client already has an appointment then" note (D-17) belongs on the staff booking surface, which is A-017.

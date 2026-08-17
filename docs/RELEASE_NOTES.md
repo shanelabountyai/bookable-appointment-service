@@ -792,4 +792,56 @@ each was caught by exactly one test.
 
 ---
 
-<!-- Next entry: A-015 — client record -->  
+## The client record, and why a phone number is not an identity
+
+A salon's client list is keyed on a phone number, and the phone number is
+deliberately **not unique**. A household shares one. Making it unique would
+silently merge a mother and her teenage daughter into a single client — one set
+of allergy notes, one shared no-show counter, so the daughter's two misses
+block the mother from booking online. Unwinding that after the records have run
+together is data repair, not a migration.
+
+So every lookup here returns a **list**, and nothing in the code ever decides
+that two records are the same person. It only carries out that decision when a
+human makes it.
+
+**A merged-away record is never deleted.** It stays as a tombstone pointing at
+the survivor, keeping its old phone number — because the moment that number
+matters most is six weeks after the merge, when she rings from it. The screen
+says so plainly ("found through an old number that was merged into this
+record") rather than quietly showing a different name than the one the front
+desk expected.
+
+**Merge chains are flattened, not followed.** Merging B into C also re-points
+everything that was already pointing at B, so looking up any old number is
+always exactly one hop — no recursive query, no possibility of a loop, and no
+depth limit to get wrong later.
+
+**Notes are combined, never replaced.** This is the one failure in this feature
+that could hurt somebody: a merge that dropped the losing record's note because
+the survivor already had one would silently delete "allergic to PPD". Contact
+details work the other way — they fill in gaps only, because overwriting the
+survivor's number with the duplicate's would undo the decision staff just made.
+
+**The history shows the no-shows.** Hiding them would make the front desk look
+unprepared when the client who missed twice rings to book a third time, and it
+is the same data the no-show counter reads — two sources eventually disagree
+about the same appointment.
+
+**"Rebook last visit" uses her rhythm, not the calendar's.** It reads the gap
+between her last two kept visits — six weeks between colours is a fact about
+her hair — and opens the day list there instead of at tomorrow. Six weeks is
+six weeks regardless of what the clocks did in between; measured in
+milliseconds it comes out as 41 days and 23 hours, which rounds down and drifts
+the suggestion a day earlier every spring.
+
+**A test of mine that was quietly proving nothing.** The check that "rebook
+ignores cancelled appointments" had put the cancelled visit *earlier* than the
+kept one — so sorting by date picked the right answer whether the rule existed
+or not. Deleting the rule left the test green. It now puts the cancelled visit
+last, where it actually bites. Three other deliberate sabotages were caught
+first time.
+
+---
+
+<!-- Next entry: A-016 — staff day grid -->  

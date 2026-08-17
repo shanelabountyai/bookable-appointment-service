@@ -38,12 +38,26 @@ const selected = 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-zinc-9
 const primary =
   'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900';
 
-export function BookingFlow({ services }: { services: Service[] }) {
-  const [step, setStep] = useState<Step>('service');
-  const [service, setService] = useState<Service | null>(null);
+/**
+ * CLIENT-02's "rebook last visit", resolved SERVER-side and handed over whole.
+ *
+ * Deliberately not a set of ids the component then looks up in an effect: the
+ * page already knows the service, the provider and the open days by the time
+ * it renders, so passing them means the flow opens directly on the day list
+ * with no second render and no loading state for something already known.
+ */
+export interface Prefill {
+  service: Service;
+  provider: { id: string; name: string };
+  openDays: OpenDay[];
+}
+
+export function BookingFlow({ services, prefill }: { services: Service[]; prefill?: Prefill | null }) {
+  const [step, setStep] = useState<Step>(prefill ? 'day' : 'service');
+  const [service, setService] = useState<Service | null>(prefill?.service ?? null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
-  const [provider, setProvider] = useState<{ id: string; name: string } | null>(null);
-  const [openDays, setOpenDays] = useState<OpenDay[]>([]);
+  const [provider, setProvider] = useState<{ id: string; name: string } | null>(prefill?.provider ?? null);
+  const [openDays, setOpenDays] = useState<OpenDay[]>(prefill?.openDays ?? []);
   const [day, setDay] = useState<OpenDay | null>(null);
   const [times, setTimes] = useState<OfferedTime[]>([]);
   const [time, setTime] = useState<OfferedTime | null>(null);
