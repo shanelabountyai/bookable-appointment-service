@@ -735,4 +735,61 @@ which is what the customer actually sees.
 
 ---
 
-<!-- Next entry: A-014 — reschedule -->  
+## Moving an appointment without ever losing it
+
+Rescheduling is one row, updated once, inside one transaction. The obvious
+alternative — cancel the old appointment, book a new one — has four failure
+modes and one of them cannot be recovered from: the cancellation commits, the
+new time is taken in the meantime by somebody else, and the customer now has no
+appointment at all while her original slot has been given away. It is also the
+most common complaint about home-grown reschedule flows, which is why the
+design note says so in the file that would otherwise be "simplified" into it.
+
+The nuance worth stating exactly: cancel-then-insert is perfectly fine *inside
+a single transaction*. The distinction is not what statements you use, it is
+one transaction versus two.
+
+**The bug that only appears when you actually try to move something.** The
+database is happy to move an appointment from 09:00 to 09:30 — its no-overlap
+rule compares the appointment against *other* appointments, not against its own
+previous position. The availability engine is not: re-run inside the same
+transaction, it sees the appointment sitting at 09:00 and refuses 09:30 as
+"that overlaps a booking" — the booking being itself. Without a fix, an
+appointment could never be moved anywhere within its own length of where it
+already is, which is the single most common reschedule a salon does: "can we
+push it half an hour?" The engine is now told to ignore the appointment being
+moved, and the test that proves it is the one that fails when that is removed.
+
+**Two taps, one appointment, two different times.** The update is conditional
+on the time the decision was made against, so the second one loses cleanly and
+is told the appointment has already been moved — rather than both succeeding
+and leaving a history that contradicts the appointment it describes. The same
+reflex as the database constraint: never check first and then write as the
+safety mechanism.
+
+**Moving it does not re-sell it.** The appointment keeps the duration it was
+booked with, even if the salon changed that service last week. And the screen
+that offers new times and the code that accepts one now go through a single
+function, so the list can never offer a time the server then refuses.
+
+**The link survives.** The customer's original confirmation message keeps
+working through the reschedule — it is re-pointed, not reissued — which matters
+because that link is what she opens next to cancel. A design that created a new
+appointment row would kill it at exactly that moment.
+
+**The cutoff applies to the customer here too.** A reschedule inside the
+cancellation window is refused for the customer and allowed for staff, because
+a reschedule is a cancellation with extra steps: without that rule a customer
+inside the cutoff simply moves the appointment to next month and abandons it,
+and the salon has lost the slot with none of the record a late cancellation
+leaves. The page asks the same question the server does — with the real
+deadline — so it never shows a form that would then say "call us".
+
+**Verified by deliberately breaking it.** Four sabotages — letting the
+appointment block itself, dropping the conditional update, never moving the
+link's expiry, using today's service duration instead of the booked one — and
+each was caught by exactly one test.
+
+---
+
+<!-- Next entry: A-015 — client record -->  

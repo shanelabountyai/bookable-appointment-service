@@ -537,3 +537,33 @@ A-012 committed at 5894d2b
 - The caller key is the first hop of `x-forwarded-for`; behind a proxy that does not set it, everyone shares one bucket. Vercel always sets it, so the ceiling bites only in local dev.
 - `authenticateStaff`'s `ponytail:` note asked for exactly this machinery so staff login could use it too. Not wired — one shared credential with a ~100ms scrypt cost is not the surface under threat, and doing it unasked is A-013 building A-005's item.
 A-013 committed at 7cec2c9
+
+---
+
+## A-014 — Reschedule
+
+**Built:**
+- `packages/core/scheduling/transitions.ts` — `canReschedule(from, context)`, a second small table beside §7, sharing its clause machinery.
+- `packages/db/appointments/reschedule.ts` — `rescheduleAppointment`: one transaction, one same-row `UPDATE`, engine re-run inside, both-sides event, token re-pointed, outbox row. Plus `rescheduleOptions`, the read the customer's screen uses.
+- `packages/db/scheduling/busy-set.ts` — `excludeAppointmentId`, threaded through `buildSlotQuery`/`daysWithAvailability`.
+- `apps/web/app/manage/[token]/reschedule-form.tsx` + three server actions — the customer half of demo checkpoint 2.
+- Race interleaving **6** from spec §4.5, which nothing could test until today.
+- 29 pure + 25 integration + 1 race + 1 e2e. 619 unit tests total.
+
+**Decided:**
+- **The engine must not see the appointment it is moving.** The exclusion constraint compares the updated row against *other* rows, so a 09:00→09:30 move does not false-conflict — but the engine, re-run in the same transaction, sees the row at its old time and refuses its own destination as `overlaps-booking`. Without `excludeAppointmentId` an appointment could never move within its own duration of where it is, which is the most common reschedule there is. The spec's §4.6 sample glosses over this; the test that catches it is the one that fails when the flag is removed.
+- **The write is conditional on the time it was decided against** (`WHERE id = ? AND startAt = ?`). Same reflex as A-012's status-conditional update: two front-desk taps moving one appointment to two different times would otherwise both pass their engine re-checks and both write, leaving one start time and two events that disagree. `AppointmentAlreadyMoved` is distinct from `SlotTaken` — the destination may be free; it is the *source* that changed.
+- **One advisory lock, on the DESTINATION provider-day.** The source day needs none: freeing time can never create a conflict. And because a move stays within one provider, there is exactly one lock — which is why spec §4.6's canonical-lock-ordering warning does not apply here. Cross-provider reassignment (A-019) is where that has to be paid for.
+- **The appointment keeps the duration it was booked with** (D-18's snapshot), not the catalogue's current one. A reschedule moves an appointment; it does not re-sell it. A service shortened last week must not silently shorten an appointment somebody already agreed to.
+- **`rescheduleOptions` exists so the screen and the write path ask the identical question.** Both go through one function with the same exclusion and the same snapshotted duration — two callers assembling that separately is how a UI comes to offer a time the server then refuses.
+- **The reschedule affordance is asked of `canReschedule` with the real actor and cutoff**, not approximated from the status. A form shown thirty minutes before an appointment that then answers "call us" is worse than saying so up front.
+- **A reschedule is not a status change.** No `status_changed` event, no status write, and a test asserts both — modelling it as a transition is what makes it look like a cancel-and-rebook.
+- **The customer is told.** An `appointment.rescheduled` outbox row keyed on the destination instant: two moves are two messages, a retry is one. Not in the backlog row, added because a move nobody is told about is the silent change Goal 2 forbids.
+- **Provider change, service change and overriding are all deliberately absent**, each with the row that owns it named in the file header.
+
+**Verified by mutation (4 of 4 caught):** dropping the busy-set exclusion, dropping the conditional write, never re-pointing the token, and using the live duration instead of the snapshot. Each was caught by exactly one test.
+
+**Left behind:**
+- Staff have no reschedule surface yet — A-016's grid and A-027's detail panel are where it belongs, and the write path is already staff-shaped.
+- The customer's DAY list uses the live service duration (via `daysWithAvailability`) while the TIME list uses the snapshot. They differ only if the catalogue changed since booking, and only in whether a day appears at all; the times a customer can actually pick are always the snapshot's.
+- `SlotTaken` from a reschedule carries no alternatives. Unlike a first booking the customer still has her appointment, so the honest answer is "that time went, yours is unchanged" — a list of alternatives here would invite a second attempt at the exact moment the first failed.

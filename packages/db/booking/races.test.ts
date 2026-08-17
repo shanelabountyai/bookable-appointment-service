@@ -20,6 +20,7 @@ import { resetDatabase } from '../testing';
 import { createWeeklyWindow, upsertDateOverride } from '../availability';
 import { isSlotTakenError } from '../errors';
 import { bookAppointment } from './book';
+import { rescheduleAppointment } from '../appointments';
 import { computeDaySlots } from '../scheduling';
 import { SlotTaken } from './errors';
 
@@ -519,6 +520,59 @@ describe('BOOK-03 — the deterministic race matrix', () => {
 
       await expect(book({ idempotencyKey: `re-${status}` })).resolves.toMatchObject({ deduplicated: false });
       expect(await overlappingPairs()).toBe(0);
+    },
+    RACE_TIMEOUT,
+  );
+
+  /**
+   * (h) THE SPEC'S SIXTH INTERLEAVING (§4.5), which nothing could test until
+   * A-014 existed: a reschedule and a fresh booking racing for the same
+   * destination.
+   *
+   * It is the interesting one because the two paths are different code — a
+   * same-row `UPDATE` and an `INSERT` — reaching the same slot. The lock they
+   * share is keyed on the provider-DAY, not on the row or the statement, which
+   * is what makes them serialize against each other at all; a lock taken on
+   * the appointment row would not, because the booking has no row to lock.
+   *
+   * Fired genuinely concurrently and asserted on the observable contract:
+   * exactly one occupies 14:00, the loser is told the time went rather than
+   * given a 500, and the SQL invariant holds either way.
+   */
+  it(
+    '6. reschedule vs new booking for the same destination → exactly one wins',
+    async () => {
+      const mine = await book({ idempotencyKey: 'the-mover' });
+
+      const destination = at('2026-06-09T14:00:00-05:00');
+      const results = await Promise.allSettled([
+        rescheduleAppointment(prisma, {
+          appointmentId: mine.id,
+          startAt: destination,
+          now: NOW,
+          actor: ACTOR,
+          audience: 'staff',
+        }),
+        book({ startAt: destination, idempotencyKey: 'the-newcomer' }),
+      ]);
+
+      const winners = results.filter((r) => r.status === 'fulfilled');
+      expect(winners).toHaveLength(1);
+      const loser = results.find((r) => r.status === 'rejected');
+      expect(loser?.reason).toBeInstanceOf(SlotTaken);
+
+      // Whichever won, the salon's book is consistent: one appointment at
+      // 14:00, and no overlapping pair anywhere.
+      const atDestination = await prisma.appointment.count({
+        where: { startAt: destination, status: { notIn: ['cancelled', 'cancelled_late'] } },
+      });
+      expect(atDestination).toBe(1);
+      expect(await overlappingPairs()).toBe(0);
+
+      // And the customer whose appointment was being moved still HAS one —
+      // the failure mode that makes cancel-then-book unacceptable (spec §4.6).
+      const stillThere = await prisma.appointment.findUniqueOrThrow({ where: { id: mine.id } });
+      expect(stillThere.status).toBe('booked');
     },
     RACE_TIMEOUT,
   );

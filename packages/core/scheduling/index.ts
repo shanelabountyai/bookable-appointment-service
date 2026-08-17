@@ -2,9 +2,11 @@ export { computeSlots } from './slot-engine';
 export { type ComposedVisit, InvalidVisit, type VisitLine, composeVisit, isSingleService } from './visit';
 export {
   CORRECTION_WINDOW_MS,
+  type RescheduleDecision,
   type TransitionContext,
   type TransitionDecision,
   type TransitionRefusal,
+  canReschedule,
   canTransition,
   isCorrection,
   possibleTransitionsFrom,

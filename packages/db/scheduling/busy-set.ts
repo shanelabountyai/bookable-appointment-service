@@ -44,10 +44,19 @@ export interface BusyRow {
  * `no_show` still OCCUPY their time; only `cancelled`/`cancelled_late` free
  * it. Hand-typing the list here would be the "a status enum is never one edit"
  * trap that this project structurally prevents everywhere else.
+ *
+ * `excludeAppointmentId` EXISTS FOR RESCHEDULE (A-014), and it is not an
+ * optimisation. The exclusion constraint compares the updated row against
+ * OTHER rows, so moving a 60-minute appointment from 09:00 to 09:30 does not
+ * false-conflict (spec §4.6) — but the ENGINE, re-run inside that same
+ * transaction, sees the row at its old time and refuses the destination as
+ * `overlaps-booking`. Without this, an appointment could never be moved to any
+ * time within its own duration of where it already is, which is the most
+ * common reschedule there is: "can we push it half an hour?"
  */
 export async function findBusyAppointments(
   db: Db,
-  args: { providerId: string; windowStart: Date; windowEnd: Date },
+  args: { providerId: string; windowStart: Date; windowEnd: Date; excludeAppointmentId?: string | null },
 ): Promise<BusyRow[]> {
   const rows = await db.$queryRawUnsafe<{ id: string; start: Date; end: Date }[]>(
     `
@@ -57,6 +66,7 @@ export async function findBusyAppointments(
       FROM "Appointment" a
      WHERE a."providerId" = $1
        AND a."status"::text = ANY($4::text[])
+       AND ($5::text IS NULL OR a."id" <> $5)
        AND COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))
            && tstzrange($2::timestamptz, $3::timestamptz, '[)')
      ORDER BY "start"
@@ -65,6 +75,7 @@ export async function findBusyAppointments(
     args.windowStart,
     args.windowEnd,
     [...ACTIVE_STATUSES],
+    args.excludeAppointmentId ?? null,
   );
 
   // A row whose range is empty on BOTH sides (a zero-width blocked range with

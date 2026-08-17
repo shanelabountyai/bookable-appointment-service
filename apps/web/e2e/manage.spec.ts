@@ -23,13 +23,23 @@ test.beforeEach(async () => {
 });
 
 const firstOption = (page: Page) => page.locator('fieldset ul > li > button').first();
+const lastOption = (page: Page) => page.locator('fieldset ul > li > button').last();
 
-/** Books through the customer flow and returns the link the salon sent her. */
-async function bookAndTakeTheLink(page: Page): Promise<string> {
+/**
+ * Books through the customer flow and returns the link the salon sent her.
+ *
+ * `far: true` picks the LAST offered day rather than the first. The seeded
+ * cancellation cutoff is two hours and the seeded lead time is also two hours,
+ * so an appointment booked into today's first free slot sits exactly on the
+ * cutoff boundary — where "can she still reschedule herself?" depends on what
+ * time of day the suite runs. Any spec about the cutoff picks its side of it
+ * deliberately rather than inheriting the clock.
+ */
+async function bookAndTakeTheLink(page: Page, { far = false }: { far?: boolean } = {}): Promise<string> {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
-  await firstOption(page).click(); // the day
+  await (far ? lastOption(page) : firstOption(page)).click(); // the day
   await firstOption(page).click(); // the time
   await page.getByLabel('Your name').fill('Ada Chen');
   await page.getByLabel('Phone').fill('(512) 555-0101');
@@ -142,6 +152,55 @@ test.describe('the manage link (A-013)', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  /**
+   * A-014 through the customer's own link — half of demo checkpoint 2's "opens
+   * the manage link, reschedules, then cancels with the same link".
+   */
+  test('reschedules from the link, and the same link still opens it (D-6)', async ({ page }) => {
+    const link = await bookAndTakeTheLink(page, { far: true });
+    await page.goto(link);
+
+    const prisma = new PrismaClient();
+    try {
+      const before = await prisma.appointment.findFirstOrThrow();
+
+      // A different day from the one she booked.
+      const select = page.getByLabel('Move to which day?');
+      const days = await select.locator('option').allTextContents();
+      const target = days.filter((d) => d !== 'Choose a day…')[0]!;
+      await select.selectOption({ label: target });
+
+      await page.getByRole('radio').first().check();
+      await page.getByRole('button', { name: 'Reschedule' }).click();
+
+      // The PAGE is the feedback, as with cancel: the action revalidates and
+      // the "When" row re-renders from the database. Scoped to that row — the
+      // day list still holds an <option> with the same words, and a bare text
+      // match would pass on the form rather than on the appointment.
+      await expect(page.locator('dd').filter({ hasText: target })).toBeVisible();
+
+      const after = await prisma.appointment.findFirstOrThrow();
+      // D-6: the SAME row moved. A new id here would mean cancel-then-book,
+      // and the link she is holding would already be dead.
+      expect(after.id).toBe(before.id);
+      expect(after.startAt.toISOString()).not.toBe(before.startAt.toISOString());
+      expect(await prisma.appointment.count()).toBe(1);
+
+      const event = await prisma.appointmentEvent.findFirstOrThrow({ where: { type: 'rescheduled' } });
+      expect(event.actor).toBe('customer_token');
+      expect((event.payload as { from: string }).from).toBe(before.startAt.toISOString());
+
+      // TOKEN-02: re-pointed, not reissued — still exactly one token, and the
+      // link still opens.
+      expect(await prisma.manageToken.count({ where: { revokedAt: null } })).toBe(1);
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(link);
+    await expect(page.getByRole('heading', { name: 'Your appointment' })).toBeVisible();
   });
 
   test('a token that was never issued gets a non-enumerating message (TOKEN-02)', async ({ page }) => {

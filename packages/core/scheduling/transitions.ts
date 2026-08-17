@@ -139,18 +139,54 @@ export function canTransition(
 ): TransitionDecision {
   if (from === to) return { allowed: false, refusal: 'same-status' };
 
-  const clauses = TRANSITIONS[from]?.[to];
+  const decision = decide(TRANSITIONS[from]?.[to], context);
+  return decision.allowed ? { allowed: true, isCorrection: isCorrection(from, to) } : decision;
+}
+
+/**
+ * MAY THIS APPOINTMENT BE MOVED (D-6, APPT-05)?
+ *
+ * Reschedule is not a status, so it has no cell in §7 — but it is the same
+ * KIND of question, so it is answered here, by the same clause machinery, and
+ * never by a route deciding for itself.
+ *
+ * The cutoff clause is the point. APPT-05: "Customer reschedule inside the
+ * cutoff is refused identically — a reschedule is a cancellation with extra
+ * steps." Without it the cutoff is decorative: a customer inside it simply
+ * moves the appointment to next month and abandons it, and the salon has lost
+ * the slot with none of the record that a late cancellation leaves.
+ *
+ * `checked_in` and `in_progress` are absent for staff too, deliberately: the
+ * client is in the building. Moving an appointment that is happening is not a
+ * reschedule, it is a correction to when it started (APPT-03), and that is
+ * A-018's timestamps rather than this.
+ */
+export function canReschedule(from: AppointmentStatus, context: TransitionContext): RescheduleDecision {
+  return decide(RESCHEDULABLE[from], context);
+}
+
+export type RescheduleDecision = { allowed: true } | { allowed: false; refusal: TransitionRefusal };
+
+/** Rows = the status being moved FROM. An absent key means "not movable" —
+ *  the four terminal states and the two in-the-chair ones. */
+const RESCHEDULABLE: Partial<Record<AppointmentStatus, readonly Clause[]>> = {
+  booked: [{ actor: 'staff' }, { actor: 'customer_token', precondition: 'outside-cutoff' }],
+  confirmed: [{ actor: 'staff' }, { actor: 'customer_token', precondition: 'outside-cutoff' }],
+};
+
+/** The clause loop, shared by both questions above. The first refusal is kept
+ *  only if NO clause for this actor passes — a move may be permitted by more
+ *  than one clause for the same actor. */
+function decide(clauses: readonly Clause[] | undefined, context: TransitionContext): RescheduleDecision {
   if (!clauses || clauses.length === 0) return { allowed: false, refusal: 'not-permitted' };
 
   const mine = clauses.filter((c) => c.actor === context.actor);
   if (mine.length === 0) return { allowed: false, refusal: 'actor-not-permitted' };
 
-  // The first refusal is kept only if NO clause for this actor passes — a
-  // status may be reachable by more than one route for the same actor.
   let firstRefusal: TransitionRefusal | null = null;
   for (const clause of mine) {
     const refusal = check(clause, context);
-    if (refusal === null) return { allowed: true, isCorrection: isCorrection(from, to) };
+    if (refusal === null) return { allowed: true };
     firstRefusal ??= refusal;
   }
   return { allowed: false, refusal: firstRefusal! };

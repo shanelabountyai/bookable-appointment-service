@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CORRECTION_WINDOW_MS,
   type TransitionContext,
+  canReschedule,
   canTransition,
   isCorrection,
   possibleTransitionsFrom,
@@ -293,6 +294,97 @@ describe('refusals distinguish "never" from "not by you"', () => {
 
   it('says actor-not-permitted for a cell open to staff only', () => {
     expect(canTransition('booked', 'checked_in', permissive({ actor: 'customer_token' }))).toEqual({
+      allowed: false,
+      refusal: 'actor-not-permitted',
+    });
+  });
+});
+
+/**
+ * A-014's reschedule table (D-6, APPT-05).
+ *
+ * Transcribed the same way as §7 above and for the same reason: a test that
+ * walks the implementation's own `RESCHEDULABLE` map proves only that the map
+ * is consistent with itself, and would confirm a wrong one just as cheerfully.
+ *
+ *   ·        nobody may move it
+ *   S,C-out  staff any time; customer only OUTSIDE the cancellation cutoff
+ */
+const RESCHEDULE_TABLE = `
+booked         | S,C-out
+confirmed      | S,C-out
+checked_in     | ·
+in_progress    | ·
+completed      | ·
+no_show        | ·
+cancelled      | ·
+cancelled_late | ·
+`;
+
+const RESCHEDULE_GRID: Record<string, string> = Object.fromEntries(
+  RESCHEDULE_TABLE.trim()
+    .split('\n')
+    .map((line) => line.split('|').map((c) => c.trim()))
+    .map(([status, cell]) => [status!, cell!]),
+);
+
+describe('D-6 — which appointments may be moved', () => {
+  it('has a row for every status, so a ninth state forces a decision', () => {
+    expect(Object.keys(RESCHEDULE_GRID).sort()).toEqual([...APPOINTMENT_STATUSES].sort());
+  });
+
+  // OUTSIDE the cutoff: the customer arm is open where the table says so.
+  const outside = (over: Partial<TransitionContext> = {}) =>
+    permissive({ now: instant(START - (CUTOFF + 1) * 60_000), ...over });
+
+  it.each(APPOINTMENT_STATUSES)('staff may move %s exactly as the table says', (status) => {
+    const expected = RESCHEDULE_GRID[status] !== '·';
+    expect(canReschedule(status, outside({ actor: 'staff' })).allowed).toBe(expected);
+  });
+
+  it.each(APPOINTMENT_STATUSES)('a customer may move %s only where the table says, outside the cutoff', (status) => {
+    const expected = RESCHEDULE_GRID[status] === 'S,C-out';
+    expect(canReschedule(status, outside({ actor: 'customer_token' })).allowed).toBe(expected);
+  });
+
+  it.each(APPOINTMENT_STATUSES)('the system actor may never move %s', (status) => {
+    expect(canReschedule(status, outside({ actor: 'system' })).allowed).toBe(false);
+  });
+
+  /**
+   * APPT-05, and the reason this item exists at all: "a reschedule is a
+   * cancellation with extra steps". Without this clause the cutoff is
+   * decorative — a customer inside it just moves the appointment to next month
+   * and abandons it, and the salon has lost the slot with none of the record
+   * a late cancellation leaves.
+   */
+  it('refuses a CUSTOMER inside the cutoff, and says why', () => {
+    expect(canReschedule('booked', permissive({ actor: 'customer_token', now: instant(START - 60_000) }))).toEqual({
+      allowed: false,
+      refusal: 'inside-cancellation-cutoff',
+    });
+  });
+
+  it('allows STAFF inside the cutoff — the front desk is not bound by it (D-11)', () => {
+    expect(canReschedule('booked', permissive({ actor: 'staff', now: instant(START - 60_000) })).allowed).toBe(true);
+  });
+
+  // The boundary resolves toward the salon, decided once in `insideCutoff` and
+  // shared with cancellation — exactly ON the cutoff counts as inside.
+  it('treats exactly ON the cutoff as inside, for the customer', () => {
+    const onTheBoundary = instant(START - CUTOFF * 60_000);
+    expect(canReschedule('confirmed', permissive({ actor: 'customer_token', now: onTheBoundary }))).toEqual({
+      allowed: false,
+      refusal: 'inside-cancellation-cutoff',
+    });
+  });
+
+  it('distinguishes "nobody may" from "not by you"', () => {
+    expect(canReschedule('completed', outside({ actor: 'staff' }))).toEqual({
+      allowed: false,
+      refusal: 'not-permitted',
+    });
+    expect(canReschedule('booked', outside({ actor: 'system' }))).toEqual({
       allowed: false,
       refusal: 'actor-not-permitted',
     });

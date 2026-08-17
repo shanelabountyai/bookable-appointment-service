@@ -1,4 +1,12 @@
 export {
+  AppointmentAlreadyMoved,
+  RescheduleRefused,
+  type RescheduleInput,
+  type RescheduledAppointment,
+  rescheduleAppointment,
+  rescheduleOptions,
+} from './reschedule';
+export {
   type IssueManageTokenInput,
   type IssuedManageToken,
   type ManageGrant,

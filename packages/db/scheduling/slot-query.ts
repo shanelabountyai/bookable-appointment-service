@@ -67,6 +67,12 @@ export interface BuildSlotQueryArgs {
    * leak).
    */
   audience?: 'public' | 'staff';
+  /**
+   * A-014. The appointment being MOVED, which must not block its own
+   * destination — see `findBusyAppointments`. Only reschedule passes it; every
+   * other caller leaves it undefined and sees the whole busy set.
+   */
+  excludeAppointmentId?: string | null;
 }
 
 export interface BuiltSlotQuery {
@@ -127,6 +133,7 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
         zone,
         windows: resolved.windows,
         service,
+        excludeAppointmentId: args.excludeAppointmentId ?? null,
       });
 
   return {
@@ -340,6 +347,7 @@ async function loadBusy(
     zone: ReturnType<typeof zoneId>;
     windows: SlotQuery['windows'];
     service: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number };
+    excludeAppointmentId: string | null;
   },
 ): Promise<BusyInterval[]> {
   // The widest span the day's candidates can possibly touch. Local midnight to
@@ -351,7 +359,12 @@ async function loadBusy(
   const windowEnd = toDate(instant(dayEnd + args.service.bufferAfterMinutes * MIN + 24 * 60 * MIN));
 
   const [appointments, absences] = await Promise.all([
-    findBusyAppointments(db, { providerId: args.providerId, windowStart, windowEnd }),
+    findBusyAppointments(db, {
+      providerId: args.providerId,
+      windowStart,
+      windowEnd,
+      excludeAppointmentId: args.excludeAppointmentId,
+    }),
     findAbsences(db, { providerId: args.providerId, windowStart, windowEnd }),
   ]);
 
