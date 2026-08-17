@@ -601,3 +601,4 @@ A-014 committed at 27208cd
 - No merge audit beyond the tombstone itself (`mergedIntoClientId` + `mergedAt`). `AppointmentEvent` is appointment-scoped and there is no client-scoped log; adding one for a single event type would be scaffolding.
 - "Rebook" lands in the CUSTOMER booking flow, so it is capped by the self-serve horizon and cannot override. A-017 replaces the destination; the suggestion it carries is already computed here.
 - The soft "this client already has an appointment then" note (D-17) belongs on the staff booking surface, which is A-017.
+A-015 committed at d100979
