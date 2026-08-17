@@ -536,3 +536,4 @@ A-012 committed at 5894d2b
 - The limiter's window is fixed, not sliding: a caller can spend the budget either side of a boundary, up to 2x the limit. Marked `ponytail:` with the upgrade path. Irrelevant against bulk PII retrieval, which is what it defends.
 - The caller key is the first hop of `x-forwarded-for`; behind a proxy that does not set it, everyone shares one bucket. Vercel always sets it, so the ceiling bites only in local dev.
 - `authenticateStaff`'s `ponytail:` note asked for exactly this machinery so staff login could use it too. Not wired — one shared credential with a ~100ms scrypt cost is not the surface under threat, and doing it unasked is A-013 building A-005's item.
+A-013 committed at 7cec2c9
