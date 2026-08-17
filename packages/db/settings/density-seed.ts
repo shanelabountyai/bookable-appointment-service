@@ -221,7 +221,16 @@ export async function seedDensity(
   const springForwardCount = await fill(dana.id, SPRING_FORWARD_DAY, 0.5, 'dst-spring');
   const fallBackCount = await fill(dana.id, FALL_BACK_DAY, 0.5, 'dst-fall');
 
-  await seedNoShowHistory(prisma, business.id, dana.id, services[0]!.id, clients);
+  // Counted: these are rows in Appointment, so omitting them made the seed's
+  // own log under-report its total (225 reported against 228 present). A-024
+  // asserts an exact seeded utilization constant, so the total has to be true.
+  appointmentsCreated += await seedNoShowHistory(
+    prisma,
+    business.id,
+    dana.id,
+    services[0]!.id,
+    clients,
+  );
 
   return {
     appointmentsCreated,
@@ -273,15 +282,18 @@ async function seedNoShowHistory(
   providerId: string,
   serviceId: string,
   clients: { id: string }[],
-): Promise<void> {
+): Promise<number> {
   const offender = clients[0]!;
   const pastDays = ['2026-02-10', '2026-03-17', '2026-04-21'];
+  // Counted from actual inserts, not from pastDays.length: the INSERT is
+  // ON CONFLICT DO NOTHING, so re-seeding over existing rows creates none.
+  let created = 0;
 
   for (const [index, day] of pastDays.entries()) {
     const startAt = `${day}T15:00:00-05:00`;
     const endAt = `${day}T16:00:00-05:00`;
     const id = `seed-noshow-${index}`;
-    await prisma.$executeRawUnsafe(
+    created += await prisma.$executeRawUnsafe(
       `INSERT INTO "Appointment"
          (id,"businessId","providerId","clientId",status,"startAt","endAt",
           "bufferBeforeMinutes","bufferAfterMinutes","isOverride","blockedStart","blockedEnd",
@@ -305,4 +317,6 @@ async function seedNoShowHistory(
       serviceId,
     );
   }
+
+  return created;
 }
