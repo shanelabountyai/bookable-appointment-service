@@ -22,6 +22,7 @@
     "./availability": "./availability/index.ts",
     "./booking": "./booking/index.ts",
     "./clients": "./clients/index.ts",
+    "./day": "./day/index.ts",
     "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
     "./rate-limit": "./rate-limit.ts",

@@ -5,7 +5,6 @@
  * engine finally meet. Everything this module does is assemble inputs — the
  * engine stays pure and this file stays free of scheduling rules.
  */
-import { resolveAvailableWindows, toMinuteWindow, toWindowInput } from '../../core/availability';
 import {
   type BusyInterval,
   type ComposedVisit,
@@ -24,7 +23,7 @@ import {
 import { type Instant, addDays, fromDate, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { effectiveDurationMinutes } from '../../core/settings';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { findAbsences } from '../availability';
+import { findAbsences, resolveDayWindows } from '../availability';
 import { findBusyAppointments } from './busy-set';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -273,61 +272,33 @@ async function loadVisitLinks(db: Db, providerId: string, serviceIds: readonly s
   return { rows, lines, visit: composeVisit(lines), provider: rows[0]!.provider };
 }
 
-/** A-007's chain, converted into the branded WallTime shape SlotQuery wants. */
+/**
+ * A-007's chain, converted into the branded WallTime shape SlotQuery wants.
+ *
+ * The LOOKUP itself is `resolveDayWindows` in the availability module — this
+ * used to hold a second private copy of it. Two implementations of "what hours
+ * does this provider work on this day" is the fork that lets the day grid
+ * (A-016) draw a window the engine will not sell from, and neither screen
+ * looks wrong on its own.
+ */
 async function resolveDayWindowsFor(
   db: Db,
   args: { businessId: string; providerId: string; day: string; zone: string },
 ): Promise<{ windows: SlotQuery['windows'] }> {
-  const weekday = weekdayOf(calendarDay(args.day));
+  const resolved = await resolveDayWindows(db, {
+    businessId: args.businessId,
+    providerId: args.providerId,
+    day: args.day,
+    weekday: weekdayOf(calendarDay(args.day)),
+  });
 
-  const [businessPattern, providerPattern] = await Promise.all([
-    loadPattern(db, { businessId: args.businessId, providerId: null, day: args.day, weekday }),
-    loadPattern(db, { businessId: args.businessId, providerId: args.providerId, day: args.day, weekday }),
-  ]);
-
-  const windows = resolveAvailableWindows(businessPattern, providerPattern).map(toWindowInput);
   return {
-    windows: windows.map((w) => ({
+    windows: resolved.windows.map((w) => ({
       open: wallTime(w.open),
       close: wallTime(w.close),
       endsNextDay: w.endsNextDay,
       breaks: w.breaks.map((b) => ({ open: wallTime(b.open), close: wallTime(b.close) })),
     })),
-  };
-}
-
-async function loadPattern(
-  db: Db,
-  args: { businessId: string; providerId: string | null; day: string; weekday: number },
-) {
-  const [weeklyRows, overrideRow] = await Promise.all([
-    db.weeklyWindow.findMany({
-      where: { businessId: args.businessId, providerId: args.providerId, weekday: args.weekday },
-      include: { breaks: true },
-    }),
-    db.dateOverride.findFirst({
-      where: { businessId: args.businessId, providerId: args.providerId, day: args.day },
-      include: { windows: true },
-    }),
-  ]);
-
-  return {
-    weekly: weeklyRows.map((w) =>
-      toMinuteWindow({
-        open: w.open.trim(),
-        close: w.close.trim(),
-        endsNextDay: w.endsNextDay,
-        breaks: w.breaks.map((b) => ({ open: b.open.trim(), close: b.close.trim() })),
-      }),
-    ),
-    override: overrideRow
-      ? {
-          isClosed: overrideRow.isClosed,
-          windows: overrideRow.windows.map((w) =>
-            toMinuteWindow({ open: w.open.trim(), close: w.close.trim(), endsNextDay: w.endsNextDay }),
-          ),
-        }
-      : null,
   };
 }
 

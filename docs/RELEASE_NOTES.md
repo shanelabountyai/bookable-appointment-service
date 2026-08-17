@@ -844,4 +844,57 @@ first time.
 
 ---
 
-<!-- Next entry: A-016 — staff day grid -->  
+## One screen for the whole day
+
+Every stylist's day side by side: a column each, working hours shaded, breaks
+and time off drawn in, and every appointment as a chip carrying the client's
+name, phone, service and — marked, not merely present — the pinned note that
+might say what she is allergic to.
+
+**The riskiest part of building this was the temptation to redraw it.** The
+booking engine already knows how to turn "we open at nine" into a moment in
+physical time, and the rules are not guessable from outside: a working hour
+that does not exist on the spring-forward morning resolves to the instant
+*after* the gap, an hour that happens twice resolves outward at both ends, and
+windows are merged only *after* that conversion. A grid that worked any of that
+out for itself would eventually draw a window the engine refuses to sell from,
+and neither screen would look wrong on its own. So the conversion moved out of
+the engine into a shared module and both call it — all 205 engine tests passed
+unchanged, which is what makes it a move rather than a rewrite.
+
+**A fork found and deleted on the way past.** Two places in the codebase
+already answered "what hours does this provider work today". They agreed, for
+now. One is gone.
+
+**A gap is not a slot.** A slot is "somewhere this 45-minute service fits, on
+the grid, with buffers". A gap is "nobody is in this chair between 2:15 and
+3:00" — which is the question the front desk is actually asked all day, and it
+has no service in it yet. Lunch breaks are taken out too: offering them would
+send someone to interrupt a stylist eating.
+
+**The screen is never more than 30 seconds behind the book**, because the desk
+is not the only thing writing to it — the other terminal, a customer's phone, a
+stylist's own screen. It re-reads every 15 seconds by re-running the same code
+that drew it the first time, so there is no second way of building the grid to
+drift from the first.
+
+**No clock in the browser.** Every time on screen is formatted server-side in
+the salon's timezone; what reaches the browser is a distance from the top of
+the grid and some text. A laptop still set to the timezone of somebody's
+holiday shows the same day as the terminal beside it.
+
+**Colour is never the only signal.** Every chip's accessible name is a full
+sentence including the status, cancellations are struck through as well as
+faded, and the colour map is exhaustive over the eight statuses — a ninth one
+would fail the build rather than render an invisible chip on a Saturday.
+
+**And an accessibility defect caught before it shipped.** The hour labels down
+the side and the gap text were light grey at 12px: 2.6:1 against white where
+the standard requires 4.5:1. It looked perfectly readable on this screen. The
+automated check in the test suite disagreed, and it was right — small grey text
+is exactly where contrast quietly fails. The measured numbers are now written
+next to the constant, so nobody lightens it back.
+
+---
+
+<!-- Next entry: A-027 — appointment detail panel -->  

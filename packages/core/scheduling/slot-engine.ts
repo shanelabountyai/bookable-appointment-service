@@ -21,8 +21,8 @@
  * calculation below is integer epoch-millisecond arithmetic, which is DST-proof
  * by construction because the physical axis has no DST.
  */
-import { addDays, localDayLengthMinutes, resolve, startOfDay, toLabel } from '../time/zone';
-import type { CalendarDay, Instant, WallTime, ZoneId } from '../time/types';
+import { localDayLengthMinutes, resolve, startOfDay, toLabel } from '../time/zone';
+import type { Instant } from '../time/types';
 import { InvalidTimeValue } from '../time/types';
 import {
   type BusyInterval,
@@ -33,18 +33,11 @@ import {
   type SlotLabel,
   type SlotQuery,
   type SlotResult,
-  type WorkingWindow,
 } from './types';
 
+import { type ResolvedWindow, type Span, overlaps, resolveWindow, union } from './spans';
+
 const MIN = 60_000;
-
-/** A half-open [start, end) interval on the physical axis. */
-interface Span {
-  readonly start: Instant;
-  readonly end: Instant;
-}
-
-const overlaps = (a: Span, b: Span): boolean => a.start < b.end && b.start < a.end;
 
 // ─────────────────────────── validation ───────────────────────────
 // The rule (spec §2, items 27–39): MALFORMED input throws; "nothing available"
@@ -100,82 +93,10 @@ function validate(query: SlotQuery): void {
 }
 
 // ─────────────────────────── the axis crossing ───────────────────────────
-// Everything below this line until `union` is the ONLY part of the engine that
-// touches the calendar axis, and it happens exactly once per window edge.
-
-/**
- * Resolve one wall-clock edge to an instant.
- *
- * The three-armed `resolve()` forces a decision here rather than letting a
- * library make it silently (spec §5):
- *  - `gap`   -> take the instant AFTER the gap, for BOTH edges. An open at a
- *    nonexistent local time means the window begins when that time starts
- *    existing; a close at one means it runs to the far side. Taking `later` for
- *    a close is also what makes DST-7 work: split rows 01:00–02:00 and
- *    03:00–04:00 resolve to [07:00Z, 08:00Z) and [08:00Z, 09:00Z), which then
- *    union into one contiguous 07:00Z–09:00Z window. Take `earlier` for the
- *    close and you get a one-hour phantom hole and silently lose every long
- *    booking on the transition morning.
- *  - `ambiguous` -> `earlier` for an open, `later` for a close: the widest
- *    honest reading of "we are open 01:00–02:00" on a day when both happen
- *    twice. The doubled hour is real capacity (FB-1), so a window spanning it
- *    should contain all of it.
- */
-function resolveEdge(day: CalendarDay, time: WallTime, zone: ZoneId, edge: 'open' | 'close'): Instant {
-  const r = resolve(day, time, zone);
-  if (r.kind === 'unique') return r.at;
-  if (r.kind === 'gap') return r.later;
-  return edge === 'open' ? r.earlier : r.later;
-}
-
-interface ResolvedWindow {
-  readonly span: Span;
-  readonly breaks: readonly Span[];
-}
-
-function resolveWindow(window: WorkingWindow, query: SlotQuery): ResolvedWindow {
-  const { day, businessZone: zone } = query;
-  const closeDay = window.endsNextDay ? addDays(day, 1) : day;
-
-  const start = resolveEdge(day, window.open, zone, 'open');
-  const end = resolveEdge(closeDay, window.close, zone, 'close');
-
-  const breaks: Span[] = [];
-  for (const brk of window.breaks) {
-    // A break belongs to the WINDOW, not the day (spec OV-9), so it is resolved
-    // on whichever calendar day that side of the window falls on.
-    let bStart = resolveEdge(day, brk.open, zone, 'open');
-    let bEnd = resolveEdge(day, brk.close, zone, 'close');
-    if (window.endsNextDay && bStart < start) {
-      bStart = resolveEdge(closeDay, brk.open, zone, 'open');
-      bEnd = resolveEdge(closeDay, brk.close, zone, 'close');
-    }
-    breaks.push({ start: bStart, end: bEnd });
-  }
-
-  return { span: { start, end }, breaks };
-}
-
-/**
- * Union the resolved windows ON THE INSTANT AXIS — never before resolution
- * (spec DST-7). Ranges that merely touch (`a.end === b.start`) are merged too:
- * they are contiguous in physical time, and treating them as two windows would
- * reject any service spanning the join.
- */
-function union(spans: readonly Span[]): Span[] {
-  const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end);
-  const merged: Span[] = [];
-  for (const span of sorted) {
-    if (span.end <= span.start) continue; // a window that resolved to nothing
-    const last = merged[merged.length - 1];
-    if (last && span.start <= last.end) {
-      if (span.end > last.end) merged[merged.length - 1] = { start: last.start, end: span.end };
-    } else {
-      merged.push(span);
-    }
-  }
-  return merged;
-}
+// It lives in `spans.ts` now, shared with A-016's day grid: the resolution
+// rules (gap -> after, ambiguous open -> earlier / close -> later, union only
+// AFTER resolving) are subtle enough that a second copy would be a second set
+// of DST bugs. Nothing about the behaviour changed when it moved.
 
 // ─────────────────────────── the engine ───────────────────────────
 
@@ -197,7 +118,7 @@ export function computeSlots(query: SlotQuery): SlotResult {
 
   let resolved: ResolvedWindow[];
   try {
-    resolved = query.windows.map((w) => resolveWindow(w, query));
+    resolved = query.windows.map((w) => resolveWindow(w, day, zone));
   } catch (e) {
     if (e instanceof InvalidTimeValue) throw new InvalidSlotQuery(e.message);
     throw e;

@@ -24,6 +24,9 @@ export default async function StaffHome() {
       </div>
 
       <nav className="flex flex-col gap-2">
+        <Link href="/staff/day" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Today
+        </Link>
         <Link href="/staff/settings" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Settings
         </Link>
@@ -40,8 +43,6 @@ export default async function StaffHome() {
           Clients
         </Link>
       </nav>
-
-      <p className="text-zinc-500">The day grid arrives with A-016.</p>
 
       <form action={logout}>
         <button

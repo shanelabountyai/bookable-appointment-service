@@ -602,3 +602,36 @@ A-014 committed at 27208cd
 - "Rebook" lands in the CUSTOMER booking flow, so it is capped by the self-serve horizon and cannot override. A-017 replaces the destination; the suggestion it carries is already computed here.
 - The soft "this client already has an appointment then" note (D-17) belongs on the staff booking surface, which is A-017.
 A-015 committed at d100979
+
+---
+
+## A-016 — Staff day grid
+
+**Built:**
+- `packages/core/scheduling/spans.ts` — the engine's wall→instant window resolution, **extracted rather than copied**, plus `subtractSpans` for gaps.
+- `packages/db/day/day-view.ts` — `loadDayView`: every provider's column for one business day.
+- `apps/web/lib/day/view-model.ts` — the server-side transform: every label and every offset computed in the salon's zone before anything reaches the browser.
+- `/staff/day` — the grid, the single-stylist list view, day navigation, and a 15-second refresh.
+- 10 pure + 20 integration + 10 e2e. 691 unit tests total.
+
+**Decided:**
+- **The axis crossing moved, it did not multiply.** `resolveEdge`/`resolveWindow`/`union` came out of the slot engine into a shared module and the engine now calls it. The grid has to place working hours on a physical timeline, which is the same crossing — and its rules (gap → the instant *after*, ambiguous open → earlier / close → later, union only *after* resolving) are subtle enough that a second implementation would be a second set of DST bugs. All 205 engine tests passed unchanged after the move, which is what makes it an extraction rather than a rewrite.
+- **A pre-existing fork deleted on the way past.** `slot-query.ts` held a private copy of A-007's precedence-chain lookup alongside the public `resolveDayWindows`. Two answers to "what hours does this provider work today" is exactly the fork that lets the grid draw a window the engine will not sell from — and neither screen looks wrong on its own.
+- **A gap is not a slot.** A slot is "somewhere this 45-minute service fits, on the grid, with buffers"; a gap is "nobody is in this chair between 2:15 and 3:00". The front desk is asked the second question all day and it has no service in it yet, so gaps are interval subtraction, not an engine call. Breaks are subtracted too — lunch is not bookable time.
+- **The grid reads the D-16 range, not the blocked one**, so a staff override occupies its true span in the column even though its blocked range is zero-width (D-8). The database never lies and neither does the day view; that is what `overriddenFromRange` is stored for.
+- **A cancellation frees its time AND stays on screen.** Both halves matter: the slot must be sellable again, and "she cancelled" is what the front desk needs when the client turns up anyway.
+- **No `Date` in the client component.** Every time on screen is formatted server-side in the salon's zone; what crosses to the browser is minutes-from-the-top and text. A front desk laptop still set to a holiday timezone shows the same grid as the terminal beside it.
+- **Refresh is `router.refresh()` every 15 seconds** — half the 30-second budget. It re-runs the *same* server component, so the refresh path and the first render are one code path; a client-side fetch-and-merge would be a second way of building the grid, and the two would drift.
+- **The now-line comes from the server's clock**, not the browser's, and is hidden when the day being viewed is not today — a now-line on Thursday's page pointing at Tuesday's 2pm is a lie the eye believes.
+- **Colour is never the only signal.** Status is in every chip's accessible name, cancellations are struck through as well as faded, and the status map is total over `AppointmentStatus` so a ninth state is a compile error rather than an invisible chip on a Saturday.
+- **Keyboard operability is native.** Chips are real links in chronological DOM order rather than a custom roving-tabindex grid: Tab reaches everything, Enter opens the client record, and there is no key handling to get wrong. Arrow-key navigation is the upgrade path if the desk ever asks for it.
+
+**A real accessibility defect, caught by axe before it shipped:** the gutter's hour labels and the gap text were `zinc-400`/`zinc-500` at 12px — 2.62:1 and 4.39:1 against their backgrounds, both under WCAG AA's 4.5:1. Small grey text is exactly where contrast quietly fails, and it looked fine. Darkened to `zinc-600`, with the measured numbers written next to the constant so the next person does not lighten it back.
+
+**Scope narrowed, deliberately — flag for review:**
+- The row says **"clickable gaps with lengths"**. Gaps render with their lengths and are *not* interactive. A-017 owns booking from the grid, so today a gap button would have nowhere to go, and a focusable element that does nothing when activated is worse than plain text. Making them buttons is a two-line change in `day-grid.tsx` once A-017 exists.
+
+**Left behind:**
+- No status controls on the chip — A-027's detail panel owns those, and A-018 owns check-in.
+- The client chip carries phone and pinned note; the no-show **flags** the row also asks for are CLIENT-04, which A-020 builds.
+- `loadDayView` runs one round of queries per provider concurrently (`ponytail:` noted). The roster is bounded by the chair count (D-20); batching by `providerId IN (...)` is the fix if that ever changes.

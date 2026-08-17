@@ -1,4 +1,13 @@
 export { computeSlots } from './slot-engine';
+export {
+  type ResolvedWindow,
+  type Span,
+  overlaps,
+  resolveEdge,
+  resolveWindow,
+  subtractSpans,
+  union,
+} from './spans';
 export { type ComposedVisit, InvalidVisit, type VisitLine, composeVisit, isSingleService } from './visit';
 export {
   CORRECTION_WINDOW_MS,
