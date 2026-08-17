@@ -628,8 +628,8 @@ A-015 committed at d100979
 
 **A real accessibility defect, caught by axe before it shipped:** the gutter's hour labels and the gap text were `zinc-400`/`zinc-500` at 12px — 2.62:1 and 4.39:1 against their backgrounds, both under WCAG AA's 4.5:1. Small grey text is exactly where contrast quietly fails, and it looked fine. Darkened to `zinc-600`, with the measured numbers written next to the constant so the next person does not lighten it back.
 
-**Scope narrowed, deliberately — flag for review:**
-- The row says **"clickable gaps with lengths"**. Gaps render with their lengths and are *not* interactive. A-017 owns booking from the grid, so today a gap button would have nowhere to go, and a focusable element that does nothing when activated is worse than plain text. Making them buttons is a two-line change in `day-grid.tsx` once A-017 exists.
+**Scope narrowed, and the owner confirmed it:**
+- The row says **"clickable gaps with lengths"**. Gaps render with their lengths and are *not* interactive. A-017 owns booking from the grid, so today a gap button would have nowhere to go, and a focusable element that does nothing when activated is worse than plain text. **Asked and answered 2026-08-17: leave it to A-017**, which now carries the note. Making them buttons is a two-line change in `day-grid.tsx`.
 
 **Left behind:**
 - No status controls on the chip — A-027's detail panel owns those, and A-018 owns check-in.
