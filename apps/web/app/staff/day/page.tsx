@@ -72,6 +72,11 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         >
           Walk-in
         </Link>
+        {/* AVAIL-05. One tap from the day, because the morning somebody calls
+            in sick is the morning this has to be findable. */}
+        <Link href={`/staff/conflicts?day=${day}`} className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
+          Conflicts
+        </Link>
       </div>
 
       <nav aria-label="View" className="flex flex-wrap gap-2 text-sm">

@@ -232,16 +232,25 @@ test.describe('staff booking (A-017)', () => {
     await expect(page.getByRole('heading', { name: 'Walk-in' })).toBeVisible();
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
-    const option = page.getByRole('button', { name: /at \d\d:\d\d$/ }).first();
-    if (await option.count()) {
-      await option.click();
+    // WAIT FOR THE ANSWER BEFORE BRANCHING. The options load in a transition,
+    // so counting them straight after choosing the service races the request:
+    // an empty count means "still looking", not "nobody is free". This waits
+    // for whichever of the two terminal states arrives — which is the honest
+    // shape of a test about "right now", since whether anybody IS free depends
+    // on the wall clock when the suite runs.
+    const options = page.getByRole('button', { name: /at \d\d:\d\d$/ });
+    const nobody = page.getByText(/Nobody is free for that today/);
+    await expect(options.first().or(nobody)).toBeVisible();
+
+    if (await options.count()) {
+      await options.first().click();
       await page.getByRole('button', { name: 'No name' }).click();
       await page.getByRole('button', { name: 'Book', exact: true }).click();
       await expect(page.getByText('Booked.')).toBeVisible();
     } else {
       // Outside the seeded opening hours there is genuinely nobody free, and
       // saying so is the correct behaviour rather than a failure.
-      await expect(page.getByText(/Nobody is free for that today/)).toBeVisible();
+      await expect(nobody).toBeVisible();
     }
   });
 

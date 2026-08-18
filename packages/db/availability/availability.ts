@@ -286,15 +286,57 @@ export interface AbsenceInput {
  */
 export async function createTimeOff(db: Db, input: AbsenceInput, actor: ActorStamp) {
   assertInterval(input);
-  return db.timeOff.create({
+  const created = await db.timeOff.create({
     data: { ...input, reason: input.reason ?? null, createdByActor: actor.createdByActor, actorRef: actor.actorRef },
   });
+  await freshenAcknowledgments(db, input);
+  return created;
 }
 
 export async function createAdHocBlock(db: Db, input: AbsenceInput, actor: ActorStamp) {
   assertInterval(input);
-  return db.adHocBlock.create({
+  const created = await db.adHocBlock.create({
     data: { ...input, reason: input.reason ?? null, createdByActor: actor.createdByActor, actorRef: actor.actorRef },
+  });
+  await freshenAcknowledgments(db, input);
+  return created;
+}
+
+/**
+ * OPERATOR R-7. A "keep-flagged" acknowledgment is about ONE conflict; when
+ * the absence causing it changes, that conflict is a different conflict, and
+ * a stale flag hides a client behind a decision somebody made about a
+ * situation that no longer exists.
+ *
+ * Deliberately in THIS file rather than in A-019's impact module, for two
+ * reasons: every path that writes an absence gets it for free and cannot
+ * forget it, and the import stays one-directional — `impact.ts` needs
+ * `resolveDayWindows` from here, so anything here needing `impact.ts` would
+ * be a cycle.
+ */
+export async function clearConflictAcknowledgments(
+  db: Db,
+  args: { businessId: string; providerId: string; startAt: Date; endAt: Date },
+): Promise<number> {
+  const cleared = await db.appointment.updateMany({
+    where: {
+      businessId: args.businessId,
+      providerId: args.providerId,
+      conflictAckAt: { not: null },
+      startAt: { lt: args.endAt },
+      endAt: { gt: args.startAt },
+    },
+    data: { conflictAckAt: null, conflictAckReason: null },
+  });
+  return cleared.count;
+}
+
+async function freshenAcknowledgments(db: Db, input: AbsenceInput): Promise<void> {
+  await clearConflictAcknowledgments(db, {
+    businessId: input.businessId,
+    providerId: input.providerId,
+    startAt: input.startAt,
+    endAt: input.endAt,
   });
 }
 
@@ -305,11 +347,18 @@ function assertInterval(input: AbsenceInput): void {
 }
 
 export async function deleteTimeOff(db: Db, id: string): Promise<void> {
+  // Read before deleting: the range is what says WHICH acknowledgments were
+  // about this absence. Removing an absence resolves the conflict, so the
+  // acknowledgment about it is equally out of date.
+  const row = await db.timeOff.findUnique({ where: { id } });
   await db.timeOff.delete({ where: { id } });
+  if (row) await freshenAcknowledgments(db, row);
 }
 
 export async function deleteAdHocBlock(db: Db, id: string): Promise<void> {
+  const row = await db.adHocBlock.findUnique({ where: { id } });
   await db.adHocBlock.delete({ where: { id } });
+  if (row) await freshenAcknowledgments(db, row);
 }
 
 export async function listWeeklyWindows(db: Db, businessId: string, providerId: string | null) {

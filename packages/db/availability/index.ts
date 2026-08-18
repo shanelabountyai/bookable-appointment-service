@@ -1,4 +1,14 @@
 export {
+  type ConflictingAppointment,
+  acknowledgeConflict,
+  appointmentsInRange,
+  appointmentsOutsideHours,
+  conflictsForDay,
+  futureAppointments,
+} from './impact';
+export { type ReassignFailure, type ReassignOutcome, reassignAppointment, reassignMany } from './reassign';
+export {
+  clearConflictAcknowledgments,
   type AbsenceInput,
   type ActorStamp,
   type DateOverrideInput,

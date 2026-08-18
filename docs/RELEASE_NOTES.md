@@ -989,4 +989,50 @@ that half-moved is worse than one that did not move at all.
 
 ---
 
-<!-- Next entry: A-019 — availability-change impact workflow -->
+## The morning somebody calls in sick
+
+Nine clients are booked with Dana and she is not coming in. This is the moment
+a scheduling product is judged, and the requirement is absolute: **nothing is
+silently cancelled, moved, or hidden.**
+
+Recording the sick day always succeeds — the database deliberately does not
+refuse it, because "Dana is ill" is a fact, and what happens to her nine
+clients is a decision for a person. That decision now has a screen: every
+stranded appointment, with the client's name and a tappable phone number,
+because the resolution to most of these is a call and a list you have to click
+nine times to use is a list the front desk copies onto paper.
+
+**A conflict is worked out, never stored.** It is a fact about *other* rows —
+an absence, an edited window — so a saved `hasConflict` flag would go stale and
+lie on precisely the day this screen matters. What *is* saved is the human
+acknowledgment: "rang her, she's coming anyway". That is the one thing not
+derivable from anything else, and it is what stops the second person in on
+Saturday morning re-ringing three clients somebody already sorted.
+
+**And that acknowledgment expires when the situation does.** If the absence
+changes — she is off for the week now, or she is coming in after all — the flag
+is cleared, because it was an answer to a question that no longer exists.
+Clearing lives in the one place absences are written, so no future code path
+can forget it. It is scoped to the overlapping times, so an afternoon absence
+does not wipe a decision somebody made about the morning.
+
+**Reassigning keeps the appointment.** Handing a client to Priya changes the
+stylist and nothing else — same id, same time, same working manage link, so the
+client may not need telling at all. Whether Priya is actually free is decided
+by the database's no-overlap rule rather than by a check in the code, which is
+what makes a bulk reassignment incapable of half-succeeding into a
+double-booking.
+
+**Bulk actions report what they could *not* do.** Nine appointments, three
+moved, six that could not — a message that only counted the successes would
+leave six clients quietly unhandled, which is the exact failure this feature
+exists to prevent. Each move is independent, too: one awkward 2pm does not roll
+back the eight that worked.
+
+**Cancelling needs a reason; keeping does not.** Taking a client's appointment
+away is the one action here that requires a sentence somebody can read back to
+her on the phone.
+
+---
+
+<!-- Next entry: A-020 — no-show & late-cancel machinery -->

@@ -703,3 +703,39 @@ A-017 committed at 5616d8c
 - The push starts at the next appointment, not an arbitrary time the user picks. "From here" in a salon means "from the client who has not sat down yet", and a time picker would be a second way to say the same thing.
 - Running EARLY is not modelled. Nobody is kept waiting by it.
 A-018 committed at 6526fde
+
+---
+
+## A-019 — Availability-change impact workflow
+
+**Built:**
+- `packages/db/availability/impact.ts` — conflicts DERIVED four ways: absence overlap, hours edit, provider deactivation, and the day's combined view.
+- `packages/db/availability/reassign.ts` — `reassignAppointment` / `reassignMany`, same-row provider change.
+- `clearConflictAcknowledgments` wired into every absence write and delete.
+- `/staff/conflicts` — the screen the front desk opens the morning somebody calls in sick.
+- 23 integration + 8 e2e. 753 unit tests total.
+
+**Decided:**
+- **A conflict is DERIVED, never stored** (operator R-7). It is a fact about *other* rows — an absence, a changed window — and a stored `hasConflict` flag goes stale and lies on exactly the day this screen matters. The only thing stored is the human acknowledgment, because that is not derivable from anything.
+- **The acknowledgment is cleared in `availability.ts`, not in the workflow.** Every path that writes or deletes an absence gets it for free and cannot forget it — and the import stays one-directional, since `impact.ts` already needs `resolveDayWindows` from there. (I built it the other way first and had a two-module import cycle; it worked, and I removed it anyway.)
+- **Clearing is scoped to the overlapping range.** An afternoon absence must not wipe an acknowledgment somebody made about the morning.
+- **Reassignment is a same-row UPDATE** (like D-6's reschedule): the appointment keeps its id, so the manage link still works and the history does not fork. Only the provider changes — the time does not, which is why the client may not need telling at all.
+- **The exclusion constraint decides whether the new provider is free**, not a check in this module. A bulk reassign therefore cannot half-succeed into a double-book.
+- **Each reassignment is its own transaction, on purpose.** The demo checkpoint's own words are "three reassigned to Priya, six kept-flagged" — an all-or-nothing bulk action that rolled back because of one awkward 2pm would make the front desk do all nine by hand.
+- **The bulk result names what did NOT happen.** A message that only counted successes would leave six clients quietly unhandled, which is the failure mode this whole item exists to prevent.
+- **"Where qualified" is enforced against the WHOLE visit** (SVC-02/VISIT-01), not just the first service.
+- **The phone number is on every row**, as a `tel:` link. The resolution to most of these is a call, and a list you have to click nine times to use is a list the front desk copies onto paper.
+- **Cancelling requires a reason**; keeping does not. Taking a client's appointment away is the one action here that needs a sentence somebody can read back to her on the phone.
+
+**A duplicate-label problem the e2e caught:** three fields on the page were labelled "Why?" — the bulk reassign and the per-row keep and cancel. axe passes that, but a screen reader reads three identical fields. The bulk one is now "Why move them?".
+
+**And the same re-render race as the cancel and reschedule surfaces:** after a successful bulk reassign there is nothing stranded, so the list — including the form holding the summary — is replaced by the empty state. The spec asserts the page's real feedback and the database, not a message that is racing its own re-render. Third time this pattern has appeared; it is worth remembering that in this app the PAGE is the confirmation.
+
+**Verified by mutation (2 of 2 caught):** never clearing acknowledgments, and dropping the qualification check on reassignment.
+
+**A flaky test from A-017, caught by this item's full sweep and fixed here.** The walk-in spec counted the offered times immediately after choosing a service — before the transition that loads them had settled — so an empty count meant "still looking", not "nobody is free". It passed on timing luck when A-017 shipped and failed today. It now waits for whichever terminal state arrives (`options.or(nobody)`) before branching. Worth stating plainly: that was a broken test, not a flaky one, and the repo's own rule about race tests applies to any test that races a request.
+
+**Left behind:**
+- "Offer a new time" links to the day view rather than opening a staff reschedule picker. `rescheduleAppointment` exists and is staff-callable (A-014), but its only surface today is the customer's manage link; a staff reschedule picker belongs with A-027's detail panel, where the rest of the per-appointment controls live.
+- The cancellation goes through the state machine and the event log; the outbox notice for it is A-020/A-022's territory.
+- `conflictsForDay` runs a query per provider per absence. Bounded by the chair count (D-20) and a day's absences; batching is the fix if a much larger roster ever appears.
