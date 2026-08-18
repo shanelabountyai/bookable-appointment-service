@@ -11,7 +11,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
-import { type PushPreview, PushRefused, clearRunningLate, previewPush, pushColumn, setRunningLate } from '@bookable/db/day';
+import { type PushPreview, clearRunningLate, previewPush, pushColumn, setRunningLate } from '@bookable/db/day';
 import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
@@ -97,21 +97,28 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
       reason,
     });
     revalidatePath('/staff/day');
-    return {
-      ok: true,
-      message: `Moved ${result.moved} appointment${result.moved === 1 ? '' : 's'}. ${result.notified} client${result.notified === 1 ? '' : 's'} told.`,
-    };
-  } catch (error) {
-    if (error instanceof PushRefused) {
-      // APPT-04 refuses silently-lossy shifts: a column that half-moved is
-      // worse than one that did not, so the whole push is off and the reason
-      // names the appointment.
-      const stuck = error.preview.candidates.filter((c) => c.problem);
+
+    // D-26: say what MOVED and, more importantly, what did not. A message
+    // that only counted successes would leave the stuck clients quietly
+    // unhandled — the same failure this whole workflow exists to prevent.
+    const stayed = result.leftBehind
+      .map((c) => `${c.clientName ?? 'a walk-in'} (${c.problem === 'past-closing' ? 'would run past closing' : 'blocked by one that stayed'})`)
+      .join(', ');
+
+    if (result.moved === 0) {
       return {
         ok: false,
-        message: `Not moved. ${stuck.length} appointment${stuck.length === 1 ? '' : 's'} would fall past closing — shorten the push, or move ${stuck[0]?.clientName ?? 'that client'} by hand.`,
+        message: `Nothing could move: ${stayed}. Shorten the push, or move that one by hand first.`,
       };
     }
+
+    return {
+      ok: result.leftBehind.length === 0,
+      message:
+        `Moved ${result.moved} appointment${result.moved === 1 ? '' : 's'}. ${result.notified} client${result.notified === 1 ? '' : 's'} told.` +
+        (stayed ? ` Left where they were: ${stayed}.` : ''),
+    };
+  } catch (error) {
     if (error instanceof RangeError) return { ok: false, message: 'Choose how many minutes to push by.' };
     throw error;
   }

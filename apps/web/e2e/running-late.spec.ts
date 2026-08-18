@@ -185,26 +185,31 @@ test.describe('pushing the column (A-018)', () => {
     }
   });
 
-  /** APPT-04 refuses silently-lossy shifts: all or nothing. */
-  test('refuses the whole push when something would fall past closing', async ({ page }) => {
-    await seedAppointments(['16:30']); // ends 17:15; Dana closes at 17:00... and a push makes it worse
+  /**
+   * D-26: the push moves what it can and NAMES what it left. Decided at demo
+   * checkpoint 2, where all-or-nothing capped the seeded Saturday at a
+   * five-minute push while the stylist was 38 minutes behind.
+   */
+  test('moves what fits and names the one it left behind', async ({ page }) => {
+    await seedAppointments(['10:00', '16:30']); // the 16:30 ends 17:15, past the 17:00 close
     await page.goto(`/staff/day?day=${DAY}`);
 
     const dana = page.getByRole('region', { name: /Dana/ });
-    // The <details> summary, which is what carries the name — the group
-    // element around it is unnamed.
     await dana.getByText('Push the column').click();
-    await dana.getByLabel('Push by').fill('60');
+    await dana.getByLabel('Push by').fill('30');
     await dana.getByRole('button', { name: 'Preview' }).click();
 
-    await expect(dana.getByText(/would fall past closing/)).toBeVisible();
-    // The confirm is unavailable, rather than available and then refused.
-    await expect(dana.getByRole('button', { name: /^Move \d+ and tell them$/ })).toBeDisabled();
+    await expect(dana.getByText(/stays: would run past closing/)).toBeVisible();
+    await dana.getByRole('button', { name: /^Move 1 and tell them$/ }).click();
+
+    await expect(dana.getByText(/Left where they were:/)).toBeVisible();
 
     const prisma = new PrismaClient();
     try {
-      const appointment = await prisma.appointment.findFirstOrThrow();
-      expect(appointment.startWallTime.trim()).toBe('16:30');
+      const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+      // The 10:00 moved; the client at the end of the day is exactly where
+      // she expects to be, and the desk has been told her name.
+      expect(rows.map((r) => r.startWallTime.trim())).toEqual(['10:30', '16:30']);
     } finally {
       await prisma.$disconnect();
     }

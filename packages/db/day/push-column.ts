@@ -37,9 +37,12 @@ export interface PushCandidate {
   clientName: string | null;
   from: Date;
   to: Date;
-  /** Set when this appointment cannot move — the push is refused as a whole
-   *  and this is what the preview shows the human. */
-  problem?: 'past-closing' | 'collides-with-another-provider-hold';
+  /**
+   * Why this one cannot move (D-26). It stays where it is and the rest still
+   * go — but it is NAMED, which is the whole difference between a partial
+   * push and a silently-lossy one.
+   */
+  problem?: 'past-closing' | 'blocked-by-one-that-stays';
 }
 
 export interface PushPreview {
@@ -47,18 +50,9 @@ export interface PushPreview {
   day: string;
   minutes: number;
   candidates: PushCandidate[];
-  /** True when every candidate can move. The preview is the gate: APPT-04
-   *  refuses a partial push rather than leaving half a column shifted. */
+  /** True when at least one appointment can actually move. Not "all of them"
+   *  (D-26): the push is partial and says what it left. */
   canPush: boolean;
-}
-
-export class PushRefused extends Error {
-  readonly preview: PushPreview;
-  constructor(preview: PushPreview) {
-    super('Some appointments cannot be moved by that much.');
-    this.name = 'PushRefused';
-    this.preview = preview;
-  }
 }
 
 /**
@@ -123,34 +117,78 @@ export async function previewPush(
   const lastClose = windows.reduce((latest, w) => (w.span.end > latest ? w.span.end : latest), 0 as number);
 
   const shift = args.minutes * MIN;
-  const candidates: PushCandidate[] = appointments.map((appointment) => {
-    const to = instant(fromDate(appointment.startAt) + shift);
-    const blockedEnd = fromDate(appointment.endAt) + shift + appointment.bufferAfterMinutes * MIN;
 
-    return {
-      appointmentId: appointment.id,
-      clientName: appointment.client?.name ?? null,
-      from: appointment.startAt,
-      to: toDate(to),
-      // Past closing is the loss APPT-04 names. A shift that ends the day
-      // after the salon shuts is not a scheduling decision, it is a mistake
-      // with a client attached.
-      ...(lastClose > 0 && blockedEnd > lastClose ? { problem: 'past-closing' as const } : {}),
-    };
-  });
+  interface Row {
+    appointment: (typeof appointments)[number];
+    shiftedStart: number;
+    shiftedBlockedEnd: number;
+    stayingStart: number;
+    stayingBlockedEnd: number;
+    problem?: PushCandidate['problem'];
+  }
+
+  const rows: Row[] = appointments.map((appointment) => ({
+    appointment,
+    shiftedStart: fromDate(appointment.startAt) + shift,
+    shiftedBlockedEnd: fromDate(appointment.endAt) + shift + appointment.bufferAfterMinutes * MIN,
+    stayingStart: fromDate(appointment.startAt),
+    stayingBlockedEnd: fromDate(appointment.endAt) + appointment.bufferAfterMinutes * MIN,
+    // Past closing is the loss APPT-04 names. A shift that ends the day after
+    // the salon shuts is not a scheduling decision, it is a mistake with a
+    // client attached — so this one stays put and is named.
+    ...(lastClose > 0 && fromDate(appointment.endAt) + shift + appointment.bufferAfterMinutes * MIN > lastClose
+      ? { problem: 'past-closing' as const }
+      : {}),
+  }));
+
+  /**
+   * THE CASCADE (D-26). An appointment left behind still occupies its old
+   * time, so anything that would shift ON TOP of it cannot move either — and
+   * that propagates backwards until nothing changes.
+   *
+   * Without this, a partial push would hand the database a genuine overlap and
+   * the whole transaction would fail at COMMIT, which is a worse outcome than
+   * either refusing or moving less: the desk would see a total failure with no
+   * explanation of which pair collided.
+   */
+  for (let changed = true; changed; ) {
+    changed = false;
+    const staying = rows.filter((r) => r.problem);
+    for (const row of rows) {
+      if (row.problem) continue;
+      const collides = staying.some(
+        (s) => row.shiftedStart < s.stayingBlockedEnd && s.stayingStart < row.shiftedBlockedEnd,
+      );
+      if (collides) {
+        row.problem = 'blocked-by-one-that-stays';
+        changed = true;
+      }
+    }
+  }
+
+  const candidates: PushCandidate[] = rows.map((row) => ({
+    appointmentId: row.appointment.id,
+    clientName: row.appointment.client?.name ?? null,
+    from: row.appointment.startAt,
+    to: toDate(instant(row.shiftedStart)),
+    ...(row.problem ? { problem: row.problem } : {}),
+  }));
 
   return {
     providerId: args.providerId,
     day: args.day,
     minutes: args.minutes,
     candidates,
-    canPush: candidates.length > 0 && candidates.every((c) => c.problem === undefined),
+    canPush: candidates.some((c) => c.problem === undefined),
   };
 }
 
 export interface PushResult {
   moved: number;
   notified: number;
+  /** D-26: what stayed put, and why. Named rather than silently dropped —
+   *  this is the half the desk has to act on next. */
+  leftBehind: PushCandidate[];
 }
 
 /**
@@ -178,7 +216,13 @@ export async function pushColumn(
 
   return prisma.$transaction(async (tx) => {
     const preview = await previewPush(tx, args);
-    if (!preview.canPush) throw new PushRefused(preview);
+    // D-26: move what CAN move. `leftBehind` is returned, not thrown — a push
+    // that names its casualties is not the silently-lossy shift APPT-04
+    // forbids, and refusing outright left the desk doing by hand exactly what
+    // this feature exists to do (demo checkpoint 2, §9).
+    const movable = preview.candidates.filter((c) => c.problem === undefined);
+    const leftBehind = preview.candidates.filter((c) => c.problem !== undefined);
+    if (movable.length === 0) return { moved: 0, notified: 0, leftBehind };
 
     // THE DEFERRAL, and the only place in this codebase that asks for it.
     // Scoped to this transaction: everywhere else the check stays immediate.
@@ -192,7 +236,7 @@ export async function pushColumn(
     const shift = args.minutes * MIN;
 
     let notified = 0;
-    for (const candidate of preview.candidates) {
+    for (const candidate of movable) {
       const appointment = await tx.appointment.findUniqueOrThrow({
         where: { id: candidate.appointmentId },
         select: { id: true, startAt: true, endAt: true, client: { select: { email: true, phone: true } } },
@@ -247,6 +291,6 @@ export async function pushColumn(
       notified += 1;
     }
 
-    return { moved: preview.candidates.length, notified };
+    return { moved: movable.length, notified, leftBehind };
   }, { timeout: 15_000 });
 }

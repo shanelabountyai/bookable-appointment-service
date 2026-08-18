@@ -250,6 +250,17 @@ My recommendation is **(2)**, for consistency with A-019 and because the desk's
 real question is "who do I have to ring?". It is a change to APPT-04's meaning,
 so it is the owner's call, not mine.
 
+**Answered 2026-08-18: (2), the named partial push.** Recorded as D-26 and
+implemented in the same session. One consequence surfaced while building it and
+is worth stating here, because it changes what the feature can promise: an
+appointment left behind still occupies its old time, so anything that would
+shift on top of it cannot move either — and that cascades backwards. On a
+fully packed column the honest answer is still "nothing moved, and here is who
+is in the way", which is a better answer than a bare refusal but is not the
+same as "it now works". Without the cascade a partial push would hand the
+database a genuine overlap and the whole transaction would fail at COMMIT,
+naming no pair at all.
+
 ---
 
 ## 10. Smaller observations — no code change

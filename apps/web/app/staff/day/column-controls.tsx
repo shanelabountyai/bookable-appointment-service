@@ -125,7 +125,8 @@ export function ColumnControls({
                       {/* APPT-04's collision preview: named, before anything
                           moves, because a column that half-moved is worse
                           than one that did not. */}
-                      {row.problem === 'past-closing' ? ' — would fall past closing' : ''}
+                      {row.problem === 'past-closing' ? ' — stays: would run past closing' : ''}
+                      {row.problem === 'blocked-by-one-that-stays' ? ' — stays: blocked by one that stays' : ''}
                     </li>
                   ))}
                 </ul>
@@ -150,7 +151,9 @@ export function ColumnControls({
                     disabled={pushing || !preview.canPush}
                     className="self-start rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
                   >
-                    {pushing ? 'Moving…' : `Move ${preview.rows.length} and tell them`}
+                    {pushing
+                      ? 'Moving…'
+                      : `Move ${preview.rows.filter((r) => !r.problem).length} and tell them`}
                   </button>
                 </form>
               </>

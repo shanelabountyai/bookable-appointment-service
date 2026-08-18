@@ -13,7 +13,7 @@ import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
-import { PushRefused, previewPush, pushColumn } from './push-column';
+import { previewPush, pushColumn } from './push-column';
 import { clearRunningLate, findRunningLate, setRunningLate } from './running-late';
 
 const prisma = new PrismaClient();
@@ -219,16 +219,47 @@ describe('APPT-04 — pushing the column', () => {
     expect(Number(overlapping[0]!.count)).toBe(0);
   });
 
-  /** APPT-04: "refuses silently-lossy shifts". A column that half-moved is
-   *  worse than one that did not. */
-  it('refuses the whole push when one appointment would fall past closing', async () => {
-    await book('2026-06-09T14:00:00-05:00');
-    await book('2026-06-09T16:00:00-05:00'); // ends 17:00, the close
+  /**
+   * D-26, decided at demo checkpoint 2: the push MOVES WHAT IT CAN and names
+   * what it left. All-or-nothing capped the seeded Saturday's push at five
+   * minutes while the stylist was 38 behind — one client at the end of the
+   * day vetoing the whole operation.
+   */
+  it('moves what fits and leaves the one that would fall past closing', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    await book('2026-06-09T16:00:00-05:00'); // 16:00–17:00, ending at the close
 
-    await expect(push(60)).rejects.toBeInstanceOf(PushRefused);
+    const result = await push(30, '2026-06-09T10:00:00-05:00');
+
+    expect(result.moved).toBe(1);
+    expect(result.leftBehind).toHaveLength(1);
+    expect(result.leftBehind[0]?.problem).toBe('past-closing');
 
     const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
-    expect(rows.map((r) => hhmm(r.startAt))).toEqual(['14:00', '16:00']);
+    // The 10:00 moved; the 16:00 stayed exactly where its client expects it.
+    expect(rows.map((r) => hhmm(r.startAt))).toEqual(['10:30', '16:00']);
+  });
+
+  /**
+   * THE CASCADE. An appointment left behind still occupies its old time, so
+   * anything that would shift onto it cannot move either. Without this the
+   * partial push would hand the database a real overlap and the whole
+   * transaction would fail at COMMIT — a worse outcome than moving less,
+   * because the desk would see a total failure naming no pair.
+   */
+  it('leaves behind anything that would land on top of one that stays', async () => {
+    await book('2026-06-09T15:00:00-05:00');
+    await book('2026-06-09T16:00:00-05:00'); // cannot move: ends at the close
+
+    const result = await push(30, '2026-06-09T15:00:00-05:00');
+
+    expect(result.moved).toBe(0);
+    expect(result.leftBehind.map((c) => c.problem).sort()).toEqual(['blocked-by-one-that-stays', 'past-closing']);
+
+    const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+    expect(rows.map((r) => hhmm(r.startAt))).toEqual(['15:00', '16:00']);
+    // And the invariant still holds — nothing was written at all.
+    expect(await prisma.appointmentEvent.count({ where: { type: 'column_pushed' } })).toBe(0);
   });
 
   it('names the appointment that cannot move, in the preview', async () => {
@@ -241,6 +272,8 @@ describe('APPT-04 — pushing the column', () => {
       minutes: 60,
     });
 
+    // Nothing left that CAN move, so there is no push to make — but the
+    // client who is in the way is named either way.
     expect(preview.canPush).toBe(false);
     expect(preview.candidates[0]?.problem).toBe('past-closing');
     expect(preview.candidates[0]?.clientName).toBe('Ada Chen');

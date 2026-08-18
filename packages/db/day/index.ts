@@ -10,7 +10,6 @@ export {
   type PushCandidate,
   type PushPreview,
   type PushResult,
-  PushRefused,
   previewPush,
   pushColumn,
 } from './push-column';
