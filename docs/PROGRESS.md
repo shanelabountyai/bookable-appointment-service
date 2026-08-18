@@ -770,3 +770,4 @@ A-019 committed at ab3fe60
 - No staff reschedule picker on this panel; A-019's conflict list links to the day view for "find another time". `rescheduleAppointment` and `rescheduleOptions` are both staff-callable already, so this is a picker, not a mechanism.
 - Cancelling from here goes through the state machine and the log; the outbox notice is A-020/A-022's.
 - The conflict flag is derived per render with two `count` queries. Fine for one appointment; A-019's day-wide version is the one with the batching note.
+A-027 committed at b0d189a
