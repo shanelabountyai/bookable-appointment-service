@@ -802,3 +802,4 @@ Demo checkpoint 2 committed at f342ac3
 **The consequence found while building it:** an appointment left behind still occupies its old time, so anything that would shift onto it cannot move either — **and that cascades backwards**. Without the cascade a partial push hands the database a real overlap and the whole transaction fails at COMMIT, which is strictly worse than either alternative: the desk sees a total failure naming no pair. With it, a fully packed column still reports "nothing moved, here is who is in the way" — better than a bare refusal, but honestly not the same as "now it works". Two tests pin it: one asserts the partial move, one asserts the cascade leaves the database untouched.
 
 **`PushRefused` is gone.** A refusal is now data on the result rather than an exception, because with a partial push "some stayed" is the ordinary case, not the exceptional one.
+D-26 committed at 25d8fd6
