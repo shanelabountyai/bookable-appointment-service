@@ -739,3 +739,4 @@ A-018 committed at 6526fde
 - "Offer a new time" links to the day view rather than opening a staff reschedule picker. `rescheduleAppointment` exists and is staff-callable (A-014), but its only surface today is the customer's manage link; a staff reschedule picker belongs with A-027's detail panel, where the rest of the per-appointment controls live.
 - The cancellation goes through the state machine and the event log; the outbox notice for it is A-020/A-022's territory.
 - `conflictsForDay` runs a query per provider per absence. Bounded by the chair count (D-20) and a day's absences; batching is the fix if a much larger roster ever appears.
+A-019 committed at ab3fe60
