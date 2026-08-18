@@ -1035,4 +1035,43 @@ her on the phone.
 
 ---
 
+## One appointment, and every question anyone asks about it
+
+Four separate requirements pointed at a screen that nothing had built: the
+history in plain language, the client's pinned note on every render, the
+override marker with its reason, and "was she actually told?". They now share
+one page.
+
+**The history reads as sentences.** A row saying `status_changed
+{"from":"booked","to":"no_show"}` is a database record. "Changed from booked to
+a no-show by the front desk" is an answer to the question somebody is actually
+asking six weeks later, when a client insists she was never marked absent. The
+translation is exhaustive over every kind of event the system writes, enforced
+by the compiler — a ninth kind fails the build rather than showing a raw
+database value to whoever is on the phone.
+
+**The buttons come from the rules, not from the screen.** Which status changes
+are offered is decided by the same transition table the write path consults,
+asked with this user and this clock. So marking a no-show before the
+appointment has even started is not a disabled button — it is not there,
+because the table says that move does not exist yet. Nothing on this page
+decides what is legal; it only asks.
+
+**And it says who got there first.** The page sends back the status it was
+showing, so when two people at the desk tap different buttons, the second gets
+"somebody else got there first — it is checked in now" rather than silently
+overwriting a colleague's decision.
+
+**Three mistakes worth recording, all in the tests rather than the app.** A
+dynamically-imported workspace package broke under the test runner's module
+handling. A test helper returned a promise from inside a `try/finally`, so it
+disconnected the database while a transaction was still open — which surfaced
+as "Response from the Engine was empty" and reads exactly like a database
+fault rather than a harness one. And an assertion matched the override reason
+in two places at once, because it genuinely appears twice and both are wanted.
+The notes are written next to the fixes; the second one is the kind of thing
+that costs an afternoon if you go looking in the wrong layer.
+
+---
+
 <!-- Next entry: A-020 — no-show & late-cancel machinery -->

@@ -44,7 +44,9 @@ async function seedAppointment(options: { start: string; end: string; status?: s
         notes: options.clientNotes ?? null,
       },
     });
-    return prisma.appointment.create({
+    // `return await` — see the note in appointment-detail.spec.ts: a bare
+    // return lets the `finally` disconnect Prisma before the write lands.
+    return await prisma.appointment.create({
       data: {
         businessId: business.id,
         providerId: dana.id,
@@ -190,9 +192,10 @@ test.describe('the staff day grid (A-016)', () => {
     await chip.focus();
     await expect(chip).toBeFocused();
     await page.keyboard.press('Enter');
-    // Straight to the client record — the front desk's next question is
-    // always "who is she and what did we do last time?"
-    await expect(page).toHaveURL(/\/staff\/clients\//);
+    // Straight to the appointment (A-027). The front desk's next question is
+    // "what happened to this one?" — the client record is one link on from
+    // there, and a walk-in with no client record has a destination now.
+    await expect(page).toHaveURL(/\/staff\/appointments\//);
   });
 
   test('has no accessibility violations', async ({ page }) => {

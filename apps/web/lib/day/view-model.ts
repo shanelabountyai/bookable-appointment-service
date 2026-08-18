@@ -163,7 +163,11 @@ function toColumn(column: DayColumn, f: Formatters, day: string, now: Date): Gri
         ...(column.runningLateMinutes && appointment.status === 'booked'
           ? { projected: f.shift(appointment.startAt, column.runningLateMinutes) }
           : {}),
-        href: appointment.clientId ? `/staff/clients/${appointment.clientId}` : undefined,
+        // A-027 exists now, so a chip goes to the APPOINTMENT rather than to
+        // the client record. The front desk's next question is "what happened
+        // to this one?", and the client is one link further on from there —
+        // and a walk-in with no client record finally has a destination.
+        href: `/staff/appointments/${appointment.id}`,
         label: [
           `${f.range(appointment.startAt, appointment.endAt)}, ${who}`,
           services,

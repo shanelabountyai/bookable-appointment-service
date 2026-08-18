@@ -185,8 +185,6 @@ function Item({ item }: { item: GridItem }) {
           {body}
         </Link>
       ) : (
-        // A walk-in with no record has nowhere to link to yet (BOOK-04). It is
-        // still readable, and A-027's detail panel gives it a destination.
         <span aria-label={item.label}>{body}</span>
       )}
     </li>

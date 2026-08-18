@@ -8,6 +8,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
+import { createTimeOff } from '@bookable/db/availability';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
@@ -156,7 +157,6 @@ test.describe('the impact workflow (A-019)', () => {
     try {
       const business = await prisma.business.findFirstOrThrow();
       const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
-      const { createTimeOff } = await import('@bookable/db/availability');
       await createTimeOff(
         prisma,
         {

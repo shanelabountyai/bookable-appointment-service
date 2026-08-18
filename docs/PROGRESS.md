@@ -740,3 +740,33 @@ A-018 committed at 6526fde
 - The cancellation goes through the state machine and the event log; the outbox notice for it is A-020/A-022's territory.
 - `conflictsForDay` runs a query per provider per absence. Bounded by the chair count (D-20) and a day's absences; batching is the fix if a much larger roster ever appears.
 A-019 committed at ab3fe60
+
+---
+
+## A-027 — Appointment detail panel
+
+**Built:**
+- `packages/db/appointments/detail.ts` — the read model: appointment, client (with the pinned note), services, the event log, the outbox rows, and a derived conflict flag.
+- `apps/web/lib/appointments/event-language.ts` — APPT-07's plain-language log, total over every event type the codebase writes.
+- `/staff/appointments/[id]` — the panel, with status controls and the per-visit note.
+- Day-grid chips now point here instead of at the client record.
+- 10 e2e. 753 unit tests total (this item is UI over existing write paths; its logic lives in modules already covered).
+
+**Decided:**
+- **The event log is rendered in sentences, not rows.** `status_changed {"from":"booked","to":"no_show"}` is a database record; "Changed from booked to a no-show by the front desk" is an answer to the question somebody is actually asking six weeks later. The formatter is typed total over the eight event types, so a ninth is a compile error rather than a raw enum on screen — the same reflex as the status colour map.
+- **The status buttons come from the §7 table**, asked with this actor and this clock, so a button can never offer a move the write path then refuses. A no-show before the appointment starts is not disabled — it is *absent*, because the table says it does not exist yet.
+- **The screen sends the status it displayed** (`expectedFrom`). Two people at the desk tapping different buttons produces "somebody else got there first — it is checked in now", not a silent overwrite.
+- **The pinned client note is first on the page and unmissable.** An allergy note nobody scrolls to is a note nobody reads (CLIENT-03).
+- **The override marker carries its reason** (BOOK-05/D-8) — a marker without one is a marker staff learn to ignore.
+- **Chips on the day grid now go to the appointment, not the client.** The front desk's next question is "what happened to this one?", the client is one link further on, and a walk-in with no client record finally has a destination.
+- **A staff surface, so D-10's customer lexicon does not apply.** This screen says "no-show" because that is the word the front desk and the reports use.
+
+**Three of my own mistakes, in the specs rather than the app:**
+1. **A dynamic `await import()` of a workspace package** inside a Playwright spec — `exports is not defined in ES module scope`. Made static, and I fixed the same latent pattern in A-019's conflicts spec before it bit.
+2. **`return promise` inside `try/finally`**, so the helper disconnected Prisma while the booking's interactive transaction was still open. It surfaced as `Response from the Engine was empty`, which reads like a database fault rather than a harness one. `return await` fixes it; the note is written next to both.
+3. An assertion that matched the override reason in *both* the banner and the log — both appearances are wanted, so the assertion is scoped rather than the UI changed.
+
+**Left behind:**
+- No staff reschedule picker on this panel; A-019's conflict list links to the day view for "find another time". `rescheduleAppointment` and `rescheduleOptions` are both staff-callable already, so this is a picker, not a mechanism.
+- Cancelling from here goes through the state machine and the log; the outbox notice is A-020/A-022's.
+- The conflict flag is derived per render with two `count` queries. Fine for one appointment; A-019's day-wide version is the one with the batching note.

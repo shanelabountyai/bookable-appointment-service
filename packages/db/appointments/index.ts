@@ -1,4 +1,11 @@
 export {
+  type AppointmentDetail,
+  type AppointmentEventRow,
+  type NotificationRow,
+  loadAppointmentDetail,
+  setAppointmentNotes,
+} from './detail';
+export {
   AppointmentAlreadyMoved,
   RescheduleRefused,
   type RescheduleInput,
