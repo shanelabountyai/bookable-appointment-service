@@ -771,3 +771,21 @@ A-019 committed at ab3fe60
 - Cancelling from here goes through the state machine and the log; the outbox notice is A-020/A-022's.
 - The conflict flag is derived per render with two `count` queries. Fine for one appointment; A-019's day-wide version is the one with the batching note.
 A-027 committed at b0d189a
+
+---
+
+## Demo checkpoint 2 — walked at the Milestone 3 boundary
+
+Full transcript and findings: `docs/reviews/07-demo-checkpoint-2.md`.
+
+**It found two real defects, both fixed here, both invisible from inside the items that introduced them:**
+
+1. **The day column showed the neighbouring days.** `loadDayView` queries local midnight ±24h — the busy set needs that width so a neighbouring day's buffers still subtract, and an overnight window needs it to exist at all — but the *displayed* appointments were never clipped back. On the seeded week, Dana's Tuesday column held 29 appointments running into Wednesday afternoon; two were hers that day. Every A-016 test passed, because each seeds a single day and the defect needs a neighbour with rows in it. Fixed by clipping the column to the day and its own windows; regression test books Monday, Tuesday and Wednesday on purpose and is mutation-verified.
+
+2. **A gap the grid offered was not a time the engine would sell.** A gap opens where the previous appointment's buffer ends (13:35); slots sit on the salon's 15-minute grid. Clicking a gap booked 13:35, was refused with `SlotNotOffered` carrying *no reasons* (a non-candidate has no exclusion entry), and the panel then offered an **override for a slot that was completely free** — the exact thing that makes the override marker meaningless. Fixed: a gap link is a starting point, and the panel lists the real offered times, preselecting the first at or after it.
+
+**And a regression I introduced fixing (2), caught by A-017's own suite:** the first version fell back to the day's first offered slot when nothing was offered at or after the requested time, which silently turned "book her at 18:00, after we shut" into a 9am booking and reported success — making BOOK-05's outside-hours override unreachable. The fallback is now the requested time itself. Two defects in one seam pointing opposite ways: one forced an override where none was needed, the other prevented one where it was.
+
+**One product question raised for the owner rather than decided quietly** (review §9): "push the column" is all-or-nothing, and on the seeded Saturday the largest push the product accepts is **+5 minutes** while Dana is 38 behind — one client at 16:00 vetoes the whole operation. A-019's bulk reassign, built two items later, is deliberately partial. Recommendation is a named partial push; it changes APPT-04's meaning, so it is not mine to make.
+
+**Smaller observations, no code change:** the checkpoint's prose does not match the seed (no 2:15 gap, no 10:00 client on Dana's Saturday); a customer cancelling via her manage link produces no outbox row and nothing tells the salon; a reassignment does not tell the client she has a different stylist; event rows are stamped by the database clock while domain decisions use the injected `now`.

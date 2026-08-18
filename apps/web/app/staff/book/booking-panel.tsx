@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useActionState, useState, useTransition } from 'react';
 import {
   type ClientChoice,
+  type OfferedSlot,
   type StaffBookingState,
   type WalkInChoice,
   bookAsStaff,
   createClientForBooking,
   findClientsForBooking,
   findWalkInOptions,
+  staffSlotsFor,
 } from '@/lib/booking/staff-actions';
 
 const initial: StaffBookingState = {};
@@ -54,6 +56,8 @@ export function BookingPanel({
   const [options, setOptions] = useState<WalkInChoice[]>([]);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
   const [loadingOptions, startLoadingOptions] = useTransition();
+  const [slots, setSlots] = useState<OfferedSlot[]>([]);
+  const [chosenSlot, setChosenSlot] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<ClientChoice[]>([]);
@@ -62,7 +66,11 @@ export function BookingPanel({
   const [creating, startCreating] = useTransition();
 
   const providerId = pick?.providerId ?? provider?.id ?? '';
-  const startAt = pick?.at ?? at ?? '';
+  // A gap link is a STARTING POINT, not a bookable instant: gaps begin where
+  // the previous appointment's buffer ends, which is rarely on the salon's
+  // slot grid. The panel offers the real times and this is whichever one is
+  // selected (found by demo checkpoint 2).
+  const startAt = pick?.at ?? chosenSlot ?? '';
   const ready = chosen.length > 0 && providerId !== '' && startAt !== '';
 
   function toggleService(id: string) {
@@ -73,8 +81,28 @@ export function BookingPanel({
     setChosen(next);
     setPick(null);
     setOptions([]);
+    setSlots([]);
+    setChosenSlot(null);
     if (walkIn && next.length > 0) {
       startLoadingOptions(async () => setOptions(await findWalkInOptions(next, day)));
+      return;
+    }
+    if (!walkIn && next.length > 0 && provider) {
+      startLoadingOptions(async () => {
+        const offered = await staffSlotsFor(provider.id, next, day);
+        setSlots(offered);
+        // Preselect the first offered time at or after the gap the desk
+        // tapped, so the ordinary case is one tap and the list is there to
+        // correct it.
+        //
+        // FALLING BACK TO `at` ITSELF, never to the day's first slot: if
+        // nothing is offered at or after the requested time, the desk asked
+        // for something the engine will not sell — an 18:00 with the salon
+        // shut — and that has to reach the refusal so BOOK-05's override is
+        // still on offer. Substituting the morning's first slot would book a
+        // completely different appointment and call it success.
+        setChosenSlot(offered.find((slot) => !at || slot.at >= at)?.at ?? at ?? offered[0]?.at ?? null);
+      });
     }
   }
 
@@ -131,6 +159,38 @@ export function BookingPanel({
           })}
         </ul>
       </fieldset>
+
+      {!walkIn ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+            What time?
+          </legend>
+          {chosen.length === 0 ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
+          ) : loadingOptions ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p>
+          ) : slots.length === 0 ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Nothing free that day for this service. Book it anyway below if you mean to.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {slots.map((slot) => (
+                <li key={slot.at}>
+                  <button
+                    type="button"
+                    aria-pressed={chosenSlot === slot.at}
+                    onClick={() => setChosenSlot(slot.at)}
+                    className={`rounded-md border px-3 py-2 text-sm ${chosenSlot === slot.at ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-zinc-400 dark:border-zinc-600'}`}
+                  >
+                    {slot.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </fieldset>
+      ) : null}
 
       {walkIn ? (
         <fieldset className="flex flex-col gap-2">

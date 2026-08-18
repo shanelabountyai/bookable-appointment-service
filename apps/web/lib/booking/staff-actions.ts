@@ -22,6 +22,7 @@ import {
   clientAlreadyBookedAround,
   walkInOptions,
 } from '@bookable/db/booking';
+import { computeDaySlots } from '@bookable/db/scheduling';
 import { searchClients } from '@bookable/db/clients';
 import { normalizePhone } from '@bookable/core/clients';
 import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
@@ -193,6 +194,44 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
     if (error instanceof BookingRejected) return { ok: false, message: error.message };
     throw error;
   }
+}
+
+export interface OfferedSlot {
+  at: string;
+  label: string;
+}
+
+/**
+ * The times this provider could actually START this visit on this day.
+ *
+ * ADDED BY DEMO CHECKPOINT 2, which found the seam between A-016's gaps and
+ * this panel. A gap runs from the previous appointment's buffer end — 13:35,
+ * say — and the slot grid is anchored to window-open on the salon's interval,
+ * so 13:35 is not a candidate at all. Booking the gap's raw start was refused
+ * with `SlotNotOffered` and NO reasons, and the panel then offered an
+ * OVERRIDE for a slot that was genuinely free. Routing ordinary bookings
+ * through the override path is precisely what makes the override marker
+ * meaningless (VISIT-01 refuses two-adjacent-appointments for the same
+ * reason).
+ *
+ * So a gap link now means "book around here": the panel lists the real
+ * offered times and preselects the first one at or after it.
+ */
+export async function staffSlotsFor(providerId: string, serviceIds: string[], day: string): Promise<OfferedSlot[]> {
+  const staff = await requireStaff();
+  if (serviceIds.length === 0 || !providerId) return [];
+
+  const { slots } = await computeDaySlots(prisma, {
+    businessId: staff.businessId,
+    providerId,
+    serviceIds,
+    day,
+    now: new Date(),
+    // Staff: no horizon, no lead time, and exclusion reasons available.
+    audience: 'staff',
+  });
+
+  return slots.map((slot) => ({ at: toDate(slot.start).toISOString(), label: slot.label.time }));
 }
 
 // ─────────────────────────── internals ───────────────────────────

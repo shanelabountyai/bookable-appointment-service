@@ -207,6 +207,34 @@ describe('the appointments', () => {
   });
 
   /**
+   * THE DEMO CHECKPOINT 2 REGRESSION.
+   *
+   * The queries behind a column deliberately span local midnight ±24h — the
+   * busy set needs that width so a neighbouring day's buffers still subtract,
+   * and an overnight window needs it to exist at all. The DISPLAYED
+   * appointments were never clipped back, so Dana's Tuesday column showed 29
+   * appointments running into Wednesday afternoon.
+   *
+   * Every A-016 test passed while that was true, because each one seeds a
+   * single day: the defect needs a neighbouring day with rows in it, which is
+   * what a seeded week has and a unit fixture does not. So this fixture books
+   * BOTH days on purpose.
+   */
+  it('shows only this day’s appointments, not the neighbours’', async () => {
+    await createWeeklyWindow(prisma, { businessId, providerId: null, weekday: 1, open: '09:00', close: '18:00', endsNextDay: false }, STAMP);
+    await createWeeklyWindow(prisma, { businessId, providerId: danaId, weekday: 1, open: '09:00', close: '17:00', endsNextDay: false }, STAMP);
+    await createWeeklyWindow(prisma, { businessId, providerId: null, weekday: 3, open: '09:00', close: '18:00', endsNextDay: false }, STAMP);
+    await createWeeklyWindow(prisma, { businessId, providerId: danaId, weekday: 3, open: '09:00', close: '17:00', endsNextDay: false }, STAMP);
+
+    await book({ startAt: at('2026-06-08T10:00:00-05:00'), idempotencyKey: 'monday' });
+    const tuesday = await book({ startAt: at('2026-06-09T10:00:00-05:00'), idempotencyKey: 'tuesday' });
+    await book({ startAt: at('2026-06-10T10:00:00-05:00'), idempotencyKey: 'wednesday' });
+
+    const dana = await columnFor(danaId);
+    expect(dana.appointments.map((a) => a.id)).toEqual([tuesday.id]);
+  });
+
+  /**
    * An instant-overlap predicate, never `WHERE date(startAt) = day`. The
    * booking that starts 23:30 belongs to BOTH days, and dropping it from the
    * second is how the grid shows a free 00:00 that is not free.

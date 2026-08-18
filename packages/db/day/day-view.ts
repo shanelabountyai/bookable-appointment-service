@@ -203,10 +203,48 @@ async function loadColumn(
     }),
   ]);
 
+  const windows = resolved.windows.map((w) =>
+    resolveWindow(
+      {
+        open: wallTime(w.open),
+        close: wallTime(w.close),
+        endsNextDay: w.endsNextDay,
+        breaks: w.breaks.map((b) => ({ open: wallTime(b.open), close: wallTime(b.close) })),
+      },
+      args.day,
+      args.zone,
+    ),
+  );
+
+  const windowSpans = windows.map((w) => w.span);
+  const breakSpans = windows.flatMap((w) => [...w.breaks]);
+
+  /**
+   * THE COLUMN IS CLIPPED BACK TO THE DAY.
+   *
+   * The queries above deliberately span local midnight ±24h — the busy set
+   * needs that width so a neighbouring day's buffers still subtract correctly,
+   * and an overnight window needs it to exist at all. But an appointment is
+   * DISPLAYED in this column only if it overlaps the day itself or one of the
+   * provider's windows for it.
+   *
+   * Found by demo checkpoint 2: without this, Dana's Tuesday column showed 29
+   * appointments running into Wednesday afternoon. Every A-016 test passed,
+   * because each one seeded a single day — the defect needs a neighbouring day
+   * with rows in it to appear at all, which is exactly what a seeded week has
+   * and a unit fixture does not.
+   */
+  const dayStart = startOfDay(args.day, args.zone);
+  const dayEnd = startOfDay(addDays(args.day, 1), args.zone);
+  const onScreen: Span[] = [{ start: dayStart, end: dayEnd }, ...windowSpans];
+  const belongsHere = (start: Date, end: Date) =>
+    onScreen.some((span) => fromDate(start) < span.end && span.start < fromDate(end));
+
   // The two reads meet here: the raw one knows which range each appointment
   // OCCUPIES (D-16), the Prisma one knows what to write on the chip.
   const occupied = new Map(busy.map((b) => [b.id, b]));
   const appointments: DayAppointment[] = rows
+    .filter((row) => belongsHere(row.startAt, row.endAt))
     .filter((row) => occupied.has(row.id) || !isActive(row.status))
     .map((row) => {
       const span = occupied.get(row.id);
@@ -228,22 +266,6 @@ async function loadColumn(
       };
     });
 
-  const windows = resolved.windows.map((w) =>
-    resolveWindow(
-      {
-        open: wallTime(w.open),
-        close: wallTime(w.close),
-        endsNextDay: w.endsNextDay,
-        breaks: w.breaks.map((b) => ({ open: wallTime(b.open), close: wallTime(b.close) })),
-      },
-      args.day,
-      args.zone,
-    ),
-  );
-
-  const windowSpans = windows.map((w) => w.span);
-  const breakSpans = windows.flatMap((w) => [...w.breaks]);
-
   // A gap is what is left of the working hours once breaks, absences and the
   // busy set are taken out. Breaks are subtracted too: lunch is not bookable
   // time, and a grid that offered it would send the front desk to interrupt a
@@ -262,7 +284,7 @@ async function loadColumn(
     windows: windowSpans.map(toDateSpan),
     breaks: breakSpans.map(toDateSpan),
     appointments,
-    absences,
+    absences: absences.filter((a) => belongsHere(a.start, a.end)),
     gaps: subtractSpans(windowSpans, taken).map((span) => ({
       start: toDate(span.start),
       end: toDate(span.end),

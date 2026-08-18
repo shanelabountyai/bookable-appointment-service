@@ -296,6 +296,10 @@ test.describe('staff booking (A-017)', () => {
     const startAt = at('09:00').toISOString();
     await page.goto(`/staff/book?provider=${danaId}&at=${encodeURIComponent(startAt)}&day=${DAY}`);
     await page.getByRole('button', { name: /^Cut\d/ }).click();
+    // The clash note is about the SELECTED time, so the time has to be
+    // selected first — the times load once a service is chosen, and that is
+    // the order the desk works in too.
+    await expect(page.getByRole('button', { name: '09:00', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await page.getByLabel('Find a client by name or phone number').fill('Ada');
 
     await expect(page.getByText(/already has 09:00 with Priya/)).toBeVisible();
