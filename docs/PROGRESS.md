@@ -789,3 +789,4 @@ Full transcript and findings: `docs/reviews/07-demo-checkpoint-2.md`.
 **One product question raised for the owner rather than decided quietly** (review §9): "push the column" is all-or-nothing, and on the seeded Saturday the largest push the product accepts is **+5 minutes** while Dana is 38 behind — one client at 16:00 vetoes the whole operation. A-019's bulk reassign, built two items later, is deliberately partial. Recommendation is a named partial push; it changes APPT-04's meaning, so it is not mine to make.
 
 **Smaller observations, no code change:** the checkpoint's prose does not match the seed (no 2:15 gap, no 10:00 client on Dana's Saturday); a customer cancelling via her manage link produces no outbox row and nothing tells the salon; a reassignment does not tell the client she has a different stylist; event rows are stamped by the database clock while domain decisions use the injected `now`.
+Demo checkpoint 2 committed at f342ac3
