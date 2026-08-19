@@ -3,7 +3,12 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
 import { loadAppointmentDetail } from '@bookable/db/appointments';
 import { reliabilityFor } from '@bookable/db/clients';
-import { type AppointmentStatus, canTransition, possibleTransitionsFrom } from '@bookable/core/scheduling';
+import {
+  type AppointmentStatus,
+  SLOT_FREEING_STATUSES,
+  canTransition,
+  possibleTransitionsFrom,
+} from '@bookable/core/scheduling';
 import { worstCutoff } from '@bookable/core/settings';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
@@ -142,6 +147,17 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         {detail.endedAt ? <Row label="Finished">{readableInstant(detail.endedAt, business.timezone)}</Row> : null}
       </dl>
 
+      {/* WAIT-02's "who wants this slot?" — only once cancelling actually
+          freed the time (D-7: no_show/completed still occupy it). */}
+      {(SLOT_FREEING_STATUSES as readonly string[]).includes(status) && detail.primaryServiceId ? (
+        <Link
+          href={`/staff/waitlist?providerId=${detail.providerId}&serviceId=${detail.primaryServiceId}&at=${encodeURIComponent(detail.startAt.toISOString())}&minutes=${freedMinutes(detail)}`}
+          className="text-sm font-medium underline underline-offset-4"
+        >
+          Who wants this slot?
+        </Link>
+      ) : null}
+
       <StatusControls appointmentId={detail.id} status={status} available={available} />
 
       <VisitNote appointmentId={detail.id} notes={detail.notes ?? ''} />
@@ -186,6 +202,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
       </section>
     </main>
   );
+}
+
+/** Body ± buffers (D-16) — what the exclusion constraint actually let go of,
+ *  in whole minutes. Epoch-ms arithmetic (`fromDate`), never wall-clock. */
+function freedMinutes(detail: { blockedStart: Date; blockedEnd: Date }): number {
+  return Math.round((fromDate(detail.blockedEnd) - fromDate(detail.blockedStart)) / 60_000);
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

@@ -52,6 +52,15 @@ export interface AppointmentDetail {
   providerId: string;
   providerName: string;
   services: { name: string; priceCents: number; durationMinutes: number }[];
+  /** The primary (first-ordinal) service line. A-023's "who wants this slot?"
+   *  link needs a single serviceId to match against — a multi-service visit
+   *  (VISIT-01) only offers its lead service to the waitlist; matching a
+   *  freed visit's SECOND service is a real gap, deferred until it matters. */
+  primaryServiceId: string;
+  /** Body ± buffers (D-16) — the range the exclusion constraint actually
+   *  frees on cancellation, wider than `startAt`/`endAt` alone. */
+  blockedStart: Date;
+  blockedEnd: Date;
   clientId: string | null;
   clientName: string | null;
   clientPhone: string | null;
@@ -81,6 +90,8 @@ export async function loadAppointmentDetail(
       status: true,
       startAt: true,
       endAt: true,
+      blockedStart: true,
+      blockedEnd: true,
       isOverride: true,
       overrideReason: true,
       notes: true,
@@ -95,7 +106,7 @@ export async function loadAppointmentDetail(
       client: { select: { id: true, name: true, phone: true, notes: true } },
       lines: {
         orderBy: { ordinal: 'asc' },
-        select: { priceCents: true, durationMinutes: true, service: { select: { name: true } } },
+        select: { serviceId: true, priceCents: true, durationMinutes: true, service: { select: { name: true } } },
       },
       // APPT-07. Oldest first: a log is a story, and reading it backwards is
       // how you mistake a correction for the thing it corrected.
@@ -134,11 +145,14 @@ export async function loadAppointmentDetail(
     status: appointment.status,
     startAt: appointment.startAt,
     endAt: appointment.endAt,
+    blockedStart: appointment.blockedStart,
+    blockedEnd: appointment.blockedEnd,
     isOverride: appointment.isOverride,
     overrideReason: appointment.overrideReason,
     notes: appointment.notes,
     providerId: appointment.providerId,
     providerName: appointment.provider.displayName,
+    primaryServiceId: appointment.lines[0]?.serviceId ?? '',
     services: appointment.lines.map((line) => ({
       name: line.service.name,
       priceCents: line.priceCents,

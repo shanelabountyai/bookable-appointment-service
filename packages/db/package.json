@@ -28,6 +28,7 @@
     "./rate-limit": "./rate-limit.ts",
     "./scheduling": "./scheduling/index.ts",
     "./settings": "./settings/index.ts",
-    "./testing": "./testing/index.ts"
+    "./testing": "./testing/index.ts",
+    "./waitlist": "./waitlist/index.ts"
   }
 }

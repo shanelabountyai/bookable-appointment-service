@@ -1133,4 +1133,12 @@ the reason the phone number is not unique in the first place.
 
 **Nothing decides to skip a rescheduled appointment — there's nothing to decide.** A reschedule moves the same database row to a new time; the reminder job just asks "what's starting in the next few minutes' window, 24 hours out" and a moved appointment simply isn't there anymore at its old time. The correctness came from the reschedule feature keeping one row, not from the reminder job knowing anything special about rescheduling.
 
-<!-- Next entry: A-023 — waitlist staff half -->
+---
+
+## The waitlist
+
+**A cancellation is perishable inventory, and this is the recovery mechanism.** The moment a front-desk person cancels an appointment, a link appears right there on the screen: "who wants this slot?" It's the same salon-owner instinct as a restaurant working a reservation list — a slot that opens is worth ten seconds of looking before it just sits empty until whoever calls next happens to want exactly that time.
+
+**The matching is honest about what it actually checks.** It isn't a second booking engine running quietly in the background — it's a duration-and-buffer arithmetic check against the exact window that just opened, plus whether the day and time of day are ones the waiting client said would work. That's a deliberately smaller promise than "here's every slot this week that would work for her," and the smaller promise is the one this feature can keep without drifting out of sync with the real booking rules the moment either one changes.
+
+**Every provider-and-service pair a client will accept for a wait, in one search field.** "Any Saturday morning, Dana or Priya" is a real sentence an owner used to describe how this actually gets asked for, and it types into the form almost verbatim — a date range, a couple of checkboxes for which stylists are acceptable, and which parts of which days. No new client-lookup was written for it; it's the same phone-and-name search the booking screen and the client-merge tool already use, because a salon has exactly one way its front desk finds a person, not three slightly different ones.

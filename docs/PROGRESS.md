@@ -865,3 +865,24 @@ A-021 committed at 0cb80cf
 - **No second-touch reminder.** OQ-5 (still open) asks whether a 2h-before day-of reminder is wanted; this ships the one NOTIF-02 actually specifies.
 - **Vercel's Hobby tier only runs cron daily.** `vercel.json`'s 5-minute schedule assumes Pro, or an external scheduler hitting the route with the bearer token — a deployment-tier question, noted in the route's own comment, not a correctness one.
 A-022 committed at 43edf22
+
+---
+
+## A-023 — waitlist, staff half (WAIT-01, WAIT-02)
+
+**Built:** `packages/core/waitlist/day-parts.ts` — the closed vocabulary an entry's free-text `dayParts` draws from (seven weekday tags off `weekdayOf`'s own 0-Sunday convention, plus `morning`/`afternoon`/`evening`), and `matchesDayParts` (a conjunction — "Saturday morning" requires both, not either). `packages/db/waitlist/waitlist.ts` — entry CRUD (`createWaitlistEntry` validates the range, the tags, and that the client/service/providers actually belong to this business) and `matchFreedSlot`: pre-filters candidates in SQL (same service, this provider acceptable via `providerIds.isEmpty OR has`, day in range), then does the one thing SQL can't — the fit check (`bufferBefore + effectiveDurationMinutes(override) + bufferAfter <= freedMinutes`, one lookup per call since every candidate wants the same service) and the day-part match — in JS over what's left. `apps/web/app/staff/waitlist/` — the standing queue, an entry form (client search reused from A-015/A-017, native `<input type="date">` for the range), and, when reached with a freed interval in the URL, "who wants this slot?" with a `Book` link straight into A-017's existing staff-booking flow. The appointment detail page (A-027) grew the one link that populates that URL — visible only once a cancel actually freed the time (`SLOT_FREEING_STATUSES`), built from `blockedStart`/`blockedEnd` (D-16 — the buffer-inclusive range the constraint actually let go of, added to `loadAppointmentDetail`'s read model alongside the primary service line's id).
+
+**Decided:** No `WaitlistStatus` module to mirror `core/scheduling/status.ts` — that file's whole justification is "many readers, one status enum" (D-7's rule), and this status column has exactly one reader today (`matchFreedSlot`'s `status: 'active'` filter) plus one setter. Building the module ahead of a second reader would be exactly the speculative abstraction CLAUDE.md warns against elsewhere; revisit if OQ-4's automation adds one.
+
+**Where the interesting decisions went:**
+- **The freed interval is `blockedEnd - blockedStart`, not `endAt - startAt`.** That's the range the exclusion constraint actually stops defending on cancel — buffer-inclusive — so a waitlisted client's own buffers are checked against what's really open, not just the body of the appointment that left.
+- **"Fits" is a duration/buffer sum against one fixed window, not a second run of the slot engine.** WAIT-01 only needs "would this service fit in what just opened," not "where in the day would it fit" — that second question is what A-017's booking flow (reached via the `Book` link) already answers properly, with the real busy set. Re-deriving it here would be the day-grid-vs-engine fork `packages/core/scheduling/spans.ts`'s own comment warns against.
+- **A multi-service visit's freed slot only offers its PRIMARY (first-ordinal) service to the waitlist.** Matching a freed visit's second service is a real gap — nobody waits for "a colour that happens to follow a cut" — deferred until an operator asks for it.
+- **`dayParts` is a conjunction, not an either/or.** "Any Saturday morning, Dana or Priya" (the operator review's own example) reads as AND between weekday and time-band; mixing so an entry could ask for "Saturday OR Sunday mornings" is left out, same reasoning as above.
+
+**Left behind:**
+- **No automated offer.** OQ-4 (soft-hold vs. first-to-accept) is explicitly still open and gates it — this page only ever answers a human "who," never sends anything itself.
+- **No expiry job.** A stale entry sits in `active` until staff mark it `fulfilled`/`cancelled` by hand; nothing ages an entry out on its own. Not asked for by WAIT-01/02, and the schema's own `createdAt` is there for whenever it is.
+- **The e2e's own accessible-name collisions were the interesting part of writing it**: the Service `<select>`'s accessible name concatenates every option's text, and "Root touch-up" contains "to" as a substring — `getByLabel('To')` for the date range needed `{ exact: true }`. And a server action's mutation must be waited on for its own visible effect before navigating away — `page.goto()` right after a click aborts an in-flight request exactly like closing a tab would.
+A-023 committed at <SHA>
+

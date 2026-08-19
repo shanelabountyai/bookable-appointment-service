@@ -45,6 +45,9 @@ export default async function StaffHome() {
         <Link href="/staff/call-down" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Call-down
         </Link>
+        <Link href="/staff/waitlist" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Waitlist
+        </Link>
       </nav>
 
       <form action={logout}>
