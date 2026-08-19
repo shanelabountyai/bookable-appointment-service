@@ -884,5 +884,5 @@ A-022 committed at 43edf22
 - **No automated offer.** OQ-4 (soft-hold vs. first-to-accept) is explicitly still open and gates it — this page only ever answers a human "who," never sends anything itself.
 - **No expiry job.** A stale entry sits in `active` until staff mark it `fulfilled`/`cancelled` by hand; nothing ages an entry out on its own. Not asked for by WAIT-01/02, and the schema's own `createdAt` is there for whenever it is.
 - **The e2e's own accessible-name collisions were the interesting part of writing it**: the Service `<select>`'s accessible name concatenates every option's text, and "Root touch-up" contains "to" as a substring — `getByLabel('To')` for the date range needed `{ exact: true }`. And a server action's mutation must be waited on for its own visible effect before navigating away — `page.goto()` right after a click aborts an in-flight request exactly like closing a tab would.
-A-023 committed at <SHA>
+A-023 committed at f817a2f
 
