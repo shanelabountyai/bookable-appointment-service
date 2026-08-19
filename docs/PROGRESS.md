@@ -826,3 +826,4 @@ D-26 committed at 25d8fd6
 - Nothing tells the client she was blocked, and nothing tells the salon she tried. The outbox notice is A-022's territory.
 - The seeded no-show history is pinned to fixed 2026 dates, so the demo's offender ages out of the window in 2027 while the seed stays green. The e2e spec seeds relative to today for exactly this reason; the seed itself is a demo-data question, not a correctness one.
 - Reschedule is not gated. A blocked client with an existing appointment can still move it through her manage link, which is deliberate: the lever is on new bookings, and refusing a reschedule would produce a no-show instead.
+A-020 committed at abb1d1d
