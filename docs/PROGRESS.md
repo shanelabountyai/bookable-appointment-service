@@ -909,7 +909,7 @@ A-024 committed at 9e82f5c
 
 ## Scoping pass — segmented durations (SEG-01..05, A-029, A-030, OQ-7)
 
-**Built:** No code. The first Phase 3 item was written up to the same standard every MVP row got, *before* implementation: a new **SEG** epic in `docs/prds/00-master-prd.md` §5 (five stories), two backlog rows in `docs/prds/06-backlog.md`, and one open question in `docs/prds/07-decisions.md`.
+**Built:** No code (commit `45e79e7`). The first Phase 3 item was written up to the same standard every MVP row got, *before* implementation: a new **SEG** epic in `docs/prds/00-master-prd.md` §5 (five stories), two backlog rows in `docs/prds/06-backlog.md`, and one open question in `docs/prds/07-decisions.md`.
 
 **Decided:** **Segments split into two tickets, and the split is the point.** A-029 (M) models and renders segments with the engine and the database untouched; A-030 (L) lets the engine offer the gap. The line between them is exactly the line the operator drew in `docs/reviews/01-operator-review.md` §2 — "medium on whether the builder should do overlap-booking in v1 vs. just modeling the segments and exposing the gap to staff; booking into the gap manually first is a defensible v1." A-029 is safe under either answer to OQ-7, so it can be built now; A-030 cannot.
 
