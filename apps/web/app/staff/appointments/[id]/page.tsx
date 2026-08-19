@@ -47,6 +47,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   const zone = zoneId(business.timezone);
   const day = toLabel(fromDate(detail.startAt), zone).day;
   const status = detail.status as AppointmentStatus;
+  const gapMinutes = detail.services.reduce((total, s) => total + s.gapMinutes, 0);
 
   // The buttons come from the §7 table, filtered to what the FRONT DESK may do
   // right now — asked of the same function the write path asks, so a button
@@ -138,6 +139,16 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
           {detail.services.map((s) => s.name).join(' + ')} ·{' '}
           {money(detail.services.reduce((total, s) => total + s.priceCents, 0))}
         </Row>
+        {/* SEG-03. Stated as minutes rather than drawn, because the panel has
+            no time axis to draw on — and "45 of these minutes she is free" is
+            the fact the desk acts on. Not offered as a booking link: the
+            exclusion constraint still defends this time in A-029, so booking
+            it goes through the existing override. */}
+        {gapMinutes > 0 ? (
+          <Row label="Free inside it">
+            {gapMinutes} min of processing time — she is not needed for it
+          </Row>
+        ) : null}
         <Row label="Status">{status.replace('_', ' ')}</Row>
         {detail.confirmedAt ? <Row label="Confirmed">{readableInstant(detail.confirmedAt, business.timezone)}</Row> : null}
         {/* APPT-03's actual-vs-scheduled: what really happened, beside what

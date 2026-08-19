@@ -7,6 +7,7 @@ import {
   ServiceRejected,
   createService,
   qualifyProvider,
+  replaceSegments,
   setServiceActive,
   unqualifyProvider,
   updateService,
@@ -117,4 +118,35 @@ export async function toggleQualification(_prev: FormState, formData: FormData):
   }
   revalidatePath('/staff/services');
   return { ok: true };
+}
+
+/**
+ * SEG-01 — replace a service's parts. The form posts parallel arrays
+ * (`segmentMinutes` repeated, `segmentIsGap` repeated), which is what a
+ * variable-length list of rows in one native form gives you; the order in the
+ * FormData IS the ordinal, which is why the rows have no ordinal input to get
+ * out of sync with.
+ *
+ * An empty list is a legitimate submission: it makes the service unsegmented.
+ */
+export async function saveSegments(_prev: FormState, formData: FormData): Promise<FormState> {
+  const staff = await requireStaff();
+  const serviceId = String(formData.get('serviceId') ?? '');
+  const minutes = formData.getAll('segmentMinutes');
+  const gaps = formData.getAll('segmentIsGap');
+
+  const segments = minutes.map((value, i) => ({
+    durationMinutes: toInt(value),
+    isGap: String(gaps[i] ?? '') === 'true',
+  }));
+
+  try {
+    await replaceSegments(prisma, staff.businessId, serviceId, segments);
+  } catch (error) {
+    if (error instanceof ServiceRejected) return { errors: { [error.field]: error.message } };
+    throw error;
+  }
+  revalidatePath('/staff/services');
+  revalidatePath('/staff/day');
+  return { ok: true, message: segments.length === 0 ? 'Parts removed.' : 'Parts saved.' };
 }

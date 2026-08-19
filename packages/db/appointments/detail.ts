@@ -13,6 +13,7 @@
  * chosen at the surface. The event log's plain-language rendering is a UI
  * concern precisely because it is the part that will be reworded.
  */
+import { visitGapSpans } from '../../core/settings';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -51,7 +52,7 @@ export interface AppointmentDetail {
   notes: string | null;
   providerId: string;
   providerName: string;
-  services: { name: string; priceCents: number; durationMinutes: number }[];
+  services: { name: string; priceCents: number; durationMinutes: number; gapMinutes: number }[];
   /** The primary (first-ordinal) service line. A-023's "who wants this slot?"
    *  link needs a single serviceId to match against — a multi-service visit
    *  (VISIT-01) only offers its lead service to the waitlist; matching a
@@ -106,7 +107,22 @@ export async function loadAppointmentDetail(
       client: { select: { id: true, name: true, phone: true, notes: true } },
       lines: {
         orderBy: { ordinal: 'asc' },
-        select: { serviceId: true, priceCents: true, durationMinutes: true, service: { select: { name: true } } },
+        select: {
+          serviceId: true,
+          priceCents: true,
+          durationMinutes: true,
+          service: {
+            select: {
+              name: true,
+              durationMinutes: true,
+              segments: {
+                where: { status: 'active' },
+                orderBy: { ordinal: 'asc' },
+                select: { durationMinutes: true, isGap: true },
+              },
+            },
+          },
+        },
       },
       // APPT-07. Oldest first: a log is a story, and reading it backwards is
       // how you mistake a correction for the thing it corrected.
@@ -157,6 +173,16 @@ export async function loadAppointmentDetail(
       name: line.service.name,
       priceCents: line.priceCents,
       durationMinutes: line.durationMinutes,
+      // SEG-03 — how much of this line the provider is NOT needed for, at
+      // this line's own snapshotted duration (D-18). Zero for an unsegmented
+      // service, which is what the panel renders as nothing at all.
+      gapMinutes: visitGapSpans([
+        {
+          durationMinutes: line.durationMinutes,
+          serviceDurationMinutes: line.service.durationMinutes,
+          segments: line.service.segments,
+        },
+      ]).reduce((sum, gap) => sum + gap.minutes, 0),
     })),
     clientId: appointment.client?.id ?? null,
     clientName: appointment.client?.name ?? null,

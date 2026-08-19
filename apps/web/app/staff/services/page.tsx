@@ -1,16 +1,17 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
-import { listProviders, listQualifications, listServices } from '@bookable/db/settings';
+import { listProviders, listQualifications, listServices, segmentsByService } from '@bookable/db/settings';
 import { requireStaff } from '@/lib/auth/session';
 import { AddServiceForm } from './add-service-form';
 import { ServiceCard } from './service-card';
 
 export default async function ServicesPage() {
   const staff = await requireStaff();
-  const [services, providers, qualifications] = await Promise.all([
+  const [services, providers, qualifications, segments] = await Promise.all([
     listServices(prisma, staff.businessId),
     listProviders(prisma, staff.businessId, false), // only active providers can be qualified
     listQualifications(prisma, staff.businessId),
+    segmentsByService(prisma, staff.businessId),
   ]);
 
   return (
@@ -38,6 +39,7 @@ export default async function ServicesPage() {
               service={service}
               providers={providers}
               qualifications={qualifications.filter((q) => q.serviceId === service.id)}
+              segments={segments.get(service.id) ?? []}
             />
           ))}
         </ul>

@@ -20,6 +20,7 @@
  *     from `ACTIVE_STATUSES`, so `completed` and `no_show` still hold their
  *     time (D-7) and only cancellations free it.
  */
+import { visitGapSpans } from '../../core/settings';
 import { type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
@@ -43,6 +44,12 @@ export interface DayAppointment {
   isOverride: boolean;
   overrideReason: string | null;
   serviceNames: string[];
+  /** SEG-03 — where this appointment's processing gaps sit, in minutes from
+   *  `startAt`. Empty for every unsegmented service, which is most of them.
+   *  Display only in A-029: the database is still defending the whole
+   *  footprint, so a gap here is time staff may book INTO by override, not
+   *  time the engine offers. */
+  gapSpans: { offsetMinutes: number; minutes: number }[];
   /** BOOK-04: a walk-in with no record is a real appointment, so every one of
    *  these may be null. */
   clientId: string | null;
@@ -198,7 +205,25 @@ async function loadColumn(
         overrideReason: true,
         notes: true,
         client: { select: { id: true, name: true, phone: true, notes: true } },
-        lines: { orderBy: { ordinal: 'asc' }, select: { service: { select: { name: true } } } },
+        lines: {
+          orderBy: { ordinal: 'asc' },
+          select: {
+            // D-18's snapshot, which is what the segments are re-timed to —
+            // never the service's current duration.
+            durationMinutes: true,
+            service: {
+              select: {
+                name: true,
+                durationMinutes: true,
+                segments: {
+                  where: { status: 'active' },
+                  orderBy: { ordinal: 'asc' },
+                  select: { durationMinutes: true, isGap: true },
+                },
+              },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -258,6 +283,13 @@ async function loadColumn(
         isOverride: row.isOverride,
         overrideReason: row.overrideReason,
         serviceNames: row.lines.map((l) => l.service.name),
+        gapSpans: visitGapSpans(
+          row.lines.map((l) => ({
+            durationMinutes: l.durationMinutes,
+            serviceDurationMinutes: l.service.durationMinutes,
+            segments: l.service.segments,
+          })),
+        ),
         clientId: row.client?.id ?? null,
         clientName: row.client?.name ?? null,
         clientPhone: row.client?.phone ?? null,

@@ -183,6 +183,25 @@ function Item({ item }: { item: GridItem }) {
 
   return (
     <li className={className} style={style}>
+      {/* SEG-03 — the processing gap, hatched so it reads as "she is not in
+          this chair" at a glance rather than as another appointment. Behind
+          the chip's text in DOM order, and pointer-events-none, so it can
+          never intercept the click that opens the appointment.
+
+          It is NOT a booking target in A-029: the exclusion constraint still
+          defends this time, so the desk books into it through the existing
+          BOOK-05 override. A-030 is what makes it a real slot. Giving it a
+          link here would offer a booking the database then refuses. */}
+      {item.gaps?.map((gap) => (
+        <span
+          key={gap.top}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 border-y border-dashed border-current/40 bg-[repeating-linear-gradient(135deg,transparent,transparent_5px,rgba(0,0,0,0.10)_5px,rgba(0,0,0,0.10)_10px)] dark:bg-[repeating-linear-gradient(135deg,transparent,transparent_5px,rgba(255,255,255,0.14)_5px,rgba(255,255,255,0.14)_10px)]"
+          style={{ top: gap.top * PX_PER_MINUTE, height: Math.max(gap.minutes * PX_PER_MINUTE, 6) }}
+        >
+          <span className="absolute right-1 bottom-0 text-[10px] font-medium opacity-70">{gap.minutes} min free</span>
+        </span>
+      ))}
       {item.href ? (
         <Link href={item.href} className="block h-full focus:outline-2 focus:outline-offset-2" aria-label={item.label}>
           {body}

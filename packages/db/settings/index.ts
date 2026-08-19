@@ -38,3 +38,4 @@ export {
   SPRING_FORWARD_DAY,
   seedDensity,
 } from './density-seed';
+export { type SegmentRow, listSegments, replaceSegments, segmentsByService } from './segments';

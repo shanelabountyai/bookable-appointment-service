@@ -347,7 +347,31 @@ describe('AppointmentEvent is append-only (§6)', () => {
 });
 
 describe('D-12 affordances', () => {
-  it('permits exactly one ACTIVE segment per service', async () => {
+  // A-029 lifted the partial unique index that pinned every service to one
+  // ACTIVE segment — that guard existed while the engine ignored the table,
+  // and a colour is three rows. What still holds is ordinal uniqueness.
+  it('permits several ACTIVE segments per service', async () => {
+    await db.query(
+      `INSERT INTO "Service" (id,"businessId",name,"durationMinutes","priceCents","updatedAt")
+       VALUES ('svc1',$1,'Colour',120,12000, now())`,
+      [businessId],
+    );
+    for (const [i, minutes, isGap] of [
+      [0, 50, false],
+      [1, 40, true],
+      [2, 30, false],
+    ] as const) {
+      await db.query(
+        `INSERT INTO "ServiceSegment" (id,"businessId","serviceId",ordinal,"durationMinutes","isGap","updatedAt")
+         VALUES ($1,$2,'svc1',$3,$4,$5, now())`,
+        [`seg${i}`, businessId, i, minutes, isGap],
+      );
+    }
+    const { rows } = await db.query(`SELECT count(*)::int AS n FROM "ServiceSegment" WHERE "serviceId"='svc1'`);
+    expect(rows[0].n).toBe(3);
+  });
+
+  it('still refuses two segments at the same ordinal', async () => {
     await db.query(
       `INSERT INTO "Service" (id,"businessId",name,"durationMinutes","priceCents","updatedAt")
        VALUES ('svc1',$1,'Colour',90,12000, now())`,
@@ -355,20 +379,34 @@ describe('D-12 affordances', () => {
     );
     await db.query(
       `INSERT INTO "ServiceSegment" (id,"businessId","serviceId",ordinal,"durationMinutes","updatedAt")
-       VALUES ('seg1',$1,'svc1',0,90, now())`,
+       VALUES ('seg1',$1,'svc1',0,60, now())`,
       [businessId],
     );
     const code = await sqlstateOf(() =>
       db.query(
         `INSERT INTO "ServiceSegment" (id,"businessId","serviceId",ordinal,"durationMinutes","updatedAt")
-         VALUES ('seg2',$1,'svc1',1,30, now())`,
+         VALUES ('seg2',$1,'svc1',0,30, now())`,
         [businessId],
       ),
     );
-    expect(code).toBe('23505'); // unique_violation on the partial index
+    expect(code).toBe('23505');
+  });
+
+  // The half A-029 deliberately did NOT change: an appointment is still ONE
+  // continuous range to the database, so a booking inside another's processing
+  // gap is still refused. A-030 is where that stops being true, and it is
+  // gated on OQ-7. This test is the tripwire — it should fail when A-030
+  // lands, and whoever makes it fail has to have read OQ-7 first.
+  it('still refuses a booking landing inside a segmented appointment (pre-A-030)', async () => {
+    // A colour, 10:00-12:00: 50 active / 40 developing / 30 active. The
+    // developing stretch is 10:50-11:30, and A-029 draws it on the grid.
+    await insert({ id: 'colour', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T12:00:00-05:00' });
+    const code = await sqlstateOf(() =>
+      insert({ id: 'blowdry', start: '2026-06-09T10:50:00-05:00', end: '2026-06-09T11:20:00-05:00' }),
+    );
+    expect(code).toBe(EXCLUSION_VIOLATION);
   });
 });
-
 describe('detecting the violation through Prisma (verified, for A-009)', () => {
   it('surfaces 23P01 as an error the predicate recognises — and NOT as Prisma code P2002', async () => {
     const { PrismaClient } = await import('./generated/client/index.js');

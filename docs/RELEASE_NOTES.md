@@ -1152,3 +1152,15 @@ the reason the phone number is not unique in the first place.
 **A tile that only shows a number is a number nobody trusts by the second week.** Every count on this screen — bookings, cancellations, no-shows — is a link, and clicking it lands on the actual list of appointments behind it. An owner who sees "3 late cancellations this week" and wants to know who can find out in one click, not by asking the front desk to go look it up.
 
 **Reschedules don't quietly inflate the cancellation rate, and nobody had to remember to exclude them.** A rescheduled appointment is the same database row, moved — so when the dashboard counts what got cancelled this week, a client who simply moved her Tuesday to Thursday was never in that count to begin with. The correctness comes from how reschedule was modeled months earlier, not from a rule bolted on here.
+
+---
+
+## Segmented durations
+
+**A colour is not two hours of work — it's fifty minutes, forty minutes of chemistry, and thirty minutes more.** The service catalogue can now say so, and the day grid draws the middle stretch hatched, labelled with how many minutes are genuinely free. That's forty minutes per colour the front desk can see and use, on a screen that previously showed a solid two-hour block.
+
+**The gap never scales, and that's the detail the feature lives or dies on.** A quicker colourist gets a shorter application and a shorter finish — she does not get faster chemistry. A provider's duration override re-times only the parts she is actually working, proportionally, with the rounding remainder landing where it keeps the total exact. An override too short to leave room for the developing time is refused at the moment it's typed, saying how many minutes will never shorten, rather than producing an appointment whose parts silently don't fit.
+
+**The database still defends the whole slot, deliberately, and a test exists to make sure the next person knows why.** The exclusion constraint ranges over one time range per appointment, and a range cannot express a hole — so offering the gap as a bookable slot is a migration of the single most load-bearing invariant in the system, not a rendering change. That work is scoped, sized, and blocked on a written decision about what the constraint's unit becomes. Until then the gap is visible and staff book it through the override path that already exists, and a constraint test asserts the old behaviour on purpose: it is designed to fail the day the migration lands, so nobody can change that invariant without reading the decision first.
+
+**Nothing needed backfilling.** A service with no parts has exactly one implicit part — its whole duration — so every service in the system was already correct on the day the feature shipped, and the migration is a single dropped index.

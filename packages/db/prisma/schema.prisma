@@ -86,7 +86,9 @@ enum WaitlistStatus {
   cancelled
 }
 
-/// D-12 affordance. Exactly one ACTIVE segment per service in v1.
+/// D-12. `retired` is unused today: editing a service REPLACES its segment
+/// rows (A-029), because nothing references one — D-18 has each
+/// AppointmentServiceLine snapshotting its own duration at booking time.
 enum SegmentStatus {
   active
   retired
@@ -232,10 +234,17 @@ model ServiceProvider {
   @@index([providerId])
 }
 
-/// D-12 schema affordance ONLY. v1 has exactly one ACTIVE segment per service
-/// and the engine ignores this table entirely. It exists now because
-/// retrofitting segments onto a single-duration engine costs every query and a
-/// migration; the column and join cost nothing today.
+/// SEG-01 (A-029). An ordered list of parts: a cut is unsegmented, a colour is
+/// three rows (45 active / 35 gap / 30 active). No rows means ONE implicit
+/// active segment of the whole `Service.durationMinutes`, which is why A-029
+/// needed no backfill — every service built before it is already correct.
+///
+/// The parts MUST sum to `Service.durationMinutes`, which stays authoritative
+/// because it is what `blockedStart`/`blockedEnd` — the range the exclusion
+/// constraint actually enforces — are derived from. Enforced in
+/// packages/core/settings/segments.ts and a test, not by a trigger: today a
+/// drifted sum is a display defect. It becomes a correctness one at A-030,
+/// where the ENGINE starts reading these rows, and that row is gated on OQ-7.
 model ServiceSegment {
   id              String        @id @default(cuid())
   businessId      String

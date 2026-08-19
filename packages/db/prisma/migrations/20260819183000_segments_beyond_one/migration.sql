@@ -1,0 +1,19 @@
+-- A-029 — segments stop being a D-12 affordance and become editable data.
+--
+-- ONE change: the partial unique index that pinned every service to exactly one
+-- ACTIVE segment goes away. It was the v1 guard for "the engine ignores this
+-- table"; a colour is now three rows (45 active / 35 gap / 30 active), so the
+-- guard is exactly what has to lift.
+--
+-- What deliberately does NOT change here: "Appointment"."appointment_no_overlap".
+-- The engine still sees one continuous footprint and the database still defends
+-- it, because a single tstzrange cannot express a hole (OQ-7). A-029 renders
+-- the gap and lets staff book it through the existing BOOK-05 override; A-030
+-- is where the constraint's unit changes, and it is gated on that decision.
+--
+-- The `status` column and the SegmentStatus enum stay. Editing a service's
+-- segments REPLACES its rows (nothing references a ServiceSegment — D-18 has
+-- AppointmentServiceLine snapshotting its own duration at booking time), so
+-- nothing is ever retired today and `@@unique([serviceId, ordinal])` cannot
+-- collide. The column costs nothing and A-030 may want it.
+DROP INDEX "ServiceSegment_one_active_per_service";

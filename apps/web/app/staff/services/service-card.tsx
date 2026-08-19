@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import type { ProviderRow } from '@bookable/db/settings';
 import { type FormState, editService, toggleQualification, toggleServiceActive } from '@/lib/settings/service-actions';
+import { type SegmentDraft, SegmentEditor } from './segment-editor';
 import { ServiceFormFields } from './service-form-fields';
 
 const initial: FormState = {};
@@ -20,9 +21,10 @@ interface ServiceCardProps {
   };
   providers: ProviderRow[];
   qualifications: Array<{ providerId: string; durationOverrideMinutes: number | null; priceOverrideCents: number | null }>;
+  segments: SegmentDraft[];
 }
 
-export function ServiceCard({ service, providers, qualifications }: ServiceCardProps) {
+export function ServiceCard({ service, providers, qualifications, segments }: ServiceCardProps) {
   const [editState, editAction, editPending] = useActionState(editService, initial);
   const [toggleState, toggleAction, togglePending] = useActionState(toggleServiceActive, initial);
   const [pendingConfirm, setPendingConfirm] = useState(false);
@@ -94,6 +96,13 @@ export function ServiceCard({ service, providers, qualifications }: ServiceCardP
           </div>
         </form>
       </details>
+
+      <SegmentEditor
+        serviceId={service.id}
+        serviceName={service.name}
+        durationMinutes={service.durationMinutes}
+        segments={segments}
+      />
 
       <details>
         <summary className="mt-2 cursor-pointer text-sm text-zinc-500">
@@ -167,7 +176,16 @@ function QualificationRow({
           {qualified ? 'Remove' : 'Qualify'}
         </button>
       </form>
-      {state.errors?._confirm && <p className="text-xs text-amber-700 dark:text-amber-400">{state.errors._confirm}</p>}
+      {/* EVERY error, not just the confirm prompt. This rendered `_confirm`
+          alone until A-029, so a ServiceRejected on an override — a zero
+          duration, a price that is not an integer, and now SEG-02's
+          "the gap never shortens" — made the button do nothing and say
+          nothing. One list, so a new rejection reason cannot go silent. */}
+      {Object.values(state.errors ?? {}).map((message) => (
+        <p key={message} className="text-xs text-amber-700 dark:text-amber-400">
+          {message}
+        </p>
+      ))}
       {qualified && (
         <p className="pl-24 text-xs text-zinc-500">
           {qualification!.durationOverrideMinutes !== null && `${qualification!.durationOverrideMinutes} min`}

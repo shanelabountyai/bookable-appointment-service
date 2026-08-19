@@ -8,6 +8,7 @@
 import {
   type QualificationOverrideInput,
   type ServiceInput,
+  scaleSegments,
   validateQualificationOverride,
   validateService,
   validateServiceCutoff,
@@ -110,6 +111,7 @@ export async function updateService(
   input: SaveServiceInput,
 ): Promise<ServiceRow> {
   await assertValid(db, businessId, input);
+  await assertSegmentsStillAddUp(db, serviceId, input.durationMinutes);
   return db.service.update({
     where: { id: serviceId },
     data: {
@@ -122,6 +124,63 @@ export async function updateService(
     },
     select,
   });
+}
+
+/**
+ * A duration change on a SEGMENTED service is refused (SEG-01).
+ *
+ * The parts have to keep adding up to `durationMinutes`, because that is what
+ * `blockedStart`/`blockedEnd` are derived from and therefore what the exclusion
+ * constraint is actually enforcing. Silently rescaling the segments here would
+ * be the tempting alternative and it is wrong twice over: it would move the gap
+ * without anyone asking, and on a colour it would restate how long the chemistry
+ * takes. The owner edits the parts, and the total follows from them.
+ */
+async function assertSegmentsStillAddUp(db: Db, serviceId: string, durationMinutes: number): Promise<void> {
+  const segments = await db.serviceSegment.findMany({
+    where: { serviceId, status: 'active' },
+    select: { durationMinutes: true },
+  });
+  if (segments.length === 0) return;
+  const total = segments.reduce((sum, s) => sum + s.durationMinutes, 0);
+  if (total !== durationMinutes) {
+    throw new ServiceRejected(
+      'durationMinutes',
+      `This service is split into ${segments.length} parts adding up to ${total} minutes. ` +
+        'Edit the parts to change the total.',
+    );
+  }
+}
+
+/**
+ * A provider's duration override has to leave every ACTIVE segment at a minute
+ * or more (SEG-02) — refused here, at save time, rather than discovered at
+ * booking time when the segments no longer fit the footprint.
+ *
+ * The gap is held fixed by `scaleSegments`, so an override shorter than the
+ * gap plus one minute per active part is simply impossible, and saying so on
+ * the form is the only honest answer.
+ */
+async function assertOverrideFitsSegments(
+  db: Db,
+  serviceId: string,
+  overrideMinutes: number | null,
+): Promise<void> {
+  if (overrideMinutes === null) return;
+  const segments = await db.serviceSegment.findMany({
+    where: { serviceId, status: 'active' },
+    orderBy: { ordinal: 'asc' },
+    select: { durationMinutes: true, isGap: true },
+  });
+  if (segments.length === 0) return;
+  if (scaleSegments(segments, overrideMinutes) === null) {
+    const gapMinutes = segments.filter((s) => s.isGap).reduce((sum, s) => sum + s.durationMinutes, 0);
+    throw new ServiceRejected(
+      'durationOverrideMinutes',
+      `This service has ${gapMinutes} minutes of processing time that never shortens, ` +
+        `so an override has to leave room for the rest of it. ${overrideMinutes} minutes does not.`,
+    );
+  }
 }
 
 /**
@@ -224,6 +283,7 @@ export async function qualifyProvider(
 ): Promise<QualificationRow> {
   const violations = validateQualificationOverride(overrides);
   if (violations.length > 0) throw new ServiceRejected(violations[0]!.field, violations[0]!.message);
+  await assertOverrideFitsSegments(db, serviceId, overrides.durationOverrideMinutes);
 
   return db.serviceProvider.upsert({
     where: { serviceId_providerId: { serviceId, providerId } },

@@ -22,11 +22,43 @@ export const CHAIR_COUNT = 4;
  *  15-minute grid interval (CLAUDE.md test rules): equal buffers hide
  *  whose-buffer bugs, and duration == interval hides the
  *  removes-multiple-candidates defect. */
+/** SEG-01: two services carry real segments, so the gap stripe is visible on
+ *  the seeded day without anyone hand-typing rows, and so a segmented service
+ *  and an unsegmented one sit side by side in every screen that lists them.
+ *  Segments MUST sum to `durationMinutes` — the seed is not exempt from the
+ *  invariant, and a test asserts the seeded rows satisfy it. */
 const SERVICES = [
   { name: 'Cut', durationMinutes: 45, bufferBefore: 0, bufferAfter: 10, priceCents: 5500 },
   { name: 'Cut & finish', durationMinutes: 60, bufferBefore: 5, bufferAfter: 10, priceCents: 7500 },
-  { name: 'Colour', durationMinutes: 120, bufferBefore: 10, bufferAfter: 20, priceCents: 14000 },
-  { name: 'Balayage', durationMinutes: 180, bufferBefore: 10, bufferAfter: 25, priceCents: 21000 },
+  {
+    name: 'Colour',
+    durationMinutes: 120,
+    bufferBefore: 10,
+    bufferAfter: 20,
+    priceCents: 14000,
+    // Apply, develop, finish. The 40 developing minutes are the free provider
+    // time this whole feature exists to expose.
+    segments: [
+      { durationMinutes: 50, isGap: false },
+      { durationMinutes: 40, isGap: true },
+      { durationMinutes: 30, isGap: false },
+    ],
+  },
+  {
+    name: 'Balayage',
+    durationMinutes: 180,
+    bufferBefore: 10,
+    bufferAfter: 25,
+    priceCents: 21000,
+    // Two gaps, so nothing downstream can get away with assuming one.
+    segments: [
+      { durationMinutes: 60, isGap: false },
+      { durationMinutes: 35, isGap: true },
+      { durationMinutes: 25, isGap: false },
+      { durationMinutes: 30, isGap: true },
+      { durationMinutes: 30, isGap: false },
+    ],
+  },
   { name: 'Root touch-up', durationMinutes: 90, bufferBefore: 5, bufferAfter: 15, priceCents: 9500 },
   { name: 'Blow-dry', durationMinutes: 30, bufferBefore: 0, bufferAfter: 5, priceCents: 4000 },
   { name: 'Treatment', durationMinutes: 20, bufferBefore: 0, bufferAfter: 5, priceCents: 3000 },
@@ -108,6 +140,20 @@ export async function seedSetup(
             displayOrder: serviceIds.length,
           },
         });
+    // Idempotent like everything else in this seed: the rows are replaced, not
+    // appended, so re-running never doubles a colour's parts.
+    await prisma.serviceSegment.deleteMany({ where: { serviceId: service.id } });
+    if ('segments' in s) {
+      await prisma.serviceSegment.createMany({
+        data: s.segments.map((segment, ordinal) => ({
+          businessId: business.id,
+          serviceId: service.id,
+          ordinal,
+          durationMinutes: segment.durationMinutes,
+          isGap: segment.isGap,
+        })),
+      });
+    }
     serviceIds.push(service.id);
   }
 

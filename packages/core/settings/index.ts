@@ -16,3 +16,15 @@ export {
   validateQualificationOverride,
   validateService,
 } from './service';
+export {
+  type Segment,
+  type SegmentSpan,
+  type SegmentedLine,
+  gapSpans,
+  scaleSegments,
+  segmentsOrWhole,
+  sumMinutes as sumSegmentMinutes,
+  validateSegmentStructure,
+  validateSegments,
+  visitGapSpans,
+} from './segments';
