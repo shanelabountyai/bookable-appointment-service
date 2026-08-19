@@ -844,4 +844,4 @@ A-020 committed at abb1d1d
 **Left behind:**
 - Nothing reminds a client to confirm — that is A-022's reminder job, whose token-carried confirm/cancel actions this loop's manage-link action now exists to receive.
 - The call-down list has no bulk action; the desk works it one call at a time, same shape as AVAIL-05's conflicts list.
-A-021 committed at TBD
+A-021 committed at 0cb80cf
