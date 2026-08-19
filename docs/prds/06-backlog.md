@@ -61,7 +61,7 @@ Single, strictly-ordered build backlog: every item is buildable when reached, fo
 |---|---|---|---|---|---|---|
 | 25 | ✅ A-020 | No-show & late-cancel machinery: `cancelled_late` split enforced at the cutoff, rolling 12-month client counts with references, flags on every client surface, self-serve block after N with staff bypass | CLIENT-04; OQ-3 | M | A-015, A-012 | MVP |
 | 26 | ✅ A-021 | Confirm loop: confirm via manage link and staff manual-confirm, `confirmed_at`, unconfirmed-tomorrow call-down view; no auto-cancel ever | APPT-02 | S | A-013, A-016 | MVP |
-| 27 | A-022 | Reminder job: 24h-window instant arithmetic, exactly-once, idempotent, skips terminal/rescheduled-away, DST-window test, confirm/cancel actions on the link | NOTIF-02, 03 | M | A-004, A-013, A-011 | MVP |
+| 27 | ✅ A-022 | Reminder job: 24h-window instant arithmetic, exactly-once, idempotent, skips terminal/rescheduled-away, DST-window test, confirm/cancel actions on the link | NOTIF-02, 03 | M | A-004, A-013, A-011 | MVP |
 | 28 | A-023 | Waitlist, staff half: entries (service/providers/range/day-parts), fit-aware matching against a freed interval, "who wants this slot?" panel on any freed slot. Automated offers gated on OQ-4 | WAIT-01, 02 | M | A-020 | MVP |
 | 29 | A-024 | Owner dashboard: bookings, cancels split normal/late, no-shows by provider, utilization to the frozen RPT-02 formula (exact seeded constant asserted), every tile drills to a filtered list | RPT-01..03 | M | A-011, A-020 | MVP |
 

@@ -67,6 +67,14 @@ export const ACTIVE_STATUSES = APPOINTMENT_STATUSES.filter(
 export const MISSED_STATUSES = ['no_show', 'cancelled_late'] as const;
 export const SELF_SERVE_BLOCKING_STATUSES = ['no_show'] as const;
 
+/**
+ * NOTIF-02: who still gets a reminder. `booked` and `confirmed` only — a
+ * positive allow-list rather than "not terminal", because `checked_in` and
+ * `in_progress` are also non-terminal and already past their own start time,
+ * so `TERMINAL_STATUSES` would let them through by accident.
+ */
+export const REMINDER_ELIGIBLE_STATUSES = ['booked', 'confirmed'] as const;
+
 /** Terminal states: no transition leaves them, except the ≤7d staff correction
  *  between `no_show` and `completed` (APPT-06 — mis-taps are daily and the
  *  alternative is SQL surgery). */

@@ -3,12 +3,13 @@
  * for why deciding and sending are separate steps.
  *
  * ponytail: no claim-before-send row locking. Two concurrent dispatchers could
- * both pick up the same `pending` row and send it twice. Left this way because
- * nothing in the repo calls dispatch() from more than one place yet — there is
- * no cron (that's NOTIF-02/A-022) and no route handler triggers it inline.
- * Upgrade path when a second caller exists: an `UPDATE ... WHERE status =
- * 'pending' RETURNING ...` claim (the pattern A-003's blocked-range trigger
- * already established for this schema), or a fifth `sending` OutboxStatus.
+ * both pick up the same `pending` row and send it twice. Left this way
+ * because the one caller that exists (A-022's reminder job route) is a single
+ * scheduled trigger, not proven-concurrent — the risk is a slow run
+ * overlapping a retry, not routine operation. Upgrade path if that changes:
+ * an `UPDATE ... WHERE status = 'pending' RETURNING ...` claim (the pattern
+ * A-003's blocked-range trigger already established for this schema), or a
+ * fifth `sending` OutboxStatus.
  */
 import type { ChannelAdapter } from '../../core/notifications';
 import type { OutboxStatus, PrismaClient } from '../generated/client/index.js';

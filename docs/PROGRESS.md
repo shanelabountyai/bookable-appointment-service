@@ -845,3 +845,23 @@ A-020 committed at abb1d1d
 - Nothing reminds a client to confirm — that is A-022's reminder job, whose token-carried confirm/cancel actions this loop's manage-link action now exists to receive.
 - The call-down list has no bulk action; the desk works it one call at a time, same shape as AVAIL-05's conflicts list.
 A-021 committed at 0cb80cf
+
+---
+
+## A-022 — the reminder job (NOTIF-02, NOTIF-03)
+
+**Built:** `sendDueReminders`, a pure-window + DB pair — `reminderWindow()` in `core/notifications` computes `[now+24h, now+24h+5m)` on plain instant arithmetic (spec X-3/X-4), and `packages/db/notifications/reminders.ts` queries `{booked, confirmed}` appointments inside it, one `enqueueNotification` per appointment keyed on `reminder-24h:{id}:{startAtEpochMs}` (P1-7, already the dedupe contract). The first HTTP route handler in the app (`/api/jobs/reminders`, bearer-secret gated, refuses closed if `CRON_SECRET` is unset) triggers it and then calls `dispatchPendingNotifications` — nothing else in the repo was calling dispatch on a schedule, so this route is also the first thing that makes the whole outbox actually send. `vercel.json` schedules it every 5 minutes.
+
+**Decided (D-28):** the job REISSUES the manage token per reminder rather than reusing the one from booking — the raw token is only ever held in memory at mint time (only its hash is stored, TOKEN-01), so nothing later can recover an old one. Reissuing revokes the original confirmation's link, which is intended: the reminder is itself a new outgoing message, and "the newest message's link is the live one" is the same rule D-5 already applies to a corrected-phone-number resend, not a new exception.
+
+**Where the interesting decisions went:**
+- **"Skips terminal/rescheduled-away" is two different guarantees.** Terminal is `REMINDER_ELIGIBLE_STATUSES = ['booked', 'confirmed']` in `core/scheduling/status.ts` (a positive allow-list — `TERMINAL_STATUSES` would have let `checked_in`/`in_progress` through by accident, since neither is terminal). Rescheduled-away needs no code at all: D-6 means reschedule is a same-row UPDATE, so a moved appointment is simply absent from the query at its old `startAt` and present at its new one — nothing to skip, because nothing to find.
+- **The window is 5 minutes wide (X-4) on purpose**, matching the cron interval exactly: an interval trigger firing at least that often never leaves a gap, and a tick that re-sweeps an appointment already handled is a harmless no-op at the dedupe key, never a double send.
+- **The dedupe check runs BEFORE the token is touched**, not just inside `enqueueNotification`'s own unique-constraint catch. A tick that re-sweeps an already-queued appointment would otherwise needlessly revoke a token a client might already be holding from the first message — checked-then-acted, not caught-after-acted.
+- **Physical 24 hours, not a calendar day (X-3).** On the spring-forward morning, a 09:00 appointment's reminder fires at what the salon's own wall clock the day before calls 08:00 — documented and asserted, not treated as a bug to chase, per the spec's own resolution of an otherwise-undocumented ambiguity.
+
+**Left behind:**
+- **The dispatcher's claim race is now live, not hypothetical.** `dispatch.ts` has carried a documented `ponytail` note since A-004 that two concurrent dispatchers could double-send; this job is the first real caller. Left as-is — the trigger is one scheduled route, not proven-concurrent — with the comment updated to say so and the same upgrade path (a claim-row `UPDATE ... RETURNING`) still named.
+- **No second-touch reminder.** OQ-5 (still open) asks whether a 2h-before day-of reminder is wanted; this ships the one NOTIF-02 actually specifies.
+- **Vercel's Hobby tier only runs cron daily.** `vercel.json`'s 5-minute schedule assumes Pro, or an external scheduler hitting the route with the bearer token — a deployment-tier question, noted in the route's own comment, not a correctness one.
+A-022 committed at TBD

@@ -1123,4 +1123,14 @@ the reason the phone number is not unique in the first place.
 
 **The call-down list is derived, like everything else that matters here.** "Who hasn't confirmed for tomorrow" is not a stored flag — it is `status = 'booked'` on tomorrow's business-zone day, recomputed on every page load. The moment somebody confirms, by either the phone or the website, the row is simply gone; nothing has to clear it.
 
-<!-- Next entry: A-022 — reminder job -->
+---
+
+## The reminder job
+
+**The link in the reminder is a new one, on purpose.** The system never stores a manage link's raw token — only a one-way hash of it — so nothing running a day later can hand a customer back the exact link she was sent at booking time. The reminder mints a fresh one and the old one stops working, which sounds like a bug until you notice it is the same rule already governing what happens when the salon re-sends a confirmation to a corrected phone number: the newest message is the one that's live.
+
+**"24 hours before" means 24 real hours, not "yesterday at the same time."** On the one morning a year the clocks skip forward, those two definitions disagree by an hour, and the difference is invisible unless a test is written specifically to look at it in the salon's own timezone. This one is.
+
+**Nothing decides to skip a rescheduled appointment — there's nothing to decide.** A reschedule moves the same database row to a new time; the reminder job just asks "what's starting in the next few minutes' window, 24 hours out" and a moved appointment simply isn't there anymore at its old time. The correctness came from the reschedule feature keeping one row, not from the reminder job knowing anything special about rescheduling.
+
+<!-- Next entry: A-023 — waitlist staff half -->
