@@ -5,6 +5,7 @@ export {
   loadAppointmentDetail,
   setAppointmentNotes,
 } from './detail';
+export { type UnconfirmedAppointment, listUnconfirmedTomorrow } from './call-down';
 export {
   AppointmentAlreadyMoved,
   RescheduleRefused,

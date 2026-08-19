@@ -23,6 +23,7 @@ import { readableInstant } from '@/lib/customer-format';
 import { openManageLink } from '@/lib/manage/token-gate';
 import { listRescheduleDays } from '@/lib/manage/actions';
 import { CancelForm } from './cancel-form';
+import { ConfirmForm } from './confirm-form';
 import { RescheduleForm } from './reschedule-form';
 
 export const metadata: Metadata = {
@@ -96,6 +97,10 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
       </dl>
 
       <p className="text-zinc-600 dark:text-zinc-400">{PLAIN_LANGUAGE[status]}</p>
+
+      {/* APPT-02's loop: an affordance, asked of the same table the write path
+          asks, same reasoning as the reschedule/cancel affordances below. */}
+      {possibleTransitionsFrom(status).includes('confirmed') ? <ConfirmForm token={token} /> : null}
 
       {movable.allowed ? <RescheduleForm token={token} days={await listRescheduleDays(token)} /> : null}
 

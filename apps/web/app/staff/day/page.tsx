@@ -96,6 +96,11 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         <Link href={`/staff/conflicts?day=${day}`} className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
           Conflicts
         </Link>
+        {/* APPT-02: the desk's other daily errand — who tomorrow hasn't said
+            yes yet. */}
+        <Link href="/staff/call-down" className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
+          Call-down
+        </Link>
       </div>
 
       <nav aria-label="View" className="flex flex-wrap gap-2 text-sm">

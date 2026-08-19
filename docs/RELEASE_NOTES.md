@@ -1115,4 +1115,12 @@ the reason the phone number is not unique in the first place.
 
 ---
 
-<!-- Next entry: A-021 — confirm loop -->
+## The confirm loop
+
+**Confirming is one function, asked twice.** A customer tapping "I'll be there" on her manage link and a staff member tapping "Confirm" on the appointment screen go through the exact same transition table, the same `booked → confirmed` edge, just with a different actor. There is no separate customer-confirm code path to drift out of sync with the staff one — the table has always permitted both, since the state machine was built.
+
+**"No reply never auto-cancels" is provable, not just promised.** The transition table has no `system` actor anywhere in it. That is not an omission to remember to avoid — it is the whole mechanism: nothing in this codebase has the authority to move an appointment on its own, so there is no code path left that could someday grow a silent auto-cancel by accident.
+
+**The call-down list is derived, like everything else that matters here.** "Who hasn't confirmed for tomorrow" is not a stored flag — it is `status = 'booked'` on tomorrow's business-zone day, recomputed on every page load. The moment somebody confirms, by either the phone or the website, the row is simply gone; nothing has to clear it.
+
+<!-- Next entry: A-022 — reminder job -->

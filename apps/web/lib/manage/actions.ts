@@ -1,14 +1,12 @@
 'use server';
 
 /**
- * What the manage link GRANTS (TOKEN-01): reschedule and cancel.
+ * What the manage link GRANTS (TOKEN-01): confirm, reschedule and cancel.
  *
- * Confirm is A-021's loop and comes through the same gate when it lands.
- *
- * D-10 applies to every string returned: "appointment", "reschedule",
- * "cancel". No status enum, no entity name, no internal identifier — including
- * in the failure wording, where a leaked `cancelled_late` would be the exact
- * tell TOKEN-03 forbids.
+ * D-10 applies to every string returned: "appointment", "confirm",
+ * "reschedule", "cancel". No status enum, no entity name, no internal
+ * identifier — including in the failure wording, where a leaked
+ * `cancelled_late` would be the exact tell TOKEN-03 forbids.
  */
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
@@ -83,6 +81,52 @@ async function cancelWithLateSplit(appointmentId: string, tokenId: string): Prom
     }
     throw error;
   }
+}
+
+// ─────────────────────────────── confirm (A-021) ───────────────────────────
+
+export interface ConfirmState {
+  ok?: boolean;
+  message?: string;
+}
+
+/**
+ * APPT-02: the customer's half of the confirm loop. Staff's half (D-7's
+ * `confirmed` clause, `actor: 'staff'`) already went live with A-012 — this is
+ * the same table's `customer_token` clause, reached from the manage link.
+ *
+ * No cutoff, no precondition: §7 permits `booked → confirmed` for this actor
+ * unconditionally, so this action does not compute one either.
+ */
+export async function confirmAppointment(_previous: ConfirmState, formData: FormData): Promise<ConfirmState> {
+  const token = String(formData.get('token') ?? '');
+  const gate = await openManageLink(token, new Date());
+  if (!gate.ok) {
+    return {
+      ok: false,
+      message:
+        gate.reason === 'too-many'
+          ? 'Too many requests just now. Please wait a minute and try again.'
+          : 'This link is no longer valid. Please call the salon.',
+    };
+  }
+
+  try {
+    await transitionAppointment(prisma, {
+      appointmentId: gate.grant.appointmentId,
+      to: 'confirmed',
+      actor: customerTokenActor(gate.grant.tokenId),
+      now: new Date(),
+    });
+  } catch (error) {
+    if (error instanceof TransitionRefused) {
+      return { ok: false, message: 'That is not something we can change online. Please call the salon.' };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/manage/${token}`);
+  return { ok: true, message: 'You are confirmed — see you then.' };
 }
 
 // ─────────────────────────── reschedule (A-014) ───────────────────────────

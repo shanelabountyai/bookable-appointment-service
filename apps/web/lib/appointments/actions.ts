@@ -58,6 +58,7 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
 
   revalidatePath(`/staff/appointments/${appointmentId}`);
   revalidatePath('/staff/day');
+  revalidatePath('/staff/call-down');
   return { ok: true, message: 'Done, and recorded.' };
 }
 

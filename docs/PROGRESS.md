@@ -827,3 +827,21 @@ D-26 committed at 25d8fd6
 - The seeded no-show history is pinned to fixed 2026 dates, so the demo's offender ages out of the window in 2027 while the seed stays green. The e2e spec seeds relative to today for exactly this reason; the seed itself is a demo-data question, not a correctness one.
 - Reschedule is not gated. A blocked client with an existing appointment can still move it through her manage link, which is deliberate: the lever is on new bookings, and refusing a reschedule would produce a no-show instead.
 A-020 committed at abb1d1d
+
+---
+
+## A-021 — the confirm loop (APPT-02)
+
+**Built:** the customer's half of confirm, through the manage link — an "I'll be there" button gated by the same §7 table the write path asks, going through `openManageLink` and `transitionAppointment` exactly like cancel and reschedule already do. Plus the staff call-down view: everybody booked tomorrow who has not yet confirmed, one row per client with a `tel:` link, and a one-tap "Confirmed" button that goes through the existing `changeStatus` action.
+
+**Most of this already existed.** A-012 built the whole state machine, including both `booked → confirmed` clauses (`actor: 'staff'` and `actor: 'customer_token'`, no precondition on either), `confirmedAt` on the schema, and the timestamp write. Staff manual-confirm was already live on the appointment detail page as a side effect of A-012's transition table plus A-027's `StatusControls`. "No auto-cancel ever" was already true by omission — §7's table has no `system` actor row anywhere, and that absence is itself commented as deliberate. **A-021's actual scope was two surfaces, not a state machine:** the manage-link affordance, and the call-down list nothing had built yet.
+
+**Where the interesting decisions went:**
+- **The call-down list is derived, same reflex as AVAIL-05's conflicts and CLIENT-04's counters.** Nothing stores "needs a call" — a row drops off the list the instant somebody confirms, by either path, because the query is just `status = 'booked' AND startDay = tomorrow`.
+- **Sort order stays chronological.** OQ-5 asks whether it should instead rank by ticket value or no-show risk — still open, so this ships the plain reading rather than guessing at an unanswered question, with a comment at the query pointing back to OQ-5.
+- **The call-down button reuses `changeStatus`, not a new action.** One row's confirm is `staff` moving `booked → confirmed`, the exact case the appointment detail page already exercises; a second write path would be a second thing that could drift from the table.
+
+**Left behind:**
+- Nothing reminds a client to confirm — that is A-022's reminder job, whose token-carried confirm/cancel actions this loop's manage-link action now exists to receive.
+- The call-down list has no bulk action; the desk works it one call at a time, same shape as AVAIL-05's conflicts list.
+A-021 committed at TBD

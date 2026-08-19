@@ -154,6 +154,37 @@ test.describe('the manage link (A-013)', () => {
     }
   });
 
+  /** A-021: the customer's half of the confirm loop (APPT-02). */
+  test('confirms from the link, and the SAME link still shows it confirmed', async ({ page }) => {
+    const link = await bookAndTakeTheLink(page);
+    await page.goto(link);
+    await page.getByRole('button', { name: "I'll be there" }).click();
+
+    // Same reasoning as the cancel test: the PAGE is the feedback, because
+    // the revalidation unmounts the form the action's own message lives in.
+    await expect(page.getByText('You are confirmed — see you then.')).toBeVisible();
+    await expect(page.getByRole('button', { name: "I'll be there" })).toHaveCount(0);
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow();
+      expect(appointment.status).toBe('confirmed');
+      expect(appointment.confirmedAt).not.toBeNull();
+      const event = await prisma.appointmentEvent.findFirstOrThrow({
+        where: { type: 'status_changed' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(event.actor).toBe('customer_token');
+      expect(event.actorRef).not.toBeNull();
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // MULTI-USE, same as cancel: the link is not burned by confirming.
+    await page.goto(link);
+    await expect(page.getByText('You are confirmed — see you then.')).toBeVisible();
+  });
+
   /**
    * A-014 through the customer's own link — half of demo checkpoint 2's "opens
    * the manage link, reschedules, then cancels with the same link".
