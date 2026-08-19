@@ -18,6 +18,7 @@
  */
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
+import { transitionAppointment } from '../appointments';
 import { staffActor } from '../../core/auth';
 import { instantFromIso, toDate } from '../../core/time';
 import type { PrismaClient } from '../generated/client/index.js';
@@ -190,6 +191,39 @@ export async function seedDensity(
   for (const day of DEMO_WEEK) {
     await fill(dana.id, day, 0.85, 'dana');   // ~85% — the senior stylist's book
     await fill(priya.id, day, 0.4, 'priya');  // ~40% — room to move
+  }
+
+  // A-024's utilization tile (RPT-02) needs real {completed, no_show} minutes
+  // to be anything but zero — by the time anyone views the dashboard, DEMO_WEEK
+  // (June) is long past, and a real salon's week ends with appointments that
+  // actually happened, not sitting forever in `booked`. Dana's week is the
+  // frozen constant's provider (P) and week (W) — walked through the REAL
+  // transition table (`booked → checked_in → in_progress → completed`), same
+  // discipline as booking through `bookAppointment` above.
+  //
+  // Ordered by `startAt`, so which two are "the two seeded offenders" (demo
+  // checkpoint 3's late-cancel tile) is deterministic under a fixed random
+  // seed, same as everything else this file produces.
+  const danaWeek = await prisma.appointment.findMany({
+    where: { businessId: business.id, providerId: dana.id, startDay: { in: [...DEMO_WEEK] } },
+    orderBy: { startAt: 'asc' },
+    select: { id: true },
+  });
+  const lateCancelIds = new Set(danaWeek.slice(-2).map((a) => a.id));
+  const transitionedAt = toDate(instantFromIso(`${DEMO_WEEK[DEMO_WEEK.length - 1]}T18:00:00-05:00`));
+  for (const appointment of danaWeek) {
+    if (lateCancelIds.has(appointment.id)) {
+      await transitionAppointment(prisma, {
+        appointmentId: appointment.id,
+        to: 'cancelled_late',
+        actor: staffActor('seed'),
+        now: transitionedAt,
+      });
+      continue;
+    }
+    for (const to of ['checked_in', 'in_progress', 'completed'] as const) {
+      await transitionAppointment(prisma, { appointmentId: appointment.id, to, actor: staffActor('seed'), now: transitionedAt });
+    }
   }
 
   // Fully booked, three CONSECUTIVE days: the case where a customer must be

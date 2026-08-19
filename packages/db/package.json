@@ -26,6 +26,7 @@
     "./errors": "./errors.ts",
     "./notifications": "./notifications/index.ts",
     "./rate-limit": "./rate-limit.ts",
+    "./reports": "./reports/index.ts",
     "./scheduling": "./scheduling/index.ts",
     "./settings": "./settings/index.ts",
     "./testing": "./testing/index.ts",

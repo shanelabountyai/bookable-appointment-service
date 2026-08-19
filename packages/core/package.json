@@ -13,6 +13,7 @@
     "./clients": "./clients/index.ts",
     "./notifications": "./notifications/index.ts",
     "./scheduling": "./scheduling/index.ts",
+    "./reports": "./reports/index.ts",
     "./settings": "./settings/index.ts",
     "./time": "./time/index.ts",
     "./waitlist": "./waitlist/index.ts"

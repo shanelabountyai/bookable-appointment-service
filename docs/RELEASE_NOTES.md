@@ -1142,3 +1142,13 @@ the reason the phone number is not unique in the first place.
 **The matching is honest about what it actually checks.** It isn't a second booking engine running quietly in the background — it's a duration-and-buffer arithmetic check against the exact window that just opened, plus whether the day and time of day are ones the waiting client said would work. That's a deliberately smaller promise than "here's every slot this week that would work for her," and the smaller promise is the one this feature can keep without drifting out of sync with the real booking rules the moment either one changes.
 
 **Every provider-and-service pair a client will accept for a wait, in one search field.** "Any Saturday morning, Dana or Priya" is a real sentence an owner used to describe how this actually gets asked for, and it types into the form almost verbatim — a date range, a couple of checkboxes for which stylists are acceptable, and which parts of which days. No new client-lookup was written for it; it's the same phone-and-name search the booking screen and the client-merge tool already use, because a salon has exactly one way its front desk finds a person, not three slightly different ones.
+
+---
+
+## The owner dashboard
+
+**The utilization formula was frozen before a line of code existed, and the number it produces here was earned, not typed in.** "Booked minutes over available minutes" sounds simple until someone asks what counts as available — does a lunch break? A stylist's day off? The fifteen minutes on either side of a haircut that exist so the chair doesn't get double-booked? Every one of those questions was answered in writing months before this screen, and the one number a reviewer can actually check against isn't a plausible-looking round figure someone typed into a spec — it's whatever a real, reproducible dataset actually produces when the formula runs against it, pinned as the test's own expected value.
+
+**A tile that only shows a number is a number nobody trusts by the second week.** Every count on this screen — bookings, cancellations, no-shows — is a link, and clicking it lands on the actual list of appointments behind it. An owner who sees "3 late cancellations this week" and wants to know who can find out in one click, not by asking the front desk to go look it up.
+
+**Reschedules don't quietly inflate the cancellation rate, and nobody had to remember to exclude them.** A rescheduled appointment is the same database row, moved — so when the dashboard counts what got cancelled this week, a client who simply moved her Tuesday to Thursday was never in that count to begin with. The correctness comes from how reschedule was modeled months earlier, not from a rule bolted on here.

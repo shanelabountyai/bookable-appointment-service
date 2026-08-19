@@ -886,3 +886,23 @@ A-022 committed at 43edf22
 - **The e2e's own accessible-name collisions were the interesting part of writing it**: the Service `<select>`'s accessible name concatenates every option's text, and "Root touch-up" contains "to" as a substring — `getByLabel('To')` for the date range needed `{ exact: true }`. And a server action's mutation must be waited on for its own visible effect before navigating away — `page.goto()` right after a click aborts an in-flight request exactly like closing a tab would.
 A-023 committed at f817a2f
 
+---
+
+## A-024 — the owner dashboard (RPT-01, RPT-02, RPT-03)
+
+**Built:** `packages/core/reports/utilization.ts` — RPT-02's frozen formula as pure functions: `availableMinutesForDay` (working-window spans minus breaks minus absences, reusing the exact `resolveWindow`/`union`/`subtractSpans` triple the day grid and engine already share, run DIRECTLY on the resolved spans rather than through `computeSlots` — a window's unbookable tail shorter than one grid interval is real working time, not idle time, per RPT-02's own "grid dead-zones count as unbookable, not idle") and `utilizationFraction` (`null`, never `0`, on a zero denominator). `packages/core/reports/week.ts` — `weekOf`, a Monday-Sunday bounds helper; Tue-Sat business hours mean Monday/Sunday just contribute nothing to either side of the formula, which is a cleaner boundary than special-casing the business's closed days. `packages/db/reports/dashboard.ts` — `dashboardSummary` (bookings, cancels split normal/late, no-shows grouped by provider, utilization per provider, one week) and `listReportAppointments`, the single parameterized query every tile's drill-down link points at (RPT-01's "every tile drills into the underlying filtered list" — one list, not four). `apps/web/app/staff/dashboard/` — the four tiles plus prev/next week navigation, and `.../appointments` — the filtered list.
+
+**Decided:** The density seed (`packages/db/settings/density-seed.ts`) needed a real gap closed to make RPT-02's AC assertable at all — every DEMO_WEEK appointment it books is left in `booked` forever, and the numerator needs `{completed, no_show}` minutes. A-024 walks Dana's DEMO_WEEK book through the REAL transition table (`booked → checked_in → in_progress → completed`) for the "week already happened by demo time" case, and two appointments (the last two, chronologically — deterministic under the seeded PRNG) go to `cancelled_late` instead, which is also demo checkpoint 3's "two seeded offenders." The frozen constant itself — `1290 / 2100`, Dana's DEMO_WEEK — was read off a run of the real seed and pinned in `packages/db/reports/utilization-constant.test.ts`, not hand-derived: nobody can hand-derive it, since the seed books greedily against the live engine and a slot it offers can still be taken by the time it's written.
+
+**Where the interesting decisions went:**
+- **RPT-03 (reschedules excluded from the cancellation rate) needed no code.** Reschedule is a same-row UPDATE (D-6), so a moved appointment simply isn't counted at its OLD week anymore — the identical free lunch A-022's reminder job got from the same decision, noted there and now here a second time.
+- **"Bookings" is a gross count**, every appointment scheduled that week regardless of what happened to it since — parallel to "cancels" and "no-shows" being subsets of the same set, and the honest number for "how much did the desk actually book," as distinct from what survived.
+- **The numerator is a plain JS sum over a `findMany`, not a SQL aggregate.** A `groupBy` cannot sum a computed expression (`endAt - startAt`), and the row count here — one small salon, one week — is nowhere near where a raw aggregate would earn its keep.
+- **A provider with availability but nothing completed reads 0%, not n/a.** Those are different facts, and RPT-02 says so explicitly; the distinction only bites on the zero-DENOMINATOR case (no roster that week), asserted as its own test.
+
+**Left behind:**
+- **No revenue tile.** RPT-01 never asks for one, and the four named tiles (bookings, cancels, no-shows, utilization) are the whole of what's specified.
+- **No date-range picker beyond week navigation.** Prev/next week, named in the URL, is what A-016's day grid already established as the pattern here; a custom range is a bigger UI than four tiles justify without one being asked for.
+- **`seedDensity` is one step less safely re-runnable than it looked** — its own `TimeOff.create` for Marcus already wasn't idempotent before this item, and the new transition step inherits the same posture (fresh-database invocation only, which is how `db:reset:test` and the test suite both use it). Not new risk, just the same one, now touched by one more step.
+A-024 committed at <SHA>
+
