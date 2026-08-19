@@ -904,5 +904,5 @@ A-023 committed at f817a2f
 - **No revenue tile.** RPT-01 never asks for one, and the four named tiles (bookings, cancels, no-shows, utilization) are the whole of what's specified.
 - **No date-range picker beyond week navigation.** Prev/next week, named in the URL, is what A-016's day grid already established as the pattern here; a custom range is a bigger UI than four tiles justify without one being asked for.
 - **`seedDensity` is one step less safely re-runnable than it looked** — its own `TimeOff.create` for Marcus already wasn't idempotent before this item, and the new transition step inherits the same posture (fresh-database invocation only, which is how `db:reset:test` and the test suite both use it). Not new risk, just the same one, now touched by one more step.
-A-024 committed at <SHA>
+A-024 committed at 9e82f5c
 
