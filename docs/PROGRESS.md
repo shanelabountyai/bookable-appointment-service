@@ -906,3 +906,17 @@ A-023 committed at f817a2f
 - **`seedDensity` is one step less safely re-runnable than it looked** — its own `TimeOff.create` for Marcus already wasn't idempotent before this item, and the new transition step inherits the same posture (fresh-database invocation only, which is how `db:reset:test` and the test suite both use it). Not new risk, just the same one, now touched by one more step.
 A-024 committed at 9e82f5c
 
+
+## Scoping pass — segmented durations (SEG-01..05, A-029, A-030, OQ-7)
+
+**Built:** No code. The first Phase 3 item was written up to the same standard every MVP row got, *before* implementation: a new **SEG** epic in `docs/prds/00-master-prd.md` §5 (five stories), two backlog rows in `docs/prds/06-backlog.md`, and one open question in `docs/prds/07-decisions.md`.
+
+**Decided:** **Segments split into two tickets, and the split is the point.** A-029 (M) models and renders segments with the engine and the database untouched; A-030 (L) lets the engine offer the gap. The line between them is exactly the line the operator drew in `docs/reviews/01-operator-review.md` §2 — "medium on whether the builder should do overlap-booking in v1 vs. just modeling the segments and exposing the gap to staff; booking into the gap manually first is a defensible v1." A-029 is safe under either answer to OQ-7, so it can be built now; A-030 cannot.
+
+**Where the interesting decisions went:**
+- **The finding that forced the split: `appointment_no_overlap` ranges over ONE `tstzrange` per `Appointment` row, and a range cannot express a hole.** Gap booking means an appointment's provider-occupancy becomes a *set* of spans, so the constraint's unit stops being the appointment. That is a migration of the single most load-bearing invariant in the build (D-2), and it drags A-009's nine race interleavings, D-16's zero-width override range, A-014's same-row reschedule, A-018's deferred column push, A-019's bulk reassign and A-026's busy-set query with it. Written up as **OQ-7** with three candidate shapes rather than settled mid-item.
+- **Corrected a claim the backlog was making.** Phase 3 read "the first three exist as D-12 schema affordances precisely so none of them is a migration." True of the *tables*, false of the *constraint* — for segments and for resources alike, the affordance bought the cheap half. The correction is written into the backlog next to the rows it affects, not silently edited away.
+- **A gap never scales with a provider's duration override (SEG-02).** Colour develops for 35 minutes regardless of who mixed it; applying a stylist's speed to chemistry would silently mis-time every segmented booking. The override scales active segments only, integer minutes, remainder to the last, and is refused at save time if any active segment would reach ≤ 0.
+- **`Service.durationMinutes` stays authoritative** and must equal the sum of active segments. That is what makes A-029 additive: a single-segment service is byte-identical to a v1 service, so the footprint the exclusion constraint already ranges over cannot drift from the parts.
+
+**Left behind:** OQ-7 unanswered, deliberately — A-030 names it as a dependency and says not to start before it is decided. Resource pools have the same latent constraint problem and no ticket yet.
