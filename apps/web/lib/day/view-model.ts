@@ -33,6 +33,10 @@ export interface GridItem {
   /** CLIENT-03's pinned note, surfaced on the chip because an allergy is a
    *  safety surface rather than a detail. */
   pinnedNote?: string;
+  /** CLIENT-04's flag, already worded. On the chip for the same reason as the
+   *  note: the day grid is where the desk decides who to ring this morning,
+   *  and "she has missed the last two" is that decision. */
+  missed?: string;
   status?: AppointmentStatus;
   isOverride?: boolean;
   /** APPT-03's projected start: what time this is REALLY likely to begin,
@@ -73,7 +77,14 @@ export interface GridModel {
   columns: GridColumn[];
 }
 
-export function toGridModel(view: DayView, now: Date, dayLabel: string): GridModel {
+export function toGridModel(
+  view: DayView,
+  now: Date,
+  dayLabel: string,
+  /** CLIENT-04 flags by client id, already worded by the caller. Optional so
+   *  the model stays testable without a database. */
+  missedByClient: ReadonlyMap<string, string> = new Map(),
+): GridModel {
   const zone = view.timezone as ZoneId;
   const from = fromDate(view.from);
   const total = Math.max(60, (fromDate(view.to) - from) / MIN);
@@ -94,7 +105,9 @@ export function toGridModel(view: DayView, now: Date, dayLabel: string): GridMod
     totalMinutes: total,
     ticks: hourTicks(view, zone, from, total),
     nowTop,
-    columns: view.columns.map((column) => toColumn(column, { minutesFrom, clock, range, shift }, view.day, now)),
+    columns: view.columns.map((column) =>
+      toColumn(column, { minutesFrom, clock, range, shift }, view.day, now, missedByClient),
+    ),
   };
 }
 
@@ -107,7 +120,13 @@ interface Formatters {
   shift: (at: Date, minutes: number) => string;
 }
 
-function toColumn(column: DayColumn, f: Formatters, day: string, now: Date): GridColumn {
+function toColumn(
+  column: DayColumn,
+  f: Formatters,
+  day: string,
+  now: Date,
+  missedByClient: ReadonlyMap<string, string>,
+): GridColumn {
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
       key: `break-${i}`,
@@ -146,6 +165,7 @@ function toColumn(column: DayColumn, f: Formatters, day: string, now: Date): Gri
     ...column.appointments.map((appointment) => {
       const who = appointment.clientName ?? 'Walk-in';
       const services = appointment.serviceNames.join(' + ');
+      const missed = appointment.clientId ? missedByClient.get(appointment.clientId) : undefined;
       return {
         key: `appointment-${appointment.id}`,
         kind: 'appointment' as const,
@@ -155,6 +175,7 @@ function toColumn(column: DayColumn, f: Formatters, day: string, now: Date): Gri
         title: who,
         detail: [services, appointment.clientPhone].filter(Boolean).join(' · '),
         pinnedNote: appointment.clientNotes ?? undefined,
+        ...(missed ? { missed } : {}),
         status: appointment.status as AppointmentStatus,
         isOverride: appointment.isOverride,
         // Only for what has not started yet: projecting a time onto an
@@ -174,6 +195,7 @@ function toColumn(column: DayColumn, f: Formatters, day: string, now: Date): Gri
           STATUS_WORDS[appointment.status as AppointmentStatus],
           appointment.isOverride ? 'booked as an override' : '',
           appointment.clientNotes ? `note: ${appointment.clientNotes}` : '',
+          missed ?? '',
           column.runningLateMinutes && appointment.status === 'booked'
             ? `likely ${f.shift(appointment.startAt, column.runningLateMinutes)}`
             : '',

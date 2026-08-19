@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { loadDayView } from '@bookable/db/day';
+import { clientReliability } from '@bookable/db/clients';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 import { toGridModel } from '@/lib/day/view-model';
+import { flagSentence } from '@/components/client-flag';
 import { DayGrid } from './day-grid';
 import { ProviderDay } from './provider-day';
 
@@ -34,7 +36,24 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
   const day = safeDay(typeof dayParam === 'string' ? dayParam : undefined, today);
 
   const view = await loadDayView(prisma, { businessId: staff.businessId, day, now });
-  const model = toGridModel(view, now, readableDay(day));
+
+  // CLIENT-04, one grouped query for the whole day rather than one per chip.
+  // Counted against TODAY, not the day being viewed: the window is "the last
+  // 12 months" as of now, and paging back through March must not re-judge her
+  // by what her record looked like in March.
+  const flags = await clientReliability(prisma, {
+    businessId: staff.businessId,
+    clientIds: view.columns.flatMap((c) => c.appointments.map((a) => a.clientId).filter((id) => id !== null)),
+    today,
+  });
+  const missedByClient = new Map(
+    [...flags].flatMap(([id, reliability]) => {
+      const sentence = flagSentence(reliability);
+      return sentence ? [[id, sentence] as const] : [];
+    }),
+  );
+
+  const model = toGridModel(view, now, readableDay(day), missedByClient);
   const providerId = typeof providerParam === 'string' ? providerParam : null;
   const column = providerId ? model.columns.find((c) => c.providerId === providerId) : null;
 

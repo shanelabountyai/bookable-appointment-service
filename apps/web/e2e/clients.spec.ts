@@ -142,7 +142,11 @@ test.describe('the client record (A-015)', () => {
     await page.reload();
     // History followed the merge — including the no-show, which CLIENT-02
     // requires to be visible rather than tidied away.
-    await expect(page.getByText('no show')).toBeVisible();
+    //
+    // Scoped to the history section: A-020 put a "missed appointments" panel
+    // on this page, so the same no-show now appears twice and BOTH are wanted.
+    // The assertion says which one it means rather than the UI losing one.
+    await expect(page.getByRole('region', { name: 'History' }).getByText('no show')).toBeVisible();
     // The safety note came across instead of being replaced.
     await expect(page.getByLabel('Pinned note')).toHaveValue(/Prefers the 2pm chair/);
     await expect(page.getByLabel('Pinned note')).toHaveValue(/Allergic to PPD/);

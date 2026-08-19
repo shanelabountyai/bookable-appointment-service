@@ -174,6 +174,20 @@ export function addDays(day: CalendarDay, days: number): CalendarDay {
   return calendarDay(Temporal.PlainDate.from(day, { overflow: 'reject' }).add({ days }).toString());
 }
 
+/**
+ * The same calendar day a year earlier — CLIENT-04's rolling 12-month window.
+ *
+ * A YEAR, not 365 days: a window measured in days is a day out either side of
+ * a leap year, so the same appointment falls in or out of the count depending
+ * on which February it is being asked about. Temporal's default `constrain`
+ * handles the one date that has no counterpart, 29 February, by clamping to
+ * the 28th — and the year before a leap year is never itself a leap year, so
+ * that is the only case there is.
+ */
+export function oneYearBefore(day: CalendarDay): CalendarDay {
+  return calendarDay(Temporal.PlainDate.from(day, { overflow: 'reject' }).subtract({ years: 1 }).toString());
+}
+
 /** Whole days from `from` to `to`, negative when `to` is earlier. The same
  *  axis as `addDays` and its inverse: subtracting two instants and dividing by
  *  86_400_000 gives 0.958… of a day across a spring-forward, which rounds to

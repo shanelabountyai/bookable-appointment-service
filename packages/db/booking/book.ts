@@ -30,11 +30,12 @@ import { type Slot, type VisitLine, composeVisit, computeSlots } from '../../cor
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { effectivePriceCents, effectiveDurationMinutes } from '../../core/settings';
 import { issueManageToken } from '../appointments';
+import { type ClientReliability, reliabilityFor } from '../clients';
 import { enqueueNotification } from '../notifications';
 import { buildSlotQuery } from '../scheduling';
 import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { BookingRejected, SlotNotOffered, SlotTaken } from './errors';
+import { BookingRejected, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
 
 const MIN = 60_000;
 
@@ -132,6 +133,26 @@ export async function bookAppointment(
         });
         const businessDay = businessDayOf(input.startAt, timezone);
 
+        // CLIENT-04, before anything is locked or computed: whether this
+        // client may book HERSELF is not a scheduling question, and finding
+        // out after the engine has run would mean holding the provider-day
+        // lock to answer it.
+        //
+        // Counted against the salon's TODAY, not the appointment's day: the
+        // rolling window is "the last 12 months" from now, and a booking made
+        // today for March must be judged by what her record says today.
+        const reliability = input.clientId
+          ? await reliabilityFor(tx, {
+              businessId: input.businessId,
+              clientId: input.clientId,
+              today: businessDayOf(input.now, timezone),
+            })
+          : null;
+
+        if (audience === 'public' && reliability?.selfServeBlocked) {
+          throw new SelfServeBlocked(reliability.noShows, reliability.threshold);
+        }
+
         // Before the engine re-check, so the read and the write are one
         // serialized unit for this provider-day (D-24).
         if (!input.__unsafeSkipSerialization) {
@@ -172,7 +193,7 @@ export async function bookAppointment(
           throw new SlotNotOffered(reasons, [...result.slots]);
         }
 
-        return writeAppointment(tx, input, offered, audience, isOverride);
+        return writeAppointment(tx, input, offered, audience, isOverride, reliability);
       },
       // Above Prisma's 5s default: a booking waits behind the advisory lock
       // for anyone already booking that provider-day, and that queue time
@@ -244,6 +265,7 @@ async function writeAppointment(
   offered: Slot | undefined,
   audience: 'public' | 'staff',
   isOverride: boolean,
+  reliability: ClientReliability | null,
 ): Promise<BookedAppointment> {
   // Loaded in the CALLER's order, not the database's — the buffers come from
   // the ends, so reordering the lines would change the appointment.
@@ -318,7 +340,19 @@ async function writeAppointment(
           actor: input.actor.type,
           actorRef: input.actor.ref,
           reason: isOverride ? (input.overrideReason ?? null) : null,
-          payload: { audience, startAt: input.startAt.toISOString(), offered: offered !== undefined },
+          payload: {
+            audience,
+            startAt: input.startAt.toISOString(),
+            offered: offered !== undefined,
+            // D-27: the front desk may always book her, and the fact that
+            // they did it over a flag is ON THE RECORD rather than costing
+            // them a typed reason. Written only when the flag was actually
+            // showing, so the owner's report can find these bookings and the
+            // ordinary ones carry nothing extra.
+            ...(reliability?.selfServeBlocked
+              ? { overNoShowFlag: { noShows: reliability.noShows, threshold: reliability.threshold } }
+              : {}),
+          },
         },
       },
     },

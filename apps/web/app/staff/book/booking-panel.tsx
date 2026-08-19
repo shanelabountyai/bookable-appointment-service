@@ -239,6 +239,11 @@ export function BookingPanel({
             <button type="button" onClick={() => setClient(null)} className="underline underline-offset-4">
               change
             </button>
+            {/* Still showing AFTER she is chosen: a flag that disappears at
+                the moment of the decision is a flag nobody acts on. */}
+            {client.missed ? (
+              <span className="mt-1 block text-amber-800 dark:text-amber-300">⚑ {client.missed}</span>
+            ) : null}
           </p>
         ) : (
           <>
@@ -270,6 +275,11 @@ export function BookingPanel({
                           household, and one person may hold two appointments. */}
                       {candidate.alreadyBooked ? (
                         <span className="block text-amber-800 dark:text-amber-300">⚠ {candidate.alreadyBooked}</span>
+                      ) : null}
+                      {/* CLIENT-04/D-27: the same shape — a flag, not a gate.
+                          The website refuses her; the front desk does not. */}
+                      {candidate.missed ? (
+                        <span className="block text-amber-800 dark:text-amber-300">⚑ {candidate.missed}</span>
                       ) : null}
                     </button>
                   </li>

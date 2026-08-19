@@ -77,11 +77,11 @@ export function toReadableEvent(event: AppointmentEventRow, zone: ZoneId): Reada
 function sentenceFor(type: EventType, payload: Record<string, unknown>, who: string, zone: ZoneId): string {
   switch (type) {
     case 'booked':
-      return `Booked by ${who}.`;
+      return `Booked by ${who}.${overFlag(payload)}`;
     case 'override_booked':
       // BOOK-05's marker, in the log as well as on the appointment: an
       // override nobody can explain is one staff learn to ignore.
-      return `Booked by ${who} as an override.`;
+      return `Booked by ${who} as an override.${overFlag(payload)}`;
     case 'status_changed':
       return `Changed from ${word(payload.from)} to ${word(payload.to)} by ${who}.`;
     case 'status_corrected':
@@ -98,6 +98,20 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
 }
 
 const word = (status: unknown): string => STATUS_WORDS[String(status)] ?? String(status);
+
+/**
+ * D-27's record: the desk booked her while the no-show flag was showing.
+ *
+ * A CLAUSE on the booking event rather than an event of its own — it is not a
+ * separate thing that happened, it is a fact about this booking, and a
+ * standalone row would sit in the log next to "Booked by the front desk"
+ * saying almost the same thing.
+ */
+function overFlag(payload: Record<string, unknown>): string {
+  const flag = payload.overNoShowFlag as { noShows?: unknown } | undefined;
+  if (!flag) return '';
+  return ` Booked over the no-show flag (${String(flag.noShows)} in the last 12 months).`;
+}
 
 /** An instant from a payload, in the salon's zone. Payloads carry ISO strings
  *  with offsets (D-4) — never a `{date, time}` pair — so this is a lookup, not

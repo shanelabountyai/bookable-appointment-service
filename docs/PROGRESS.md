@@ -803,3 +803,26 @@ Demo checkpoint 2 committed at f342ac3
 
 **`PushRefused` is gone.** A refusal is now data on the result rather than an exception, because with a partial push "some stayed" is the ordinary case, not the exceptional one.
 D-26 committed at 25d8fd6
+
+---
+
+## A-020 — no-show & late-cancel machinery (CLIENT-04, D-27)
+
+**Built:** rolling 12-month no-show and late-cancel counts, derived on every read; the flag on five surfaces (client search, client record, appointment detail, the booking panel's picker, the day-grid chip); the references behind the count, each linking to the appointment whose log says who marked it; and the self-serve block at the write path with the staff bypass.
+
+**Decided (D-27, owner, 2026-08-19 — answers OQ-3):** 3 in a rolling 12 months, per business, `0` = lever off. Only `no_show` blocks; `cancelled_late` is counted and shown but never blocks — blocking it would sanction the client who rang ahead exactly as hard as the one who did not turn up, which teaches her not to ring. The staff bypass costs nothing to use and is recorded on the booking event (`overNoShowFlag`), rather than demanding a typed reason on the busiest surface in the salon.
+
+**Where the interesting decisions went:**
+- **The window is a calendar year, not 365 days.** `oneYearBefore` is in `core/time` beside `addDays`, and the comparison is against `startDay` (the denormalized business-zone label), not `startAt`. 365 days is a day out either side of a leap year, and an instant comparison puts a client's 8pm appointment on the last day of the window inside it in the salon's calendar and outside it in UTC.
+- **A threshold of 0 means OFF.** The settings form accepts it (the policy validator only demands a non-negative integer), and the obvious `count >= threshold` would have blocked every client in the salon — an owner turning the lever down to nothing would take the booking page offline, and it would look like an outage rather than a setting. One guard, one test, mutation-verified.
+- **No upper bound on the window.** A late cancellation is made *inside* the cutoff, so its appointment is usually still in the future when it is counted; capping at today would drop exactly the one the desk is looking at.
+- **The block is at `bookAppointment`, not on the screen**, and `audience` is the whole of the bypass — there is no `bypassBlock` flag, because the front desk is already the unrestricted caller (S-3) and a second way to say "staff" is a second thing to get wrong.
+- **Counted derived, never stored.** A no-show corrected under APPT-06 un-blocks her immediately, and old misses age out with no job to run and none to forget to run.
+- **The counting statuses live in `core/scheduling/status.ts`**, as `MISSED_STATUSES` and `SELF_SERVE_BLOCKING_STATUSES`, not in the query — a ninth status would otherwise be counted by one and ignored by the other with nothing failing.
+
+**The trade-off worth stating (D-17 vs CLIENT-04):** the block is keyed on the client RECORD, so a blocked client can get past it by typing her name differently — a new (phone, name) pair is a new record. Keying it on the phone number instead would block every member of a household that shares one, which is the exact harm D-17 exists to prevent. The comment sits at the identity-resolution site in the public flow, not buried in the gate.
+
+**Left behind:**
+- Nothing tells the client she was blocked, and nothing tells the salon she tried. The outbox notice is A-022's territory.
+- The seeded no-show history is pinned to fixed 2026 dates, so the demo's offender ages out of the window in 2027 while the seed stays green. The e2e spec seeds relative to today for exactly this reason; the seed itself is a demo-data question, not a correctness one.
+- Reschedule is not gated. A blocked client with an existing appointment can still move it through her manage link, which is deliberate: the lever is on new bookings, and refusing a reschedule would produce a no-show instead.

@@ -2,12 +2,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
 import { loadAppointmentDetail } from '@bookable/db/appointments';
+import { reliabilityFor } from '@bookable/db/clients';
 import { type AppointmentStatus, canTransition, possibleTransitionsFrom } from '@bookable/core/scheduling';
 import { worstCutoff } from '@bookable/core/settings';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { DELIVERY_WORDS, TEMPLATE_WORDS, toReadableEvent } from '@/lib/appointments/event-language';
+import { flagSentence } from '@/components/client-flag';
 import { StatusControls } from './status-controls';
 import { VisitNote } from './visit-note';
 
@@ -59,6 +61,18 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
 
   const events = detail.events.map((event) => toReadableEvent(event, zone));
 
+  // CLIENT-04 on the surface where the desk decides what to do about her —
+  // marking this one a no-show is one button away, and knowing it is her third
+  // is what turns that tap into a phone call instead.
+  const reliability = detail.clientId
+    ? await reliabilityFor(prisma, {
+        businessId: staff.businessId,
+        clientId: detail.clientId,
+        today: toLabel(fromDate(now), zone).day,
+      })
+    : null;
+  const flag = reliability ? flagSentence(reliability) : null;
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
       <div>
@@ -75,6 +89,13 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
           <a href={`tel:${detail.clientPhone}`} className="text-sm underline underline-offset-4">
             {detail.clientPhone}
           </a>
+        ) : null}
+        {/* Guarded on the SENTENCE, not on the client: an empty link is
+            invisible to the eye and announced as a link with no name. */}
+        {flag ? (
+          <Link href={`/staff/clients/${detail.clientId}`} className="mt-1 block text-sm font-medium text-amber-700 dark:text-amber-500">
+            ⚑ {flag}
+          </Link>
         ) : null}
       </div>
 

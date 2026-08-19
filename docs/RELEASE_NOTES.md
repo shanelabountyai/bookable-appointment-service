@@ -1074,4 +1074,45 @@ that costs an afternoon if you go looking in the wrong layer.
 
 ---
 
-<!-- Next entry: A-020 — no-show & late-cancel machinery -->
+## A-020 — the no-show lever
+
+**The counters are derived, every time.** There is no `noShowCount` column to
+go stale. Correcting a mis-tapped no-show back to "completed" un-blocks the
+client on the next page load, and a miss from thirteen months ago stops
+counting on its own — there is no forgiveness job to run, and therefore none
+to forget to run.
+
+**A rolling twelve months is a calendar year, not 365 days.** Counting days
+puts the boundary a day out either side of a leap year, so the same
+appointment falls in or out of the count depending on which February you ask
+in. The comparison is against the appointment's business-zone calendar day,
+not its instant: an 8pm appointment on the last day of the window is inside it
+in the salon's calendar and outside it in UTC, and the salon's calendar is the
+one the client is arguing about at the desk.
+
+**A threshold of zero means the lever is off.** The obvious `count >=
+threshold` blocks every client in the salon the moment an owner turns the
+number down to nothing — including everyone who has never missed anything —
+and it presents as a website outage rather than as a setting. One guard, one
+test, and the mutant that removes it dies.
+
+**The block lives at the write path, not on the form.** The customer flow, a
+hand-crafted POST and any future API client all go through the one function
+that knows the rule. `audience: 'public'` is the whole of it; the front desk is
+already the unrestricted caller, so the staff bypass needed no new flag to
+build and no new flag to get wrong.
+
+**What it costs the desk to book her anyway: one tap.** The flag is on the
+client picker at the moment of the decision, and the booking records that it
+happened over a flag — so the owner's report can find those bookings without
+anybody having typed a justification into a field that would be full of full
+stops by Friday.
+
+**And the flag stops at the client record.** Blocking by phone number would
+have been simpler and would have blocked a mother because her daughter, who
+shares the number, missed three appointments. The households in this data are
+the reason the phone number is not unique in the first place.
+
+---
+
+<!-- Next entry: A-021 — confirm loop -->

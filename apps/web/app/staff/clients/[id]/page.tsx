@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
-import { clientHistory, findClient, rebookSuggestion } from '@bookable/db/clients';
+import { clientHistory, findClient, missedAppointments, rebookSuggestion, reliabilityFor } from '@bookable/db/clients';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 import { NotesForm } from './notes-form';
 import { MergePanel } from './merge-panel';
+import { ClientFlag } from '@/components/client-flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,9 +33,11 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
   });
   const today = toLabel(fromDate(new Date()), zoneId(business.timezone)).day;
 
-  const [history, rebook] = await Promise.all([
+  const [history, rebook, reliability, missed] = await Promise.all([
     clientHistory(prisma, staff.businessId, client.id),
     rebookSuggestion(prisma, staff.businessId, client.id, today),
+    reliabilityFor(prisma, { businessId: staff.businessId, clientId: client.id, today }),
+    missedAppointments(prisma, { businessId: staff.businessId, clientId: client.id, today }),
   ]);
 
   return (
@@ -60,6 +63,40 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
           a note nobody reads. */}
       <NotesForm clientId={client.id} notes={client.notes ?? ''} />
 
+      {/* CLIENT-04. The counter WITH ITS WORKING: a bare "3 no-shows" ends the
+          conversation at the desk, and every reference links to the
+          appointment whose log says who marked it and why — so a mis-tap is
+          one click from the count it produced (APPT-06). */}
+      {missed.length > 0 ? (
+        <section
+          aria-labelledby="missed-heading"
+          className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"
+        >
+          <h2 id="missed-heading" className="text-sm font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-500">
+            Missed appointments
+          </h2>
+          <ClientFlag reliability={reliability} />
+          {reliability.selfServeBlocked ? (
+            <p className="text-sm">
+              She is over the salon&rsquo;s limit of {reliability.threshold}, so the website tells her to call.
+              Booking her from here still works.
+            </p>
+          ) : null}
+          <ul className="flex flex-col gap-1 text-sm">
+            {missed.map((visit) => (
+              <li key={visit.appointmentId}>
+                <Link href={`/staff/appointments/${visit.appointmentId}`} className="underline underline-offset-4">
+                  {readableDay(visit.startDay)}
+                </Link>{' '}
+                <span className="text-zinc-600 dark:text-zinc-400">
+                  — {visit.services.join(' + ')} with {visit.providerName}, {visit.status.replace('_', ' ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {rebook ? (
         <section className="flex flex-col gap-2 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Rebook last visit</h2>
@@ -84,8 +121,13 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
         </section>
       ) : null}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">History</h2>
+      {/* NAMED, so it is addressable — by a screen reader moving between
+          landmarks, and by a test that means "in the history" now that a
+          no-show legitimately appears twice on this page. */}
+      <section aria-labelledby="history-heading" className="flex flex-col gap-3">
+        <h2 id="history-heading" className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          History
+        </h2>
         {history.length === 0 ? (
           <p className="text-zinc-500">No appointments yet.</p>
         ) : (

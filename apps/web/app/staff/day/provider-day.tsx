@@ -61,6 +61,9 @@ export function ProviderDay({ column }: { column: GridColumn }) {
           {item.pinnedNote ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</p>
           ) : null}
+          {item.missed ? (
+            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</p>
+          ) : null}
         </li>
       ))}
     </ol>

@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
-import { searchClients } from '@bookable/db/clients';
+import { clientReliability, searchClients } from '@bookable/db/clients';
+import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
+import { ClientFlag } from '@/components/client-flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,19 @@ export default async function ClientsPage({ searchParams }: PageProps<'/staff/cl
   const { q } = await searchParams;
   const query = typeof q === 'string' ? q : '';
   const results = query ? await searchClients(prisma, staff.businessId, query) : [];
+
+  // CLIENT-04, batched for the whole list: the front desk reads this page with
+  // the client on the phone, and "she's missed three" has to be visible before
+  // they click into the record to find out.
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+  const flags = await clientReliability(prisma, {
+    businessId: staff.businessId,
+    clientIds: results.map((c) => c.id),
+    today: toLabel(fromDate(new Date()), zoneId(business.timezone)).day,
+  });
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
@@ -65,6 +80,7 @@ export default async function ClientsPage({ searchParams }: PageProps<'/staff/cl
               >
                 <span className="font-medium">{client.name ?? 'No name'}</span>
                 <span className="text-sm text-zinc-500">{client.phone ?? 'No number'}</span>
+                <ClientFlag reliability={flags.get(client.id)} />
                 {client.reachedByOldNumber ? (
                   <span className="text-sm text-amber-700 dark:text-amber-500">
                     Found through an old number that was merged into this record.

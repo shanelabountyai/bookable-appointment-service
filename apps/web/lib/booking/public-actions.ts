@@ -16,7 +16,7 @@
 import { type CalendarDay, addDays, calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
-import { SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
+import { SelfServeBlocked, SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
 import { isPlausiblePhone, normalizePhone } from '@bookable/core/clients';
@@ -202,6 +202,14 @@ export async function confirmAppointment(input: {
   const business = await businessId();
 
   // Reuse only on an exact (phone, name) match — see the note above.
+  //
+  // A client blocked under CLIENT-04 can therefore get past the block by
+  // typing her name differently, and that is the deliberate trade rather than
+  // an oversight: keying the block on the PHONE NUMBER would block every
+  // member of a household that shares one, which is precisely the harm D-17
+  // exists to prevent ("the daughter's two no-shows block the mother"). The
+  // salon still sees the flag the moment the desk looks the number up, and
+  // merging the duplicate (A-015) combines the counts.
   const existing = await prisma.client.findFirst({
     where: { businessId: business, phone, name: { equals: name, mode: 'insensitive' } },
     select: { id: true },
@@ -227,6 +235,18 @@ export async function confirmAppointment(input: {
       idempotencyKey: `public:${input.providerId}:${startAt.toISOString()}:${client.id}`,
     });
   } catch (error) {
+    // CLIENT-04's block. The wording says the ONE thing she can act on and
+    // nothing about why: an anonymous visitor typing somebody else's phone
+    // number must not be told how often that person misses appointments, and
+    // the client herself deserves to hear it from a person rather than from a
+    // form (D-10, spec §1.3). No alternatives are offered — every other time
+    // would be refused identically, and a list of them reads as a bug.
+    if (error instanceof SelfServeBlocked) {
+      return {
+        ok: false,
+        message: 'We can’t book this one online. Please call the salon and we’ll get you in.',
+      };
+    }
     if (error instanceof SlotTaken || error instanceof SlotNotOffered) {
       const alternatives = await listTimesOn(input.serviceId, input.providerId, input.day).catch(() => []);
       return {

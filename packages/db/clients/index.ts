@@ -12,3 +12,10 @@ export {
   searchClients,
   setClientNotes,
 } from './clients';
+export {
+  type ClientReliability,
+  type MissedAppointment,
+  clientReliability,
+  missedAppointments,
+  reliabilityFor,
+} from './reliability';

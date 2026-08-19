@@ -23,11 +23,12 @@ import {
   walkInOptions,
 } from '@bookable/db/booking';
 import { computeDaySlots } from '@bookable/db/scheduling';
-import { searchClients } from '@bookable/db/clients';
+import { clientReliability, searchClients } from '@bookable/db/clients';
 import { normalizePhone } from '@bookable/core/clients';
 import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
+import { flagSentence } from '@/components/client-flag';
 
 export interface StaffBookingState {
   ok?: boolean;
@@ -58,6 +59,10 @@ export interface ClientChoice {
    *  hold two appointments — but an accidental double-book of the same person
    *  is an ordinary slip, and saying so costs nothing. */
   alreadyBooked?: string;
+  /** CLIENT-04's flag, already worded (D-27). Also never a refusal: the desk
+   *  sees it, books her anyway in one tap, and the booking records that it
+   *  happened over a flag. */
+  missed?: string;
 }
 
 /** Partial phone/name search, with the same-client note computed against the
@@ -67,8 +72,22 @@ export async function findClientsForBooking(query: string, atIso: string, servic
   const matches = await searchClients(prisma, staff.businessId, query);
   if (matches.length === 0) return [];
 
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+  const flags = await clientReliability(prisma, {
+    businessId: staff.businessId,
+    clientIds: matches.map((m) => m.id),
+    today: toLabel(fromDate(new Date()), zoneId(business.timezone)).day,
+  });
+  const flagFor = (id: string) => {
+    const sentence = flagSentence(flags.get(id)!);
+    return sentence ? { missed: sentence } : {};
+  };
+
   const span = await visitSpan(staff.businessId, atIso, serviceIds);
-  if (!span) return matches.map(({ id, name, phone }) => ({ id, name, phone }));
+  if (!span) return matches.map(({ id, name, phone }) => ({ id, name, phone, ...flagFor(id) }));
 
   return Promise.all(
     matches.map(async ({ id, name, phone }) => {
@@ -83,6 +102,7 @@ export async function findClientsForBooking(query: string, atIso: string, servic
         id,
         name,
         phone,
+        ...flagFor(id),
         ...(first
           ? { alreadyBooked: `already has ${await clock(staff.businessId, first.startAt)} with ${first.providerName}` }
           : {}),

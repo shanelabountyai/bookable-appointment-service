@@ -51,6 +51,22 @@ export const ACTIVE_STATUSES = APPOINTMENT_STATUSES.filter(
     !(SLOT_FREEING_STATUSES as readonly string[]).includes(s),
 );
 
+/**
+ * CLIENT-04's rolling counters: what "she has missed appointments" is made of.
+ *
+ * Two lists, deliberately not one. BOTH are counted and shown to staff — a
+ * client who cancels an hour before, three times, has cost the salon the same
+ * three slots as one who simply did not arrive. Only `no_show` COUNTS TOWARD
+ * THE BLOCK, because the PRD's lever is "after N no-shows" and blocking on
+ * late cancels would punish the client who did the more considerate thing.
+ *
+ * Here rather than in the counting query for the reason this whole file
+ * exists: a ninth status would otherwise be counted by the day view and
+ * ignored by the block, and nothing would fail.
+ */
+export const MISSED_STATUSES = ['no_show', 'cancelled_late'] as const;
+export const SELF_SERVE_BLOCKING_STATUSES = ['no_show'] as const;
+
 /** Terminal states: no transition leaves them, except the ≤7d staff correction
  *  between `no_show` and `completed` (APPT-06 — mis-taps are daily and the
  *  alternative is SQL surgery). */

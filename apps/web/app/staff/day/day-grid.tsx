@@ -172,6 +172,9 @@ function Item({ item }: { item: GridItem }) {
         // desk has to be able to spot it without reading every chip.
         <span className="block truncate font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</span>
       ) : null}
+      {item.missed ? (
+        <span className="block truncate font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</span>
+      ) : null}
       {item.isOverride ? <span className="block text-[10px] uppercase tracking-wide">override</span> : null}
     </>
   );
