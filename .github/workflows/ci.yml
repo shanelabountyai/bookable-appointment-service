@@ -28,6 +28,10 @@ env:
   # a real deployment sets a real secret. Safe to have in the workflow file
   # BECAUSE it is worthless: it signs nothing that outlives the job.
   SESSION_SECRET: ci-only-session-secret-not-used-anywhere-real
+  # Gates the reminder job route (A-022). Same reasoning as SESSION_SECRET
+  # above — a throwaway value, safe in the workflow file because it protects
+  # nothing that outlives the job.
+  CRON_SECRET: ci-only-cron-secret-not-used-anywhere-real
 
 jobs:
   gate:
