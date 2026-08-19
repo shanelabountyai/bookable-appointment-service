@@ -864,4 +864,4 @@ A-021 committed at 0cb80cf
 - **The dispatcher's claim race is now live, not hypothetical.** `dispatch.ts` has carried a documented `ponytail` note since A-004 that two concurrent dispatchers could double-send; this job is the first real caller. Left as-is — the trigger is one scheduled route, not proven-concurrent — with the comment updated to say so and the same upgrade path (a claim-row `UPDATE ... RETURNING`) still named.
 - **No second-touch reminder.** OQ-5 (still open) asks whether a 2h-before day-of reminder is wanted; this ships the one NOTIF-02 actually specifies.
 - **Vercel's Hobby tier only runs cron daily.** `vercel.json`'s 5-minute schedule assumes Pro, or an external scheduler hitting the route with the bearer token — a deployment-tier question, noted in the route's own comment, not a correctness one.
-A-022 committed at TBD
+A-022 committed at 43edf22
