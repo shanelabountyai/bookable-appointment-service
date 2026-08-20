@@ -77,12 +77,14 @@ async function insertAppointment(opts: {
   status?: string;
   isOverride?: boolean;
   bufferAfter?: number;
+  /** D-29's alternating active/gap minutes; omitted means one solid block. */
+  pattern?: number[];
 }) {
   await prisma.$executeRawUnsafe(
     `INSERT INTO "Appointment"
        (id,"businessId","providerId",status,"startAt","endAt","bufferBeforeMinutes","bufferAfterMinutes",
-        "isOverride","blockedStart","blockedEnd","startDay","startWallTime","updatedAt")
-     VALUES ($1,$2,$3,$4::"AppointmentStatus",$5::timestamptz,$6::timestamptz,0,$7,$8,'epoch','epoch',$9,'00:00', now())`,
+        "isOverride","segmentPattern","blockedStart","blockedEnd","startDay","startWallTime","updatedAt")
+     VALUES ($1,$2,$3,$4::"AppointmentStatus",$5::timestamptz,$6::timestamptz,0,$7,$8,$9::int[],'epoch','epoch',$10,'00:00', now())`,
     opts.id,
     businessId,
     providerId,
@@ -91,6 +93,7 @@ async function insertAppointment(opts: {
     opts.end,
     opts.bufferAfter ?? 0,
     opts.isOverride ?? false,
+    opts.pattern ?? [],
     DAY,
   );
 }
@@ -333,5 +336,70 @@ describe('SLOT-07 — daysWithAvailability', () => {
       businessId, providerId, serviceIds: [serviceId], now: NOW, fromDay: '2026-06-14', toDay: '2026-06-08',
     });
     expect(days).toEqual([]);
+  });
+});
+
+describe('segmented appointments — the gap is real provider time (SEG-04, A-030)', () => {
+  /** The operator's own acceptance scenario, SEG-05: a colour booked at 10:00
+   *  as 45 active / 35 developing / 30 active. */
+  const bookColour = () =>
+    insertAppointment({
+      id: 'colour',
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T11:50:00-05:00',
+      pattern: [45, 35, 30],
+    });
+
+  it('contributes TWO busy intervals with the developing time between them', async () => {
+    await bookColour();
+    const busy = await findBusyAppointments(prisma, {
+      providerId,
+      windowStart: at('2026-06-09T09:00:00-05:00'),
+      windowEnd: at('2026-06-09T17:00:00-05:00'),
+    });
+    expect(busy.map((b) => [b.start.toISOString(), b.end.toISOString()])).toEqual([
+      ['2026-06-09T15:00:00.000Z', '2026-06-09T15:45:00.000Z'],
+      ['2026-06-09T16:20:00.000Z', '2026-06-09T16:50:00.000Z'],
+    ]);
+  });
+
+  it('OFFERS a 30-minute service inside the gap, and does not move the colour', async () => {
+    await bookColour();
+    // A 30-minute service: the 35 free minutes at 10:45 fit it, 15-minute grid.
+    await prisma.service.update({ where: { id: serviceId }, data: { durationMinutes: 30 } });
+    const slots = await slotsAt();
+    const labels = slots.map((slot) => slot.label.time);
+
+    expect(labels).toContain('10:45');
+    // ...and nothing that would run into the colour's second worked part,
+    // which starts at 11:15.
+    expect(labels).not.toContain('11:00');
+    expect(labels).not.toContain('11:15');
+
+    // The colour itself is untouched — offering the gap is not rescheduling.
+    const colour = await prisma.appointment.findUniqueOrThrow({ where: { id: 'colour' } });
+    expect(colour.startAt.toISOString()).toBe('2026-06-09T15:00:00.000Z');
+  });
+
+  it('an unsegmented appointment of the same length blocks the lot', async () => {
+    await insertAppointment({
+      id: 'solid',
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T11:50:00-05:00',
+    });
+    await prisma.service.update({ where: { id: serviceId }, data: { durationMinutes: 30 } });
+    const labels = (await slotsAt()).map((slot) => slot.label.time);
+    expect(labels).not.toContain('10:45');
+  });
+
+  it('a cancelled colour frees BOTH parts, not just the first', async () => {
+    await bookColour();
+    await prisma.appointment.update({ where: { id: 'colour' }, data: { status: 'cancelled' } });
+    const busy = await findBusyAppointments(prisma, {
+      providerId,
+      windowStart: at('2026-06-09T09:00:00-05:00'),
+      windowEnd: at('2026-06-09T17:00:00-05:00'),
+    });
+    expect(busy).toEqual([]);
   });
 });

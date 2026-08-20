@@ -28,7 +28,7 @@ import { randomUUID } from 'node:crypto';
 import type { Actor } from '../../core/auth';
 import { type Slot, type VisitLine, composeVisit, computeSlots } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
-import { effectivePriceCents, effectiveDurationMinutes } from '../../core/settings';
+import { effectivePriceCents, effectiveDurationMinutes, visitPattern } from '../../core/settings';
 import { issueManageToken } from '../appointments';
 import { type ClientReliability, reliabilityFor } from '../clients';
 import { enqueueNotification } from '../notifications';
@@ -271,7 +271,15 @@ async function writeAppointment(
   // the ends, so reordering the lines would change the appointment.
   const found = await tx.serviceProvider.findMany({
     where: { providerId: input.providerId, serviceId: { in: [...input.serviceIds] } },
-    include: { service: true },
+    include: {
+      service: {
+        include: {
+          // D-29's snapshot is taken from these, here, once — never read live
+          // at render or at check time.
+          segments: { where: { status: 'active' }, orderBy: { ordinal: 'asc' } },
+        },
+      },
+    },
   });
   const byService = new Map(found.map((row) => [row.serviceId, row]));
   const links = input.serviceIds.map((serviceId) => {
@@ -290,6 +298,18 @@ async function writeAppointment(
   const visit = composeVisit(lines);
   const endAt = toDate(instant(fromDate(input.startAt) + visit.durationMinutes * MIN));
 
+  // D-29 — the shape the block trigger will cut this appointment into, frozen
+  // at booking time for the same reason the buffers and the price are (D-18).
+  // Empty for every unsegmented visit, which is the common case and the reason
+  // this changed nothing for existing bookings.
+  const segmentPattern = visitPattern(
+    links.map((row, i) => ({
+      durationMinutes: lines[i]!.durationMinutes,
+      serviceDurationMinutes: row.service.durationMinutes,
+      segments: row.service.segments,
+    })),
+  );
+
   const business = await tx.business.findUniqueOrThrow({
     where: { id: input.businessId },
     select: { timezone: true },
@@ -307,6 +327,7 @@ async function writeAppointment(
       // recompute on UPDATE without re-deriving which buffers applied.
       // The VISIT's buffers, not any single line's: inner buffers do not
       // stack, because the client never leaves the chair between services.
+      segmentPattern,
       bufferBeforeMinutes: visit.bufferBeforeMinutes,
       bufferAfterMinutes: visit.bufferAfterMinutes,
       isOverride,

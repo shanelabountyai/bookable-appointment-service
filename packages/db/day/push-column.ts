@@ -226,7 +226,7 @@ export async function pushColumn(
 
     // THE DEFERRAL, and the only place in this codebase that asks for it.
     // Scoped to this transaction: everywhere else the check stays immediate.
-    await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_no_overlap" DEFERRED');
+    await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_block_no_overlap" DEFERRED');
 
     const business = await tx.business.findUniqueOrThrow({
       where: { id: args.businessId },

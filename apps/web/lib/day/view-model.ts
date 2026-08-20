@@ -39,10 +39,6 @@ export interface GridItem {
   missed?: string;
   status?: AppointmentStatus;
   isOverride?: boolean;
-  /** SEG-03 — processing gaps inside this appointment, positioned in the same
-   *  minutes-from-the-top units as the chip itself so the browser needs no
-   *  arithmetic and no timezone. Empty for an unsegmented service. */
-  gaps?: { top: number; minutes: number }[];
   /** APPT-03's projected start: what time this is REALLY likely to begin,
    *  given how far behind she is. Shown beside the scheduled time, never
    *  instead of it — the client was booked for 14:00 and her confirmation
@@ -182,17 +178,6 @@ function toColumn(
         ...(missed ? { missed } : {}),
         status: appointment.status as AppointmentStatus,
         isOverride: appointment.isOverride,
-        // Offsets are from `startAt` — the BODY — while the chip is positioned
-        // from `occupiesStart`, which includes the leading buffer. The
-        // difference is why this is computed here rather than in the browser.
-        ...(appointment.gapSpans.length > 0
-          ? {
-              gaps: appointment.gapSpans.map((gap) => ({
-                top: f.minutesFrom(appointment.startAt) - f.minutesFrom(appointment.occupiesStart) + gap.offsetMinutes,
-                minutes: gap.minutes,
-              })),
-            }
-          : {}),
         // Only for what has not started yet: projecting a time onto an
         // appointment already in the chair is noise, and projecting onto a
         // finished one is wrong.
@@ -211,12 +196,6 @@ function toColumn(
           appointment.isOverride ? 'booked as an override' : '',
           appointment.clientNotes ? `note: ${appointment.clientNotes}` : '',
           missed ?? '',
-          // SEG-03 in the accessible name, not only in the stripe. The free
-          // minutes inside a colour are the whole reason this is on the screen,
-          // and a stripe alone says nothing to a screen reader.
-          ...appointment.gapSpans.map(
-            (gap) => `${gap.minutes} min free from ${f.shift(appointment.startAt, gap.offsetMinutes)}`,
-          ),
           column.runningLateMinutes && appointment.status === 'booked'
             ? `likely ${f.shift(appointment.startAt, column.runningLateMinutes)}`
             : '',

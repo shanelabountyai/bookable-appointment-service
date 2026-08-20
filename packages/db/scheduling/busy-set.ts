@@ -20,6 +20,21 @@
  *    promises is impossible. `overriddenFromRange` carries the TRUE range and
  *    this query is the reader D-16 exists for.
  *
+ * 3. IT READS `AppointmentBlock`, ONE ROW PER WORKED SPAN, NOT `Appointment`
+ *    (D-29, A-030). This is the entire mechanism by which SEG-04 works: a
+ *    colour contributes TWO busy intervals with its developing time between
+ *    them, so the engine offers that time without knowing segments exist. The
+ *    pure engine needed no change at all — a composed visit was already just a
+ *    longer service, and a segmented one is just two busy intervals.
+ *
+ *    An override still reads `overriddenFromRange` from the PARENT: its single
+ *    block is zero-width by design (D-8), and the true range lives on the
+ *    appointment. That is why this query joins rather than reading blocks alone.
+ *
+ *    The `id` returned is the APPOINTMENT's, not the block's, so the engine's
+ *    `conflictIds` still name something a human can open. A candidate spanning
+ *    both halves of one colour therefore names it twice, which is honest.
+ *
  * Raw SQL rather than the Prisma query builder because neither `tstzrange`,
  * `&&`, nor `COALESCE` over a range type is expressible through it.
  */
@@ -61,13 +76,14 @@ export async function findBusyAppointments(
   const rows = await db.$queryRawUnsafe<{ id: string; start: Date; end: Date }[]>(
     `
     SELECT a."id",
-           lower(COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))) AS "start",
-           upper(COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))) AS "end"
-      FROM "Appointment" a
-     WHERE a."providerId" = $1
-       AND a."status"::text = ANY($4::text[])
-       AND ($5::text IS NULL OR a."id" <> $5)
-       AND COALESCE(a."overriddenFromRange", tstzrange(a."blockedStart", a."blockedEnd", '[)'))
+           lower(COALESCE(a."overriddenFromRange", tstzrange(b."blockedStart", b."blockedEnd", '[)'))) AS "start",
+           upper(COALESCE(a."overriddenFromRange", tstzrange(b."blockedStart", b."blockedEnd", '[)'))) AS "end"
+      FROM "AppointmentBlock" b
+      JOIN "Appointment" a ON a."id" = b."appointmentId"
+     WHERE b."providerId" = $1
+       AND b."status"::text = ANY($4::text[])
+       AND ($5::text IS NULL OR b."appointmentId" <> $5)
+       AND COALESCE(a."overriddenFromRange", tstzrange(b."blockedStart", b."blockedEnd", '[)'))
            && tstzrange($2::timestamptz, $3::timestamptz, '[)')
      ORDER BY "start"
     `,

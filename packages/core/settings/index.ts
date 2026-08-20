@@ -21,10 +21,12 @@ export {
   type SegmentSpan,
   type SegmentedLine,
   gapSpans,
+  patternGapSpans,
   scaleSegments,
   segmentsOrWhole,
   sumMinutes as sumSegmentMinutes,
   validateSegmentStructure,
   validateSegments,
   visitGapSpans,
+  visitPattern,
 } from './segments';

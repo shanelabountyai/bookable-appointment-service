@@ -75,13 +75,16 @@ const insert = (opts: {
   bufferBefore?: number;
   bufferAfter?: number;
   isOverride?: boolean;
+  /** D-29's alternating active/gap minutes. Omitted means one continuous
+   *  block, exactly as every appointment booked before A-030. */
+  pattern?: number[];
 }) =>
   db.query(
     `INSERT INTO "Appointment"
        (id, "businessId", "providerId", status, "startAt", "endAt",
-        "bufferBeforeMinutes", "bufferAfterMinutes", "isOverride",
+        "bufferBeforeMinutes", "bufferAfterMinutes", "isOverride", "segmentPattern",
         "blockedStart", "blockedEnd", "startDay", "startWallTime", "updatedAt")
-     VALUES ($1,$2,$3,$4::"AppointmentStatus",$5,$6,$7,$8,$9,'epoch','epoch','2026-06-09','00:00', now())`,
+     VALUES ($1,$2,$3,$4::"AppointmentStatus",$5,$6,$7,$8,$9,$10,'epoch','epoch','2026-06-09','00:00', now())`,
     [
       opts.id,
       businessId,
@@ -92,6 +95,7 @@ const insert = (opts: {
       opts.bufferBefore ?? 0,
       opts.bufferAfter ?? 0,
       opts.isOverride ?? false,
+      opts.pattern ?? [],
     ],
   );
 
@@ -178,7 +182,7 @@ describe('the partial predicate — which statuses free the slot (D-15)', () => 
   // adds a status to the enum and forgets the constraint, this fails.
   it('the LIVE constraint predicate matches ACTIVE_STATUSES in the status module', async () => {
     const { rows } = await db.query<{ def: string }>(
-      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'appointment_no_overlap'`,
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'appointment_block_no_overlap'`,
     );
     const def = rows[0]!.def;
     for (const status of SLOT_FREEING_STATUSES) {
@@ -392,21 +396,110 @@ describe('D-12 affordances', () => {
     expect(code).toBe('23505');
   });
 
-  // The half A-029 deliberately did NOT change: an appointment is still ONE
-  // continuous range to the database, so a booking inside another's processing
-  // gap is still refused. A-030 is where that stops being true, and it is
-  // gated on OQ-7. This test is the tripwire — it should fail when A-030
-  // lands, and whoever makes it fail has to have read OQ-7 first.
-  it('still refuses a booking landing inside a segmented appointment (pre-A-030)', async () => {
-    // A colour, 10:00-12:00: 50 active / 40 developing / 30 active. The
-    // developing stretch is 10:50-11:30, and A-029 draws it on the grid.
-    await insert({ id: 'colour', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T12:00:00-05:00' });
-    const code = await sqlstateOf(() =>
+  // A-030/D-29 — the invariant got FINER, not weaker, and these two tests are
+  // the whole difference.
+  //
+  // A-029 left a "tripwire" here meant to fail when A-030 landed. It did not
+  // fire, because it booked into the gap of an appointment with no
+  // segmentPattern — one continuous block, correctly refused before and after.
+  // A tripwire that does not encode the new capability is not a tripwire; the
+  // pair below asserts the capability itself, in both directions.
+  it('ACCEPTS a booking that lands entirely inside a segmented appointment gap', async () => {
+    // A colour 10:00-12:00, cut 50 active / 40 developing / 30 active. The
+    // provider is genuinely free 10:50-11:30.
+    await insert({
+      id: 'colour',
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T12:00:00-05:00',
+      pattern: [50, 40, 30],
+    });
+    await expect(
       insert({ id: 'blowdry', start: '2026-06-09T10:50:00-05:00', end: '2026-06-09T11:20:00-05:00' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('still REFUSES one that spills out of the gap into the second worked part', async () => {
+    await insert({
+      id: 'colour',
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T12:00:00-05:00',
+      pattern: [50, 40, 30],
+    });
+    const code = await sqlstateOf(() =>
+      insert({ id: 'blowdry', start: '2026-06-09T11:10:00-05:00', end: '2026-06-09T11:40:00-05:00' }),
     );
     expect(code).toBe(EXCLUSION_VIOLATION);
   });
+
+  it('cuts a colour into exactly two blocks, with the buffers on the outer edges', async () => {
+    await insert({
+      id: 'colour',
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T12:00:00-05:00',
+      pattern: [50, 40, 30],
+      bufferBefore: 10,
+      bufferAfter: 20,
+    });
+    const { rows } = await db.query<{ ordinal: number; s: string; e: string }>(
+      `SELECT ordinal, to_char("blockedStart" AT TIME ZONE 'America/Chicago','HH24:MI') AS s,
+              to_char("blockedEnd"   AT TIME ZONE 'America/Chicago','HH24:MI') AS e
+         FROM "AppointmentBlock" WHERE "appointmentId"='colour' ORDER BY ordinal`,
+    );
+    // Buffers belong to the VISIT, not to each part (SEG-01): 09:50 on the
+    // front, 12:20 on the back, and nothing added around the gap.
+    expect(rows.map((r) => [r.s, r.e])).toEqual([
+      ['09:50', '10:50'],
+      ['11:30', '12:20'],
+    ]);
+  });
+
+  it('an unsegmented appointment is still exactly one block', async () => {
+    await insert({ id: 'cut', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    const { rows } = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM "AppointmentBlock" WHERE "appointmentId"='cut'`,
+    );
+    expect(rows[0]!.n).toBe(1);
+  });
+
+  it('refuses a pattern that does not add up to the body', async () => {
+    const code = await sqlstateOf(() =>
+      insert({
+        id: 'bad',
+        start: '2026-06-09T10:00:00-05:00',
+        end: '2026-06-09T12:00:00-05:00',
+        pattern: [50, 40, 20],
+      }),
+    );
+    expect(code).toBe('23514'); // check_violation
+  });
+
+  it('refuses a pattern ending on a gap', async () => {
+    const code = await sqlstateOf(() =>
+      insert({
+        id: 'bad',
+        start: '2026-06-09T10:00:00-05:00',
+        end: '2026-06-09T12:00:00-05:00',
+        pattern: [80, 40],
+      }),
+    );
+    expect(code).toBe('23514');
+  });
+
+  it('frees every block when the appointment is cancelled, not just the first', async () => {
+    await insert({
+      id: 'colour',
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T12:00:00-05:00',
+      pattern: [50, 40, 30],
+    });
+    await db.query(`UPDATE "Appointment" SET status='cancelled' WHERE id='colour'`);
+    // The whole two hours is now bookable, across what used to be both parts.
+    await expect(
+      insert({ id: 'rebook', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T12:00:00-05:00' }),
+    ).resolves.toBeDefined();
+  });
 });
+
 describe('detecting the violation through Prisma (verified, for A-009)', () => {
   it('surfaces 23P01 as an error the predicate recognises — and NOT as Prisma code P2002', async () => {
     const { PrismaClient } = await import('./generated/client/index.js');
@@ -453,7 +546,7 @@ describe('detecting the violation through Prisma (verified, for A-009)', () => {
 describe('deferrable constraint — the Saturday swap (operator review R-2)', () => {
   it('is DEFERRABLE but INITIALLY IMMEDIATE', async () => {
     const { rows } = await db.query<{ condeferrable: boolean; condeferred: boolean }>(
-      `SELECT condeferrable, condeferred FROM pg_constraint WHERE conname = 'appointment_no_overlap'`,
+      `SELECT condeferrable, condeferred FROM pg_constraint WHERE conname = 'appointment_block_no_overlap'`,
     );
     expect(rows[0]!.condeferrable).toBe(true);
     // INITIALLY IMMEDIATE: ordinary writes still check at statement end, so
@@ -476,7 +569,7 @@ describe('deferrable constraint — the Saturday swap (operator review R-2)', ()
     await insert({ id: 'jenny', start: '2026-06-09T15:00:00-05:00', end: '2026-06-09T16:00:00-05:00' });
 
     await db.query('BEGIN');
-    await db.query('SET CONSTRAINTS appointment_no_overlap DEFERRED');
+    await db.query('SET CONSTRAINTS appointment_block_no_overlap DEFERRED');
     await db.query(
       `UPDATE "Appointment" SET "startAt"='2026-06-09T15:00:00-05:00', "endAt"='2026-06-09T16:00:00-05:00' WHERE id='hall'`,
     );
@@ -500,7 +593,7 @@ describe('deferrable constraint — the Saturday swap (operator review R-2)', ()
   it('still refuses a genuine conflict in a deferred transaction, at COMMIT time', async () => {
     await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
     await db.query('BEGIN');
-    await db.query('SET CONSTRAINTS appointment_no_overlap DEFERRED');
+    await db.query('SET CONSTRAINTS appointment_block_no_overlap DEFERRED');
     // This INSERT succeeds at statement time — the check is deferred.
     await insert({ id: 'b', start: '2026-06-09T10:30:00-05:00', end: '2026-06-09T11:30:00-05:00' });
     const code = await sqlstateOf(() => db.query('COMMIT'));
@@ -533,7 +626,7 @@ describe('deferrable constraint — the Saturday swap (operator review R-2)', ()
   it('isSlotTakenError still recognises a COMMIT-time violation', async () => {
     await insert({ id: 'a', start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T11:00:00-05:00' });
     await db.query('BEGIN');
-    await db.query('SET CONSTRAINTS appointment_no_overlap DEFERRED');
+    await db.query('SET CONSTRAINTS appointment_block_no_overlap DEFERRED');
     await insert({ id: 'b', start: '2026-06-09T10:30:00-05:00', end: '2026-06-09T11:30:00-05:00' });
     let caught: unknown;
     try {

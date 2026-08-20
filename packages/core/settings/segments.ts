@@ -188,3 +188,56 @@ export function visitGapSpans(lines: readonly SegmentedLine[]): SegmentSpan[] {
   }
   return spans;
 }
+
+/**
+ * The `Appointment.segmentPattern` snapshot (D-29): alternating minutes from
+ * the start of the body, beginning and ending with an ACTIVE run.
+ *
+ * Returns `[]` — meaning "one continuous block" — when the visit has no gaps at
+ * all, which is every appointment the salon books today. That is what keeps
+ * A-030 additive: the trigger's empty-pattern branch reproduces exactly the
+ * single range the old constraint enforced.
+ *
+ * Adjacent active parts are MERGED into one run, which matters at line
+ * boundaries: a cut then a colour ends the cut active and starts the colour
+ * active, and emitting those as two runs would produce an even-length pattern
+ * the database CHECK rejects — and, worse, would imply a zero-length gap
+ * between them that the constraint would then not defend.
+ */
+export function visitPattern(lines: readonly SegmentedLine[]): number[] {
+  const flat: Segment[] = [];
+  for (const line of lines) {
+    const scaled = scaleSegments(segmentsOrWhole(line.segments, line.serviceDurationMinutes), line.durationMinutes);
+    // A line whose snapshot no longer fits its segments contributes one
+    // continuous active run rather than throwing. Under-segmenting is the safe
+    // direction: it blocks MORE of the provider's time, never less.
+    flat.push(...(scaled ?? [{ durationMinutes: line.durationMinutes, isGap: false }]));
+  }
+  if (!flat.some((s) => s.isGap)) return [];
+
+  const pattern: number[] = [];
+  for (const segment of flat) {
+    const lastWasSameKind = pattern.length > 0 && (pattern.length - 1) % 2 === (segment.isGap ? 1 : 0);
+    if (lastWasSameKind) pattern[pattern.length - 1]! += segment.durationMinutes;
+    else pattern.push(segment.durationMinutes);
+  }
+  return pattern;
+}
+
+/**
+ * Where the gaps sit inside a stored `segmentPattern` (D-29), in minutes from
+ * the start of the body — the render-side counterpart of `visitPattern`.
+ *
+ * Odd indices are the gaps, by the pattern's own definition. This reads the
+ * SNAPSHOT the database cut its blocks from, so the stripe on the day grid and
+ * the time the exclusion constraint is actually defending cannot disagree.
+ */
+export function patternGapSpans(pattern: readonly number[]): SegmentSpan[] {
+  const spans: SegmentSpan[] = [];
+  let offset = 0;
+  pattern.forEach((minutes, i) => {
+    if (i % 2 === 1) spans.push({ offsetMinutes: offset, minutes });
+    offset += minutes;
+  });
+  return spans;
+}

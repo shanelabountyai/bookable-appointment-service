@@ -38,10 +38,17 @@ const SERVICES = [
     priceCents: 14000,
     // Apply, develop, finish. The 40 developing minutes are the free provider
     // time this whole feature exists to expose.
+    //
+    // 45 rather than 50 for the first part IS THE POINT, and it was found by a
+    // failing e2e: with 50, a colour booked on the hour leaves its gap running
+    // 10:50-11:30, and the 15-minute booking grid has no candidate inside it
+    // that also fits a 30-minute blow-dry. A gap that does not line up with the
+    // grid is a gap the salon cannot sell, which makes the whole feature
+    // decorative. The seed has to demonstrate a sellable one.
     segments: [
-      { durationMinutes: 50, isGap: false },
+      { durationMinutes: 45, isGap: false },
       { durationMinutes: 40, isGap: true },
-      { durationMinutes: 30, isGap: false },
+      { durationMinutes: 35, isGap: false },
     ],
   },
   {

@@ -321,3 +321,69 @@ describe('D-17 — the soft same-client note', () => {
     expect(second.id).toBeDefined();
   });
 });
+
+describe('the segmentPattern snapshot (D-29, A-030)', () => {
+  /** Splits the 90-minute Colour into 40 active / 25 developing / 25 active. */
+  const splitColour = () =>
+    prisma.serviceSegment.createMany({
+      data: [
+        { businessId, serviceId: colourId, ordinal: 0, durationMinutes: 40, isGap: false },
+        { businessId, serviceId: colourId, ordinal: 1, durationMinutes: 25, isGap: true },
+        { businessId, serviceId: colourId, ordinal: 2, durationMinutes: 25, isGap: false },
+      ],
+    });
+
+  it('is EMPTY for an unsegmented service, so nothing changed for an ordinary booking', async () => {
+    const appointment = await book();
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.segmentPattern).toEqual([]);
+    expect(await prisma.appointmentBlock.count({ where: { appointmentId: row.id } })).toBe(1);
+  });
+
+  it('freezes the service segments onto the appointment, and the trigger cuts two blocks', async () => {
+    await splitColour();
+    const appointment = await book({ serviceIds: [colourId] });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.segmentPattern).toEqual([40, 25, 25]);
+
+    const blocks = await prisma.appointmentBlock.findMany({
+      where: { appointmentId: row.id },
+      orderBy: { ordinal: 'asc' },
+    });
+    expect(blocks).toHaveLength(2);
+    // 10:00 + 40 = 10:40, then the gap, then 11:05 to 11:30 plus the 10-minute
+    // trailing buffer — buffers belong to the visit, not to each part.
+    expect(blocks.map((b) => b.blockedStart.toISOString())).toEqual([
+      '2026-06-09T15:00:00.000Z',
+      '2026-06-09T16:05:00.000Z',
+    ]);
+    expect(blocks[1]!.blockedEnd.toISOString()).toBe('2026-06-09T16:40:00.000Z');
+  });
+
+  it('RE-SPLITTING THE SERVICE LATER does not re-cut an appointment already booked', async () => {
+    await splitColour();
+    const appointment = await book({ serviceIds: [colourId] });
+    await prisma.serviceSegment.deleteMany({ where: { serviceId: colourId } });
+    await prisma.serviceSegment.createMany({
+      data: [
+        { businessId, serviceId: colourId, ordinal: 0, durationMinutes: 10, isGap: false },
+        { businessId, serviceId: colourId, ordinal: 1, durationMinutes: 70, isGap: true },
+        { businessId, serviceId: colourId, ordinal: 2, durationMinutes: 10, isGap: false },
+      ],
+    });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    // Still the shape it was booked with. This is the gap A-029 left behind and
+    // the reason D-29 snapshots rather than reading live: the alternative frees
+    // 70 minutes of a client's appointment that nobody agreed to free.
+    expect(row.segmentPattern).toEqual([40, 25, 25]);
+  });
+
+  it('merges the active runs of a multi-service visit into one pattern', async () => {
+    await splitColour();
+    // Cut (60, solid) then Colour (40/25gap/25): the cut and the colour's first
+    // part are one 100-minute run of work.
+    const appointment = await book({ serviceIds: [cutId, colourId] });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.segmentPattern).toEqual([100, 25, 25]);
+  });
+});

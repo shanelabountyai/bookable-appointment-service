@@ -6,6 +6,7 @@ import {
   segmentsOrWhole,
   validateSegments,
   visitGapSpans,
+  visitPattern,
 } from './segments';
 
 /** A colour: apply, develop, finish. The sample salon's only three-part
@@ -176,5 +177,48 @@ describe('visitGapSpans (SEG-03 across a VISIT-01 visit)', () => {
   it('drops a line whose snapshot no longer fits its segments, rather than throwing', () => {
     // Booked at 30 minutes, then someone gave the service a 35-minute gap.
     expect(visitGapSpans([line(30, COLOUR, 110)])).toEqual([]);
+  });
+});
+
+describe('visitPattern (the D-29 snapshot)', () => {
+  const line = (durationMinutes: number, segments: Segment[] = [], serviceDurationMinutes = durationMinutes) => ({
+    durationMinutes,
+    serviceDurationMinutes,
+    segments,
+  });
+
+  it('is EMPTY for a visit with no gaps — the whole reason A-030 needed no backfill', () => {
+    expect(visitPattern([line(45)])).toEqual([]);
+    expect(visitPattern([line(45), line(30)])).toEqual([]);
+  });
+
+  it('is the colour, straight through', () => {
+    expect(visitPattern([line(110, COLOUR)])).toEqual([45, 35, 30]);
+  });
+
+  it('MERGES active runs across a line boundary, so the pattern stays odd-length', () => {
+    // Cut (30) then colour: 30 + 45 is one 75-minute run of work, not two.
+    // Two runs would be an even-length pattern the database CHECK rejects, and
+    // would imply a zero-length gap the constraint then would not defend.
+    expect(visitPattern([line(30), line(110, COLOUR)])).toEqual([75, 35, 30]);
+    // ...and on the other side too.
+    expect(visitPattern([line(110, COLOUR), line(30)])).toEqual([45, 35, 60]);
+  });
+
+  it('always has odd length and sums to the visit body', () => {
+    for (const lines of [
+      [line(110, COLOUR)],
+      [line(30), line(110, COLOUR)],
+      [line(110, COLOUR), line(20), line(110, COLOUR)],
+    ]) {
+      const pattern = visitPattern(lines);
+      expect(pattern.length % 2).toBe(1);
+      expect(pattern.reduce((a, b) => a + b, 0)).toBe(lines.reduce((a, l) => a + l.durationMinutes, 0));
+    }
+  });
+
+  it('falls back to one continuous run for a line whose snapshot no longer fits', () => {
+    // Under-segmenting blocks MORE of her time, never less — the safe direction.
+    expect(visitPattern([line(30, COLOUR, 110)])).toEqual([]);
   });
 });

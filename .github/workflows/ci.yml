@@ -85,11 +85,21 @@ jobs:
           PGPASSWORD=postgres psql -h localhost -U postgres -d bookable_ci -v ON_ERROR_STOP=1 <<'EOSQL'
           DO $$
           BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='appointment_no_overlap') THEN
-              RAISE EXCEPTION 'appointment_no_overlap constraint is missing';
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='appointment_block_no_overlap') THEN
+              RAISE EXCEPTION 'appointment_block_no_overlap constraint is missing';
+            END IF;
+            -- A-030/D-29 moved the invariant to AppointmentBlock. Assert the OLD
+            -- one is gone as well as the new one present: two live constraints
+            -- would mean the migration half-applied, and the stricter one would
+            -- quietly refuse every gap booking the feature exists to allow.
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='appointment_no_overlap') THEN
+              RAISE EXCEPTION 'the pre-A-030 appointment_no_overlap constraint is still present';
             END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_blocked_range') THEN
               RAISE EXCEPTION 'appointment_blocked_range trigger is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_blocks') THEN
+              RAISE EXCEPTION 'appointment_blocks trigger is missing';
             END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_event_no_update_delete') THEN
               RAISE EXCEPTION 'AppointmentEvent append-only trigger is missing';

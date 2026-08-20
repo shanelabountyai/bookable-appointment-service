@@ -1164,3 +1164,17 @@ the reason the phone number is not unique in the first place.
 **The database still defends the whole slot, deliberately, and a test exists to make sure the next person knows why.** The exclusion constraint ranges over one time range per appointment, and a range cannot express a hole — so offering the gap as a bookable slot is a migration of the single most load-bearing invariant in the system, not a rendering change. That work is scoped, sized, and blocked on a written decision about what the constraint's unit becomes. Until then the gap is visible and staff book it through the override path that already exists, and a constraint test asserts the old behaviour on purpose: it is designed to fail the day the migration lands, so nobody can change that invariant without reading the decision first.
 
 **Nothing needed backfilling.** A service with no parts has exactly one implicit part — its whole duration — so every service in the system was already correct on the day the feature shipped, and the migration is a single dropped index.
+
+---
+
+## Booking into a colour's processing time
+
+**A stylist mixing colour is busy for fifty minutes, free for forty, then busy again — and the salon can now sell those forty minutes.** The scheduling engine offers them as ordinary slots, the front desk books them like any other, and the colour does not move. On a four-chair salon with two colourists that is real recovered revenue from time the software previously threw away.
+
+**This required changing the invariant the whole system is built on, and it got stricter rather than looser.** Double-booking is prevented by a database exclusion constraint, not by application checks — but a constraint over one time range per appointment cannot express a hole. So the unit became the *worked span*: an appointment now writes one row per stretch the provider is genuinely occupied, and the same constraint ranges over those. A booking that lands inside the gap is accepted; one that spills a single minute into the second half of the colour is still refused by the database, in the same transaction, with the same error the booking path already knew how to translate.
+
+**The rows are written by a database trigger, never by application code.** That was a deliberate constraint on the design: if a write path could forget to record a block, it would under-block and double-book, and the constraint would have no way to know. Because the trigger owns them, every existing path — booking, reschedule, the running-late column push, bulk reassignment — kept working untouched, and all nine concurrency tests passed against the new shape without modification.
+
+**The pure scheduling engine was not modified at all.** A segmented appointment simply presents as two busy intervals instead of one. The engine that was built and property-tested against a DST edge-case matrix never learned what a segment is — which is the payoff for having kept it a pure function of its inputs.
+
+**One finding worth naming: a gap that doesn't line up with the booking grid is a gap nobody can sell.** A failing end-to-end test caught it — the demo colour's parts left its free window starting at a time the 15-minute grid never offers, so the feature was visible and useless. The sample data was corrected. Visible free time and *sellable* free time are not the same thing, and only one of them is worth building.

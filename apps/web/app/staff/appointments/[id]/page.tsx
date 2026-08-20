@@ -47,7 +47,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   const zone = zoneId(business.timezone);
   const day = toLabel(fromDate(detail.startAt), zone).day;
   const status = detail.status as AppointmentStatus;
-  const gapMinutes = detail.services.reduce((total, s) => total + s.gapMinutes, 0);
+  const gapMinutes = detail.gapMinutes;
 
   // The buttons come from the §7 table, filtered to what the FRONT DESK may do
   // right now — asked of the same function the write path asks, so a button

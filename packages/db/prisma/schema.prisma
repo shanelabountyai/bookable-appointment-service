@@ -538,11 +538,30 @@ model Appointment {
   bufferBeforeMinutes Int @default(0)
   bufferAfterMinutes  Int @default(0)
 
+  /// D-29/A-030. Alternating minutes from the start of the BODY, beginning and
+  /// ending with an ACTIVE part: {45} a cut, {50,40,30} a colour, and
+  /// {60,35,25,30,30} the seeded balayage. Even positions are worked, odd ones
+  /// are processing gaps. EMPTY means one continuous block, which is why
+  /// A-030 needed no backfill.
+  ///
+  /// Snapshotted for the same reason as the buffers above (D-18): the trigger
+  /// must recompute blocks on UPDATE without re-deriving which service's
+  /// segments applied at booking time, and re-splitting a service must never
+  /// re-cut an appointment already in the book. A CHECK asserts the parts are
+  /// positive, odd in count, and sum to endAt - startAt.
+  segmentPattern Int[] @default([])
+
   /// Body ± buffers. WRITTEN BY TRIGGER, never by application code — see the
   /// migration. They cannot be generated columns: `timestamptz + interval` is
   /// STABLE, not IMMUTABLE (verified against PG17), which disqualifies it from
   /// GENERATED ALWAYS AS ... STORED. The exclusion constraint ranges over these,
   /// so a buffer-only overlap is refused too.
+  ///
+  /// A-030 changed what these MEAN: they are now the appointment's outer
+  /// ENVELOPE, used for display and for windowing the busy-set query. What the
+  /// database enforces is `AppointmentBlock` (D-29) — one row per span the
+  /// provider is actually working, because a single range cannot express the
+  /// hole a colour's developing time leaves.
   blockedStart DateTime @db.Timestamptz(3)
   blockedEnd   DateTime @db.Timestamptz(3)
 
@@ -604,6 +623,7 @@ model Appointment {
   events        AppointmentEvent[]
   tokens        ManageToken[]
   notifications NotificationOutbox[]
+  blocks        AppointmentBlock[]
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -647,6 +667,38 @@ model AppointmentServiceLine {
 /// DELETE both raise. FKs into it are `onDelete: Restrict` on purpose: SetNull
 /// cascades hit the trigger and fail at runtime, which the rental build learned
 /// twice.
+/// D-29 (A-030) — THE UNIT THE EXCLUSION CONSTRAINT RANGES OVER.
+///
+/// One row per span the provider is actually working. An unsegmented
+/// appointment has exactly one; a colour has two, with its developing time
+/// between them; a staff override has one zero-width row (D-8/D-16).
+///
+/// WRITTEN BY TRIGGER, never by application code — see the migration. The
+/// property being protected is the one `blockedStart`/`blockedEnd` already had:
+/// no ORM call, script or psql session can write an inconsistent range, and a
+/// write path that forgot to emit a block would UNDER-block and double-book
+/// without the constraint being able to tell.
+///
+/// `providerId` and `status` are denormalised because a partial exclusion
+/// constraint cannot join. The trigger is their only writer, and a test still
+/// asserts the constraint predicate equals ACTIVE_STATUSES.
+model AppointmentBlock {
+  id            String @id
+  businessId    String
+  appointmentId String
+  providerId    String
+  status        AppointmentStatus
+  ordinal       Int
+  blockedStart  DateTime @db.Timestamptz(3)
+  blockedEnd    DateTime @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, ordinal])
+  @@index([appointmentId])
+  @@index([providerId, blockedStart, blockedEnd])
+}
+
 model AppointmentEvent {
   id            String @id @default(cuid())
   businessId    String

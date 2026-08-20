@@ -22,8 +22,13 @@
 /** SQLSTATE 23P01, exclusion_violation. Not 23505. */
 export const EXCLUSION_VIOLATION = '23P01';
 
-/** The constraint whose violation means "somebody just took that slot". */
-const NO_OVERLAP_CONSTRAINT = 'appointment_no_overlap';
+/** The constraint whose violation means "somebody just took that slot".
+ *  A-030/D-29 moved it from `Appointment` to `AppointmentBlock` — the unit is
+ *  now the worked span, not the whole appointment, so a colour's developing
+ *  time stops being defended as if the provider were in the chair. The
+ *  violation still surfaces on the appointment's own INSERT/UPDATE, because
+ *  the blocks are written by an AFTER trigger inside that statement. */
+const NO_OVERLAP_CONSTRAINT = 'appointment_block_no_overlap';
 
 /**
  * True when the error is our no-overlap constraint refusing the write.

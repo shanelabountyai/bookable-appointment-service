@@ -5,10 +5,10 @@
  * carry the total with them, an override that would eat the processing gap is
  * refused, and a booked colour shows its free minutes on the day grid.
  *
- * What is deliberately NOT asserted: that the gap is bookable. It is not, in
- * A-029 — the exclusion constraint still defends the whole footprint, and a
- * constraint test (packages/db/constraint.test.ts) pins that. A-030, gated on
- * OQ-7, is where it changes.
+ * A-030 (D-29) then made the gap REAL: the exclusion constraint moved to
+ * `AppointmentBlock`, one row per span the provider is actually working, so the
+ * developing time is offered as an ordinary slot and the last test here books
+ * into it.
  */
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
@@ -85,6 +85,11 @@ async function bookDanasColour(): Promise<string> {
         blockedEnd: endAt,
         startDay: DAY,
         startWallTime: '10:00',
+        // D-29's snapshot: the seeded Colour's own parts. The block trigger
+        // cuts this into 09:50-10:45 and 11:25-12:20, leaving 10:45-11:25 free
+        // — and 10:45 is ON the 15-minute grid, which is what makes those
+        // minutes sellable rather than merely visible.
+        segmentPattern: [45, 40, 35],
         lines: {
           create: {
             businessId: business.id,
@@ -121,7 +126,7 @@ test.beforeEach(async ({ page }) => {
   await signIn(page);
 });
 
-test.describe('segmented durations (A-029)', () => {
+test.describe('segmented durations (A-029, A-030)', () => {
   test('the seeded colour arrives already split, and says how much of it is a gap', async ({ page }) => {
     await page.goto('/staff/services');
     // "Parts (3, 40 min of it a gap)" — the summary is the fact at a glance.
@@ -180,17 +185,45 @@ test.describe('segmented durations (A-029)', () => {
     await expect(card.getByText(/40 minutes of processing time that never shortens/)).toBeVisible();
   });
 
-  test('a booked colour shows its free minutes on the day grid and on the appointment', async ({ page }) => {
+  test('a booked colour states its free minutes on the appointment', async ({ page }) => {
     const appointmentId = await bookDanasColour();
-
-    await page.goto(`/staff/day?day=${DAY}`);
-    // 50 minutes in, for 40 — the stripe and its label.
-    await expect(page.getByText('40 min free').first()).toBeVisible();
-    // And in the accessible name, which is the half a screen reader gets.
-    await expect(page.getByRole('link', { name: /40 min free from 10:50/ })).toBeVisible();
-
     await page.goto(`/staff/appointments/${appointmentId}`);
     await expect(page.getByText('40 min of processing time — she is not needed for it')).toBeVisible();
+  });
+
+  // SEG-04/SEG-05, the operator's own acceptance scenario, through the UI: the
+  // developing time is an ordinary bookable gap, and taking it does not move
+  // the colour.
+  test('the developing time is offered as a real slot, and booking it leaves the colour alone', async ({ page }) => {
+    await bookDanasColour();
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    // 10:50-11:30, between the two halves of the colour, on Dana's column.
+    const gap = page.getByRole('link', { name: /Book 40 minutes free, 10:45.*11:25, with Dana/ });
+    await expect(gap).toBeVisible();
+    await gap.click();
+
+    await expect(page.getByRole('heading', { name: /^Book with/ })).toBeVisible();
+    // Blow-dry is 30 minutes plus a 5-minute buffer — it fits the 40 free
+    // minutes, and the salon could not offer it here before A-030.
+    await page.getByRole('button', { name: /^Blow-dry\d/ }).click();
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      // Two appointments on Dana's column, and the colour has not moved: the
+      // database now defends its two worked parts separately, and the booking
+      // sits in the hole between them.
+      const colour = await prisma.appointment.findFirstOrThrow({ where: { startWallTime: '10:00' } });
+      expect(colour.segmentPattern).toEqual([45, 40, 35]);
+      const inGap = await prisma.appointment.findFirstOrThrow({ where: { startWallTime: '10:45' } });
+      expect(inGap.providerId).toBe(colour.providerId);
+      expect(await prisma.appointmentBlock.count({ where: { appointmentId: colour.id } })).toBe(2);
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   test('has no accessibility violations', async ({ page }) => {
