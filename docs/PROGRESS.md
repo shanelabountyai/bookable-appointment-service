@@ -1007,7 +1007,7 @@ A-024 committed at 9e82f5c
 
 ## A-032 — the room is visible to the engine (RES-03, RES-04, D-30)
 
-**Built:** `packages/db/scheduling/resource-load.ts` — a sweep over `AppointmentResourceHold` producing the spans in which every chair of a type is held, fed into the busy set as a new `resource-full` kind. One new `ExclusionReason` (`no-resource-free`) and one line in the engine. `book.ts` maps that reason to `NoResourceFree`; both action layers now catch it — the customer gets the "just been taken" wording with refreshed alternatives, the desk gets RES-04's override with the reason spelled out.
+**Built:** (commit `ea3d37b`) `packages/db/scheduling/resource-load.ts` — a sweep over `AppointmentResourceHold` producing the spans in which every chair of a type is held, fed into the busy set as a new `resource-full` kind. One new `ExclusionReason` (`no-resource-free`) and one line in the engine. `book.ts` maps that reason to `NoResourceFree`; both action layers now catch it — the customer gets the "just been taken" wording with refreshed alternatives, the desk gets RES-04's override with the reason spelled out.
 
 **Decided:** **The cardinality question is answered in the adapter so the engine never has to ask it.** "Are all four chairs taken?" is a counting question and the engine takes intervals — which is exactly why D-30 had to name four chairs at the database rather than store a capacity number. The same move works here: sweep the holds once, emit the spans where concurrent holds reach the chair count, and hand the engine intervals it subtracts the way it subtracts a break. The pure engine's diff is one `if`, and it still does not know what a chair is.
 
