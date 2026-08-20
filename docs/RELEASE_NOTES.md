@@ -1178,3 +1178,15 @@ the reason the phone number is not unique in the first place.
 **The pure scheduling engine was not modified at all.** A segmented appointment simply presents as two busy intervals instead of one. The engine that was built and property-tested against a DST edge-case matrix never learned what a segment is — which is the payoff for having kept it a pure function of its inputs.
 
 **One finding worth naming: a gap that doesn't line up with the booking grid is a gap nobody can sell.** A failing end-to-end test caught it — the demo colour's parts left its free window starting at a time the 15-minute grid never offers, so the feature was visible and useless. The sample data was corrected. Visible free time and *sellable* free time are not the same thing, and only one of them is worth building.
+
+---
+
+## The room is now something the software can count
+
+**Shipping gap-booking created a problem, and this closes it.** Once a client can sit developing colour while her stylist works on somebody else, a four-chair salon with four stylists can want eight chairs — and until this landed, every one of those bookings was accepted. The system would cheerfully put more people in the room than the room holds. The scoping pass for this feature is what caught it, from a test that was already passing.
+
+**Chairs are real, and nobody ever picks one.** The owner names them once at setup. Booking assigns the first free chair automatically; the front desk types nothing and chooses nothing. A chair only ever reaches a human when there isn't one — which is exactly the moment they need to know.
+
+**"No more than four at once" is the thing a database cannot enforce, so it wasn't built that way.** An exclusion constraint answers overlap questions, not counting questions — a capacity number could only have been implemented as read-the-count-then-write, which two simultaneous bookings defeat, and which is the precise pattern this system refuses to rely on for double-booking. Naming four chairs converts one counting question into four overlap questions, and those the database answers absolutely — against the application, against a script, against someone typing SQL directly. A test proves that last one by bypassing the application entirely and being refused.
+
+**Staff can still override, and it costs a chair nothing.** An override holds no chair at all, deliberately, on the same principle as every other override in the system: the constraint exists to prevent accidents, never to refuse a human a decision they're making knowingly. "We'll do her at the backwash" stays a valid answer.

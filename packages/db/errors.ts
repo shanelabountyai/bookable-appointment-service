@@ -30,6 +30,11 @@ export const EXCLUSION_VIOLATION = '23P01';
  *  the blocks are written by an AFTER trigger inside that statement. */
 const NO_OVERLAP_CONSTRAINT = 'appointment_block_no_overlap';
 
+/** RES-03/D-30. Losing the race for the last free chair is "somebody just took
+ *  it" in exactly the sense the provider axis means it, so it maps to the same
+ *  outcome — the chooser in `resources.ts` picks, this constraint decides. */
+const NO_RESOURCE_OVERLAP_CONSTRAINT = 'appointment_resource_no_overlap';
+
 /**
  * True when the error is our no-overlap constraint refusing the write.
  *
@@ -48,21 +53,25 @@ const NO_OVERLAP_CONSTRAINT = 'appointment_block_no_overlap';
  * callers likely to hold a driver-level error, and there the miss would turn
  * a "that slot is taken" 409 into a 500.
  *
- * The constraint name is required either way, so a future second exclusion
- * constraint cannot be misread as a slot collision.
+ * The constraint name is required either way, so an exclusion constraint that
+ * is NOT one of ours cannot be misread as a slot collision. Both of ours count:
+ * losing the race for the last free chair (D-30) is "somebody just took it" in
+ * exactly the sense the provider axis means it (RES-03).
  */
 export function isSlotTakenError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const e = error as { code?: unknown; constraint?: unknown; message?: unknown };
 
+  const OURS = [NO_OVERLAP_CONSTRAINT, NO_RESOURCE_OVERLAP_CONSTRAINT];
+
   // Structured form (node-postgres, and any driver that sets SQLSTATE).
   if (e.code === EXCLUSION_VIOLATION) {
-    return e.constraint === undefined || e.constraint === NO_OVERLAP_CONSTRAINT;
+    return e.constraint === undefined || OURS.includes(e.constraint as string);
   }
 
   // String form (Prisma). Both parts required.
   const message = typeof e.message === 'string' ? e.message : '';
-  return message.includes(EXCLUSION_VIOLATION) && message.includes(NO_OVERLAP_CONSTRAINT);
+  return message.includes(EXCLUSION_VIOLATION) && OURS.some((name) => message.includes(name));
 }
 
 /**

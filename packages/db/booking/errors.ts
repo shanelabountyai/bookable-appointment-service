@@ -69,3 +69,20 @@ export class BookingRejected extends Error {
     this.field = field;
   }
 }
+
+/**
+ * RES-03 — every chair of the required type is taken for this envelope.
+ *
+ * Distinct from `SlotTaken` because the answer to it is different: the provider
+ * IS free, so offering the customer a different time for the same stylist is
+ * right, while telling staff "the room is full" is what lets them decide to
+ * override (RES-04). Both map to 409; only the wording differs.
+ */
+export class NoResourceFree extends Error {
+  readonly resourceTypeName: string;
+  constructor(resourceTypeName: string) {
+    super(`Every ${resourceTypeName} is taken for that time.`);
+    this.name = 'NoResourceFree';
+    this.resourceTypeName = resourceTypeName;
+  }
+}

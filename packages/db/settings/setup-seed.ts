@@ -115,12 +115,35 @@ export async function seedSetup(
     providerIds.push(provider.id);
   }
 
-  if (providerIds.length > CHAIR_COUNT) {
-    throw new Error(
-      `Seed roster (${providerIds.length}) exceeds the chair count (${CHAIR_COUNT}). D-20 rules the resource ` +
-        'axis out of v1, so a roster larger than the chairs would demo a constraint the engine does not enforce.',
-    );
+  // A-031/D-30: the chairs are real rows now, and the exclusion constraint on
+  // AppointmentResourceHold defends them. The assertion this replaces checked
+  // that the roster did not exceed the chair count, citing D-20's premise that
+  // "for a 4-chair salon with 4 stylists the pool never binds". A-030 ended
+  // that: a client developing colour holds a chair her stylist is not using, so
+  // four stylists can want eight chairs. The roster size was never the thing to
+  // guard — the concurrent CLIENT count is, and only the database can guard it.
+  const chairType = await prisma.resourceType.upsert({
+    where: { businessId_name: { businessId: business.id, name: 'Chair' } },
+    update: {},
+    create: { businessId: business.id, name: 'Chair' },
+  });
+  for (let i = 1; i <= CHAIR_COUNT; i++) {
+    const name = `Chair ${i}`;
+    const existing = await prisma.resource.findFirst({
+      where: { businessId: business.id, resourceTypeId: chairType.id, name },
+    });
+    if (!existing) {
+      await prisma.resource.create({
+        data: { businessId: business.id, resourceTypeId: chairType.id, name },
+      });
+    }
   }
+  // Every service happens in a chair. A business that defines no resources
+  // keeps working exactly as before — that is what the nullable column is for.
+  await prisma.service.updateMany({
+    where: { businessId: business.id },
+    data: { requiredResourceTypeId: chairType.id },
+  });
 
   const serviceIds: string[] = [];
   for (const s of SERVICES) {

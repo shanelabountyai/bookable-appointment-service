@@ -35,7 +35,8 @@ import { enqueueNotification } from '../notifications';
 import { buildSlotQuery } from '../scheduling';
 import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { BookingRejected, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
+import { BookingRejected, NoResourceFree, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
+import { findFreeResource, requiredResourceTypeId } from './resources';
 
 const MIN = 60_000;
 
@@ -316,8 +317,33 @@ async function writeAppointment(
   });
   const label = toLabel(fromDate(input.startAt), business.timezone as ZoneId);
 
+  // RES-01..04 — the chair, chosen here and never by a human. A staff override
+  // holds NO chair, deliberately: the same reasoning as D-8's zero-width
+  // provider range, since the constraint must never be what refuses staff a
+  // knowing decision. The desk is standing in the room and can see it.
+  let resourceId: string | null = null;
+  const resourceTypeId = isOverride ? null : await requiredResourceTypeId(tx, input.serviceIds);
+  if (resourceTypeId) {
+    const blockedStart = toDate(instant(fromDate(input.startAt) - visit.bufferBeforeMinutes * MIN));
+    const blockedEnd = toDate(instant(fromDate(endAt) + visit.bufferAfterMinutes * MIN));
+    resourceId = await findFreeResource(tx, {
+      businessId: input.businessId,
+      resourceTypeId,
+      start: blockedStart,
+      end: blockedEnd,
+    });
+    if (!resourceId) {
+      const type = await tx.resourceType.findUniqueOrThrow({
+        where: { id: resourceTypeId },
+        select: { name: true },
+      });
+      throw new NoResourceFree(type.name);
+    }
+  }
+
   const appointment = await tx.appointment.create({
     data: {
+      resourceId,
       businessId: input.businessId,
       providerId: input.providerId,
       clientId: input.clientId ?? null,

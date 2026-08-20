@@ -204,6 +204,12 @@ model Service {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+  /// RES-01. NULL means this service needs no resource — a phone consult, and
+  /// every service in a business that has not defined resources at all. That
+  /// nullability is what made A-031 additive.
+  requiredResourceTypeId String?
+  requiredResourceType   ResourceType? @relation(fields: [requiredResourceTypeId], references: [id], onDelete: SetNull)
+
   business         Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
   serviceProviders ServiceProvider[]
   segments         ServiceSegment[]
@@ -278,6 +284,7 @@ model ResourceType {
 
   business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
   resources Resource[]
+  services  Service[]
 
   @@unique([businessId, name])
 }
@@ -293,6 +300,8 @@ model Resource {
 
   business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
   resourceType ResourceType @relation(fields: [resourceTypeId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+  holds        AppointmentResourceHold[]
 
   @@index([businessId])
 }
@@ -619,11 +628,20 @@ model Appointment {
   provider Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
   client   Client?   @relation(fields: [clientId], references: [id], onDelete: Restrict)
 
+  /// D-30. Which chair this appointment holds. Chosen by the booking path —
+  /// first free resource of the service's required type — and never typed by a
+  /// human. NULL means no chair is held: a service needing none, a business
+  /// with no resources, or a staff override, which deliberately holds nothing
+  /// for the same reason D-8's override writes a zero-width provider range.
+  resourceId String?
+  resource   Resource? @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
   lines         AppointmentServiceLine[]
   events        AppointmentEvent[]
   tokens        ManageToken[]
   notifications NotificationOutbox[]
   blocks        AppointmentBlock[]
+  resourceHold  AppointmentResourceHold?
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -697,6 +715,30 @@ model AppointmentBlock {
   @@unique([appointmentId, ordinal])
   @@index([appointmentId])
   @@index([providerId, blockedStart, blockedEnd])
+}
+
+/// D-30 (A-031) — THE RESOURCE INVARIANT.
+///
+/// One row per appointment that holds a chair, spanning its WHOLE envelope,
+/// gaps included. That is the one place resource occupancy differs from provider
+/// occupancy (`AppointmentBlock`, D-29): a client developing colour is not using
+/// her stylist and is certainly using the chair.
+///
+/// WRITTEN BY TRIGGER, never by application code — same reasoning as every other
+/// range in this schema.
+model AppointmentResourceHold {
+  id            String @id
+  businessId    String
+  appointmentId String @unique
+  resourceId    String
+  status        AppointmentStatus
+  blockedStart  DateTime @db.Timestamptz(3)
+  blockedEnd    DateTime @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([resourceId, blockedStart, blockedEnd])
 }
 
 model AppointmentEvent {
