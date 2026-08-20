@@ -1023,7 +1023,7 @@ A-024 committed at 9e82f5c
 
 ## A-033 — the front desk can move an appointment (APPT-05, D-6, operator P-1)
 
-**Built:** `apps/web/lib/appointments/reschedule-actions.ts` and the move panel on the appointment detail page, over the write path A-014 shipped fifteen items ago. The conflicts screen's "find another time" now opens that panel instead of the day view. `readableReason` moved out of the booking panel into `apps/web/lib/scheduling-words.ts`, shared by both surfaces.
+**Built:** (commit `d762955`) `apps/web/lib/appointments/reschedule-actions.ts` and the move panel on the appointment detail page, over the write path A-014 shipped fifteen items ago. The conflicts screen's "find another time" now opens that panel instead of the day view. `readableReason` moved out of the booking panel into `apps/web/lib/scheduling-words.ts`, shared by both surfaces.
 
 **Decided:** **This was a missing CALLER, not a missing mechanism** — and the gap was invisible from inside every item that created it. `rescheduleAppointment` and `rescheduleOptions` had exactly one caller in the whole app: the customer's manage link. A-014 built the write path and deferred the surface to A-016/A-027; A-016 deferred to A-027; A-027 recorded "no staff reschedule picker" in its own left-behind; A-019 deferred to the day view. Four items, each handing it to the next, each correct in isolation.
 
