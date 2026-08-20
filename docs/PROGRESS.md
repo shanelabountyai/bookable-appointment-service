@@ -941,7 +941,7 @@ A-024 committed at 9e82f5c
 
 ## A-030 — gap booking, and the exclusion constraint's unit changes (SEG-04, SEG-05, D-29)
 
-**Built:** Migration `20260819234500_appointment_blocks` — `AppointmentBlock` (one row per span the provider is actually working), `appointment_block_no_overlap` moved onto it byte-identically apart from its table, the `appointment_blocks` trigger that derives those rows, `Appointment.segmentPattern` as a D-18-style snapshot with a CHECK, and a backfill so the invariant is continuous rather than briefly absent. `visitPattern` and `patternGapSpans` in core; the snapshot written in `book.ts`; the busy-set query rewritten to read blocks.
+**Built:** (commit `886c794`) Migration `20260819234500_appointment_blocks` — `AppointmentBlock` (one row per span the provider is actually working), `appointment_block_no_overlap` moved onto it byte-identically apart from its table, the `appointment_blocks` trigger that derives those rows, `Appointment.segmentPattern` as a D-18-style snapshot with a CHECK, and a backfill so the invariant is continuous rather than briefly absent. `visitPattern` and `patternGapSpans` in core; the snapshot written in `book.ts`; the busy-set query rewritten to read blocks.
 
 **Decided:** **The pure slot engine was not touched, and did not need to be.** A colour contributes *two* busy intervals with its developing time between them, so the engine offers that time without knowing segments exist — the same shape of result VISIT-01 got, where a composed visit was just a longer service. SEG-04 turned out to be a schema change plus one query, which is why this landed well inside its L.
 
