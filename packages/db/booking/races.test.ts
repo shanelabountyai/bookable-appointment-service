@@ -312,33 +312,76 @@ describe('BOOK-03 — the deterministic race matrix', () => {
   it(
     '1d. a constraint violation through the write path maps to SlotTaken, not a 500',
     async () => {
-      const results = await Promise.allSettled([
-        book({ idempotencyKey: 'u1', __unsafeSkipSerialization: true }),
-        book({ idempotencyKey: 'u2', __unsafeSkipSerialization: true }),
-      ]);
-
-      const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
-      // Without serialization both pass their engine re-check, so the
-      // constraint is what refuses the loser.
-      expect(rejected).toHaveLength(1);
-
-      // A PERMANENT DIAGNOSTIC, not debugging left behind.
+      // SCRIPTED, not raced. A raw transaction holds a conflicting appointment
+      // uncommitted; the write path — serialization skipped — cannot see it
+      // under READ COMMITTED, passes its engine re-check, and blocks on the
+      // constraint. Releasing the raw transaction hands it a guaranteed 23P01.
       //
-      // This test failed once, on 2026-08-16, during a full-suite run under
-      // TZ=Pacific/Kiritimati: the rejection was a raw
-      // PrismaClientUnknownRequestError instead of SlotTaken. It did not
-      // reproduce in the 23 runs that followed (6 of this file alone, 17 full
-      // suites), so the cause is UNKNOWN and nothing has been "fixed" on the
-      // strength of a plausible story.
+      // It used to fire two lock-free `book()` calls at each other, which is
+      // what produced the 40P01 below: since A-030 the appointment row and the
+      // block the constraint ranges over go in as two statements, so both
+      // writers can get their tuples down before either checks, and each then
+      // waits on the other's transaction. One writer racing an idle holder
+      // cannot form that cycle.
+      const holder = new PgClient({ connectionString: process.env.DATABASE_URL });
+      await holder.connect();
+      const holderInserted = barrier();
+      const bookingIsWaiting = barrier();
+
+      let outcome: unknown;
+      try {
+        const holding = (async () => {
+          await holder.query('BEGIN');
+          await holder.query(
+            `INSERT INTO "Appointment"
+               (id,"businessId","providerId",status,"startAt","endAt","bufferBeforeMinutes","bufferAfterMinutes",
+                "isOverride","blockedStart","blockedEnd","startDay","startWallTime","updatedAt")
+             VALUES ('holder',$1,$2,'booked',$3::timestamptz,$4::timestamptz,0,15,false,'epoch','epoch',$5,'10:00', now())`,
+            [businessId, providerId, TEN_AM.toISOString(), at('2026-06-09T11:00:00-05:00').toISOString(), DAY],
+          );
+          holderInserted.release();
+          await bookingIsWaiting.reached;
+          await holder.query('COMMIT');
+        })();
+
+        const booking = (async () => {
+          await holderInserted.reached;
+          const attempt = book({ idempotencyKey: 'u1', __unsafeSkipSerialization: true }).then(
+            (ok) => ok,
+            (error) => error,
+          );
+          // Give it long enough to reach the constraint and block on it.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          bookingIsWaiting.release();
+          return attempt;
+        })();
+
+        [, outcome] = await Promise.all([holding, booking]);
+      } finally {
+        await holder.end();
+      }
+
+      const rejected = [{ reason: outcome }] as { reason: unknown }[];
+
+      // THE DIAGNOSTIC THAT PAID FOR ITSELF, kept for the same reason it was
+      // added.
       //
-      // What makes it expensive is that the assertion below reports only the
-      // CLASS, and every contention failure Postgres can raise here —
-      // 23P01 arriving unmapped, a 40P01 deadlock between the two lock-free
-      // writers this test deliberately creates, a P2028 timeout — arrives as
-      // that same class. So the next occurrence would be as uninformative as
-      // the last. Printing the code and message costs nothing on the passing
-      // path and turns a repeat into a diagnosis instead of a third
-      // investigation.
+      // This test failed once on 2026-08-16 under TZ=Pacific/Kiritimati with a
+      // raw PrismaClientUnknownRequestError instead of SlotTaken, did not
+      // reproduce in 23 runs, and was left with the cause recorded as UNKNOWN
+      // rather than "fixed" on a plausible story. These two lines were added so
+      // a repeat would be a diagnosis rather than a third investigation.
+      //
+      // It repeated on 2026-08-19, in CI, on the A-030 push — and printed
+      // `40P01 deadlock detected`. THAT is the answer: two lock-free writers,
+      // each inserting an appointment and then (since A-030) its blocks a
+      // statement later, can both get their tuples down before either performs
+      // its exclusion check, and then each waits on the other's transaction.
+      // A-030 widened a window that was always there; it did not open it.
+      //
+      // The test is now scripted rather than raced, so the cycle cannot form.
+      // The lines stay because the class-only assertion is still the thing that
+      // would hide the next surprise.
       if (!(rejected[0]!.reason instanceof SlotTaken)) {
         const e = rejected[0]!.reason as { code?: unknown; meta?: unknown; message?: unknown };
         console.log(`1d ESCAPED: ${e?.constructor?.name} code=${String(e?.code)} meta=${JSON.stringify(e?.meta)}`);
