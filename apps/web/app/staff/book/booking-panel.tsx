@@ -13,6 +13,7 @@ import {
   findWalkInOptions,
   staffSlotsFor,
 } from '@/lib/booking/staff-actions';
+import { readableReason } from '@/lib/scheduling-words';
 
 const initial: StaffBookingState = {};
 
@@ -361,26 +362,3 @@ export function BookingPanel({
   );
 }
 
-/**
- * The engine's machine-readable reasons, in the words the front desk uses.
- *
- * Staff wording, not D-10's customer lexicon — this surface is allowed to say
- * "overlaps a buffer", and being specific is what lets somebody decide whether
- * an override is reasonable.
- */
-function readableReason(reason: string): string {
-  return REASONS[reason] ?? reason.replace(/-/g, ' ');
-}
-
-const REASONS: Record<string, string> = {
-  'outside-working-window': 'outside her working hours',
-  'inside-break': 'during her break',
-  'crosses-window-close': 'it would run past closing',
-  'overlaps-booking': 'she already has a client then',
-  'overlaps-buffer': 'it runs into another appointment’s buffer',
-  'overlaps-time-off': 'she is on time off',
-  'overlaps-block': 'that time is blocked out',
-  'no-resource-free': 'every chair is taken then — she is free, the room is not',
-  'in-the-past': 'that time has passed',
-  'inside-lead-time': 'inside the booking lead time',
-};

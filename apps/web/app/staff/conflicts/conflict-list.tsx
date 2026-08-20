@@ -23,11 +23,9 @@ const field = 'rounded-md border border-zinc-400 bg-transparent px-2 py-1 text-s
  * sorted out.
  */
 export function ConflictList({
-  day,
   conflicts,
   providers,
 }: {
-  day: string;
   conflicts: ConflictRow[];
   providers: { id: string; name: string }[];
 }) {
@@ -80,9 +78,12 @@ export function ConflictList({
               <div className="flex flex-wrap items-end gap-2">
                 <KeepForm appointmentId={conflict.id} />
                 <CancelForm appointmentId={conflict.id} />
-                {/* "Offer a new time" is the reschedule, which already exists
-                    and already re-points her manage link (A-014). */}
-                <Link href={`/staff/day?day=${day}&provider=${conflict.providerId}`} className={small}>
+                {/* "Offer a new time" is the reschedule (A-014), which since
+                    A-033 has a staff surface — so this goes to the move panel
+                    on her appointment rather than to the day view, where the
+                    desk could only look at times it had no way to take. The
+                    manage link re-points itself (TOKEN-02). */}
+                <Link href={`/staff/appointments/${conflict.id}#move`} className={small}>
                   Find another time
                 </Link>
               </div>

@@ -6,6 +6,7 @@ import { reliabilityFor } from '@bookable/db/clients';
 import {
   type AppointmentStatus,
   SLOT_FREEING_STATUSES,
+  canReschedule,
   canTransition,
   possibleTransitionsFrom,
 } from '@bookable/core/scheduling';
@@ -15,6 +16,7 @@ import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { DELIVERY_WORDS, TEMPLATE_WORDS, toReadableEvent } from '@/lib/appointments/event-language';
 import { flagSentence } from '@/components/client-flag';
+import { MovePanel } from './move-panel';
 import { StatusControls } from './status-controls';
 import { VisitNote } from './visit-note';
 
@@ -60,6 +62,13 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
     endAt: fromDate(detail.endAt),
     cancellationCutoffMinutes: worstCutoff(business.cancellationCutoffMinutes, []).minutes,
   };
+  // A-033. Asked of the SAME function the write path asks (APPT-05, D-6), so
+  // the panel is absent exactly when `rescheduleAppointment` would refuse —
+  // an appointment already in the chair, or finished, or cancelled. A second
+  // `if (status === ...)` on this screen is the rental VERIFIED defect
+  // starting over.
+  const movable = canReschedule(status, context).allowed;
+
   const available = possibleTransitionsFrom(status)
     .map((to) => ({ to, decision: canTransition(status, to, { ...context, reason: 'placeholder' }) }))
     .filter((option) => option.decision.allowed)
@@ -167,6 +176,15 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         >
           Who wants this slot?
         </Link>
+      ) : null}
+
+      {movable ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+            Move this appointment
+          </h2>
+          <MovePanel appointmentId={detail.id} currentDay={day} />
+        </section>
       ) : null}
 
       <StatusControls appointmentId={detail.id} status={status} available={available} />

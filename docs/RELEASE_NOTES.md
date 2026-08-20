@@ -1204,3 +1204,15 @@ the reason the phone number is not unique in the first place.
 **The refusal path stayed, and that is deliberate.** Two people booking the last chair at the same moment will still see one of them refused by the database, because the check that filters the list and the constraint that guarantees the chair are — and must be — different mechanisms. What changed is that the refusal is now the rare race it was designed to be, instead of the ordinary Saturday experience.
 
 **And it no longer crashes.** Before this, the full-room refusal escaped the customer's booking action entirely and rendered an error page. That was a live defect on the revenue path, found by an operational review rather than by a test, which is its own lesson: the write path was right and nobody had walked the screen.
+
+---
+
+## The most common phone call in the salon had no button
+
+**"Can you push my three o'clock to four?" — and the front desk had no way to do it.** The reschedule machinery had been built and tested fifteen items earlier: one transaction, one row updated, the appointment keeping its identity so the client's existing link keeps working. It had exactly one caller, and it was the *customer's* self-service link. Nobody at the desk could reach it.
+
+**The workaround was worse than an inconvenience — it falsified the record.** Cancel-and-rebook is the only other way to move an appointment, and a cancellation that close to the appointment is correctly classified as a late cancellation. So every one of those calls put a black mark on a client who had done nothing wrong: on her record, on four staff screens, and in the owner's cancellation report. A busy Saturday would have manufactured a cancellation problem the business did not have. The regression test asserts the absence directly — after a staff move, the count of cancellations is zero.
+
+**Nothing was rebuilt. The gap was a missing caller.** Four separate features each deferred this screen to the next one, and each deferral was individually reasonable — the write path had nowhere to live, then the grid had nowhere to send it, then the detail panel ran out of room. It took an operational review, from the perspective of someone running a front desk rather than reading a backlog, to notice that the circle had closed with nothing inside it.
+
+**Two things were deliberately NOT built, and that is the more interesting decision.** The write path documents, in its own header, that changing an appointment's stylist and overriding the engine are both out of scope, each with a stated reason. Both would be useful here. Both were left closed and written up as an open question instead — because a decision about a write path that six other paths depend on is not one to take while building a screen, and this project has twice paid for answering that kind of question up front. The write-up includes the finding that motivates it: the sick-stylist case genuinely cannot be assembled from the two existing operations, because each fails on an intermediate state while the destination stands free the whole time.

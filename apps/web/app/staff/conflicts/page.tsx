@@ -57,7 +57,6 @@ export default async function ConflictsPage({ searchParams }: PageProps<'/staff/
         <p className="text-zinc-600 dark:text-zinc-400">Nothing stranded on {readableDay(day)}.</p>
       ) : (
         <ConflictList
-          day={day}
           conflicts={conflicts}
           providers={providers.map((p) => ({ id: p.id, name: p.displayName }))}
         />
