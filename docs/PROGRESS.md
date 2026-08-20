@@ -984,7 +984,7 @@ A-024 committed at 9e82f5c
 
 ## A-031 — resource pools, the axis A-030 made load-bearing (RES-01..05, D-30)
 
-**Built:** Migration `20260820011500_resource_holds` — `Service.requiredResourceTypeId` (nullable), `Appointment.resourceId` (nullable), the `AppointmentResourceHold` child table, the `appointment_resource_no_overlap` exclusion constraint, and the trigger that writes the hold. `packages/db/booking/resources.ts` chooses the chair; `book.ts` calls it; `NoResourceFree` reports a full room; `isSlotTakenError` now recognises both exclusion constraints. The setup seed creates a `Chair` type with four chairs and points every service at it.
+**Built:** (commit `c6435de`) Migration `20260820011500_resource_holds` — `Service.requiredResourceTypeId` (nullable), `Appointment.resourceId` (nullable), the `AppointmentResourceHold` child table, the `appointment_resource_no_overlap` exclusion constraint, and the trigger that writes the hold. `packages/db/booking/resources.ts` chooses the chair; `book.ts` calls it; `NoResourceFree` reports a full room; `isSlotTakenError` now recognises both exclusion constraints. The setup seed creates a `Chair` type with four chairs and points every service at it.
 
 **Decided:** **The hold is a separate table, not a column on `AppointmentBlock`** — and this was corrected mid-item, after the option presented at decision time said otherwise. A block is a span the PROVIDER is working; a chair is held for the whole envelope, gaps included. Hanging the chair off blocks would have released it during the developing hour, which is the one interval the client is most certainly sitting in it. D-30's decision was unaffected; only the table it hangs on, and the correction is recorded inline in the decision.
 
