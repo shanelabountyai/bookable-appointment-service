@@ -118,6 +118,14 @@ The full correctness specification, function signature, and ~90-case edge matrix
 - **SEG-04** The slot engine consumes provider time from **active segments only**, so a candidate that lands entirely inside another appointment's gap is offered. The guard rail is absolute and belongs to the database, not the engine: **an active segment can never overlap another active segment for the same provider.** Placing a booking in a gap never moves the segments around it.
 - **SEG-05** Acceptance scenario (the operator's own, `docs/reviews/01-operator-review.md` §2): a colour booked at 10:00 as 45 active / 35 gap / 30 active leaves a genuine 35-minute provider window at 10:45; a 30-minute blow-dry is offered there, is bookable, and the colour's second active segment does not move.
 
+### RES — Resource pools (Phase 3, D-12/D-20)
+
+- **RES-01** A `ResourceType` ("chair", "backwash", "colour room") has some number of `Resource` rows. A service declares how many of which type it needs; most need exactly one chair, a few need none (a phone consult) and a few need a second type.
+- **RES-02** A resource is held for the appointment's **whole envelope**, gaps included — that is the entire difference from the provider axis. A client developing colour is not using her stylist and *is* using a chair. Provider occupancy is the `AppointmentBlock` set (D-29); resource occupancy is the single `[blockedStart, blockedEnd)` span.
+- **RES-03** Booking is refused when no resource of a required type is free for that envelope, by the same mechanism as double-booking — the database, not an application check — and reported to the caller as the same "somebody just took it" outcome the provider axis already produces.
+- **RES-04** Staff may override a resource shortage the way they may override a double-book (BOOK-05), with a reason and an audit entry, because "we'll do her at the backwash" is a real answer and the software refusing it outright would push the desk back to paper.
+- **RES-05** Acceptance scenario, and the one that motivates the whole epic: in the 4-chair sample salon with 4 stylists, four colours developing at once plus four blow-dries in their gaps is **eight clients in four chairs**. Today every one of those bookings is accepted. With RES-03 the fifth is refused.
+
 ### NOTIF — Notifications
 
 - **NOTIF-01** One outbox, one seam: every send is an outbox row (recipient, template, payload, dedupe key, status) written through a `ChannelAdapter`; v1 ships the logging adapter only. **No module hand-rolls its own sending** — the rental R-030 rule, enforced from item one because the confirmation email exists before the reminder job does.

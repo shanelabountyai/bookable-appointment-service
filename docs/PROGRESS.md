@@ -967,3 +967,17 @@ A-024 committed at 9e82f5c
 - **Two fixes were tried and REVERTED, which is worth recording.** An advisory lock inside the block trigger removed the deadlock but inverted the ordering for writers that deliberately bypass the application lock, breaking the staff-override race (1f). Narrowing D-24's lock key from (provider, business day) to the provider alone — attractive because a day-keyed lock never serializes an appointment running past midnight against one keyed to the adjacent day — broke 1f on its own. Both were backed out. The midnight-crossing observation is real and still unaddressed; it is a gap in D-24, not in A-030, and it does not belong in a fix for a deadlock.
 
 **Left behind:** D-24's lock key is still (provider, business day), so two overlapping bookings either side of midnight serialize on different keys. The exclusion constraint still refuses them, so this is not a correctness hole — it is a case where the loser is refused by the constraint rather than by the engine re-check, and therefore where the 23P01 path matters. Worth its own row if the salon ever works past midnight.
+
+## Scoping pass — resource pools (RES-01..05, A-031, OQ-8)
+
+**Built:** No code. A `RES` epic in `docs/prds/00-master-prd.md` §5, one backlog row (A-031), and one open question (OQ-8).
+
+**Decided:** **A-030 invalidated the reasoning behind D-20, and that is why this row exists.** D-20 ruled the resource axis out of v1 on a single premise — "for a 4-chair salon with 4 stylists the pool never binds, so the axis would be enforcement theatre". Gap booking exists *precisely* so a client occupies a chair while her provider works on someone else, so the pool now binds with the roster unchanged. This is a consequence of shipped work, not a new feature request.
+
+**Where the interesting decisions went:**
+- **The evidence is a passing test, not an argument.** `apps/web/e2e/segments.spec.ts` books a second client into Dana's column while the first is developing — two chairs, one stylist. Four stylists doing that is eight clients in four chairs, every booking accepted.
+- **The seed's `CHAIR_COUNT` guard now protects the wrong thing.** It asserts the roster does not exceed the chairs, citing D-20. That was the right guard for the old premise and cannot see the new one; A-031 replaces it.
+- **Provider occupancy and resource occupancy are different sets, and that is the whole epic.** A block is a span the provider is working; a chair is held for the entire envelope, gaps included. RES-02 says so explicitly because it is the one thing a reader will assume wrong.
+- **OQ-8 turns on whether the database may enforce it at all.** A Postgres exclusion constraint cannot express "at most N overlapping" — that is cardinality, not overlap. Naming N chairs converts one cardinality constraint into N overlap constraints and inherits everything D-2 gives the provider axis; a bare capacity number is what an owner would ask for in words and is the one shape that cannot have that guarantee. Worth the owner's name on it before the write path is built, for exactly the reason OQ-7 was.
+
+**Left behind:** A-031 unstarted and gated on OQ-8. The over-capacity condition is currently undetectable in the product — not merely unenforced — so until A-031 lands, nothing surfaces it to the desk.
