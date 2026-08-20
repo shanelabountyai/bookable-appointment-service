@@ -25,7 +25,9 @@ import { effectiveDurationMinutes } from '../../core/settings';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { findAbsences, resolveDayWindows } from '../availability';
 import { findRunningLate, runningLateInterval } from '../day/running-late';
+import { requiredResourceTypeId } from '../booking/resources';
 import { findBusyAppointments } from './busy-set';
+import { findRoomFullIntervals } from './resource-load';
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
@@ -130,6 +132,7 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
     : await loadBusy(db, {
         businessId: args.businessId,
         providerId: args.providerId,
+        serviceIds: args.serviceIds,
         day,
         zone,
         windows: resolved.windows,
@@ -329,6 +332,7 @@ async function loadBusy(
     day: ReturnType<typeof calendarDay>;
     zone: ReturnType<typeof zoneId>;
     businessId: string;
+    serviceIds: readonly string[];
     windows: SlotQuery['windows'];
     service: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number };
     excludeAppointmentId: string | null;
@@ -343,7 +347,13 @@ async function loadBusy(
   const windowStart = toDate(instant(dayStart - args.service.bufferBeforeMinutes * MIN - 24 * 60 * MIN));
   const windowEnd = toDate(instant(dayEnd + args.service.bufferAfterMinutes * MIN + 24 * 60 * MIN));
 
-  const [appointments, absences, late] = await Promise.all([
+  // RES-03. The chair the visit would need, and therefore whether the ROOM can
+  // take it — a question about everybody's appointments, not this provider's.
+  // Null for a service that needs no resource (a phone consult), which is the
+  // case that costs nothing: no type, no query, no interval.
+  const resourceTypeId = await requiredResourceTypeId(db, args.serviceIds);
+
+  const [appointments, absences, late, roomFull] = await Promise.all([
     findBusyAppointments(db, {
       providerId: args.providerId,
       windowStart,
@@ -355,6 +365,15 @@ async function loadBusy(
     // was set for — a delta does not survive to tomorrow, and nothing has to
     // remember to clear it overnight.
     findRunningLate(db, { businessId: args.businessId, day: args.day }),
+    resourceTypeId
+      ? findRoomFullIntervals(db, {
+          businessId: args.businessId,
+          resourceTypeId,
+          windowStart,
+          windowEnd,
+          excludeAppointmentId: args.excludeAppointmentId,
+        })
+      : Promise.resolve([]),
   ]);
 
   const overrun = late
@@ -382,6 +401,18 @@ async function loadBusy(
     // `provider-running-late`, so the day view can say "Dana is behind"
     // rather than the flatly wrong "she is unavailable".
     ...overrun,
+    // RES-03 — the room, not the stylist. Its own kind for the same reason
+    // every other kind has one: "she already has a client then" is the wrong
+    // thing to tell a desk staring at an empty stylist and a full room, and a
+    // screen that explains itself wrongly stops being read. The id is
+    // synthetic because there is nothing a human could open — the conflict is
+    // everybody's appointments at once, not one of them.
+    ...roomFull.map((span, i) => ({
+      start: span.start,
+      end: span.end,
+      kind: 'resource-full' as const,
+      id: `resource-full:${resourceTypeId}:${i}`,
+    })),
   ] satisfies BusyInterval[];
 }
 

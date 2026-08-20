@@ -36,7 +36,7 @@ import { buildSlotQuery } from '../scheduling';
 import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { BookingRejected, NoResourceFree, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
-import { findFreeResource, requiredResourceTypeId } from './resources';
+import { findFreeResource, requiredResourceTypeId, resourceTypeName } from './resources';
 
 const MIN = 60_000;
 
@@ -191,6 +191,17 @@ export async function bookAppointment(
             reasons.includes('overlaps-time-off') ||
             reasons.includes('overlaps-block');
           if (occupied) throw new SlotTaken([...result.slots]);
+          // A-032, RES-03. The room is full and the STYLIST IS FREE, which is
+          // neither of the two answers above: nobody took this slot, and it
+          // was genuinely on offer. Its own error because its own answer —
+          // staff get RES-04's override, the customer gets another time with
+          // the same stylist. `findFreeResource` throws the identical error
+          // further down when a concurrent booking takes the last chair
+          // between this check and the write; the engine catching it here is
+          // what stops the screen offering a time it will then refuse.
+          if (reasons.includes('no-resource-free')) {
+            throw new NoResourceFree(await resourceTypeName(tx, input.serviceIds));
+          }
           throw new SlotNotOffered(reasons, [...result.slots]);
         }
 
@@ -332,13 +343,7 @@ async function writeAppointment(
       start: blockedStart,
       end: blockedEnd,
     });
-    if (!resourceId) {
-      const type = await tx.resourceType.findUniqueOrThrow({
-        where: { id: resourceTypeId },
-        select: { name: true },
-      });
-      throw new NoResourceFree(type.name);
-    }
+    if (!resourceId) throw new NoResourceFree(await resourceTypeName(tx, input.serviceIds));
   }
 
   const appointment = await tx.appointment.create({

@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
 import {
   BookingRejected,
+  NoResourceFree,
   SlotNotOffered,
   SlotTaken,
   bookAppointment,
@@ -209,6 +210,19 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
         message: 'That time is not free.',
         canOverride: true,
         refusedReasons: error instanceof SlotNotOffered ? [...error.reasons] : ['overlaps-booking'],
+      };
+    }
+    // RES-04 — the room is full, and that is a decision, not a refusal.
+    // "We'll do her at the backwash" is a real answer, so the shortage comes
+    // back the same way a double-book does: named, with the override one click
+    // away. An override holds no chair at all (D-30), which is what makes the
+    // retry succeed and what makes it worth recording.
+    if (error instanceof NoResourceFree) {
+      return {
+        ok: false,
+        message: 'That time is not free.',
+        canOverride: true,
+        refusedReasons: ['no-resource-free'],
       };
     }
     if (error instanceof BookingRejected) return { ok: false, message: error.message };

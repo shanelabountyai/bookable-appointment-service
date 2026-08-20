@@ -380,6 +380,7 @@ const REASONS: Record<string, string> = {
   'overlaps-buffer': 'it runs into another appointment’s buffer',
   'overlaps-time-off': 'she is on time off',
   'overlaps-block': 'that time is blocked out',
+  'no-resource-free': 'every chair is taken then — she is free, the room is not',
   'in-the-past': 'that time has passed',
   'inside-lead-time': 'inside the booking lead time',
 };

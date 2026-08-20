@@ -16,7 +16,7 @@
 import { type CalendarDay, addDays, calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
-import { SelfServeBlocked, SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
+import { NoResourceFree, SelfServeBlocked, SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
 import { isPlausiblePhone, normalizePhone } from '@bookable/core/clients';
@@ -247,7 +247,14 @@ export async function confirmAppointment(input: {
         message: 'We can’t book this one online. Please call the salon and we’ll get you in.',
       };
     }
-    if (error instanceof SlotTaken || error instanceof SlotNotOffered) {
+    // `NoResourceFree` (RES-03) belongs in this branch and NOT one of its own,
+    // because the customer's answer is identical: a different time, and the
+    // refreshed list beside it. She must not be told that the SALON is full
+    // rather than the stylist — that is an occupancy fact about the whole
+    // business, and D-10's lexicon keeps it inside (spec §1.3). Before this
+    // caught it the error escaped the action entirely and she saw a crash on
+    // a time the page had just offered her.
+    if (error instanceof SlotTaken || error instanceof SlotNotOffered || error instanceof NoResourceFree) {
       const alternatives = await listTimesOn(input.serviceId, input.providerId, input.day).catch(() => []);
       return {
         ok: false,

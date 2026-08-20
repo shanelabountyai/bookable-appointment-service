@@ -1190,3 +1190,17 @@ the reason the phone number is not unique in the first place.
 **"No more than four at once" is the thing a database cannot enforce, so it wasn't built that way.** An exclusion constraint answers overlap questions, not counting questions — a capacity number could only have been implemented as read-the-count-then-write, which two simultaneous bookings defeat, and which is the precise pattern this system refuses to rely on for double-booking. Naming four chairs converts one counting question into four overlap questions, and those the database answers absolutely — against the application, against a script, against someone typing SQL directly. A test proves that last one by bypassing the application entirely and being refused.
 
 **Staff can still override, and it costs a chair nothing.** An override holds no chair at all, deliberately, on the same principle as every other override in the system: the constraint exists to prevent accidents, never to refuse a human a decision they're making knowingly. "We'll do her at the backwash" stays a valid answer.
+
+---
+
+## The full room stops being a surprise at the checkout screen
+
+**The previous feature made the room countable; this one makes it visible before somebody commits.** Chair capacity was enforced by the database from the moment it shipped — correctly, absolutely, and *at the last possible second*. A customer picked a time the page had just offered her, pressed the button, and the booking was refused because every chair was taken. The stylist was free; the room was not; and nothing on the way in had said so.
+
+**A "how many are left?" question was turned into a "when is it full?" answer, so a pure function could stay pure.** The scheduling engine takes busy intervals and nothing else — it has no concept of a chair, and teaching it one would have meant giving it a counting problem and a database. Instead the adapter sweeps the chair holds once and emits the spans where the count of concurrent holds reaches the number of chairs. Those go in as ordinary busy intervals, and the engine subtracts them exactly the way it subtracts a lunch break. The engine's code changed by one line: a new interval kind reports a new reason.
+
+**The reason it reports is the point.** "She already has a client then" is *false* when the stylist is idle and the room is full, and a screen that explains itself wrongly is one staff stop reading. So a full room is its own reason with its own words — the desk is told the room is full, is offered the override that exists precisely for it, and the customer is told only that the time has gone, with the times that remain. Which chairs are occupied and how full the salon is are facts about the business, and they stay inside it.
+
+**The refusal path stayed, and that is deliberate.** Two people booking the last chair at the same moment will still see one of them refused by the database, because the check that filters the list and the constraint that guarantees the chair are — and must be — different mechanisms. What changed is that the refusal is now the rare race it was designed to be, instead of the ordinary Saturday experience.
+
+**And it no longer crashes.** Before this, the full-room refusal escaped the customer's booking action entirely and rendered an error page. That was a live defect on the revenue path, found by an operational review rather than by a test, which is its own lesson: the write path was right and nobody had walked the screen.

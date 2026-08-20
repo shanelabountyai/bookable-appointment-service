@@ -47,12 +47,20 @@ export interface BusyInterval {
   readonly start: Instant;
   readonly end: Instant;
   /**
+   * `resource-full` is NOT this provider's calendar at all — it is an interval
+   * in which every chair of the type this visit needs is already held by
+   * SOMEBODY (RES-03, D-30). The provider is free and the room is not, which is
+   * exactly the state A-030 created: a client occupies a chair through her
+   * developing hour while her stylist works on someone else. Derived by the
+   * adapter (A-026) the same way the overrun below is, so the engine stays a
+   * pure function of intervals and never learns what a chair is.
+   *
    * `running-late` is NOT an absence — it is the provider's current overrun,
    * injected by the adapter (A-026) from the per-provider-per-day delta
    * (D-22). It occupies time that the book still shows as free, which is the
    * single thing a paper day-sheet does that software usually cannot.
    */
-  readonly kind: 'booking' | 'time_off' | 'ad_hoc_block' | 'running-late';
+  readonly kind: 'booking' | 'time_off' | 'ad_hoc_block' | 'running-late' | 'resource-full';
   readonly id: string;
 }
 
@@ -121,6 +129,11 @@ export type ExclusionReason =
   /** The provider is running behind and this candidate falls inside the
    *  overrun (D-22). Distinct from time off for the same reason. */
   | 'provider-running-late'
+  /** Every resource of the type this visit needs is held for this candidate's
+   *  envelope (RES-03). NOT `overlaps-booking`: the provider is free, so the
+   *  honest answer to a customer is a different time with the same stylist,
+   *  and the honest answer to staff is "the room is full — override?" (RES-04). */
+  | 'no-resource-free'
   | 'in-the-past'
   | 'inside-lead-time'
   | 'nonexistent-local-time'

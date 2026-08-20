@@ -63,3 +63,15 @@ export async function findFreeResource(
   });
   return free?.id ?? null;
 }
+
+/**
+ * The type's name, for the sentence a human reads ("Every chair is taken for
+ * that time"). Only ever called on the refusal path, so the extra read costs
+ * nothing on the path that matters.
+ */
+export async function resourceTypeName(db: Db, serviceIds: readonly string[]): Promise<string> {
+  const id = await requiredResourceTypeId(db, serviceIds);
+  if (!id) return 'resource';
+  const type = await db.resourceType.findUnique({ where: { id }, select: { name: true } });
+  return type?.name ?? 'resource';
+}
