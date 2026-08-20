@@ -957,7 +957,7 @@ A-024 committed at 9e82f5c
 
 ## A-030 follow-up — the deadlock CI caught, and the diagnostic that named it
 
-**Built:** No schema change. Race test 1d rewritten from a two-writer race into a scripted single-writer test; nothing else.
+**Built:** (commit `815183b`) No schema change. Race test 1d rewritten from a two-writer race into a scripted single-writer test; nothing else.
 
 **Decided:** **The 2026-08-16 unknown-cause flake is no longer unknown.** That test failed once under `TZ=Pacific/Kiritimati`, did not reproduce in 23 runs, and was deliberately left recorded as UNKNOWN rather than "fixed" on a plausible story — with two `console.log` lines added so a repeat would be a diagnosis instead of a third investigation. It repeated on the A-030 push, in CI, and printed `40P01 deadlock detected`. The diagnostic paid for itself exactly as intended, and it stays.
 
