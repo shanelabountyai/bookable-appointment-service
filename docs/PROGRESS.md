@@ -970,7 +970,7 @@ A-024 committed at 9e82f5c
 
 ## Scoping pass — resource pools (RES-01..05, A-031, OQ-8)
 
-**Built:** No code. A `RES` epic in `docs/prds/00-master-prd.md` §5, one backlog row (A-031), and one open question (OQ-8).
+**Built:** (commit `de73b79`) No code. A `RES` epic in `docs/prds/00-master-prd.md` §5, one backlog row (A-031), and one open question (OQ-8).
 
 **Decided:** **A-030 invalidated the reasoning behind D-20, and that is why this row exists.** D-20 ruled the resource axis out of v1 on a single premise — "for a 4-chair salon with 4 stylists the pool never binds, so the axis would be enforcement theatre". Gap booking exists *precisely* so a client occupies a chair while her provider works on someone else, so the pool now binds with the roster unchanged. This is a consequence of shipped work, not a new feature request.
 
