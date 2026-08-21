@@ -1071,7 +1071,7 @@ A-024 committed at 9e82f5c
 
 ## A-035 — status controls on the day chip (APPT-03, Goal 3, operator P-4)
 
-**Built:** `availableTransitions` in `packages/core/scheduling/transitions.ts` — the list of legal moves for THIS appointment right now, which the detail panel had been assembling inline — plus `StatusActions`, one client component rendering `changeStatus` where the desk already is. The grid chip carries the next step; the stylist's own list carries the whole set; `DayView` now carries the business cancellation cutoff so the §7 table can be asked properly on the day.
+**Built:** (commit `5529e66`) `availableTransitions` in `packages/core/scheduling/transitions.ts` — the list of legal moves for THIS appointment right now, which the detail panel had been assembling inline — plus `StatusActions`, one client component rendering `changeStatus` where the desk already is. The grid chip carries the next step; the stylist's own list carries the whole set; `DayView` now carries the business cancellation cutoff so the §7 table can be asked properly on the day.
 
 **Decided:** **The operator's complaint was a COST, so the acceptance test is one**: the client is checked in from the day in one interaction, without the page changing. It was four interactions and two page loads, for the most frequent action in the salon — and `provider-day.tsx` rendered "Checked in" as a dead label with no write path behind it.
 
