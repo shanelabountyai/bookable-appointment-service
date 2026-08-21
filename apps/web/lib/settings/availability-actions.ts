@@ -2,10 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { InvalidAvailability } from '@bookable/core/availability';
-import { instantFromIso, toDate } from '@bookable/core/time';
+import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { prisma } from '@bookable/db';
 import {
   type ActorStamp,
+  appointmentsInRange,
   createAdHocBlock,
   createTimeOff,
   createWeeklyWindow,
@@ -18,6 +19,16 @@ import { requireStaff } from '@/lib/auth/session';
 import type { FormState } from './actions';
 
 export type { FormState } from './actions';
+
+/** `addAbsence`'s richer return — AVAIL-05 (operator P-8): the write always
+ *  succeeds; this is the sentence that comes back with it. */
+export interface AbsenceState extends FormState {
+  strandedCount?: number;
+  /** Which day to send the desk to on `/staff/conflicts` — the day the
+   *  absence STARTS on, since that is where the earliest stranded
+   *  appointment can be. */
+  conflictsDay?: string;
+}
 
 /** Every availability write is stamped with who made it (operator R-8). */
 async function actorStamp(): Promise<{ businessId: string; actor: ActorStamp }> {
@@ -112,7 +123,7 @@ export async function removeDateOverride(_prev: FormState, formData: FormData): 
  * "Dana called in sick" must always succeed; surfacing the nine appointments
  * it stranded is A-019's impact preview, not a refusal here.
  */
-export async function addAbsence(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function addAbsence(_prev: AbsenceState, formData: FormData): Promise<AbsenceState> {
   const { businessId, actor } = await actorStamp();
   const providerId = str(formData, 'providerId');
   const kind = str(formData, 'kind');
@@ -134,7 +145,20 @@ export async function addAbsence(_prev: FormState, formData: FormData): Promise<
     return handle(error);
   }
   revalidatePath('/staff/availability');
-  return { ok: true, message: kind === 'ad_hoc_block' ? 'Block added.' : 'Time off added.' };
+
+  // AVAIL-05 (operator P-8): the write above already succeeded unconditionally
+  // — this is the sentence that comes back, never a gate on the write. The
+  // desk (or the owner, editing hours from home on a Sunday) sees the count
+  // AND a way to reach the people, not just a "Time off added." that hides it.
+  const stranded = await appointmentsInRange(prisma, { businessId, providerId, startAt, endAt });
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { timezone: true } });
+
+  return {
+    ok: true,
+    message: kind === 'ad_hoc_block' ? 'Block added.' : 'Time off added.',
+    strandedCount: stranded.length,
+    conflictsDay: toLabel(fromDate(startAt), zoneId(business.timezone)).day,
+  };
 }
 
 export async function removeTimeOff(_prev: FormState, formData: FormData): Promise<FormState> {

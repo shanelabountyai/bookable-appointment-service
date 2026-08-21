@@ -1,5 +1,10 @@
 import AxeBuilder from '@axe-core/playwright';
+import { PrismaClient } from '@bookable/db';
+import { instantFromIso, toDate } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
+
+/** Through the one conversion module, like every other spec (D-3/D-4). */
+const at = (iso: string) => toDate(instantFromIso(iso));
 
 async function signIn(page: import('@playwright/test').Page) {
   await page.goto('/staff/login');
@@ -130,6 +135,64 @@ test.describe('availability (A-007)', () => {
     const row = page.getByRole('listitem').filter({ hasText: 'Dentist' });
     await expect(row).toBeVisible();
     await expect(row.getByText('Time off')).toBeVisible();
+  });
+
+  /**
+   * A-041 (operator P-8). The write ALWAYS succeeds (D-2/A-007) — this test
+   * is about the sentence that comes back with it. The screen's own copy has
+   * promised "which appointments it strands is shown" since A-007; nothing
+   * ever computed it until this row.
+   */
+  test('time off says what it just stranded, and links to the list', async ({ page }) => {
+    await signIn(page);
+    await addProvider(page, 'Dana');
+
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const provider = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.create({
+        data: { businessId: business.id, name: 'Cut', durationMinutes: 45, bufferBeforeMinutes: 0, bufferAfterMinutes: 10, priceCents: 5500 },
+      });
+      const client = await prisma.client.create({ data: { businessId: business.id, name: 'Ada Chen', phone: '5125550101' } });
+      await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: provider.id,
+          clientId: client.id,
+          startAt: at('2026-06-09T15:00:00.000Z'),
+          endAt: at('2026-06-09T15:45:00.000Z'),
+          blockedStart: at('2026-06-09T15:00:00.000Z'),
+          blockedEnd: at('2026-06-09T15:45:00.000Z'),
+          startDay: '2026-06-09',
+          startWallTime: '10:00',
+          status: 'booked',
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          },
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto('/staff/availability');
+    await page.getByRole('link', { name: 'Dana' }).click();
+
+    // Covers the whole morning, including her 10:00.
+    await page.locator('input[name="startAt"]').fill('2026-06-09T09:00:00-05:00');
+    await page.locator('input[name="endAt"]').fill('2026-06-09T12:00:00-05:00');
+    await page.locator('input[name="reason"]').last().fill('Called in sick');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+    // The write is NOT refused (D-2/A-007) — it already happened. This is
+    // what the response says about it.
+    await expect(page.getByText('Time off added.')).toBeVisible();
+    await expect(page.getByText('1 appointment now stranded.')).toBeVisible();
+
+    await page.getByRole('link', { name: 'Deal with them' }).click();
+    await expect(page).toHaveURL(/\/staff\/conflicts\?day=2026-06-09/);
+    await expect(page.getByText('Ada Chen')).toBeVisible();
   });
 
   // D-4: a zoneless payload is undecidable on fall-back day.

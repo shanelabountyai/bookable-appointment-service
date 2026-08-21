@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState } from 'react';
 import {
+  type AbsenceState,
   type FormState,
   addAbsence,
   addWeeklyWindow,
@@ -12,6 +14,7 @@ import {
 } from '@/lib/settings/availability-actions';
 
 const initial: FormState = {};
+const initialAbsence: AbsenceState = {};
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const input = 'rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950';
 const button =
@@ -210,7 +213,7 @@ export interface AbsenceView {
 }
 
 export function Absences({ providerId, absences }: { providerId: string; absences: AbsenceView[] }) {
-  const [state, action, pending] = useActionState(addAbsence, initial);
+  const [state, action, pending] = useActionState(addAbsence, initialAbsence);
   const [, removeAction] = useActionState(removeTimeOff, initial);
 
   return (
@@ -288,6 +291,24 @@ export function Absences({ providerId, absences }: { providerId: string; absence
         </button>
       </form>
       <Errors state={state} />
+      {/* AVAIL-05 (operator P-8): the write above already happened — this is
+          not a confirmation gate, it is the answer to "who did that strand?" */}
+      {state.ok && (
+        <p aria-live="polite" className="text-sm">
+          {state.message}
+          {state.strandedCount ? (
+            <>
+              {' '}
+              <span className="font-medium text-amber-800 dark:text-amber-300">
+                {state.strandedCount} appointment{state.strandedCount === 1 ? '' : 's'} now stranded.
+              </span>{' '}
+              <Link href={`/staff/conflicts?day=${state.conflictsDay}`} className="underline underline-offset-4">
+                Deal with them
+              </Link>
+            </>
+          ) : null}
+        </p>
+      )}
     </section>
   );
 }

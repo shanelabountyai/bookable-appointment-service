@@ -10,6 +10,7 @@ import {
   updateBusinessSettings,
   updateProvider,
 } from '@bookable/db/settings';
+import { type ConflictRow, listDeactivationImpact } from '@/lib/availability/impact-actions';
 import { requireStaff } from '@/lib/auth/session';
 
 export interface FormState {
@@ -88,18 +89,44 @@ export async function renameProvider(_prev: FormState, formData: FormData): Prom
   return { ok: true };
 }
 
+/** `toggleProviderActive`'s richer return — AVAIL-05, operator P-8: a
+ *  deactivation with a book full of appointments used to warn nobody. */
+export interface ProviderToggleState extends FormState {
+  stranded?: ConflictRow[];
+}
+
 /**
  * Deactivate or reactivate.
  *
- * Writes `Provider.active` and nothing else. The AVAIL-05 impact preview — the
- * list of stranded appointments with client phone numbers — is A-019; no
- * appointment can exist until A-009, so a preview here would be untested
- * against an empty set (operator S-2).
+ * A DEACTIVATION with future appointments is a two-step confirm, the same
+ * shape SVC-03 already uses for a service (`DeactivationRequiresConfirm`) —
+ * except this one shows the actual list `listDeactivationImpact` (A-019)
+ * already builds, not just a count, because "40 appointments" and "40
+ * appointments, here they are with phone numbers" are different amounts of
+ * useful. A reactivation, or a deactivation with nothing booked, writes
+ * straight through — there is nothing to confirm.
  */
-export async function toggleProviderActive(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function toggleProviderActive(
+  _prev: ProviderToggleState,
+  formData: FormData,
+): Promise<ProviderToggleState> {
   await requireStaff();
   const id = String(formData.get('providerId') ?? '');
   const active = String(formData.get('active')) === 'true';
+  const confirm = formData.get('confirm') === 'true';
+
+  if (!active && !confirm) {
+    const stranded = await listDeactivationImpact(id);
+    if (stranded.length > 0) {
+      return {
+        errors: {
+          _confirm: `${stranded.length} future appointment${stranded.length === 1 ? '' : 's'} ${stranded.length === 1 ? 'is' : 'are'} booked with her.`,
+        },
+        stranded,
+      };
+    }
+  }
+
   await setProviderActive(prisma, id, active);
   revalidatePath('/staff/providers');
   return { ok: true };

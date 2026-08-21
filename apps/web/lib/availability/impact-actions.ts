@@ -20,6 +20,7 @@ import { transitionAppointment } from '@bookable/db/appointments';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
 import { DELIVERY_WORDS, TEMPLATE_WORDS } from '@/lib/appointments/event-language';
+import { readableDay } from '@/lib/customer-format';
 import { requireStaff } from '@/lib/auth/session';
 
 export interface ImpactState {
@@ -50,8 +51,14 @@ export async function listConflicts(day: string): Promise<ConflictRow[]> {
   return conflicts.map((conflict) => shape(conflict, zone));
 }
 
-/** Operator S-2's deactivation preview, moved out of A-025 because no
- *  appointment could exist there to test it against. */
+/**
+ * Operator S-2's deactivation preview, moved out of A-025 because no
+ * appointment could exist there to test it against — and, per operator P-8,
+ * actually WIRED to something now (A-041). `listConflicts` above is scoped to
+ * one already-known day, so `shape()`'s `when` is bare time; this spans
+ * months, so the day has to be in the label or a Tuesday and a Thursday both
+ * read "14:15".
+ */
 export async function listDeactivationImpact(providerId: string): Promise<ConflictRow[]> {
   const staff = await requireStaff();
   const zone = await businessZone(staff.businessId);
@@ -60,7 +67,10 @@ export async function listDeactivationImpact(providerId: string): Promise<Confli
     providerId,
     from: new Date(),
   });
-  return stranded.map((conflict) => shape(conflict, zone));
+  return stranded.map((conflict) => {
+    const label = toLabel(fromDate(conflict.startAt), zone);
+    return { ...shape(conflict, zone), when: `${readableDay(label.day)} · ${label.time}` };
+  });
 }
 
 /** AVAIL-05's "keep-flagged". */
