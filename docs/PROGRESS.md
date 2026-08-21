@@ -1104,7 +1104,7 @@ A-024 committed at 9e82f5c
 
 ## A-037 — named staff identity (D-9, D-33, APPT-07)
 
-**Built:** (commit `PENDING`) `StaffUser.name`, `pinHash` and `active`, with `email`/`passwordHash` made NULLABLE; an optional `act` inside the signed session cookie; a desk switcher on `apps/web/app/staff/layout.tsx` — the segment's first layout — reading a name and a 4–6 digit PIN; a "Who works here" roster screen; and `AppointmentEventRow.actorName`, resolved in one query per log, so APPT-07's sentences say "by Priya".
+**Built:** (commit `46390db`) `StaffUser.name`, `pinHash` and `active`, with `email`/`passwordHash` made NULLABLE; an optional `act` inside the signed session cookie; a desk switcher on `apps/web/app/staff/layout.tsx` — the segment's first layout — reading a name and a 4–6 digit PIN; a "Who works here" roster screen; and `AppointmentEventRow.actorName`, resolved in one query per log, so APPT-07's sentences say "by Priya".
 
 **Decided:** **D-33 — the PIN switches identity INSIDE an already-authenticated session; it is not a login.** The two alternatives were a PIN replacing the password outright and a full credential each with no PIN. The first puts a 10,000-guess door on a public form that `staff.ts` already records as having no rate limiter; the second is correct and nobody would use it, which is exactly why four people share one login today. The chosen shape leaves the authentication boundary untouched and makes only the *switch* cheap.
 
