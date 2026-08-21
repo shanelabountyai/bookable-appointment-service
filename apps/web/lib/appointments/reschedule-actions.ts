@@ -25,7 +25,7 @@ import {
   rescheduleAppointment,
   rescheduleOptions,
 } from '@bookable/db/appointments';
-import { BookingRejected, SlotNotOffered, SlotTaken } from '@bookable/db/booking';
+import { BookingRejected, NoResourceFree, SlotNotOffered, SlotTaken } from '@bookable/db/booking';
 import type { TransitionRefusal } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { instantFromIso, toDate } from '@bookable/core/time';
@@ -172,6 +172,13 @@ export async function moveAppointment(_previous: MoveState, formData: FormData):
 function staffWordingFor(error: unknown): string {
   if (error instanceof SlotTaken) {
     return 'That time went while you were deciding — her appointment is unchanged. Pick another.';
+  }
+  // A-034/RES-04. The stylist is free and the ROOM is not, which is a
+  // different decision from "that time went": the desk can override, or seat
+  // her somewhere else. Saying "taken" would send them hunting for an
+  // appointment that is not there.
+  if (error instanceof NoResourceFree) {
+    return `Every ${error.resourceTypeName} is taken at that time — she is free, the room is not.`;
   }
   if (error instanceof AppointmentAlreadyMoved) {
     return 'Somebody else moved this one just now. Reload to see where it went.';

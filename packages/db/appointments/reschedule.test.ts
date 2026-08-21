@@ -13,7 +13,7 @@ import { customerTokenActor, staffActor } from '../../core/auth';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
-import { SlotNotOffered, SlotTaken, bookAppointment } from '../booking';
+import { NoResourceFree, SlotNotOffered, SlotTaken, bookAppointment } from '../booking';
 import { issueManageToken, verifyManageToken } from './manage-token';
 import { AppointmentAlreadyMoved, moveLockKeys, rescheduleAppointment } from './reschedule';
 
@@ -520,5 +520,94 @@ describe('A-038 — moving between providers', () => {
     expect(moveLockKeys({ source: dana, destination: priya })).toEqual(
       moveLockKeys({ source: priya, destination: dana }),
     );
+  });
+});
+
+/**
+ * A-034 — THE CHAIR FOLLOWS THE MOVE (RES-03, D-30).
+ *
+ * Chairs are added HERE rather than in the shared fixture on purpose: every
+ * test above runs against a business with no resources at all, which is the
+ * case that must keep behaving exactly as it did.
+ */
+describe('A-034 — the chair follows the move', () => {
+  let chairs: Record<string, string> = {};
+
+  beforeEach(async () => {
+    const chairType = await prisma.resourceType.create({ data: { businessId, name: 'Chair' } });
+    chairs = {};
+    for (const name of ['Chair 1', 'Chair 2']) {
+      const chair = await prisma.resource.create({
+        data: { businessId, resourceTypeId: chairType.id, name },
+      });
+      chairs[name] = chair.id;
+    }
+    await prisma.service.update({
+      where: { id: serviceId },
+      data: { requiredResourceTypeId: chairType.id },
+    });
+  });
+
+  const chairOf = async (id: string) =>
+    (await prisma.appointment.findUniqueOrThrow({ where: { id }, select: { resourceId: true } })).resourceId;
+
+  it('keeps the chair she is already in when it is still free', async () => {
+    const appointment = await book();
+    expect(await chairOf(appointment.id)).toBe(chairs['Chair 1']);
+
+    await move(appointment.id, at('2026-06-09T15:00:00-05:00'));
+
+    expect(await chairOf(appointment.id)).toBe(chairs['Chair 1']);
+  });
+
+  /**
+   * The defect this row exists for. Before A-034 the move carried `resourceId`
+   * forward unchanged, so this landed on Priya's client's chair and the
+   * exclusion constraint refused it AT THE WRITE — reported as `SlotTaken` on
+   * a time the engine had just offered, for a stylist who was free.
+   */
+  it('takes a different chair when somebody who is NOT moving holds hers', async () => {
+    const appointment = await book();
+    const priyas = await book({ providerId: otherProviderId, startAt: at('2026-06-09T12:00:00-05:00') });
+    expect(await chairOf(priyas.id)).toBe(chairs['Chair 1']);
+
+    await move(appointment.id, at('2026-06-09T12:00:00-05:00'));
+
+    expect(await chairOf(appointment.id)).toBe(chairs['Chair 2']);
+    // And the client who never moved is exactly where she was.
+    expect(await chairOf(priyas.id)).toBe(chairs['Chair 1']);
+  });
+
+  /**
+   * RES-03's whole point: the stylist is free and the ROOM is not, so the
+   * answer is neither "she is busy" nor "that time went". Staff reach RES-04's
+   * override from this error and from no other.
+   */
+  it('refuses a full room with NoResourceFree, not SlotTaken', async () => {
+    const appointment = await book();
+    await book({ providerId: otherProviderId, startAt: at('2026-06-09T12:00:00-05:00') });
+    // Chair 2 is out of service, so the room is one chair and Priya has it.
+    await prisma.resource.update({ where: { id: chairs['Chair 2']! }, data: { active: false } });
+
+    await expect(move(appointment.id, at('2026-06-09T12:00:00-05:00'))).rejects.toBeInstanceOf(NoResourceFree);
+    // Unchanged: she still has her appointment and her chair.
+    expect(await chairOf(appointment.id)).toBe(chairs['Chair 1']);
+  });
+
+  it('does not give a chair to an appointment that deliberately holds none', async () => {
+    // A staff override holds no chair (D-30) — and a move is not the place to
+    // start holding one.
+    const override = await book({
+      startAt: at('2026-06-09T18:30:00-05:00'),
+      isOverride: true,
+      overrideReason: 'client is a regular, staying late',
+    });
+    expect(await chairOf(override.id)).toBeNull();
+
+    // Somewhere the engine WILL offer: a reschedule cannot override (that half
+    // of OQ-9 is still closed), so the destination has to be an ordinary time.
+    await move(override.id, at('2026-06-09T15:00:00-05:00'));
+
+    expect(await chairOf(override.id)).toBeNull();
   });
 });

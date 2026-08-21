@@ -41,27 +41,86 @@ export async function requiredResourceTypeId(db: Db, serviceIds: readonly string
  */
 export async function findFreeResource(
   db: Db,
-  args: { businessId: string; resourceTypeId: string; start: Date; end: Date },
+  args: {
+    businessId: string;
+    resourceTypeId: string;
+    start: Date;
+    end: Date;
+    /**
+     * A-034. An appointment being MOVED must not count its own chair against
+     * its own destination — the same parameter, for the same reason, as the
+     * one the busy set carries (spec §4.6). Without it, every move inside a
+     * busy hour fails on the chair the mover is in the act of vacating.
+     */
+    excludeAppointmentId?: string | null;
+    /**
+     * A-034. Keep the chair she is already in, when it is still free at the
+     * destination. Cosmetic on a single reschedule; on a column push it is the
+     * difference between a uniform shift that keeps its seating and one that
+     * reshuffles the room and then runs out of chairs.
+     */
+    preferResourceId?: string | null;
+  },
 ): Promise<string | null> {
-  const free = await db.resource.findFirst({
-    where: {
-      businessId: args.businessId,
-      resourceTypeId: args.resourceTypeId,
-      active: true,
-      holds: {
-        none: {
-          status: { in: [...ACTIVE_STATUSES] },
-          // Instant-overlap, never a date filter — the same predicate the busy
-          // set uses, and wrong in the same way if written as `date(start) = day`.
-          blockedStart: { lt: args.end },
-          blockedEnd: { gt: args.start },
-        },
+  const free = {
+    businessId: args.businessId,
+    resourceTypeId: args.resourceTypeId,
+    active: true,
+    holds: {
+      none: {
+        status: { in: [...ACTIVE_STATUSES] },
+        // Instant-overlap, never a date filter — the same predicate the busy
+        // set uses, and wrong in the same way if written as `date(start) = day`.
+        blockedStart: { lt: args.end },
+        blockedEnd: { gt: args.start },
+        ...(args.excludeAppointmentId ? { appointmentId: { not: args.excludeAppointmentId } } : {}),
       },
     },
-    orderBy: { name: 'asc' },
-    select: { id: true },
+  } satisfies Prisma.ResourceWhereInput;
+
+  if (args.preferResourceId) {
+    const kept = await db.resource.findFirst({
+      where: { ...free, id: args.preferResourceId },
+      select: { id: true },
+    });
+    if (kept) return kept.id;
+  }
+
+  const first = await db.resource.findFirst({ where: free, orderBy: { name: 'asc' }, select: { id: true } });
+  return first?.id ?? null;
+}
+
+/**
+ * The chair an appointment should hold AT ITS DESTINATION (A-034, RES-03).
+ *
+ * The rule, stated once because three write paths now depend on it: **a move
+ * re-picks the chair it is already holding, and a move never starts or stops
+ * holding one.** An appointment with no chair has none deliberately — a staff
+ * override (D-30), a service that needs no resource, a business with no
+ * resources at all — and a move is not the place to change that.
+ *
+ * `null` means every chair of the type is taken for the destination envelope.
+ * What that MEANS is the caller's to decide: a reschedule refuses with
+ * `NoResourceFree`, a column push leaves that one behind (D-26).
+ */
+export async function chairForMove(
+  db: Db,
+  args: { businessId: string; appointmentId: string; resourceId: string; start: Date; end: Date },
+): Promise<string | null> {
+  const current = await db.resource.findUnique({
+    where: { id: args.resourceId },
+    select: { resourceTypeId: true },
   });
-  return free?.id ?? null;
+  if (!current) return null;
+
+  return findFreeResource(db, {
+    businessId: args.businessId,
+    resourceTypeId: current.resourceTypeId,
+    start: args.start,
+    end: args.end,
+    excludeAppointmentId: args.appointmentId,
+    preferResourceId: args.resourceId,
+  });
 }
 
 /**

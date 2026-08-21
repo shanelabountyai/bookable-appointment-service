@@ -397,3 +397,51 @@ describe('AVAIL-05 — reassigning', () => {
     expect(rows).toHaveLength(2);
   });
 });
+
+/**
+ * A-034 — THE THIRD WRITE PATH, AND WHY IT NEEDED NO CHANGE.
+ *
+ * The backlog row named `reassignAppointment` alongside the reschedule and the
+ * column push, on the ground that all three carry `resourceId` forward
+ * unchanged. Carrying it forward is only a defect when the ENVELOPE moves: a
+ * reassign changes the provider and nothing else, so the hold the trigger
+ * rewrites is the identical chair over the identical range, and re-running the
+ * chooser here could only ever churn a client into a different chair for no
+ * reason. This test is the claim, so a later change that makes a reassign move
+ * the time fails here rather than at a customer's chair.
+ */
+describe('A-034 — a reassign moves no chair, because it moves no time', () => {
+  let chairId: string;
+
+  beforeEach(async () => {
+    const chairType = await prisma.resourceType.create({ data: { businessId, name: 'Chair' } });
+    chairId = (
+      await prisma.resource.create({ data: { businessId, resourceTypeId: chairType.id, name: 'Chair 1' } })
+    ).id;
+    await prisma.service.update({ where: { id: cutId }, data: { requiredResourceTypeId: chairType.id } });
+  });
+
+  it('keeps the chair and its hold exactly where they were', async () => {
+    const appointment = await book('2026-06-09T10:00:00-05:00');
+    const before = await prisma.appointmentResourceHold.findUniqueOrThrow({
+      where: { appointmentId: appointment.id },
+    });
+    expect(before.resourceId).toBe(chairId);
+
+    const outcome = await reassignAppointment(prisma, {
+      businessId,
+      appointmentId: appointment.id,
+      toProviderId: priyaId,
+      actor: ACTOR,
+      reason: 'Dana off sick',
+    });
+
+    expect(outcome.ok).toBe(true);
+    const after = await prisma.appointmentResourceHold.findUniqueOrThrow({
+      where: { appointmentId: appointment.id },
+    });
+    expect(after.resourceId).toBe(chairId);
+    expect(after.blockedStart.toISOString()).toBe(before.blockedStart.toISOString());
+    expect(after.blockedEnd.toISOString()).toBe(before.blockedEnd.toISOString());
+  });
+});

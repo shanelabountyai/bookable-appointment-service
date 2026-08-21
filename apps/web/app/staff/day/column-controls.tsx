@@ -127,6 +127,7 @@ export function ColumnControls({
                           than one that did not. */}
                       {row.problem === 'past-closing' ? ' — stays: would run past closing' : ''}
                       {row.problem === 'blocked-by-one-that-stays' ? ' — stays: blocked by one that stays' : ''}
+                      {row.problem === 'no-chair-free' ? ' — stays: no chair free at the new time' : ''}
                     </li>
                   ))}
                 </ul>

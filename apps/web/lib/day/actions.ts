@@ -102,7 +102,7 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
     // that only counted successes would leave the stuck clients quietly
     // unhandled — the same failure this whole workflow exists to prevent.
     const stayed = result.leftBehind
-      .map((c) => `${c.clientName ?? 'a walk-in'} (${c.problem === 'past-closing' ? 'would run past closing' : 'blocked by one that stayed'})`)
+      .map((c) => `${c.clientName ?? 'a walk-in'} (${PROBLEMS[c.problem ?? ''] ?? 'blocked by one that stayed'})`)
       .join(', ');
 
     if (result.moved === 0) {
@@ -125,6 +125,20 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
 }
 
 // ─────────────────────────── internals ───────────────────────────
+
+/**
+ * Why a client is staying put, in the salon's words (D-10's staff half).
+ *
+ * A-034 added the third one. "No chair free" is a different next action from
+ * the other two — the desk cannot fix it by shortening the push, it has to
+ * seat her somewhere or move somebody else — so it must not be folded into the
+ * generic "blocked" wording.
+ */
+const PROBLEMS: Record<string, string> = {
+  'past-closing': 'would run past closing',
+  'blocked-by-one-that-stays': 'blocked by one that stayed',
+  'no-chair-free': 'no chair free at the new time',
+};
 
 async function shapeFor(preview: PushPreview, businessId: string): Promise<PreviewShape> {
   const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { timezone: true } });

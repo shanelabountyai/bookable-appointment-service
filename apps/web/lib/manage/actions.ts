@@ -18,7 +18,7 @@ import {
   rescheduleOptions,
   transitionAppointment,
 } from '@bookable/db/appointments';
-import { SlotNotOffered, SlotTaken } from '@bookable/db/booking';
+import { NoResourceFree, SlotNotOffered, SlotTaken } from '@bookable/db/booking';
 import { daysWithAvailability } from '@bookable/db/scheduling';
 import { customerTokenActor } from '@bookable/core/auth';
 import { addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
@@ -274,7 +274,13 @@ function customerWordingFor(error: unknown): string {
       ? 'It is too close to your appointment to change it online. Please call the salon.'
       : 'That is not something we can change online. Please call the salon.';
   }
-  if (error instanceof SlotTaken) return 'Sorry — that time has just been taken. Please pick another.';
+  // A-034/A-032. She is told the time has gone, NOT that the salon is full:
+  // how many chairs the business has and how full it is are occupancy facts
+  // about the business (spec §1.3, D-10). Deliberately the same sentence as
+  // `SlotTaken`, for the same reason the booking flow shares it.
+  if (error instanceof SlotTaken || error instanceof NoResourceFree) {
+    return 'Sorry — that time has just been taken. Please pick another.';
+  }
   if (error instanceof SlotNotOffered) return 'That time is not available. Please pick another.';
   if (error instanceof AppointmentAlreadyMoved) {
     return 'Your appointment has just been changed by the salon. Please reload to see it.';

@@ -46,7 +46,8 @@ import {
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
 import type { Actor } from '../../core/auth';
-import { BookingRejected, SlotNotOffered, SlotTaken } from '../booking/errors';
+import { BookingRejected, NoResourceFree, SlotNotOffered, SlotTaken } from '../booking/errors';
+import { chairForMove, resourceTypeName } from '../booking/resources';
 import { qualifiedForVisit } from '../qualification';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
@@ -153,6 +154,29 @@ export async function rescheduleAppointment(
         const offered = await findOffered(tx, appointment, input, audience, destinationDay.day, toProviderId);
         const endAt = toDate(instant(fromDate(input.startAt) + bookedDurationMinutes(appointment) * MIN));
 
+        // A-034 — THE CHAIR FOLLOWS THE MOVE (RES-03). Carrying `resourceId`
+        // forward unchanged is what made a move able to collide on the resource
+        // axis at the WRITE, on a time the engine had just offered: the chair
+        // she is in is not necessarily free an hour later.
+        //
+        // The engine's re-check above has already refused a destination whose
+        // ROOM is full (`no-resource-free`, mapped in `findOffered`). This is
+        // the narrower question it cannot answer — WHICH chair — and it is also
+        // the backstop for the race between the two, which is why it repeats
+        // the refusal rather than trusting the check.
+        const resourceId = appointment.resourceId
+          ? await chairForMove(tx, {
+              businessId: appointment.businessId,
+              appointmentId: appointment.id,
+              resourceId: appointment.resourceId,
+              start: toDate(instant(fromDate(input.startAt) - appointment.bufferBeforeMinutes * MIN)),
+              end: toDate(instant(fromDate(endAt) + appointment.bufferAfterMinutes * MIN)),
+            })
+          : null;
+        if (appointment.resourceId && !resourceId) {
+          throw new NoResourceFree(await resourceTypeName(tx, appointment.lines.map((l) => l.serviceId)));
+        }
+
         // THE WRITE IS CONDITIONAL ON THE TIME WE DECIDED AGAINST, the same
         // reflex as A-012's status-conditional update and the exclusion
         // constraint itself. Two front-desk taps moving the same appointment
@@ -165,6 +189,10 @@ export async function rescheduleAppointment(
             endAt,
             startDay: destinationDay.day,
             startWallTime: destinationDay.time,
+            // A-034. Unchanged when the same chair is still free, which is the
+            // ordinary case; NULL is never written over a chair she holds,
+            // because `resourceId` is only computed when there was one.
+            ...(appointment.resourceId ? { resourceId } : {}),
             // A-038. One UPDATE moves BOTH axes, which is the entire point:
             // the appointment keeps its id, so her manage link, her history
             // and her event log all follow it across the change.
@@ -281,6 +309,13 @@ async function loadAppointment(db: Prisma.TransactionClient | PrismaClient, id: 
       status: true,
       startAt: true,
       endAt: true,
+      // A-034. The chair, and the padding the hold's envelope is drawn from —
+      // the trigger recomputes `blockedStart`/`blockedEnd` from these, so the
+      // destination envelope has to be computed from the same two numbers or
+      // the chair would be chosen for a range the database does not agree with.
+      resourceId: true,
+      bufferBeforeMinutes: true,
+      bufferAfterMinutes: true,
       client: { select: { email: true, phone: true } },
       business: { select: { timezone: true, cancellationCutoffMinutes: true } },
       lines: {
@@ -356,6 +391,14 @@ async function findOffered(
     reasons.includes('overlaps-time-off') ||
     reasons.includes('overlaps-block');
   if (occupied) throw new SlotTaken([...result.slots]);
+  // A-034/RES-03, the same split book.ts makes: a full ROOM is neither answer
+  // above. The stylist is free and the time was genuinely on offer, so
+  // reporting it as `SlotTaken` would send the desk hunting for an appointment
+  // that does not exist — and staff reach RES-04's override from this error,
+  // not from a generic refusal.
+  if (reasons.includes('no-resource-free')) {
+    throw new NoResourceFree(await resourceTypeName(tx, appointment.lines.map((l) => l.serviceId)));
+  }
   throw new SlotNotOffered(reasons, [...result.slots]);
 }
 

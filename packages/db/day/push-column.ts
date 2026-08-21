@@ -28,6 +28,8 @@ import { type ZoneId, calendarDay, fromDate, instant, toDate, toLabel, weekdayOf
 import { resolveDayWindows } from '../availability';
 import { enqueueNotification } from '../notifications';
 import { repointManageTokens } from '../appointments';
+import { SlotTaken } from '../booking';
+import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 const MIN = 60_000;
@@ -42,7 +44,19 @@ export interface PushCandidate {
    * go — but it is NAMED, which is the whole difference between a partial
    * push and a silently-lossy one.
    */
-  problem?: 'past-closing' | 'blocked-by-one-that-stays';
+  problem?: 'past-closing' | 'blocked-by-one-that-stays' | 'no-chair-free';
+  /**
+   * A-034. The chair it will hold AT THE DESTINATION — the same chair when it
+   * is still free (the ordinary case), a different one when somebody who is
+   * not moving now occupies it. Absent when the appointment holds no chair at
+   * all, which a staff override deliberately does not (D-30).
+   *
+   * Decided HERE rather than in the write loop because A-018's own rule is
+   * that the preview runs the check the action executes: a chair chosen during
+   * the writes could not be shown, and an appointment with no chair available
+   * has to come back as `leftBehind` rather than as an exception (D-26).
+   */
+  toResourceId?: string;
 }
 
 export interface PushPreview {
@@ -90,6 +104,12 @@ export async function previewPush(
       startAt: true,
       endAt: true,
       bufferAfterMinutes: true,
+      // A-034. The chair, and the envelope its hold actually spans — gaps and
+      // both buffers included (RES-02), which is why these are read rather
+      // than re-derived from `startAt`/`endAt` here.
+      resourceId: true,
+      blockedStart: true,
+      blockedEnd: true,
       client: { select: { name: true } },
     },
   });
@@ -127,6 +147,18 @@ export async function previewPush(
     problem?: PushCandidate['problem'];
   }
 
+  /** The chair hold's envelope, before and after the shift (A-034). Distinct
+   *  from the provider spans above: a chair is held through the developing
+   *  gap the stylist is working somebody else in. */
+  const holdBefore = (row: Row) => ({
+    start: fromDate(row.appointment.blockedStart),
+    end: fromDate(row.appointment.blockedEnd),
+  });
+  const holdAfter = (row: Row) => ({
+    start: fromDate(row.appointment.blockedStart) + shift,
+    end: fromDate(row.appointment.blockedEnd) + shift,
+  });
+
   const rows: Row[] = appointments.map((appointment) => ({
     appointment,
     shiftedStart: fromDate(appointment.startAt) + shift,
@@ -151,19 +183,62 @@ export async function previewPush(
    * either refusing or moving less: the desk would see a total failure with no
    * explanation of which pair collided.
    */
-  for (let changed = true; changed; ) {
-    changed = false;
-    const staying = rows.filter((r) => r.problem);
-    for (const row of rows) {
-      if (row.problem) continue;
-      const collides = staying.some(
-        (s) => row.shiftedStart < s.stayingBlockedEnd && s.stayingStart < row.shiftedBlockedEnd,
-      );
-      if (collides) {
-        row.problem = 'blocked-by-one-that-stays';
-        changed = true;
+  const cascade = () => {
+    for (let changed = true; changed; ) {
+      changed = false;
+      const staying = rows.filter((r) => r.problem);
+      for (const row of rows) {
+        if (row.problem) continue;
+        const collides = staying.some(
+          (s) => row.shiftedStart < s.stayingBlockedEnd && s.stayingStart < row.shiftedBlockedEnd,
+        );
+        if (collides) {
+          row.problem = 'blocked-by-one-that-stays';
+          changed = true;
+        }
       }
     }
+  };
+
+  /**
+   * THE CHAIRS, AND WHY THEY ARE PLANNED IN A LOOP WITH THE CASCADE (A-034).
+   *
+   * A chair is a second axis of the same problem, and the two feed each other:
+   * an appointment that cannot find a chair stays put, and one that stays put
+   * blocks anything that would shift onto its PROVIDER time. So the cascade
+   * runs, the chairs are planned against what it decided, and a chair failure
+   * sends both round again. Problems are only ever ADDED, so this settles in at
+   * most one pass per appointment.
+   */
+  const chairRows = () =>
+    rows.map((row) => ({
+      id: row.appointment.id,
+      resourceId: row.appointment.resourceId,
+      staying: row.problem !== undefined,
+      before: holdBefore(row),
+      after: holdAfter(row),
+    }));
+
+  let chairs = new Map<string, string>();
+  if (rows.some((r) => r.appointment.resourceId)) {
+    const room = await loadRoom(db, {
+      businessId: args.businessId,
+      excludeAppointmentIds: rows.map((r) => r.appointment.id),
+      windowStart: Math.min(...rows.flatMap((r) => [holdBefore(r).start, holdAfter(r).start])),
+      windowEnd: Math.max(...rows.flatMap((r) => [holdBefore(r).end, holdAfter(r).end])),
+    });
+
+    for (;;) {
+      cascade();
+      const planned = planChairs(chairRows(), room);
+      if (!('blocked' in planned)) {
+        chairs = planned.chairs;
+        break;
+      }
+      rows.find((r) => r.appointment.id === planned.blocked)!.problem = 'no-chair-free';
+    }
+  } else {
+    cascade();
   }
 
   const candidates: PushCandidate[] = rows.map((row) => ({
@@ -172,6 +247,7 @@ export async function previewPush(
     from: row.appointment.startAt,
     to: toDate(instant(row.shiftedStart)),
     ...(row.problem ? { problem: row.problem } : {}),
+    ...(chairs.has(row.appointment.id) ? { toResourceId: chairs.get(row.appointment.id)! } : {}),
   }));
 
   return {
@@ -181,6 +257,119 @@ export async function previewPush(
     candidates,
     canPush: candidates.some((c) => c.problem === undefined),
   };
+}
+
+interface Span {
+  start: number;
+  end: number;
+}
+
+interface RoomState {
+  /** Every chair's type, INACTIVE ONES INCLUDED — an appointment can still be
+   *  holding a chair that was retired after it was booked, and it still has to
+   *  be given a chair of the right type at its destination. */
+  typeOf: Map<string, string>;
+  /** The chairs that can be ASSIGNED, by type, ordered by name — the same
+   *  order `findFreeResource` uses, so a push and a booking agree about which
+   *  chair is "the first free one". */
+  byType: Map<string, string[]>;
+  /** Holds belonging to appointments that are not part of this push at all:
+   *  the other stylists' clients, whose chairs are simply not available. */
+  others: (Span & { resourceId: string })[];
+}
+
+/** The room, as one read, for the whole push (A-034). */
+async function loadRoom(
+  db: Prisma.TransactionClient | PrismaClient,
+  args: { businessId: string; excludeAppointmentIds: string[]; windowStart: number; windowEnd: number },
+): Promise<RoomState> {
+  const [resources, holds] = await Promise.all([
+    db.resource.findMany({
+      where: { businessId: args.businessId },
+      orderBy: { name: 'asc' },
+      select: { id: true, resourceTypeId: true, active: true },
+    }),
+    db.appointmentResourceHold.findMany({
+      where: {
+        businessId: args.businessId,
+        status: { in: [...ACTIVE_STATUSES] },
+        // Instant-overlap, never a date filter — the same predicate the busy
+        // set and the room's busy set use.
+        blockedStart: { lt: toDate(instant(args.windowEnd)) },
+        blockedEnd: { gt: toDate(instant(args.windowStart)) },
+        appointmentId: { notIn: args.excludeAppointmentIds },
+      },
+      select: { resourceId: true, blockedStart: true, blockedEnd: true },
+    }),
+  ]);
+
+  const byType = new Map<string, string[]>();
+  for (const resource of resources.filter((r) => r.active)) {
+    byType.set(resource.resourceTypeId, [...(byType.get(resource.resourceTypeId) ?? []), resource.id]);
+  }
+
+  return {
+    typeOf: new Map(resources.map((r) => [r.id, r.resourceTypeId])),
+    byType,
+    others: holds.map((h) => ({
+      resourceId: h.resourceId,
+      start: fromDate(h.blockedStart),
+      end: fromDate(h.blockedEnd),
+    })),
+  };
+}
+
+/**
+ * Which chair each moving appointment takes at its destination (A-034).
+ *
+ * The moving set's OWN current holds are deliberately absent from the busy
+ * picture: they are all vacated by this same transaction, so counting them
+ * would make a uniform shift look like it needs a whole second room. What DOES
+ * count is everybody else's holds and the holds of the appointments this push
+ * is leaving behind — those genuinely stay where they are.
+ *
+ * Keeps the chair she is already in whenever it is still free, which makes an
+ * ordinary "we are half an hour behind" change no seating at all.
+ *
+ * ponytail: greedy first-fit, not a bipartite matching. A uniform shift keeps
+ * every existing chair, so greedy cannot do worse than the seating the room
+ * already has; a contrived room could still leave one client unseated where a
+ * global re-shuffle would fit her, and she comes back as `leftBehind` rather
+ * than as a wrong answer. Upgrade to a matching if a real salon ever hits it.
+ */
+function planChairs(
+  rows: { id: string; resourceId: string | null; staying: boolean; before: Span; after: Span }[],
+  room: RoomState,
+): { chairs: Map<string, string> } | { blocked: string } {
+  const busy = new Map<string, Span[]>();
+  const occupy = (resourceId: string, span: Span) =>
+    busy.set(resourceId, [...(busy.get(resourceId) ?? []), span]);
+  // Half-open on both sides, like every other range in this project: a hold
+  // ending at 15:00 frees its chair for one starting at 15:00.
+  const free = (resourceId: string, span: Span) =>
+    !(busy.get(resourceId) ?? []).some((held) => span.start < held.end && held.start < span.end);
+
+  for (const hold of room.others) occupy(hold.resourceId, hold);
+  for (const row of rows) {
+    if (row.staying && row.resourceId) occupy(row.resourceId, row.before);
+  }
+
+  const chairs = new Map<string, string>();
+  for (const row of rows) {
+    if (row.staying || !row.resourceId) continue;
+
+    const type = room.typeOf.get(row.resourceId);
+    const assignable = type ? (room.byType.get(type) ?? []) : [];
+    // Her own chair first — but only if it is still assignable, so a chair
+    // retired since she was booked is not carried forward by the preference.
+    const options = assignable.includes(row.resourceId) ? [row.resourceId, ...assignable] : assignable;
+    const chair = options.find((id) => free(id, row.after));
+    if (!chair) return { blocked: row.id };
+
+    chairs.set(row.id, chair);
+    occupy(chair, row.after);
+  }
+  return { chairs };
 }
 
 export interface PushResult {
@@ -226,7 +415,15 @@ export async function pushColumn(
 
     // THE DEFERRAL, and the only place in this codebase that asks for it.
     // Scoped to this transaction: everywhere else the check stays immediate.
+    //
+    // A-034 added the RESOURCE constraint to it, for exactly the reason the
+    // provider one was deferred: two back-to-back clients legitimately share a
+    // chair — half-open ranges give the 15:00 the chair the 14:00 vacates — and
+    // shifting the pair puts the first on top of the second mid-transaction.
+    // That was reaching the desk as a raw `23P01` in the middle of a push the
+    // preview had just promised.
     await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_block_no_overlap" DEFERRED');
+    await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_resource_no_overlap" DEFERRED');
 
     const business = await tx.business.findUniqueOrThrow({
       where: { id: args.businessId },
@@ -249,7 +446,17 @@ export async function pushColumn(
       await tx.appointment.update({
         where: { id: appointment.id },
         // blockedStart/blockedEnd are recomputed by the A-003 trigger.
-        data: { startAt, endAt, startDay: label.day, startWallTime: label.time },
+        data: {
+          startAt,
+          endAt,
+          startDay: label.day,
+          startWallTime: label.time,
+          // A-034 — THE CHAIR FOLLOWS THE MOVE (RES-03). The chair the PREVIEW
+          // chose, not one picked here: the preview is what promised this
+          // outcome, and an appointment that could not be seated never reached
+          // this loop (it is in `leftBehind`).
+          ...(candidate.toResourceId ? { resourceId: candidate.toResourceId } : {}),
+        },
       });
 
       // TOKEN-02: the customer's link follows the appointment rather than
@@ -292,5 +499,14 @@ export async function pushColumn(
     }
 
     return { moved: movable.length, notified, leftBehind };
-  }, { timeout: 15_000 });
+  }, { timeout: 15_000 })
+    .catch((error: unknown) => {
+      // A-034. The preview runs inside this transaction and plans both axes, so
+      // reaching the constraint means somebody COMMITTED between the plan and
+      // the COMMIT — a genuine lost race, not a push we should have refused.
+      // Before this it was an unmapped `23P01`: a 500 in the middle of a
+      // workflow whose whole point is that the desk is told what happened.
+      if (isSlotTakenError(error)) throw new SlotTaken([]);
+      throw error;
+    });
 }
