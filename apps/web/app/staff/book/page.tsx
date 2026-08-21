@@ -1,8 +1,11 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
+import { clientReliability, findClient } from '@bookable/db/clients';
 import { calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
+import { flagSentence } from '@/components/client-flag';
+import { staffSlotsFor } from '@/lib/booking/staff-actions';
 import { BookingPanel } from './booking-panel';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +39,13 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
   const atIso = typeof params.at === 'string' ? params.at : null;
   const day = safeDay(typeof params.day === 'string' ? params.day : undefined, today);
 
+  // A-040: a rebook arrives with EVERY service the last visit had, in order,
+  // and with the client already resolved. A single value arrives as a string
+  // and several as an array — `getAll` semantics, normalised once.
+  const requestedServiceIds =
+    typeof params.services === 'string' ? [params.services] : Array.isArray(params.services) ? params.services : [];
+  const requestedClientId = typeof params.client === 'string' ? params.client : null;
+
   const [provider, services] = await Promise.all([
     providerId
       ? prisma.provider.findFirst({
@@ -62,6 +72,22 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
 
   const slotLabel = atIso ? labelFor(atIso, zone) : null;
 
+  // Only the ones this provider is still qualified for and that are still
+  // active — the same defensiveness the public flow's prefill has, because a
+  // service retired last month or a qualification withdrawn is ordinary.
+  // Order is the REQUEST'S, not the catalogue's (VISIT-01).
+  const prefillServiceIds = requestedServiceIds.filter((id) => services.some((s) => s.id === id));
+  // Silence is what this row exists to fix, so a dropped line is SAID rather
+  // than quietly leaving a shorter visit selected.
+  const droppedServices = requestedServiceIds.length - prefillServiceIds.length;
+
+  const prefillClient = requestedClientId ? await resolvePrefillClient(staff.businessId, requestedClientId, today) : null;
+
+  // Loaded on the server so a prefilled panel renders with its times already
+  // there — the alternative is a mount effect that flashes an empty list.
+  const initialSlots =
+    !walkIn && provider && prefillServiceIds.length > 0 ? await staffSlotsFor(provider.id, prefillServiceIds, day) : [];
+
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
       <div>
@@ -72,6 +98,12 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           {walkIn ? 'Walk-in' : `Book ${provider ? `with ${provider.displayName}` : ''}`}
         </h1>
         {slotLabel ? <p className="mt-1 text-zinc-600 dark:text-zinc-400">{slotLabel}</p> : null}
+        {droppedServices > 0 ? (
+          <p className="mt-1 text-amber-800 dark:text-amber-300">
+            ⚠ {droppedServices} service{droppedServices === 1 ? '' : 's'} from her last visit{' '}
+            {droppedServices === 1 ? 'is' : 'are'} no longer available with this stylist. Check what she is having.
+          </p>
+        ) : null}
       </div>
 
       {!walkIn && !provider ? (
@@ -87,10 +119,37 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           provider={provider}
           at={atIso}
           walkIn={walkIn}
+          initialServiceIds={prefillServiceIds}
+          initialClient={prefillClient}
+          initialSlots={initialSlots}
         />
       )}
     </main>
   );
+}
+
+/**
+ * A-040 — the client the desk was ALREADY looking at, carried through by id.
+ *
+ * The id, never (phone, name): re-resolving her by typed text is what split a
+ * "Jen" off a record that says "Jennifer", taking her history, her pinned note
+ * and her rolling no-show count with it (D-17, and A-015's merge exists to
+ * clean up after exactly that).
+ *
+ * `findClient` resolves a tombstone to its survivor (R-10), so a rebook link
+ * from a record that has since been merged still lands on the right person.
+ *
+ * The CLIENT-04 flag comes with her — shown, never enforced (D-27). The
+ * "already booked around then" note deliberately does not: it is computed
+ * against the slot being booked, and no slot is chosen yet.
+ */
+async function resolvePrefillClient(businessId: string, clientId: string, today: string) {
+  const found = await findClient(prisma, businessId, clientId);
+  if (!found) return null;
+  const flags = await clientReliability(prisma, { businessId, clientIds: [found.id], today });
+  const reliability = flags.get(found.id);
+  const missed = reliability ? flagSentence(reliability) : null;
+  return { id: found.id, name: found.name, phone: found.phone, ...(missed ? { missed } : {}) };
 }
 
 /** "Tuesday 9 June at 14:15", in the SALON's zone. Server-side, always. */

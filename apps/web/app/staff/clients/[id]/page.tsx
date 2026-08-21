@@ -120,13 +120,29 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
             {readableDay(rebook.lastVisitDay)} — she comes about every {rebook.intervalDays} days, so this starts on{' '}
             {readableDay(rebook.fromDay)}.
           </p>
+          {/* A-040: the STAFF surface, not `/book`.
+
+              This used to link to the customer's flow carrying
+              `serviceIds[0]` — so the card above could name "Cut + Colour"
+              and the button booked a Cut. Three more things came with the
+              destination being the public flow: the engine ran as
+              `audience: 'public'`, losing D-25's staff lead-time exemption
+              and D-21's uncapped horizon on the surface staff use most; the
+              client id we already have here was thrown away and re-resolved
+              by (phone, name), so a typo split her record; and CLIENT-04's
+              self-serve block applied, telling a flagged client standing at
+              the counter to ring the salon she is standing in.
+
+              EVERY service, in order (VISIT-01 — the buffers come from the
+              ends, so the order is part of the appointment). */}
           <Link
             href={{
-              pathname: '/book',
+              pathname: '/staff/book',
               query: {
-                service: rebook.serviceIds[0]!,
+                services: rebook.serviceIds,
                 provider: rebook.providerId,
-                from: rebook.fromDay,
+                day: rebook.fromDay,
+                client: client.id,
               },
             }}
             className="self-start rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"

@@ -9,7 +9,18 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { instantFromIso, toDate } from '@bookable/core/time';
+import {
+  addDays,
+  calendarDay,
+  fromDate,
+  instantFromIso,
+  resolve,
+  toDate,
+  toLabel,
+  wallTime,
+  weekdayOf,
+  zoneId,
+} from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 /** Through the one conversion module, like everything else in this repo — the
@@ -156,31 +167,66 @@ test.describe('the client record (A-015)', () => {
     await expect(page.getByText('Found through an old number that was merged into this record.')).toBeVisible();
   });
 
-  /** CLIENT-02: prefills provider + service and starts the day list at her own
-   *  interval, rather than at tomorrow. */
-  test('rebook last visit opens the booking flow already filled in', async ({ page }) => {
+  /**
+   * CLIENT-02 + A-040. The button used to link to the CUSTOMER's flow
+   * carrying `serviceIds[0]`, so a two-service visit rebooked as one service
+   * — and the desk went through the public rules on the surface it uses most.
+   *
+   * The whole visit, on the staff surface, attached to the record the desk was
+   * already looking at.
+   */
+  test('rebook carries EVERY service, in order, onto the same client record', async ({ page }) => {
     const prisma = new PrismaClient();
     let clientId = '';
+    let targetDay = '';
+    let clientsBefore = 0;
     try {
       const business = await prisma.business.findFirstOrThrow();
+      const zone = zoneId(business.timezone);
+
+      // The next Tuesday the seeded roster works, and a last visit exactly the
+      // default 28-day interval before it — so the suggested day IS that
+      // Tuesday, in the future, with the same weekday and therefore hours.
+      let day = calendarDay(toLabel(fromDate(new Date()), zone).day);
+      do {
+        day = addDays(day, 1);
+      } while (weekdayOf(day) !== 2);
+      targetDay = day;
+      const lastVisitDay = addDays(day, -28);
+      // Cut (45) + Blow-dry (30) = 75 minutes. Resolved as two wall times
+      // rather than added as milliseconds — `appointment_end_after_start` is a
+      // real CHECK and a zero-length fixture trips it.
+      const lastVisitAt = resolve(lastVisitDay, wallTime('10:00'), zone);
+      const lastVisitEnd = resolve(lastVisitDay, wallTime('11:15'), zone);
+      if (lastVisitAt.kind !== 'unique' || lastVisitEnd.kind !== 'unique') {
+        throw new Error('fixture day is not a unique instant');
+      }
+
       const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
-      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const cut = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const blowDry = await prisma.service.findFirstOrThrow({ where: { name: 'Blow-dry' } });
       const client = await prisma.client.findFirstOrThrow({ where: { name: 'Ada Chen' } });
       clientId = client.id;
+      clientsBefore = await prisma.client.count({ where: { businessId: business.id } });
+
+      // A TWO-LINE visit — the whole point. Cut then Blow-dry, in that order.
       await prisma.appointment.create({
         data: {
           businessId: business.id,
           providerId: dana.id,
           clientId: client.id,
-          startAt: at('2026-06-09T15:00:00.000Z'),
-          endAt: at('2026-06-09T15:45:00.000Z'),
-          blockedStart: at('2026-06-09T15:00:00.000Z'),
-          blockedEnd: at('2026-06-09T15:45:00.000Z'),
-          startDay: '2026-06-09',
+          startAt: toDate(lastVisitAt.at),
+          endAt: toDate(lastVisitEnd.at),
+          blockedStart: toDate(lastVisitAt.at),
+          blockedEnd: toDate(lastVisitEnd.at),
+          startDay: lastVisitDay,
           startWallTime: '10:00',
           status: 'completed',
           lines: {
-            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+            create: [
+              { businessId: business.id, serviceId: cut.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+              { businessId: business.id, serviceId: blowDry.id, ordinal: 1, priceCents: 4000, durationMinutes: 30 },
+            ],
           },
         },
       });
@@ -189,12 +235,40 @@ test.describe('the client record (A-015)', () => {
     }
 
     await page.goto(`/staff/clients/${clientId}`);
-    await expect(page.getByText(/Cut with Dana/)).toBeVisible();
+    await expect(page.getByText(/Cut \+ Blow-dry with Dana/)).toBeVisible();
     await page.getByRole('link', { name: 'Rebook' }).click();
 
-    // Straight to the day list: the service and the stylist are already
-    // chosen, so the flow opens on step 3 rather than step 1.
-    await expect(page.getByRole('group')).toContainText('Which day suits you?');
+    // The STAFF surface, on the suggested day, with both services already
+    // chosen in their visit order and her record already attached — no
+    // retyping a name that would split her history (D-17).
+    await expect(page).toHaveURL(new RegExp(`/staff/book\\?.*day=${targetDay}`));
+    await expect(page.getByRole('button', { name: /^1\.\s*Cut/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /^2\.\s*Blow-dry/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('Ada Chen')).toBeVisible();
+
+    // The time is the ONE thing a rebook does not carry: "six weeks on
+    // Tuesday" names a day, never a time.
+    await page.getByRole('button', { name: /^\d{2}:\d{2}$/ }).first().click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    const prisma2 = new PrismaClient();
+    try {
+      const booked = await prisma2.appointment.findFirstOrThrow({
+        where: { status: 'booked' },
+        include: { lines: { orderBy: { ordinal: 'asc' }, include: { service: true } } },
+      });
+      // BOTH services, in the original order — the defect this row exists for.
+      expect(booked.lines.map((l) => l.service.name)).toEqual(['Cut', 'Blow-dry']);
+      expect(booked.startDay).toBe(targetDay);
+      // Attached to the record the desk was looking at, not a lookalike.
+      expect(booked.clientId).toBe(clientId);
+      // And no second "Ada Chen" was created on the way through.
+      const business = await prisma2.business.findFirstOrThrow();
+      expect(await prisma2.client.count({ where: { businessId: business.id } })).toBe(clientsBefore);
+    } finally {
+      await prisma2.$disconnect();
+    }
   });
 
   /**

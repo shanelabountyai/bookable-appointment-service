@@ -44,28 +44,42 @@ export function BookingPanel({
   provider,
   at,
   walkIn,
+  initialServiceIds = [],
+  initialClient = null,
+  initialSlots = [],
 }: {
   day: string;
   services: Service[];
   provider: { id: string; displayName: string } | null;
   at: string | null;
   walkIn: boolean;
+  /** A-040's rebook, resolved on the server: every service the last visit
+   *  had, in ITS order (VISIT-01), already filtered to what this provider can
+   *  still do. */
+  initialServiceIds?: string[];
+  initialClient?: ClientChoice | null;
+  /** Offered times for the prefilled combination, computed server-side so a
+   *  rebook renders with its list already there. */
+  initialSlots?: OfferedSlot[];
 }) {
   const [state, formAction, booking] = useActionState(bookAsStaff, initial);
 
   // A-039: the panel changes ITS OWN day rather than sending the desk back to
   // the grid to pick again — the URL's day is only where this screen started.
   const [day, setDay] = useState(initialDay);
-  const [chosen, setChosen] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<string[]>(initialServiceIds);
   const [options, setOptions] = useState<WalkInChoice[]>([]);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
   const [loadingOptions, startLoadingOptions] = useTransition();
-  const [slots, setSlots] = useState<OfferedSlot[]>([]);
+  const [slots, setSlots] = useState<OfferedSlot[]>(initialSlots);
+  // Deliberately NOT preselected on a rebook: "six weeks on Tuesday" names a
+  // day, never a time, and defaulting to the morning's first slot would book
+  // a time nobody chose. The list is there; the desk picks from it.
   const [chosenSlot, setChosenSlot] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<ClientChoice[]>([]);
-  const [client, setClient] = useState<ClientChoice | null>(null);
+  const [client, setClient] = useState<ClientChoice | null>(initialClient);
   const [searching, startSearching] = useTransition();
   const [creating, startCreating] = useTransition();
 
