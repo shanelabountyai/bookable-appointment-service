@@ -17,12 +17,14 @@
 import {
   type AppointmentStatus,
   type TransitionRefusal,
+  SLOT_FREEING_STATUSES,
   canTransition,
   isCorrection,
 } from '../../core/scheduling';
 import { fromDate } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
 import type { Actor } from '../../core/auth';
+import { enqueueNotification } from '../notifications';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = PrismaClient;
@@ -80,6 +82,14 @@ export interface TransitionInput {
    * update is still atomic — see the conditional write below.
    */
   expectedFrom?: AppointmentStatus;
+  /**
+   * A-036 (operator P-5). `false` = "I already rang her, don't text."
+   *
+   * Only ever consulted for a STAFF cancellation. A client who cancels through
+   * her own manage link does not need telling what she just did, and nothing
+   * in this product cancels on its own (A-021: no auto-cancel, ever).
+   */
+  notify?: boolean;
 }
 
 export interface TransitionResult {
@@ -103,6 +113,7 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
         startedAt: true,
         endedAt: true,
         business: { select: { cancellationCutoffMinutes: true } },
+        client: { select: { email: true, phone: true } },
         lines: { select: { service: { select: { id: true, name: true, cancellationCutoffMinutes: true } } } },
       },
     });
@@ -184,6 +195,37 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
         } satisfies Prisma.InputJsonValue,
       },
     });
+
+    // A-036: the other half of "nothing is silently cancelled". The row goes
+    // in THIS transaction, so a cancellation that commits without its notice
+    // is not a state the database can hold — the same coupling the booking
+    // confirmation has had since A-009.
+    //
+    // Staff only, and derived from the status module rather than hand-typed
+    // (CLAUDE.md: a status list is never one edit).
+    if (
+      input.actor.type === 'staff' &&
+      input.notify !== false &&
+      (SLOT_FREEING_STATUSES as readonly AppointmentStatus[]).includes(input.to)
+    ) {
+      await enqueueNotification(tx, {
+        // One cancellation of an appointment is one fact, so the appointment
+        // id IS the key: a retried write path does not text her twice.
+        dedupeKey: `cancelled:${appointment.id}`,
+        businessId: appointment.businessId,
+        appointmentId: appointment.id,
+        channel: appointment.client?.email ? 'email' : 'sms',
+        template: 'appointment.cancelled',
+        recipient: appointment.client?.email ?? appointment.client?.phone ?? null,
+        payload: {
+          appointmentId: appointment.id,
+          startAt: appointment.startAt.toISOString(),
+          // A-019's reason, forwarded. "Salon closed Saturday" is the entire
+          // message as far as the client is concerned.
+          reason: input.reason?.trim() || null,
+        },
+      });
+    }
 
     return { id: appointment.id, from, to: input.to, isCorrection: correction };
   });

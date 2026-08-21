@@ -202,6 +202,32 @@ test.describe('the impact workflow (A-019)', () => {
       expect(await prisma.appointmentEvent.count({ where: { type: 'provider_changed' } })).toBe(moved);
       // And nothing was cancelled to achieve it.
       expect(await prisma.appointment.count({ where: { status: 'booked' } })).toBe(2);
+      // A-036: two clients moved to a different stylist, two clients told.
+      expect(
+        await prisma.notificationOutbox.count({ where: { template: 'appointment.provider_changed' } }),
+      ).toBe(moved);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /** A-036 / D-32: the box is UNTICKED by default, so the silent cancellation
+   *  needs a deliberate act. This is that act — the desk already rang her. */
+  test('sends nothing when the desk says it already rang her', async ({ page }) => {
+    await danaCallsInSick(['10:00']);
+    await page.goto(`/staff/conflicts?day=${DAY}`);
+
+    await page.getByLabel('Cancel — why?').fill('Salon closed, rebooking her');
+    await page.getByLabel('Already rung her').check();
+    await page.getByRole('button', { name: 'Cancel it' }).click();
+
+    const prisma = new PrismaClient();
+    try {
+      await expect(async () => {
+        const row = await prisma.appointment.findFirstOrThrow();
+        expect(row.status).toBe('cancelled');
+      }).toPass({ timeout: 10_000 });
+      expect(await prisma.notificationOutbox.count({ where: { template: 'appointment.cancelled' } })).toBe(0);
     } finally {
       await prisma.$disconnect();
     }
@@ -225,6 +251,11 @@ test.describe('the impact workflow (A-019)', () => {
       }).toPass({ timeout: 10_000 });
       const event = await prisma.appointmentEvent.findFirstOrThrow({ where: { type: 'status_changed' } });
       expect(event.reason).toBe('Salon closed, rebooking her');
+      // A-036: and she was told, with the desk's own words.
+      const notice = await prisma.notificationOutbox.findFirstOrThrow({
+        where: { template: 'appointment.cancelled' },
+      });
+      expect(notice.payload).toMatchObject({ reason: 'Salon closed, rebooking her' });
     } finally {
       await prisma.$disconnect();
     }

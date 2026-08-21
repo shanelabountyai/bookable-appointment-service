@@ -19,6 +19,7 @@ import {
 import { transitionAppointment } from '@bookable/db/appointments';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
+import { DELIVERY_WORDS, TEMPLATE_WORDS } from '@/lib/appointments/event-language';
 import { requireStaff } from '@/lib/auth/session';
 
 export interface ImpactState {
@@ -36,6 +37,8 @@ export interface ConflictRow {
   services: string;
   acknowledged: boolean;
   acknowledgedReason: string | null;
+  /** A-036: "was she already told, and what?" — in words, not enums. */
+  lastNotice: string | null;
 }
 
 /** The day's conflicts, DERIVED on every call (operator R-7) — a stored flag
@@ -91,15 +94,20 @@ export async function cancelConflicting(_previous: ImpactState, formData: FormDa
 
   if (!reason.trim()) return { ok: false, message: 'Say why — it goes in the log and on the client’s record.' };
 
+  // A-036: unticked means tell her. The box is there for the desk that rang
+  // her first, so the text does not contradict the person she just spoke to.
+  const notify = formData.get('skipNotice') === null;
+
   await transitionAppointment(prisma, {
     appointmentId,
     to: 'cancelled',
     actor: staffActor(staff.id),
     now: new Date(),
     reason,
+    notify,
   });
   revalidatePath('/staff/conflicts');
-  return { ok: true, message: 'Cancelled, and recorded.' };
+  return { ok: true, message: notify ? 'Cancelled, and she has been told.' : 'Cancelled. No message sent.' };
 }
 
 /** "Reassign Saturday to Priya where qualified." Partial by design. */
@@ -112,12 +120,15 @@ export async function reassignConflicting(_previous: ImpactState, formData: Form
   if (appointmentIds.length === 0) return { ok: false, message: 'Choose at least one appointment.' };
   if (!toProviderId) return { ok: false, message: 'Choose who to move them to.' };
 
+  const notify = formData.get('skipNotice') === null;
+
   const outcomes = await reassignMany(prisma, {
     businessId: staff.businessId,
     appointmentIds,
     toProviderId,
     actor: staffActor(staff.id),
     reason,
+    notify,
   });
 
   const moved = outcomes.filter((o) => o.ok).length;
@@ -130,9 +141,10 @@ export async function reassignConflicting(_previous: ImpactState, formData: Form
     // on next — a message that only counted successes would leave six clients
     // quietly unhandled.
     message:
-      stuck.length === 0
+      (stuck.length === 0
         ? `Moved ${moved}.`
-        : `Moved ${moved}. ${stuck.length} could not move: ${[...new Set(stuck.map((s) => readable(s.failure)))].join(', ')}.`,
+        : `Moved ${moved}. ${stuck.length} could not move: ${[...new Set(stuck.map((s) => readable(s.failure)))].join(', ')}.`) +
+      (moved > 0 ? (notify ? ' They have been told.' : ' No messages sent.') : ''),
   };
 }
 
@@ -167,6 +179,11 @@ function shape(conflict: ConflictingAppointment, zone: ReturnType<typeof zoneId>
     services: conflict.serviceNames.join(' + '),
     acknowledged: conflict.acknowledgedAt !== null,
     acknowledgedReason: conflict.acknowledgedReason,
+    lastNotice: conflict.lastNotice
+      ? `${TEMPLATE_WORDS[conflict.lastNotice.template] ?? conflict.lastNotice.template} — ${
+          DELIVERY_WORDS[conflict.lastNotice.status] ?? conflict.lastNotice.status
+        }`
+      : null,
   };
 }
 

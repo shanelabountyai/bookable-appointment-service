@@ -40,6 +40,13 @@ export interface ConflictingAppointment {
   /** The stored acknowledgment, if somebody has already dealt with this one. */
   acknowledgedAt: Date | null;
   acknowledgedReason: string | null;
+  /**
+   * A-036: the most recent thing this client was told about this appointment,
+   * from `NotificationOutbox.appointmentId` (operator R-4's index, R-8's
+   * question turned around). The desk works down this list on the phone, and
+   * "she already got a text an hour ago" changes what the next call says.
+   */
+  lastNotice: { template: string; status: string; at: Date } | null;
 }
 
 const SELECT = {
@@ -53,6 +60,11 @@ const SELECT = {
   provider: { select: { displayName: true } },
   client: { select: { id: true, name: true, phone: true } },
   lines: { orderBy: { ordinal: 'asc' as const }, select: { serviceId: true, service: { select: { name: true } } } },
+  notifications: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: { template: true, status: true, createdAt: true },
+  },
 } as const;
 
 type Row = {
@@ -66,6 +78,7 @@ type Row = {
   provider: { displayName: string };
   client: { id: string; name: string | null; phone: string | null } | null;
   lines: { serviceId: string; service: { name: string } }[];
+  notifications: { template: string; status: string; createdAt: Date }[];
 };
 
 const toConflict = (row: Row): ConflictingAppointment => ({
@@ -82,6 +95,9 @@ const toConflict = (row: Row): ConflictingAppointment => ({
   serviceNames: row.lines.map((l) => l.service.name),
   acknowledgedAt: row.conflictAckAt,
   acknowledgedReason: row.conflictAckReason,
+  lastNotice: row.notifications[0]
+    ? { template: row.notifications[0].template, status: row.notifications[0].status, at: row.notifications[0].createdAt }
+    : null,
 });
 
 /**

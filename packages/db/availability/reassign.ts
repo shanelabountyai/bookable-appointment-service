@@ -19,6 +19,7 @@
 import type { Actor } from '../../core/auth';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import { isSlotTakenError } from '../errors';
+import { enqueueNotification } from '../notifications';
 import { qualifiedForVisit } from '../qualification';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -28,11 +29,33 @@ export interface ReassignOutcome {
   appointmentId: string;
   ok: boolean;
   failure?: ReassignFailure;
+  /** A-036: whether this move put a message in the outbox. `false` for a
+   *  suppressed one and for a no-op move onto the provider already holding it. */
+  notified?: boolean;
 }
 
+/**
+ * A-036 (operator P-5). SILENTLY is the word AVAIL-05 forbids, and until this
+ * row a bulk reassign was the one write path that moved a client's appointment
+ * and told nobody — three clients handed to a different stylist, each finding
+ * out on the day. The row goes in THIS transaction, so a move that commits
+ * without its notice is not a state the database can hold.
+ *
+ * Suppressible because the front desk phones first as often as it texts, and a
+ * text that arrives after the call contradicts a person the client just spoke
+ * to. Default is to tell her: the unticked box is the silent cancellation.
+ */
 export async function reassignAppointment(
   prisma: PrismaClient,
-  args: { businessId: string; appointmentId: string; toProviderId: string; actor: Actor; reason?: string | null },
+  args: {
+    businessId: string;
+    appointmentId: string;
+    toProviderId: string;
+    actor: Actor;
+    reason?: string | null;
+    /** `false` = "I already rang her." Anything else tells her. */
+    notify?: boolean;
+  },
 ): Promise<ReassignOutcome> {
   try {
     return await prisma.$transaction(async (tx) => {
@@ -42,6 +65,8 @@ export async function reassignAppointment(
           id: true,
           providerId: true,
           status: true,
+          startAt: true,
+          client: { select: { email: true, phone: true } },
           lines: { select: { serviceId: true } },
         },
       });
@@ -56,7 +81,7 @@ export async function reassignAppointment(
 
       const target = await tx.provider.findFirst({
         where: { id: args.toProviderId, businessId: args.businessId },
-        select: { active: true },
+        select: { active: true, displayName: true },
       });
       if (!target) return { appointmentId: args.appointmentId, ok: false, failure: 'not-active' as const };
       if (!target.active) return { appointmentId: args.appointmentId, ok: false, failure: 'not-active' as const };
@@ -102,7 +127,29 @@ export async function reassignAppointment(
         },
       });
 
-      return { appointmentId: args.appointmentId, ok: true };
+      if (args.notify === false) return { appointmentId: args.appointmentId, ok: true, notified: false };
+
+      await enqueueNotification(tx, {
+        businessId: args.businessId,
+        // Keyed on the DESTINATION provider, the same shape the reschedule
+        // uses for the destination instant: moving her to Priya and then to
+        // Sam is two messages, retrying the move to Priya is one.
+        dedupeKey: `provider-changed:${appointment.id}:${args.toProviderId}`,
+        appointmentId: appointment.id,
+        channel: appointment.client?.email ? 'email' : 'sms',
+        template: 'appointment.provider_changed',
+        recipient: appointment.client?.email ?? appointment.client?.phone ?? null,
+        payload: {
+          appointmentId: appointment.id,
+          startAt: appointment.startAt.toISOString(),
+          providerName: target.displayName,
+          // The desk's words, forwarded — "Dana is off sick" is the whole
+          // message as far as the client is concerned (A-019's reason).
+          reason: args.reason?.trim() || null,
+        },
+      });
+
+      return { appointmentId: args.appointmentId, ok: true, notified: true };
     });
   } catch (error) {
     if (isSlotTakenError(error)) {
@@ -119,7 +166,14 @@ export async function reassignAppointment(
  *  awkward 2pm cannot roll back the eight that worked. */
 export async function reassignMany(
   prisma: PrismaClient,
-  args: { businessId: string; appointmentIds: readonly string[]; toProviderId: string; actor: Actor; reason?: string | null },
+  args: {
+    businessId: string;
+    appointmentIds: readonly string[];
+    toProviderId: string;
+    actor: Actor;
+    reason?: string | null;
+    notify?: boolean;
+  },
 ): Promise<ReassignOutcome[]> {
   const outcomes: ReassignOutcome[] = [];
   for (const appointmentId of args.appointmentIds) {

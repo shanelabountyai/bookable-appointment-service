@@ -344,3 +344,85 @@ describe('two people at the front desk', () => {
     ).rejects.toMatchObject({ name: 'AppointmentMovedFirst', expected: 'booked', actual: 'cancelled' });
   });
 });
+
+/**
+ * A-036 (operator P-5) — A STAFF CANCELLATION TELLS THE CLIENT.
+ *
+ * The other half of "nothing is silently cancelled, moved or hidden". It lives
+ * here rather than at the conflicts screen because this is the ONE place a
+ * status is written (A-012), so the detail panel's cancel and the day-grid
+ * chip's get it too — patching only the caller the operator named would leave
+ * every sibling caller still silent.
+ */
+describe('A-036 — the cancellation notice', () => {
+  const notices = () => prisma.notificationOutbox.findMany({ where: { template: 'appointment.cancelled' } });
+
+  it('enqueues one notice carrying the reason the desk gave', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      actor: STAFF,
+      now: BEFORE,
+      reason: 'Salon closed Saturday',
+    });
+
+    const [notice, ...rest] = await notices();
+    expect(rest).toHaveLength(0);
+    if (!notice) throw new Error('no notice was enqueued');
+    expect(notice.appointmentId).toBe(appointment.id);
+    expect(notice.recipient).toBe('5125550101');
+    expect(notice.payload).toMatchObject({ reason: 'Salon closed Saturday' });
+  });
+
+  /** Inside the cutoff is still a cancellation she has to hear about — the
+   *  split is about who wears the cost, not about who gets told. */
+  it('tells her about a late cancellation too', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled_late', actor: STAFF, now: TEN_AM });
+    expect(await notices()).toHaveLength(1);
+  });
+
+  it('sends nothing when the desk says it already rang her', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      actor: STAFF,
+      now: BEFORE,
+      notify: false,
+    });
+    expect(await notices()).toHaveLength(0);
+  });
+
+  /** She does not need telling what she just did on her own manage link. */
+  it('says nothing when the client cancels herself', async () => {
+    const appointment = await book();
+    // The day before: BEFORE is exactly 120 minutes out, which is the cutoff
+    // boundary a customer is refused at and staff walk straight through.
+    const dayBefore = at('2026-06-08T08:00:00-05:00');
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: CUSTOMER, now: dayBefore });
+    expect(await notices()).toHaveLength(0);
+  });
+
+  /** Only the two statuses that free the slot, derived from the status module
+   *  — a check-in is not something to text anybody about. */
+  it('says nothing for a status change that is not a cancellation', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+    expect(await notices()).toHaveLength(0);
+  });
+
+  /** The notice is written in the same transaction as the status, so a
+   *  cancellation that lost the race leaves no message promising it won. */
+  it('leaves no notice behind when the transition is refused', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+
+    await expect(
+      transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE }),
+    ).rejects.toBeInstanceOf(TransitionRefused);
+
+    expect(await notices()).toHaveLength(1);
+  });
+});

@@ -70,6 +70,12 @@ export function ConflictList({
               ) : null}
             </div>
 
+            {/* A-036: what she has already been told, so the next call does
+                not contradict a text sent an hour ago. */}
+            {conflict.lastNotice ? (
+              <p className="text-xs text-zinc-600 dark:text-zinc-400">Told: {conflict.lastNotice}</p>
+            ) : null}
+
             {conflict.acknowledged ? (
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 Kept — {conflict.acknowledgedReason ?? 'dealt with'}
@@ -119,6 +125,12 @@ export function ConflictList({
             Why move them?
             <input name="reason" placeholder="Dana off sick" className={field} />
           </label>
+          {/* A-036. Unticked tells them — the box is for the desk that has
+              already worked down the list on the phone. */}
+          <label className="flex items-center gap-2 py-2 text-sm">
+            <input type="checkbox" name="skipNotice" />
+            I’ve already rung them — don’t text
+          </label>
           <button
             type="submit"
             disabled={reassigning || selected.length === 0}
@@ -163,6 +175,10 @@ function CancelForm({ appointmentId }: { appointmentId: string }) {
       <label className="flex flex-col gap-1 text-xs">
         Cancel — why?
         <input name="reason" placeholder="Salon closed, rebooking her" className={field} />
+      </label>
+      <label className="flex items-center gap-1 text-xs">
+        <input type="checkbox" name="skipNotice" />
+        Already rung her
       </label>
       <button type="submit" disabled={pending} className={small}>
         Cancel it

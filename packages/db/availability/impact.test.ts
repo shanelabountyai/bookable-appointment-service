@@ -26,6 +26,7 @@ import {
   conflictsForDay,
   futureAppointments,
 } from './impact';
+import { enqueueNotification } from '../notifications';
 import { reassignAppointment, reassignMany } from './reassign';
 
 const prisma = new PrismaClient();
@@ -395,6 +396,120 @@ describe('AVAIL-05 — reassigning', () => {
     // And the two that moved really moved.
     const rows = await prisma.appointment.findMany({ where: { providerId: priyaId } });
     expect(rows).toHaveLength(2);
+  });
+});
+
+/**
+ * A-036 (operator P-5) — THE MOVE THE CLIENT WAS NEVER TOLD ABOUT.
+ *
+ * Booking, rescheduling and pushing the column all enqueued a row. A bulk
+ * reassign — the one that happens on the day a stylist calls in sick, to nine
+ * people at once — enqueued nothing, which is precisely the silent change
+ * AVAIL-05 says never happens.
+ */
+describe('A-036 — a reassign tells the client', () => {
+  const noticesFor = (appointmentId: string) =>
+    prisma.notificationOutbox.findMany({ where: { appointmentId, template: 'appointment.provider_changed' } });
+
+  it('enqueues one notice per moved appointment, carrying the desk\u2019s reason', async () => {
+    const appointment = await book('2026-06-09T10:00:00-05:00');
+    const outcome = await reassignAppointment(prisma, {
+      businessId,
+      appointmentId: appointment.id,
+      toProviderId: priyaId,
+      actor: ACTOR,
+      reason: 'Dana off sick',
+    });
+
+    expect(outcome.notified).toBe(true);
+    const [notice, ...rest] = await noticesFor(appointment.id);
+    expect(rest).toHaveLength(0);
+    if (!notice) throw new Error('no notice was enqueued');
+    expect(notice.recipient).toBe('5125550101');
+    expect(notice.status).toBe('pending');
+    expect(notice.payload).toMatchObject({ providerName: 'Priya', reason: 'Dana off sick' });
+  });
+
+  /** The desk that rang her first. A text arriving after the call contradicts
+   *  a person she just spoke to. */
+  it('sends nothing when the desk says it already rang her', async () => {
+    const appointment = await book('2026-06-09T10:00:00-05:00');
+    const outcome = await reassignAppointment(prisma, {
+      businessId,
+      appointmentId: appointment.id,
+      toProviderId: priyaId,
+      actor: ACTOR,
+      notify: false,
+    });
+
+    expect(outcome.notified).toBe(false);
+    expect(await noticesFor(appointment.id)).toHaveLength(0);
+  });
+
+  /** The whole point of enqueuing INSIDE the transaction: a move that could
+   *  not commit must not leave a message promising it did. */
+  it('leaves no notice behind for a move the database refused', async () => {
+    const hers = await book('2026-06-09T10:00:00-05:00');
+    await book('2026-06-09T10:00:00-05:00', { providerId: priyaId, idempotencyKey: 'priya-busy' });
+
+    const outcome = await reassignAppointment(prisma, { businessId, appointmentId: hers.id, toProviderId: priyaId, actor: ACTOR });
+
+    expect(outcome).toMatchObject({ ok: false, failure: 'provider-busy' });
+    expect(await noticesFor(hers.id)).toHaveLength(0);
+  });
+
+  it('tells the two who moved and not the one who could not', async () => {
+    const first = await book('2026-06-09T10:00:00-05:00');
+    const second = await book('2026-06-09T12:00:00-05:00');
+    const colourVisit = await book('2026-06-09T14:00:00-05:00', { serviceIds: [colourId] });
+
+    await reassignMany(prisma, {
+      businessId,
+      appointmentIds: [first.id, second.id, colourVisit.id],
+      toProviderId: priyaId,
+      actor: ACTOR,
+      reason: 'Dana off sick',
+    });
+
+    const notified = await prisma.notificationOutbox.findMany({
+      where: { template: 'appointment.provider_changed' },
+      select: { appointmentId: true },
+    });
+    expect(notified.map((n) => n.appointmentId).sort()).toEqual([first.id, second.id].sort());
+  });
+
+  /** The conflicts screen's "who has been told" column (operator R-4's index,
+   *  asked from the other side). */
+  it('surfaces the last thing she was told on the conflict row', async () => {
+    const appointment = await book('2026-06-09T10:00:00-05:00');
+    await createTimeOff(
+      prisma,
+      { businessId, providerId: danaId, startAt: at('2026-06-09T09:00:00-05:00'), endAt: at('2026-06-09T17:00:00-05:00'), reason: 'sick' },
+      STAMP,
+    );
+
+    // Booking already told her once (A-009), so the column is never empty for
+    // a real appointment — it shows the LATEST thing, which is the whole point.
+    const before = await conflictsForDay(prisma, { businessId, day: DAY });
+    expect(before.find((c) => c.id === appointment.id)?.lastNotice).toMatchObject({
+      template: 'appointment.confirmed',
+    });
+
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: `test-notice:${appointment.id}`,
+      appointmentId: appointment.id,
+      channel: 'sms',
+      template: 'appointment.running_late',
+      recipient: '5125550101',
+      payload: {},
+    });
+
+    const after = await conflictsForDay(prisma, { businessId, day: DAY });
+    expect(after.find((c) => c.id === appointment.id)?.lastNotice).toMatchObject({
+      template: 'appointment.running_late',
+      status: 'pending',
+    });
   });
 });
 

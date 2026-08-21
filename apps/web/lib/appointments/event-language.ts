@@ -139,4 +139,6 @@ export const TEMPLATE_WORDS: Record<string, string> = {
   'appointment.rescheduled': 'New time',
   'appointment.running_late': 'Running behind',
   'appointment.reminder': 'Reminder',
+  'appointment.provider_changed': 'New stylist',
+  'appointment.cancelled': 'Cancellation',
 };
