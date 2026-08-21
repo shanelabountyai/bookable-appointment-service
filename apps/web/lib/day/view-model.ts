@@ -13,7 +13,7 @@ import 'server-only';
  * file has no opinion about it.
  */
 import type { DayColumn, DayView } from '@bookable/db/day';
-import type { AppointmentStatus } from '@bookable/core/scheduling';
+import { type AppointmentStatus, availableTransitions } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
 
 const MIN = 60_000;
@@ -38,6 +38,15 @@ export interface GridItem {
    *  and "she has missed the last two" is that decision. */
   missed?: string;
   status?: AppointmentStatus;
+  /** A-035. Present on appointment items only — the status buttons post it. */
+  appointmentId?: string;
+  /**
+   * A-035. What the front desk may do to this one RIGHT NOW, from the §7
+   * table, asked with the real actor and the real clock — never assembled by a
+   * screen. Empty for anything terminal, and empty for every non-appointment
+   * item.
+   */
+  available?: AppointmentStatus[];
   isOverride?: boolean;
   /** APPT-03's projected start: what time this is REALLY likely to begin,
    *  given how far behind she is. Shown beside the scheduled time, never
@@ -106,7 +115,14 @@ export function toGridModel(
     ticks: hourTicks(view, zone, from, total),
     nowTop,
     columns: view.columns.map((column) =>
-      toColumn(column, { minutesFrom, clock, range, shift }, view.day, now, missedByClient),
+      toColumn(
+        column,
+        { minutesFrom, clock, range, shift },
+        view.day,
+        now,
+        missedByClient,
+        view.cancellationCutoffMinutes,
+      ),
     ),
   };
 }
@@ -126,6 +142,7 @@ function toColumn(
   day: string,
   now: Date,
   missedByClient: ReadonlyMap<string, string>,
+  cutoffMinutes: number,
 ): GridColumn {
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
@@ -177,6 +194,21 @@ function toColumn(
         pinnedNote: appointment.clientNotes ?? undefined,
         ...(missed ? { missed } : {}),
         status: appointment.status as AppointmentStatus,
+        appointmentId: appointment.id,
+        // A-035 — the buttons on the chip, decided HERE by the §7 table with
+        // the real actor and the real clock. The screen renders this list and
+        // holds no opinion of its own about what is allowed.
+        available: chipMoves(appointment.status as AppointmentStatus, {
+          actor: 'staff',
+          now: fromDate(now),
+          startAt: fromDate(appointment.startAt),
+          endAt: fromDate(appointment.endAt),
+          cancellationCutoffMinutes: cutoffMinutes,
+          // DELIBERATELY NO REASON. A chip has no reason box, so asking with
+          // one would offer a button the write path then refuses — which is
+          // how the walk-out and the terminal corrections (APPT-06) stay on
+          // the detail panel, where the reason they require can be typed.
+        }),
         isOverride: appointment.isOverride,
         // Only for what has not started yet: projecting a time onto an
         // appointment already in the chair is noise, and projecting onto a
@@ -251,6 +283,25 @@ function hourTicks(view: DayView, zone: ZoneId, from: number, total: number): { 
 }
 
 const CANCELLED = new Set(['cancelled', 'cancelled_late']);
+
+/**
+ * THE FOUR MOVES A CHIP CARRIES (A-035, operator P-4): check in, start,
+ * finish, no-show. The visit going forwards.
+ *
+ * This is a decision about the SURFACE, not about what is legal — legality is
+ * still the §7 table's answer and this only narrows it. Two edges are left off
+ * on purpose:
+ *  - CANCELLING. Legal from a chip with no reason, and a mis-tap on a phone
+ *    would end a client's appointment with no record of why. It keeps the
+ *    detail panel, where the client, her history and a reason box are.
+ *  - CONFIRMING. It belongs to the call-down, which is a different errand done
+ *    at a different time of day, and a fifth button costs the four that matter.
+ */
+const ON_THE_CHIP = new Set<AppointmentStatus>(['checked_in', 'in_progress', 'completed', 'no_show']);
+
+function chipMoves(status: AppointmentStatus, context: Parameters<typeof availableTransitions>[1]): AppointmentStatus[] {
+  return availableTransitions(status, context).filter((to) => ON_THE_CHIP.has(to));
+}
 
 /** For the accessible name. The visible chip shows a colour and a short word;
  *  a screen reader gets the sentence. */

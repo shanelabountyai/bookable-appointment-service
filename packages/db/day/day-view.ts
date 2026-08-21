@@ -87,6 +87,16 @@ export interface DayColumn {
 export interface DayView {
   day: string;
   timezone: string;
+  /**
+   * A-035. The business default, for asking the §7 table what the desk may do
+   * to a chip right now — the cutoff clause governs the cancel edges.
+   *
+   * The business default and not D-19's per-service resolution: a chip offers
+   * no cancel edge (see the view model), so nothing on this surface can
+   * currently consult it. It is carried anyway rather than passed as a zero,
+   * because a zero would be a lie the day somebody adds one.
+   */
+  cancellationCutoffMinutes: number;
   /** The rendering bounds: the earliest and latest instant anything on this
    *  day touches, so an overnight window or a 07:00 override is on screen
    *  rather than clipped off the top. */
@@ -101,7 +111,7 @@ export async function loadDayView(
 ): Promise<DayView> {
   const business = await db.business.findUniqueOrThrow({
     where: { id: args.businessId },
-    select: { timezone: true },
+    select: { timezone: true, cancellationCutoffMinutes: true },
   });
   const zone = business.timezone as ZoneId;
   const day = calendarDay(args.day);
@@ -142,6 +152,7 @@ export async function loadDayView(
   return {
     day: args.day,
     timezone: business.timezone,
+    cancellationCutoffMinutes: business.cancellationCutoffMinutes,
     ...renderBounds(day, zone, columns),
     columns,
   };

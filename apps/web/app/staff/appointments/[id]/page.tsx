@@ -6,9 +6,8 @@ import { reliabilityFor } from '@bookable/db/clients';
 import {
   type AppointmentStatus,
   SLOT_FREEING_STATUSES,
+  availableTransitions,
   canReschedule,
-  canTransition,
-  possibleTransitionsFrom,
 } from '@bookable/core/scheduling';
 import { worstCutoff } from '@bookable/core/settings';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
@@ -70,10 +69,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   // starting over.
   const movable = canReschedule(status, context).allowed;
 
-  const available = possibleTransitionsFrom(status)
-    .map((to) => ({ to, decision: canTransition(status, to, { ...context, reason: 'placeholder' }) }))
-    .filter((option) => option.decision.allowed)
-    .map((option) => option.to);
+  // A-035 moved this into the transition module, because the day chip asks the
+  // identical question and two screens assembling it separately is how they
+  // come to disagree. The placeholder reason asks "would this be allowed if a
+  // reason were given?" — right here, where there is a reason box; the chip
+  // asks it without one.
+  const available = availableTransitions(status, { ...context, reason: 'placeholder' });
 
   const events = detail.events.map((event) => toReadableEvent(event, zone));
 

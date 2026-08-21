@@ -198,6 +198,75 @@ test.describe('the staff day grid (A-016)', () => {
     await expect(page).toHaveURL(/\/staff\/appointments\//);
   });
 
+  /**
+   * A-035 (operator P-4). The complaint was a COST, so the assertion is one:
+   * the client is checked in from the day, in one interaction, without the
+   * page changing. Before this it was four interactions and two page loads,
+   * for the most frequent action in the salon.
+   */
+  test('checks a client in from the grid, in one tap, without leaving the day', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    await page.getByRole('button', { name: 'Check in' }).click();
+
+    // Still the day — the whole point.
+    await expect(page).toHaveURL(new RegExp(`/staff/day\\?day=${DAY}`));
+    // The chip now says so, and the button has become the next step through
+    // the visit rather than disappearing: §7 says checked_in → in_progress.
+    await expect(page.getByRole('link', { name: /Ada Chen.*checked in/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+  });
+
+  test('the button is the NEXT step, never a hardcoded one', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T10:45:00-05:00',
+      status: 'in_progress',
+    });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    await expect(page.getByRole('button', { name: 'Finish' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Check in' })).toHaveCount(0);
+  });
+
+  /**
+   * The §7 table decides, and a terminal appointment has nowhere to go — so
+   * the chip must offer nothing at all rather than a button the write path
+   * would refuse.
+   */
+  test('offers nothing on a cancelled appointment', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T10:45:00-05:00',
+      status: 'cancelled',
+    });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    await expect(page.getByText('Ada Chen')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Check in|Start|Finish|No-show/ })).toHaveCount(0);
+  });
+
+  /** The stylist's own list has room for the whole set the table allows, and
+   *  it is the surface she reads on a phone between clients. */
+  test('the provider list carries every move the table allows, keyboard-reachable', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+
+    const checkIn = page.getByRole('button', { name: 'Check in' });
+    await expect(checkIn).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+    // No-show is offered only AFTER the appointment has started (§7's
+    // `after-start` clause), and this seeded 10:00 is in the past relative to
+    // the test clock, so it is here.
+    await expect(page.getByRole('button', { name: 'No-show' })).toBeVisible();
+
+    await checkIn.focus();
+    await expect(checkIn).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Checked in')).toBeVisible();
+  });
+
   test('has no accessibility violations', async ({ page }) => {
     await seedAppointment({
       start: '2026-06-09T10:00:00-05:00',

@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
 import { type DetailState, changeStatus } from '@/lib/appointments/actions';
+import { STATUS_ACTION_LABELS } from '@/app/staff/day/status-actions';
 
 const initial: DetailState = {};
 
@@ -64,7 +65,7 @@ export function StatusControls({
             disabled={pending}
             className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium disabled:opacity-60 dark:border-zinc-600"
           >
-            {LABELS[to]}
+            {STATUS_ACTION_LABELS[to]}
           </button>
         ))}
       </div>
@@ -75,16 +76,3 @@ export function StatusControls({
     </form>
   );
 }
-
-/** The eight statuses as the front desk would say them, TOTAL over the enum so
- *  a ninth state is a compile error rather than a raw value on a button. */
-const LABELS = {
-  booked: 'Put back to booked',
-  confirmed: 'Confirm',
-  checked_in: 'Check in',
-  in_progress: 'Start',
-  completed: 'Finish',
-  no_show: 'No-show',
-  cancelled: 'Cancel',
-  cancelled_late: 'Cancel (late)',
-} satisfies Record<AppointmentStatus, string>;

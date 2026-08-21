@@ -1244,3 +1244,19 @@ the reason the phone number is not unique in the first place.
 **Two kinds of "cannot move" turned out to feed each other.** A client with no free chair stays where she is — and a client who stays where she is blocks anyone who would have been shifted onto her time, who may in turn block someone else. The two conditions are resolved together until they settle, rather than one after the other. The test for it pulls a column an *earlier* hour: a chair shortage at one o'clock strands a three o'clock appointment for an entirely different reason, in the same result.
 
 **Keeping people in the chairs they are already in is a feature, not a nicety.** The obvious implementation re-seats the entire column from scratch, which walks clients between chairs for no reason and can exhaust a full room that the previous seating fitted perfectly. Preferring the current chair means the ordinary half-hour delay changes no seating at all.
+
+---
+
+## The most frequent action in the salon finally has a button
+
+**Checking a client in cost four interactions and two page loads.** Read the day, open the appointment, press the button, navigate back — for the thing a front desk does more often than anything else. The day screen showed "Checked in" as a word with nothing behind it. No revenue attaches to this, which is exactly why it kept being deferred, and it is the gap where paper comes back out.
+
+**The feature is one button; the work was making sure two screens can never disagree about what it offers.** The appointment detail panel already computed which status changes are legal right now — asking a single transition table with the real staff member and the real clock. Putting buttons on the day meant a second screen asking the same question, and a second screen answering it *for itself* is precisely the defect that bit an earlier project in this series: two surfaces confidently agreeing with each other and quietly disagreeing with the write path. So the computation became one function that both screens ask, and neither holds an opinion of its own.
+
+**What appears on a chip is decided by asking the table a slightly different question — not by a second list.** The chip has no box to type a reason in, so it asks "what is allowed *with no reason given*?" That single change is what keeps the two changes that genuinely require an explanation — a client walking out mid-service, and correcting a record after the fact — on the detail panel where the explanation can be typed. Nothing hardcodes which buttons belong where.
+
+**The button is always the next step, never a fixed one.** A booked client offers "Check in"; once she is checked in the same chip offers "Start"; once she is in the chair, "Finish". A hardcoded "Check in" would look right in a demo and be wrong five minutes later.
+
+**Two things were deliberately kept off the chip, for reasons worth stating.** Cancelling is perfectly legal from a chip and takes no reason — which is the problem: a mis-tap on a phone would end someone's appointment with no record of why. And confirming belongs to the call-down, a different errand done at a different time of day; a fifth button costs the four that matter. Both exclusions are written down where the code makes them.
+
+**A chip is as tall as the appointment is long, so the room for a button is arithmetic, not taste.** The shortest seeded service is a ten-minute fringe trim. The chip counts the lines it has already spent — a client's name, a pinned allergy note, a running-late projection — and shows the button only if what is left will hold it, because a *clipped* button is worse than an absent one: invisible to the eye and still reachable by keyboard. Where it does not fit, the chip is a link to the panel that has everything, which is where every one of these actions was yesterday.

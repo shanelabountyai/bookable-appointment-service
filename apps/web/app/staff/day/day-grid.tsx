@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { STATUS_WORDS } from '@/lib/day/view-model';
 import { ColumnControls } from './column-controls';
+import { StatusActions } from './status-actions';
 
 /**
  * The day grid (A-016, Goal 3).
@@ -185,18 +186,74 @@ function Item({ item }: { item: GridItem }) {
 
   const className = `${shell} border ${STATUS_COLOUR[item.status ?? 'booked']}`;
 
+  /**
+   * A-035 — THE ONE BUTTON THE CHIP HAS ROOM FOR.
+   *
+   * Check-in is the most frequent action in the salon and it cost four
+   * interactions and two page loads; this makes it one tap on the surface the
+   * desk is already looking at. It is `available[0]` — the next step through
+   * the visit, from the §7 table — never a hardcoded status, so a chip already
+   * checked in offers "Start" and one in the chair offers "Finish".
+   *
+   * WHY ONE AND NOT FOUR: this chip is `minutes * 1.5` pixels tall, and the
+   * seeded fringe trim is ten minutes. A row of four buttons does not fit and
+   * a chip taller than its duration would overlap the next client. The
+   * stylist's own list has no such constraint and carries the whole set; the
+   * link below still leads to the panel that carries everything.
+   *
+   * The height test is a geometry fact, not a rule about appointments: under
+   * it, the chip is the link alone. Nothing becomes unreachable — it becomes
+   * one tap further away, which is where every one of them was yesterday.
+   */
+  // Every line on a chip is truncated to exactly one line, so the space a
+  // button needs is countable rather than guessable: the title line, plus one
+  // per extra line already claimed. A chip clips what does not fit, and a
+  // CLIPPED BUTTON is worse than an absent one — invisible to the eye and
+  // still in the tab order.
+  const linesInUse = [item.detail, item.projected, item.pinnedNote, item.missed, item.isOverride].filter(
+    Boolean,
+  ).length;
+  const roomForAButton = item.minutes >= ONE_LINE_AND_A_BUTTON + linesInUse * MINUTES_PER_LINE;
+
+  const controls =
+    item.appointmentId && item.status && item.available?.length && roomForAButton ? (
+      <StatusActions
+        appointmentId={item.appointmentId}
+        status={item.status}
+        moves={item.available.slice(0, 1)}
+        className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px]"
+        buttonClassName="rounded-sm border border-current px-1.5 py-0.5 font-medium disabled:opacity-60"
+      />
+    ) : null;
+
   return (
     <li className={className} style={style}>
+      {/* The button is a SIBLING of the link, never inside it: a button nested
+          in an anchor is invalid, and it is the accessibility footgun A-033
+          named when it declined to put a second control on this chip. */}
       {item.href ? (
-        <Link href={item.href} className="block h-full focus:outline-2 focus:outline-offset-2" aria-label={item.label}>
+        <Link
+          href={item.href}
+          className={`block focus:outline-2 focus:outline-offset-2 ${controls ? '' : 'h-full'}`}
+          aria-label={item.label}
+        >
           {body}
         </Link>
       ) : (
         <span aria-label={item.label}>{body}</span>
       )}
+      {controls}
     </li>
   );
 }
+
+/**
+ * Chip geometry, in MINUTES because that is the unit the chip is measured in:
+ * 30 minutes is 45 pixels at the scale above, which holds one line of text and
+ * a control; each further line costs about ten more.
+ */
+const ONE_LINE_AND_A_BUTTON = 30;
+const MINUTES_PER_LINE = 10;
 
 /**
  * Status colours, as a TOTAL map — a ninth status is a compile error here

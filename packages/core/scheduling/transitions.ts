@@ -207,6 +207,29 @@ export function possibleTransitionsFrom(from: AppointmentStatus): AppointmentSta
   return Object.keys(TRANSITIONS[from] ?? {}) as AppointmentStatus[];
 }
 
+/**
+ * WHAT THIS ACTOR MAY DO TO THIS APPOINTMENT RIGHT NOW (A-035).
+ *
+ * `possibleTransitionsFrom` answers a question about the TABLE; this answers
+ * one about an appointment — the same edges, filtered by the preconditions
+ * that depend on the clock and the actor. It exists because two surfaces now
+ * draw status buttons (the detail panel and the day chip), and a surface that
+ * assembles this list for itself is the rental `VERIFIED` defect starting
+ * over: two screens quietly disagreeing about what is allowed.
+ *
+ * `reason` is supplied by the CALLER's context. Passing a placeholder asks
+ * "would this be allowed if a reason were given?", which is the right question
+ * for a form that has a reason box; leaving it empty asks "is this allowed
+ * with no reason at all?", which is the right question for a bare button. The
+ * write path re-asks either way — nothing here is trusted.
+ */
+export function availableTransitions(
+  from: AppointmentStatus,
+  context: TransitionContext,
+): AppointmentStatus[] {
+  return possibleTransitionsFrom(from).filter((to) => canTransition(from, to, context).allowed);
+}
+
 function check(clause: Clause, context: TransitionContext): TransitionRefusal | null {
   if (clause.requiresReason && !context.reason?.trim()) return 'reason-required';
 

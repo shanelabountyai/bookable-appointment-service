@@ -16,6 +16,7 @@ import {
   CORRECTION_WINDOW_MS,
   type TransitionContext,
   canReschedule,
+  availableTransitions,
   canTransition,
   isCorrection,
   possibleTransitionsFrom,
@@ -388,5 +389,45 @@ describe('D-6 — which appointments may be moved', () => {
       allowed: false,
       refusal: 'actor-not-permitted',
     });
+  });
+});
+
+/**
+ * A-035 — the list two surfaces draw their buttons from.
+ *
+ * `possibleTransitionsFrom` answers a question about the table; this answers
+ * one about an appointment, and the difference is every precondition that
+ * depends on the clock, the actor and whether a reason was given. The day chip
+ * and the detail panel both ask it, so a wrong answer here is two screens
+ * agreeing with each other and disagreeing with the write path.
+ */
+describe('A-035 — what may be done right now', () => {
+  it('drops an edge whose precondition is not met yet', () => {
+    // Before the start, a no-show is always a mis-tap (§7's `after-start`).
+    const beforeStart = permissive({ now: instant(START - 60_000) });
+    expect(possibleTransitionsFrom('booked')).toContain('no_show');
+    expect(availableTransitions('booked', beforeStart)).not.toContain('no_show');
+  });
+
+  it('drops an edge that needs a reason when there is nowhere to type one', () => {
+    // The chip asks without a reason, which is how the walk-out and APPT-06's
+    // terminal corrections stay on the panel that has a reason box.
+    expect(availableTransitions('in_progress', permissive({ reason: null }))).toEqual(['completed']);
+    expect(availableTransitions('in_progress', permissive())).toEqual(['completed', 'cancelled']);
+  });
+
+  it('offers a customer only what the customer may do', () => {
+    expect(availableTransitions('booked', permissive({ actor: 'customer_token' }))).not.toContain('checked_in');
+  });
+
+  it('is empty for a terminal appointment, so a screen can render nothing', () => {
+    expect(availableTransitions('cancelled', permissive())).toEqual([]);
+    expect(availableTransitions('cancelled_late', permissive())).toEqual([]);
+  });
+
+  it('closes the correction window it opened', () => {
+    const late = permissive({ now: instant(END + CORRECTION_WINDOW_MS + 1) });
+    expect(availableTransitions('completed', permissive())).toEqual(['no_show']);
+    expect(availableTransitions('completed', late)).toEqual([]);
   });
 });

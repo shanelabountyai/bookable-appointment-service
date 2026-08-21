@@ -18,6 +18,7 @@ export {
   canReschedule,
   canTransition,
   isCorrection,
+  availableTransitions,
   possibleTransitionsFrom,
 } from './transitions';
 export {

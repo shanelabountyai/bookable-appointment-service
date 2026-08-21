@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { GridColumn } from '@/lib/day/view-model';
+import { StatusActions } from './status-actions';
 
 /**
  * ONE STYLIST'S OWN DAY, as a list (A-016).
@@ -10,7 +11,8 @@ import type { GridColumn } from '@/lib/day/view-model';
  * width and reads in order with no further work.
  *
  * A server component: nothing here needs state, and the page's own refresh
- * timer already keeps it fresh.
+ * timer already keeps it fresh. The status buttons (A-035) are the one island
+ * of client code, and they own only their own form.
  */
 export function ProviderDay({ column }: { column: GridColumn }) {
   if (column.closed) {
@@ -51,6 +53,19 @@ export function ProviderDay({ column }: { column: GridColumn }) {
           {/* Status as a WORD, not only a colour — this list is what a stylist
               reads in bright sunlight on a phone. */}
           {item.status ? <span className="ml-auto text-sm">{STATUS_TEXT[item.status]}</span> : null}
+
+          {/* A-035. The stylist's own list has room for the whole set, so it
+              gets it: check in, start, finish, no-show, one tap each and no
+              page to leave. */}
+          {item.appointmentId && item.status && item.available?.length ? (
+            <StatusActions
+              appointmentId={item.appointmentId}
+              status={item.status}
+              moves={item.available}
+              className="flex w-full flex-wrap items-center gap-2 text-sm"
+              buttonClassName="rounded-md border border-zinc-400 px-3 py-1.5 font-medium disabled:opacity-60 dark:border-zinc-600"
+            />
+          ) : null}
 
           {item.projected ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
