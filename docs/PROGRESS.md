@@ -1054,7 +1054,7 @@ A-024 committed at 9e82f5c
 
 ## A-034 — the chair follows the move (RES-03, D-26, D-30, operator P-3)
 
-**Built:** `chairForMove` in `packages/db/booking/resources.ts` (one rule, shared), the chair re-pick in `rescheduleAppointment`, and a chair PLAN inside `previewPush` that the push then executes. `findFreeResource` gained `excludeAppointmentId` and `preferResourceId`. `push-column.ts` now defers `appointment_resource_no_overlap` alongside the block constraint and maps `23P01` to `SlotTaken`.
+**Built:** (commit `d69ddb1`) `chairForMove` in `packages/db/booking/resources.ts` (one rule, shared), the chair re-pick in `rescheduleAppointment`, and a chair PLAN inside `previewPush` that the push then executes. `findFreeResource` gained `excludeAppointmentId` and `preferResourceId`. `push-column.ts` now defers `appointment_resource_no_overlap` alongside the block constraint and maps `23P01` to `SlotTaken`.
 
 **Decided:** **The first test was the fixture, and it failed on the most ordinary push in the salon.** One stylist, two consecutive clients, "we're running half an hour behind" — both hold Chair 1 legitimately, because half-open ranges let the 15:00 take the chair the 14:00 vacates, and shifting the pair puts the first on top of the second. The desk got a raw `23P01` from the middle of the write loop, on a push the preview had just promised. No exotic room, no gap booking, no concurrency.
 
