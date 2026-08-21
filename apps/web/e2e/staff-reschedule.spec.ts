@@ -162,6 +162,38 @@ test.describe('staff reschedule (A-033)', () => {
     await expect(page.getByRole('heading', { name: 'Move this appointment' })).toHaveCount(0);
   });
 
+  /**
+   * A-038 (D-31) — the move that changes the stylist AND the time, which is
+   * the one the two existing operations cannot compose between them.
+   */
+  test('moves her to another stylist and another time in one action', async ({ page }) => {
+    const booked = await bookAsCustomer(page);
+
+    await page.goto(`/staff/appointments/${booked.appointmentId}`);
+    await page.getByLabel('With whom?').selectOption({ label: 'Priya' });
+    await moveTo(page, TARGET_DAY);
+    await expect(page.getByText(/^Moved\./)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const after = await prisma.appointment.findUniqueOrThrow({
+        where: { id: booked.appointmentId },
+        include: { provider: true },
+      });
+      expect(after.provider.displayName).toBe('Priya');
+      expect(after.startDay).toBe(TARGET_DAY);
+
+      // Both events, in one transaction — the log is what the desk reads back,
+      // and the stylist change is the half the client rings about.
+      const events = await prisma.appointmentEvent.findMany({ where: { appointmentId: booked.appointmentId } });
+      expect(events.map((e) => e.type)).toContain('provider_changed');
+      expect(events.map((e) => e.type)).toContain('rescheduled');
+      expect(await prisma.appointment.count()).toBe(1);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   test('has no accessibility violations', async ({ page }) => {
     const booked = await bookAsCustomer(page);
     await page.goto(`/staff/appointments/${booked.appointmentId}`);

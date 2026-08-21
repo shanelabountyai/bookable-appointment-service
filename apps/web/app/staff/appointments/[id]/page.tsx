@@ -16,6 +16,7 @@ import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { DELIVERY_WORDS, TEMPLATE_WORDS, toReadableEvent } from '@/lib/appointments/event-language';
 import { flagSentence } from '@/components/client-flag';
+import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
 import { MovePanel } from './move-panel';
 import { StatusControls } from './status-controls';
 import { VisitNote } from './visit-note';
@@ -183,7 +184,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
             Move this appointment
           </h2>
-          <MovePanel appointmentId={detail.id} currentDay={day} />
+          <MovePanel
+            appointmentId={detail.id}
+            currentDay={day}
+            currentProviderId={detail.providerId}
+            providers={await moveProviderChoices(detail.id)}
+          />
         </section>
       ) : null}
 

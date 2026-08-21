@@ -19,6 +19,7 @@
 import type { Actor } from '../../core/auth';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import { isSlotTakenError } from '../errors';
+import { qualifiedForVisit } from '../qualification';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 export type ReassignFailure = 'not-qualified' | 'provider-busy' | 'not-active' | 'not-reassignable';
@@ -61,14 +62,13 @@ export async function reassignAppointment(
       if (!target.active) return { appointmentId: args.appointmentId, ok: false, failure: 'not-active' as const };
 
       // SVC-02: she has to be able to do the WHOLE visit. "Where qualified" is
-      // the operative half of the bulk action's name.
-      const qualifications = await tx.serviceProvider.count({
-        where: {
-          providerId: args.toProviderId,
-          serviceId: { in: appointment.lines.map((l) => l.serviceId) },
-        },
+      // the operative half of the bulk action's name. The rule lives in ONE
+      // module (A-038) because the cross-provider reschedule asks it too.
+      const qualified = await qualifiedForVisit(tx, {
+        providerId: args.toProviderId,
+        serviceIds: appointment.lines.map((l) => l.serviceId),
       });
-      if (qualifications < new Set(appointment.lines.map((l) => l.serviceId)).size) {
+      if (!qualified) {
         return { appointmentId: args.appointmentId, ok: false, failure: 'not-qualified' as const };
       }
 

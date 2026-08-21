@@ -1035,3 +1035,19 @@ A-024 committed at 9e82f5c
 - **The chip on the day grid was deliberately NOT given a second control.** It is one link with an aria-label; nesting a button inside an anchor is an accessibility footgun, and the chip already leads to the panel.
 
 **Left behind:** OQ-9's two halves (provider change, override). The day grid still routes through the detail page rather than offering an inline move. `MoveOption` duplicates the shape of the customer flow's `OfferedTime` — three fields, two different lexicons (D-10), and merging them would put customer wording one import away from a staff screen.
+
+## A-038 — reschedule across providers (APPT-05, D-31, answers OQ-9)
+
+**Built:** `toProviderId` on `rescheduleAppointment` and `rescheduleOptions`, a provider control on A-033's move panel, and `packages/db/qualification.ts` — one module for "can she do this whole visit?", now shared with A-019's bulk reassign.
+
+**Decided:** **The lock reasoning D-31 was recorded with was wrong, and building the row is what found it.** The decision text said a cross-provider move needs one advisory lock on the destination provider-day and no ordering, because the source calendar is only ever vacated. That argument is right about the *advisory* lock and misses the constraint: **an exclusion constraint does not fail fast against an uncommitted conflicting row — it waits on the other transaction.** Two desks doing the two halves of a swap therefore deadlock on each other's old blocks, and Postgres resolves it as `40P01`, which is not `23P01`, does not map to `SlotTaken`, and reaches the desk as a 500. The correction is recorded inline in D-31; the decision itself did not change.
+
+**Where the interesting decisions went:**
+- **The fix is the canonical ordering spec §616 named all along, and it is three lines.** Sort the two keys, deduplicate, take them in order. An ordinary same-day time move still takes exactly one lock, so nothing about the common path changed.
+- **It closed a pre-existing hole as a side effect.** The identical cycle has been reachable since A-014 for a SAME-provider move across two days — two appointments swapping days on one provider — because only the destination day was ever locked. Nobody had hit it; it was there.
+- **The ordering is tested as a property, not as a race.** Both halves of a swap produce the same key order, asserted directly. Running the swap concurrently and watching for a deadlock would be the flaky race test CLAUDE.md forbids — and it would pass on a broken build most of the time.
+- **Both events, one transaction.** APPT-07 names "provider change" as its own kind of event, and collapsing a two-axis move into a single `rescheduled` row would lose the half the client actually rings about. `conflictAckAt` is cleared when the provider changes, for the same reason A-019 clears it.
+- **The qualification rule stopped being two copies.** "Where qualified" is the operative half of the bulk reassign's name and it is now the same sentence on both surfaces; a drifted copy would put a client with a stylist who cannot do her colour.
+- **`BookingRejected`, not a refusal type.** An unqualified or inactive destination provider is the caller handing over an impossible pair — not a race, and not a rule about the appointment's state. It is refused before anything is locked or written.
+
+**Left behind:** OQ-9's override half stays closed and unbuilt: "move her to 6pm, we'll stay late" is still an override booking (BOOK-05), which is where its audit trail lives. The move panel hides the provider control when only one provider is qualified, so a single-stylist salon never sees it. Nothing surfaces the deadlock class itself — if a third write path is ever added that moves an appointment's range, it must take the same ordered lock pair, and only this file's comment says so.

@@ -25,7 +25,7 @@ import {
   rescheduleAppointment,
   rescheduleOptions,
 } from '@bookable/db/appointments';
-import { SlotNotOffered, SlotTaken } from '@bookable/db/booking';
+import { BookingRejected, SlotNotOffered, SlotTaken } from '@bookable/db/booking';
 import type { TransitionRefusal } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { instantFromIso, toDate } from '@bookable/core/time';
@@ -48,13 +48,20 @@ export interface MoveOption {
  * duration the client actually agreed to (D-18), not whatever the catalogue
  * says today.
  */
-export async function staffMoveOptions(appointmentId: string, day: string): Promise<MoveOption[]> {
+export async function staffMoveOptions(
+  appointmentId: string,
+  day: string,
+  /** A-038 — "what could Priya do with this visit that day?" Empty means the
+   *  provider it is already with. */
+  providerId?: string,
+): Promise<MoveOption[]> {
   await requireStaff();
   if (!appointmentId || !day) return [];
 
   const result = await rescheduleOptions(prisma, {
     appointmentId,
     day,
+    providerId: providerId || null,
     now: new Date(),
     // No horizon, no lead time. The desk pre-books a year out for a wedding
     // and moves someone into twenty minutes' time; both are ordinary.
@@ -68,6 +75,45 @@ export async function staffMoveOptions(appointmentId: string, day: string): Prom
   }));
 }
 
+/**
+ * The providers who could take this visit — active, and qualified for EVERY
+ * service in it (SVC-02).
+ *
+ * Read here rather than filtered in the panel: "who can do this" is a rule,
+ * and a client component deciding it is how a screen comes to offer a stylist
+ * the write path then refuses.
+ */
+export async function moveProviderChoices(appointmentId: string): Promise<{ id: string; name: string }[]> {
+  const staff = await requireStaff();
+
+  const lines = await prisma.appointmentServiceLine.findMany({
+    where: { appointmentId },
+    select: { serviceId: true },
+  });
+  const serviceIds = [...new Set(lines.map((l) => l.serviceId))];
+  if (serviceIds.length === 0) return [];
+
+  const links = await prisma.serviceProvider.findMany({
+    where: { businessId: staff.businessId, serviceId: { in: serviceIds }, provider: { active: true } },
+    select: { providerId: true, provider: { select: { displayName: true, displayOrder: true } } },
+  });
+
+  const counts = new Map<string, number>();
+  for (const link of links) counts.set(link.providerId, (counts.get(link.providerId) ?? 0) + 1);
+
+  return links
+    .filter((link, i) => links.findIndex((l) => l.providerId === link.providerId) === i)
+    // All of them, not some of them: half a cut-and-colour with the wrong
+    // stylist is not a partial success.
+    .filter((link) => counts.get(link.providerId) === serviceIds.length)
+    .sort(
+      (a, b) =>
+        a.provider.displayOrder - b.provider.displayOrder ||
+        a.provider.displayName.localeCompare(b.provider.displayName),
+    )
+    .map((link) => ({ id: link.providerId, name: link.provider.displayName }));
+}
+
 export interface MoveState {
   ok?: boolean;
   message?: string;
@@ -78,6 +124,7 @@ export async function moveAppointment(_previous: MoveState, formData: FormData):
   const appointmentId = String(formData.get('appointmentId') ?? '');
   const at = String(formData.get('at') ?? '');
   const reason = String(formData.get('reason') ?? '');
+  const toProviderId = String(formData.get('toProviderId') ?? '');
 
   let startAt: Date;
   try {
@@ -97,6 +144,9 @@ export async function moveAppointment(_previous: MoveState, formData: FormData):
       actor: staffActor(staff.id),
       audience: 'staff',
       reason,
+      // A-038 (D-31). Absent or unchanged is the ordinary time move; the write
+      // path decides qualification and takes the lock pair either way.
+      toProviderId: toProviderId || null,
     });
   } catch (error) {
     return { ok: false, message: staffWordingFor(error) };
@@ -132,6 +182,7 @@ function staffWordingFor(error: unknown): string {
     // falls through readable rather than as a raw identifier.
     return `Not offered — ${error.reasons.map(readableReason).join('; ') || 'that time is not available'}.`;
   }
+  if (error instanceof BookingRejected) return error.message;
   if (error instanceof RescheduleRefused) {
     return REFUSALS[error.refusal] ?? `This one cannot be moved (${error.from.replace('_', ' ')}).`;
   }

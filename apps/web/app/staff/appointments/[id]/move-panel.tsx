@@ -21,21 +21,37 @@ const initial: MoveState = {};
  * these labels read "01:30" an hour apart, and posting the label back would be
  * a coin flip.
  */
-export function MovePanel({ appointmentId, currentDay }: { appointmentId: string; currentDay: string }) {
+export function MovePanel({
+  appointmentId,
+  currentDay,
+  currentProviderId,
+  providers,
+}: {
+  appointmentId: string;
+  currentDay: string;
+  currentProviderId: string;
+  /** Active and qualified for the WHOLE visit, decided on the server
+   *  (SVC-02). This component never filters them. */
+  providers: { id: string; name: string }[];
+}) {
   const [state, formAction, submitting] = useActionState(moveAppointment, initial);
   const [day, setDay] = useState(currentDay);
+  const [providerId, setProviderId] = useState(currentProviderId);
   const [times, setTimes] = useState<MoveOption[]>([]);
   const [looked, setLooked] = useState(false);
   const [loading, startLoading] = useTransition();
 
-  // Fetched on the change event rather than in an effect: choosing a day IS
-  // the event, so there is nothing to synchronize.
-  function chooseDay(chosen: string) {
-    setDay(chosen);
+  // Fetched on the change event rather than in an effect: choosing a day or a
+  // stylist IS the event, so there is nothing to synchronize. Both re-ask,
+  // because the times are the DESTINATION provider's — A-038's whole point is
+  // that Dana's calendar says nothing about Priya's two o'clock.
+  function look(nextDay: string, nextProviderId: string) {
+    setDay(nextDay);
+    setProviderId(nextProviderId);
     setLooked(false);
     startLoading(async () => {
-      setTimes(chosen ? await staffMoveOptions(appointmentId, chosen) : []);
-      setLooked(Boolean(chosen));
+      setTimes(nextDay ? await staffMoveOptions(appointmentId, nextDay, nextProviderId) : []);
+      setLooked(Boolean(nextDay));
     });
   }
 
@@ -46,18 +62,41 @@ export function MovePanel({ appointmentId, currentDay }: { appointmentId: string
       className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700"
     >
       <input type="hidden" name="appointmentId" value={appointmentId} />
+      <input type="hidden" name="toProviderId" value={providerId} />
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="move-day" className="text-sm font-medium">
-          Move to which day?
-        </label>
-        <input
-          id="move-day"
-          type="date"
-          value={day}
-          onChange={(event) => chooseDay(event.target.value)}
-          className="w-fit rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
-        />
+      <div className="flex flex-wrap gap-4">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="move-day" className="text-sm font-medium">
+            Move to which day?
+          </label>
+          <input
+            id="move-day"
+            type="date"
+            value={day}
+            onChange={(event) => look(event.target.value, providerId)}
+            className="w-fit rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
+          />
+        </div>
+
+        {providers.length > 1 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="move-provider" className="text-sm font-medium">
+              With whom?
+            </label>
+            <select
+              id="move-provider"
+              value={providerId}
+              onChange={(event) => look(day, event.target.value)}
+              className="w-fit rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
+            >
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       <fieldset className="flex flex-col gap-2">

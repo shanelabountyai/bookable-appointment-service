@@ -11,6 +11,7 @@ export {
   RescheduleRefused,
   type RescheduleInput,
   type RescheduledAppointment,
+  moveLockKeys,
   rescheduleAppointment,
   rescheduleOptions,
 } from './reschedule';

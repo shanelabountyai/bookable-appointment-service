@@ -15,7 +15,7 @@ import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { SlotNotOffered, SlotTaken, bookAppointment } from '../booking';
 import { issueManageToken, verifyManageToken } from './manage-token';
-import { AppointmentAlreadyMoved, rescheduleAppointment } from './reschedule';
+import { AppointmentAlreadyMoved, moveLockKeys, rescheduleAppointment } from './reschedule';
 
 const prisma = new PrismaClient();
 const STAFF_WINDOW = { createdByActor: 'staff' as const, actorRef: 'staff-1' };
@@ -400,5 +400,125 @@ describe('the write is conditional on the time it was decided against', () => {
     const events = await prisma.appointmentEvent.findMany({ where: { type: 'rescheduled' } });
     expect(events).toHaveLength(1);
     expect((events[0]!.payload as { to: string }).to).toBe(row.startAt.toISOString());
+  });
+});
+
+/**
+ * A-038 (D-31) — the move that changes the stylist AND the time.
+ *
+ * The case that forced this row is not composable from the two primitives
+ * that existed: "put her with Priya at 2 instead of 3" fails as a reassign
+ * (Priya has her own 3pm) and fails as a reschedule (Dana is off at 2), while
+ * the destination — Priya at 2 — is free the whole time.
+ */
+describe('A-038 — moving between providers', () => {
+  const TWO_PM = at('2026-06-09T14:00:00-05:00');
+
+  it('changes the provider and the time in ONE row and ONE transaction', async () => {
+    const appointment = await book();
+    await move(appointment.id, TWO_PM, { toProviderId: otherProviderId });
+
+    const after = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(after.providerId).toBe(otherProviderId);
+    expect(after.startAt).toEqual(TWO_PM);
+    // The row survived (D-6): her manage link, her history and her event log
+    // all follow the id across both changes.
+    expect(await prisma.appointment.count()).toBe(1);
+  });
+
+  it('writes BOTH events, because the log is what the desk reads back', async () => {
+    const appointment = await book();
+    await move(appointment.id, TWO_PM, { toProviderId: otherProviderId, reason: 'Dana is off sick' });
+
+    const events = await prisma.appointmentEvent.findMany({
+      where: { appointmentId: appointment.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    // APPT-07 names "provider change" as its own kind. Collapsing this into
+    // one `rescheduled` row would lose the half the client rings about.
+    expect(events.map((e) => e.type)).toContain('provider_changed');
+    expect(events.map((e) => e.type)).toContain('rescheduled');
+    expect(events.find((e) => e.type === 'provider_changed')?.reason).toBe('Dana is off sick');
+  });
+
+  it('refuses a provider who cannot do the whole visit (SVC-02)', async () => {
+    const marcus = await prisma.provider.create({
+      data: { businessId, displayName: 'Marcus', displayOrder: 2 },
+    });
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId: marcus.id, weekday: 2, open: '09:00', close: '17:00', endsNextDay: false },
+      STAFF_WINDOW,
+    );
+    const appointment = await book();
+
+    await expect(move(appointment.id, TWO_PM, { toProviderId: marcus.id })).rejects.toThrow(
+      /not set up to do everything/,
+    );
+    // Refused BEFORE anything was locked or written.
+    const after = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(after.providerId).toBe(providerId);
+    expect(after.startAt).toEqual(TEN_AM);
+  });
+
+  it('refuses a provider who is not taking appointments', async () => {
+    await prisma.provider.update({ where: { id: otherProviderId }, data: { active: false } });
+    const appointment = await book();
+
+    await expect(move(appointment.id, TWO_PM, { toProviderId: otherProviderId })).rejects.toThrow(
+      /not taking appointments/,
+    );
+  });
+
+  it('asks the DESTINATION provider’s calendar, not the source’s', async () => {
+    // Priya is busy at 2. Dana is free then — and Dana's calendar has nothing
+    // to say about where this appointment is going.
+    await book({ providerId: otherProviderId, startAt: TWO_PM, clientId: null });
+    const appointment = await book();
+
+    await expect(move(appointment.id, TWO_PM, { toProviderId: otherProviderId })).rejects.toBeInstanceOf(SlotTaken);
+    const unchanged = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(unchanged.providerId).toBe(providerId);
+  });
+
+  it('clears an acknowledgment made about the provider it is leaving', async () => {
+    const appointment = await book();
+    await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { conflictAckAt: NOW, conflictAckReason: 'client says she will wait for Dana' },
+    });
+
+    await move(appointment.id, TWO_PM, { toProviderId: otherProviderId });
+
+    const after = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(after.conflictAckAt).toBeNull();
+    expect(after.conflictAckReason).toBeNull();
+  });
+
+  it('leaves an ordinary same-provider move taking exactly one lock', () => {
+    expect(moveLockKeys({ source: 'dana:2026-06-09', destination: 'dana:2026-06-09' })).toEqual([
+      'dana:2026-06-09',
+    ]);
+  });
+
+  /**
+   * THE DEADLOCK PROOF, as a property rather than a coin flip.
+   *
+   * Two desks swapping two clients between two stylists take the same pair of
+   * keys from opposite ends. The exclusion constraint WAITS on an uncommitted
+   * conflicting row rather than failing fast, so without a total order over
+   * the locks each move waits for the other's old block to go away — `40P01`,
+   * which is not `23P01`, does not map to `SlotTaken`, and reaches the desk as
+   * a 500. Sorting makes the cycle unformable.
+   *
+   * Asserting the ORDER is deterministic; running the swap and hoping to
+   * observe a deadlock is exactly the flaky race test CLAUDE.md forbids.
+   */
+  it('gives both halves of a swap the SAME lock order', () => {
+    const dana = 'dana:2026-06-09';
+    const priya = 'priya:2026-06-09';
+    expect(moveLockKeys({ source: dana, destination: priya })).toEqual(
+      moveLockKeys({ source: priya, destination: dana }),
+    );
   });
 });

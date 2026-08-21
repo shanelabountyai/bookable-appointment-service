@@ -19,12 +19,14 @@
  * not false-conflict. The ENGINE needs telling separately, which is what
  * `excludeAppointmentId` is for.
  *
+ * CHANGING THE PROVIDER IS NOW HERE (A-038, D-31), and the machinery the old
+ * note in this header said it would need turned out to be needed ANYWAY — see
+ * `lockForMove` below. The move that forced it is one the two existing
+ * primitives cannot compose: "put her with Priya at 2 instead of 3" fails as a
+ * reassign (Priya has her own 3pm) and fails as a reschedule (Dana is off at
+ * 2), while the destination is free throughout.
+ *
  * WHAT IS DELIBERATELY NOT HERE:
- *  - Changing the provider. A move between providers needs canonical lock
- *    ordering or it deadlocks under concurrency, intermittently, in production
- *    only (spec §4.6). Reassignment is A-019's bulk workflow and it can pay
- *    for that machinery; a time move within one provider cannot deadlock,
- *    because it takes exactly one lock.
  *  - Changing the services. The appointment keeps the duration and the price
  *    it was booked with (D-18's snapshot) — a reschedule moves an appointment,
  *    it does not re-sell it.
@@ -44,7 +46,8 @@ import {
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
 import type { Actor } from '../../core/auth';
-import { SlotNotOffered, SlotTaken } from '../booking/errors';
+import { BookingRejected, SlotNotOffered, SlotTaken } from '../booking/errors';
+import { qualifiedForVisit } from '../qualification';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
 import { buildSlotQuery } from '../scheduling';
@@ -85,6 +88,16 @@ export interface RescheduleInput {
   /** Injected, never read from the clock here — the cutoff depends on it. */
   now: Date;
   actor: Actor;
+  /**
+   * A-038 (D-31). The provider this appointment should end up with, when that
+   * is changing too. Absent or equal to the current one is the ordinary time
+   * move and behaves exactly as before.
+   *
+   * STAFF ONLY in practice — nothing stops a token actor passing it, so the
+   * check is the qualification rule and the transition table, not the caller's
+   * good manners.
+   */
+  toProviderId?: string | null;
   /** Defaults to the RESTRICTED value, so a route that forgets gets the
    *  customer's horizon and no exclusion reasons. */
   audience?: 'public' | 'staff';
@@ -125,18 +138,19 @@ export async function rescheduleAppointment(
 
         const zone = appointment.business.timezone as ZoneId;
         const destinationDay = toLabel(fromDate(input.startAt), zone);
+        const toProviderId = input.toProviderId?.trim() || appointment.providerId;
+        const sourceDay = toLabel(fromDate(appointment.startAt), zone);
 
-        // D-24, same as the booking path and for the same reason: an override
-        // stores a zero-width range, so the constraint does not defend
-        // overridden time and only this in-transaction re-check does. One
-        // lock, on the DESTINATION provider-day — the source day needs none,
-        // because freeing time can never create a conflict.
-        await tx.$executeRawUnsafe(
-          `SELECT pg_advisory_xact_lock(hashtext($1))`,
-          `${appointment.providerId}:${destinationDay.day}`,
-        );
+        if (toProviderId !== appointment.providerId) {
+          await assertProviderCanTakeIt(tx, appointment, toProviderId);
+        }
 
-        const offered = await findOffered(tx, appointment, input, audience, destinationDay.day);
+        await lockForMove(tx, {
+          source: `${appointment.providerId}:${sourceDay.day}`,
+          destination: `${toProviderId}:${destinationDay.day}`,
+        });
+
+        const offered = await findOffered(tx, appointment, input, audience, destinationDay.day, toProviderId);
         const endAt = toDate(instant(fromDate(input.startAt) + bookedDurationMinutes(appointment) * MIN));
 
         // THE WRITE IS CONDITIONAL ON THE TIME WE DECIDED AGAINST, the same
@@ -151,6 +165,16 @@ export async function rescheduleAppointment(
             endAt,
             startDay: destinationDay.day,
             startWallTime: destinationDay.time,
+            // A-038. One UPDATE moves BOTH axes, which is the entire point:
+            // the appointment keeps its id, so her manage link, her history
+            // and her event log all follow it across the change.
+            providerId: toProviderId,
+            // A conflict acknowledged against the OLD provider says nothing
+            // about the new one (A-019's `conflictAckAt` is cleared by the
+            // bulk reassign for the same reason).
+            ...(toProviderId !== appointment.providerId
+              ? { conflictAckAt: null, conflictAckReason: null }
+              : {}),
             // blockedStart/blockedEnd are recomputed by the A-003 trigger on
             // UPDATE as well as INSERT, so the busy set and the constraint
             // follow the move without this file knowing the buffer arithmetic.
@@ -163,6 +187,28 @@ export async function rescheduleAppointment(
         // open again to cancel — reissuing would kill it at that exact moment,
         // which is spec §4.6's fourth failure mode arriving by another route.
         await repointManageTokens(tx, appointment.id, endAt);
+
+        // TWO EVENTS, ONE TRANSACTION (D-31). APPT-07 names "provider change"
+        // as its own kind of event and the log is what the desk reads back, so
+        // a move that changed both axes has to say both — collapsing it into
+        // one `rescheduled` row would lose the fact that the stylist changed,
+        // which is the half the client will ring about.
+        if (toProviderId !== appointment.providerId) {
+          await tx.appointmentEvent.create({
+            data: {
+              businessId: appointment.businessId,
+              appointmentId: appointment.id,
+              type: 'provider_changed',
+              actor: input.actor.type,
+              actorRef: input.actor.ref,
+              reason: input.reason?.trim() || null,
+              payload: {
+                fromProviderId: appointment.providerId,
+                toProviderId,
+              } satisfies Prisma.InputJsonValue,
+            },
+          });
+        }
 
         await tx.appointmentEvent.create({
           data: {
@@ -182,6 +228,7 @@ export async function rescheduleAppointment(
               toEndAt: endAt.toISOString(),
               audience,
               offered: offered !== undefined,
+              ...(toProviderId !== appointment.providerId ? { toProviderId } : {}),
             } satisfies Prisma.InputJsonValue,
           },
         });
@@ -291,8 +338,9 @@ async function findOffered(
   input: RescheduleInput,
   audience: 'public' | 'staff',
   day: string,
+  providerId: string,
 ): Promise<Slot | undefined> {
-  const result = await slotsForMove(tx, appointment, { day, now: input.now, audience, explain: true });
+  const result = await slotsForMove(tx, appointment, { day, now: input.now, audience, explain: true, providerId });
 
   const offered = result.slots.find((s) => s.start === fromDate(input.startAt));
   if (offered) return offered;
@@ -323,11 +371,14 @@ async function findOffered(
 async function slotsForMove(
   db: Prisma.TransactionClient | PrismaClient,
   appointment: LoadedAppointment,
-  args: { day: string; now: Date; audience: 'public' | 'staff'; explain?: boolean },
+  args: { day: string; now: Date; audience: 'public' | 'staff'; explain?: boolean; providerId?: string },
 ): Promise<SlotResult> {
   const { query } = await buildSlotQuery(db, {
     businessId: appointment.businessId,
-    providerId: appointment.providerId,
+    // A-038: the DESTINATION provider's windows and busy set, which is what
+    // makes "Priya at 2" answerable at all — Dana's calendar has nothing to
+    // say about it.
+    providerId: args.providerId ?? appointment.providerId,
     serviceIds: appointment.lines.map((l) => l.serviceId),
     day: args.day,
     now: args.now,
@@ -352,13 +403,22 @@ async function slotsForMove(
  *  source of truth, and the same call the write path makes. */
 export async function rescheduleOptions(
   prisma: PrismaClient,
-  args: { appointmentId: string; day: string; now: Date; audience?: 'public' | 'staff' },
+  args: {
+    appointmentId: string;
+    day: string;
+    now: Date;
+    audience?: 'public' | 'staff';
+    /** A-038 — "what could Priya do with this visit that day?" Defaults to the
+     *  provider it is already with, which is every existing caller. */
+    providerId?: string | null;
+  },
 ): Promise<SlotResult> {
   const appointment = await loadAppointment(prisma, args.appointmentId);
   return slotsForMove(prisma, appointment, {
     day: args.day,
     now: args.now,
     audience: args.audience ?? 'public',
+    providerId: args.providerId?.trim() || appointment.providerId,
   });
 }
 
@@ -366,4 +426,82 @@ export async function rescheduleOptions(
  *  (D-18) — never re-derived from the current service configuration. */
 function bookedDurationMinutes(appointment: LoadedAppointment): number {
   return appointment.lines.reduce((total, line) => total + line.durationMinutes, 0);
+}
+
+/**
+ * The lock keys for a move, deduplicated and in a TOTAL ORDER.
+ *
+ * Exported because the ordering IS the deadlock proof, and a property is a
+ * deterministic thing to test where "run the swap and see if it deadlocks" is
+ * a coin flip — which CLAUDE.md rules out as a race test outright.
+ */
+export function moveLockKeys(keys: { source: string; destination: string }): string[] {
+  return [...new Set([keys.source, keys.destination])].sort();
+}
+
+/**
+ * BOTH provider-days, IN A CANONICAL ORDER — and the reason is worth stating,
+ * because D-31 was recorded believing one lock would do (corrected there).
+ *
+ * The lock's job (D-24) is to serialize writers whose in-transaction engine
+ * re-check must see committed state. By that argument alone the SOURCE
+ * provider-day needs no lock: a move only ever vacates it, and freeing time
+ * cannot create a conflict. That argument is correct and it is not the whole
+ * problem.
+ *
+ * The problem is the EXCLUSION CONSTRAINT, which does not fail fast against an
+ * uncommitted conflicting row — it WAITS on the other transaction. So two
+ * desks swapping two clients between two stylists ("give Dana's 2pm to Priya
+ * and Priya's 2pm to Dana", one half each) deadlock: each move's new block
+ * waits for the other's old block to go away. Postgres resolves that as
+ * `40P01`, which is not `23P01`, does not map to `SlotTaken`, and reaches the
+ * desk as a 500. This repo has already met that exact failure once, in A-030.
+ *
+ * Sorting the two keys gives every mover a total order over the locks, so the
+ * cycle cannot form. Deduplicated when both sides are the same key, which is
+ * every ordinary time move within one day — those still take exactly one lock,
+ * and nothing about the common path changed.
+ *
+ * NOTE this also closes the same latent deadlock for a SAME-PROVIDER move
+ * across two days, which has been reachable since A-014: two appointments
+ * swapping days on one provider is the identical cycle with the identical
+ * cause, and only the destination day was ever locked.
+ */
+async function lockForMove(
+  tx: Prisma.TransactionClient,
+  keys: { source: string; destination: string },
+): Promise<void> {
+  for (const key of moveLockKeys(keys)) {
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, key);
+  }
+}
+
+/**
+ * SVC-02 and the active flag, before anything is locked or written.
+ *
+ * `BookingRejected` rather than a refusal type: this is the caller handing us
+ * an impossible pair, not a race and not a rule about the appointment's state.
+ * The qualification rule itself lives in one module shared with A-019's bulk
+ * reassign — "where qualified" must mean the same thing on both surfaces.
+ */
+async function assertProviderCanTakeIt(
+  tx: Prisma.TransactionClient,
+  appointment: LoadedAppointment,
+  toProviderId: string,
+): Promise<void> {
+  const target = await tx.provider.findFirst({
+    where: { id: toProviderId, businessId: appointment.businessId },
+    select: { active: true },
+  });
+  if (!target?.active) {
+    throw new BookingRejected('toProviderId', 'That provider is not taking appointments.');
+  }
+
+  const qualified = await qualifiedForVisit(tx, {
+    providerId: toProviderId,
+    serviceIds: appointment.lines.map((l) => l.serviceId),
+  });
+  if (!qualified) {
+    throw new BookingRejected('toProviderId', 'She is not set up to do everything in this visit.');
+  }
 }
