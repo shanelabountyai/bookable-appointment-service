@@ -341,6 +341,125 @@ test.describe('staff booking (A-017)', () => {
     await expect(page.getByText('Booked.')).toBeVisible();
   });
 
+  /**
+   * A-042 — BOOK-05's override, reached the way the desk would reach it.
+   *
+   * The spec above ('refuses, explains, and then overrides') proves the
+   * machinery works and proves nothing about whether anyone can get to it: it
+   * hand-builds `?at=18:00`, a URL this product has never emitted. Every real
+   * link into the panel carried either a gap's instant or nothing, and a gap
+   * is by construction FREE time — so the override checkbox only ever appeared
+   * after a refusal the desk had no way to cause.
+   *
+   * So: no `page.goto` with a hand-built query anywhere below. Day grid →
+   * column header → an occupied time on the list → the refusal in the salon's
+   * words → the override with its reason.
+   */
+  test('overrides onto an occupied time, entirely from the browser', async ({ page }) => {
+    // Fill the time first, through the ordinary path, so the column really is
+    // occupied rather than fixture-occupied.
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Book with Dana' }).click();
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    // Offered chips are named by their time alone; a refused one carries its
+    // reason in the same accessible name, so this regex picks a free one.
+    const free = page.getByRole('button', { name: /^\d\d:\d\d$/ }).first();
+    await expect(free).toBeVisible();
+    const taken = (await free.textContent())!.trim();
+    await free.click();
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    // Back in through the SAME door — the one that does not need a gap, which
+    // is the point: a column with no gaps left still has a way in.
+    await page.getByRole('link', { name: 'Back to the day' }).click();
+    await page.getByRole('link', { name: 'Book with Dana' }).click();
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    // A-032's deferred half: the time is still listed, dimmed, saying WHY.
+    const occupied = page.getByRole('button', { name: `${taken} — she already has a client then` });
+    await expect(occupied).toBeVisible();
+    await occupied.click();
+
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+
+    // Refused in words, with the way past beside them (D-8).
+    await expect(page.getByText('That time is not free.')).toBeVisible();
+    // EXACT, because the chips on the list now say the same words: this has
+    // to be the refusal's own sentence (which ends in a full stop), not the
+    // annotation on the button that caused it.
+    await expect(page.getByText('she already has a client then.', { exact: true })).toBeVisible();
+
+    await page.getByLabel('Book it anyway').check();
+    await page.getByLabel('Why?').fill('Wedding party, agreed with Dana');
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked as an override, and recorded.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const override = await prisma.appointment.findFirstOrThrow({
+        where: { isOverride: true },
+        include: { events: true, blocks: true },
+      });
+      expect(override.overrideReason).toBe('Wedding party, agreed with Dana');
+      // D-8: a ZERO-WIDTH blocked range, so the exclusion constraint is
+      // satisfied without being weakened — and the true range kept beside it
+      // so the day view renders the real collision.
+      expect(override.blockedStart.getTime()).toBe(override.blockedEnd.getTime());
+      expect(override.blockedStart.getTime()).toBe(override.startAt.getTime());
+      // `overriddenFromRange` is not asserted here because Prisma cannot
+      // select an `Unsupported("tstzrange")` — and it does not need to be: the
+      // `appointment_override_range_iff_override` CHECK makes a non-null value
+      // on this row a condition of the INSERT having succeeded at all.
+      expect(override.blocks).toHaveLength(1);
+      expect(override.blocks[0]!.blockedStart.getTime()).toBe(override.blocks[0]!.blockedEnd.getTime());
+      expect(override.events.map((e) => e.type)).toContain('override_booked');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * A-042's other half: a time the grid CANNOT contain. Candidates are
+   * anchored to window-open, so 18:00 on a day that shuts at 17:00 is never an
+   * engine candidate and can never appear as a refused chip — it is the case
+   * BOOK-05 names first and the one A-038 routes back here.
+   *
+   * The wall time is typed; the INSTANT is composed on the server (D-4).
+   */
+  test('books after closing from a typed time, with no hand-built URL', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Book with Dana' }).click();
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    await page.getByLabel('Another time?').fill('18:00'); // after the 17:00 close
+    await page.getByRole('button', { name: 'Use it' }).click();
+    await expect(page.getByRole('button', { name: '18:00', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+
+    await expect(page.getByText(/outside her working hours/)).toBeVisible();
+    await page.getByLabel('Book it anyway').check();
+    await page.getByLabel('Why?').fill('Staying late for the wedding party');
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked as an override, and recorded.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const override = await prisma.appointment.findFirstOrThrow({ where: { isOverride: true } });
+      // The instant the SERVER composed, not one the browser built in its own
+      // zone — the whole reason the wall time made a round trip.
+      expect(override.startAt.getTime()).toBe(at('18:00').getTime());
+      expect(override.startWallTime).toBe('18:00');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   test('has no accessibility violations', async ({ page }) => {
     await page.goto(`/staff/day?day=${DAY}`);
     await page.getByRole('link', { name: /Book \d+ minutes free/ }).first().click();

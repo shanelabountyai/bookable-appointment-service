@@ -190,7 +190,7 @@ export async function bookAppointment(
             reasons.includes('overlaps-buffer') ||
             reasons.includes('overlaps-time-off') ||
             reasons.includes('overlaps-block');
-          if (occupied) throw new SlotTaken([...result.slots]);
+          if (occupied) throw new SlotTaken([...result.slots], reasons);
           // A-032, RES-03. The room is full and the STYLIST IS FREE, which is
           // neither of the two answers above: nobody took this slot, and it
           // was genuinely on offer. Its own error because its own answer —

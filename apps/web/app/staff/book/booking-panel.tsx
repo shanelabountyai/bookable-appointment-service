@@ -4,13 +4,15 @@ import Link from 'next/link';
 import { useActionState, useState, useTransition } from 'react';
 import {
   type ClientChoice,
-  type OfferedSlot,
+  type ComposedTime,
+  type GridTime,
   type StaffBookingState,
   type WalkInChoice,
   bookAsStaff,
   createClientForBooking,
   findClientsForBooking,
   findWalkInOptions,
+  instantForTime,
   staffSlotsFor,
 } from '@/lib/booking/staff-actions';
 import { readableReason } from '@/lib/scheduling-words';
@@ -60,7 +62,7 @@ export function BookingPanel({
   initialClient?: ClientChoice | null;
   /** Offered times for the prefilled combination, computed server-side so a
    *  rebook renders with its list already there. */
-  initialSlots?: OfferedSlot[];
+  initialSlots?: GridTime[];
 }) {
   const [state, formAction, booking] = useActionState(bookAsStaff, initial);
 
@@ -71,7 +73,14 @@ export function BookingPanel({
   const [options, setOptions] = useState<WalkInChoice[]>([]);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
   const [loadingOptions, startLoadingOptions] = useTransition();
-  const [slots, setSlots] = useState<OfferedSlot[]>(initialSlots);
+  const [slots, setSlots] = useState<GridTime[]>(initialSlots);
+  // A-042: times the desk typed that the grid does not contain at all — after
+  // close, before open. Composed to instants on the SERVER (D-4) and kept
+  // beside the grid rather than mixed into it, because they are not offers.
+  const [typed, setTyped] = useState<ComposedTime[]>([]);
+  const [typedError, setTypedError] = useState<string | null>(null);
+  const [wall, setWall] = useState('');
+  const [composing, startComposing] = useTransition();
   // Deliberately NOT preselected on a rebook: "six weeks on Tuesday" names a
   // day, never a time, and defaulting to the morning's first slot would book
   // a time nobody chose. The list is there; the desk picks from it.
@@ -98,6 +107,10 @@ export function BookingPanel({
     setOptions([]);
     setSlots([]);
     setChosenSlot(null);
+    // A typed 18:00 belongs to the day it was composed against — carrying it
+    // across a day change would keep an instant from last Tuesday selected.
+    setTyped([]);
+    setTypedError(null);
     if (nextServices.length === 0) return;
     if (walkIn) {
       startLoadingOptions(async () => setOptions(await findWalkInOptions(nextServices, nextDay)));
@@ -118,8 +131,14 @@ export function BookingPanel({
         // shut — and that has to reach the refusal so BOOK-05's override is
         // still on offer. Substituting the morning's first slot would book a
         // completely different appointment and call it success.
+        //
+        // BOOKABLE ONES ONLY (A-042). The list now carries the refused times
+        // too, and preselecting one of those would arm the override for a desk
+        // that only tapped a gap — which is precisely how an override marker
+        // stops meaning anything.
         const anchor = nextDay === initialDay ? at : null;
-        setChosenSlot(offered.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? offered[0]?.at ?? null);
+        const bookable = offered.filter((slot) => slot.reasons.length === 0);
+        setChosenSlot(bookable.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? bookable[0]?.at ?? null);
       });
     }
   }
@@ -217,25 +236,110 @@ export function BookingPanel({
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
           ) : loadingOptions ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p>
-          ) : slots.length === 0 ? (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Nothing free that day for this service. Book it anyway below if you mean to.
-            </p>
           ) : (
-            <ul className="flex flex-wrap gap-2">
-              {slots.map((slot) => (
-                <li key={slot.at}>
-                  <button
-                    type="button"
-                    aria-pressed={chosenSlot === slot.at}
-                    onClick={() => setChosenSlot(slot.at)}
-                    className={`rounded-md border px-3 py-2 text-sm ${chosenSlot === slot.at ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-zinc-400 dark:border-zinc-600'}`}
-                  >
-                    {slot.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {slots.length === 0 ? (
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  She is not working that day. Type a time below if you mean to book her anyway.
+                </p>
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {/* A-042 — the WHOLE column, offered and refused alike, in
+                      one chronological list. A refused time is dimmed, says
+                      why, and is still tappable: that tap is the only way to
+                      reach BOOK-05's override from a screen, and the reason
+                      beside it is what makes the tap a decision (D-8). */}
+                  {slots.map((slot) => {
+                    const why = slot.reasons.map(readableReason).join('; ');
+                    return (
+                      <li key={slot.at}>
+                        <button
+                          type="button"
+                          aria-pressed={chosenSlot === slot.at}
+                          onClick={() => setChosenSlot(slot.at)}
+                          className={`rounded-md border px-3 py-2 text-left text-sm ${
+                            chosenSlot === slot.at
+                              ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800'
+                              : why
+                                ? 'border-dashed border-zinc-400 text-zinc-600 dark:border-zinc-600 dark:text-zinc-400'
+                                : 'border-zinc-400 dark:border-zinc-600'
+                          }`}
+                        >
+                          {slot.label}
+                          {/* The space is a real text node, not the margin:
+                              `ml-2` is invisible to an accessible name, and
+                              without it the button is called "09:00— she
+                              already has a client then". */}
+                          {why ? <span className="ml-2 text-xs"> — {why}</span> : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {/* The grid stops at the working windows: with candidates
+                  anchored to window-open, 18:00 on a day that shuts at 17:00
+                  is never a candidate and so can never appear above. That is
+                  BOOK-05's first case ("book outside hours") and A-038's "move
+                  her to 6pm, we'll stay late" — until now reachable only by
+                  hand-typing a URL the product does not emit.
+
+                  The wall time is sent to the SERVER and comes back an
+                  instant (D-4). Composing it here would compose it in the
+                  browser's timezone. */}
+              <div className="mt-1 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  Another time?
+                  <input
+                    type="time"
+                    value={wall}
+                    onChange={(event) => setWall(event.target.value)}
+                    className={field}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={composing || wall === ''}
+                  onClick={() =>
+                    startComposing(async () => {
+                      const composed = await instantForTime(day, wall);
+                      setTyped(composed.times);
+                      setTypedError(composed.error ?? null);
+                      // One answer is unambiguous, so select it and save the
+                      // desk a tap. Two means the clocks went back and only a
+                      // person can say which 01:30 she meant.
+                      if (composed.times.length === 1) setChosenSlot(composed.times[0]!.at);
+                    })
+                  }
+                  className={secondary}
+                >
+                  Use it
+                </button>
+              </div>
+              {typedError ? (
+                <p className="text-sm text-amber-800 dark:text-amber-300" aria-live="polite">
+                  {typedError}
+                </p>
+              ) : null}
+              {typed.length > 0 ? (
+                <ul className="flex flex-wrap gap-2">
+                  {typed.map((time) => (
+                    <li key={time.at}>
+                      <button
+                        type="button"
+                        aria-pressed={chosenSlot === time.at}
+                        onClick={() => setChosenSlot(time.at)}
+                        className={`rounded-md border px-3 py-2 text-sm ${chosenSlot === time.at ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-dashed border-zinc-400 dark:border-zinc-600'}`}
+                      >
+                        {time.label}
+                        {time.note ? <span className="ml-2 text-xs"> ({time.note})</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
           )}
         </fieldset>
       ) : null}

@@ -11,10 +11,23 @@ import type { Slot } from '../../core/scheduling';
  */
 export class SlotTaken extends Error {
   readonly alternatives: Slot[];
-  constructor(alternatives: Slot[]) {
+  /**
+   * WHY THIS TIME IS OCCUPIED, when the caller knew — a buffer, time off, a
+   * block, or a genuine booking.
+   *
+   * Empty by default, and empty is honest: a lost race surfaces through the
+   * exclusion constraint with nothing to say beyond "gone". A-042 made the
+   * populated case the ORDINARY one — the desk can now tap an occupied time
+   * on purpose — and a screen that answers "she already has a client" when the
+   * truth is "it runs into another appointment's buffer" is the wrongly-
+   * explaining screen `scheduling-words.ts` exists to prevent.
+   */
+  readonly reasons: readonly string[];
+  constructor(alternatives: Slot[], reasons: readonly string[] = []) {
     super('That time has just been taken.');
     this.name = 'SlotTaken';
     this.alternatives = alternatives;
+    this.reasons = reasons;
   }
 }
 

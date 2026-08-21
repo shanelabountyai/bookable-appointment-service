@@ -26,7 +26,7 @@ import {
 import { computeDaySlots } from '@bookable/db/scheduling';
 import { clientReliability, searchClients } from '@bookable/db/clients';
 import { normalizePhone } from '@bookable/core/clients';
-import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { calendarDay, fromDate, instantFromIso, resolve, toDate, toLabel, wallTime, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
 import { flagSentence } from '@/components/client-flag';
@@ -209,7 +209,16 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
         ok: false,
         message: 'That time is not free.',
         canOverride: true,
-        refusedReasons: error instanceof SlotNotOffered ? [...error.reasons] : ['overlaps-booking'],
+        // BOTH errors now carry the engine's reasons. `SlotTaken`'s can still
+        // be empty — a lost race arrives through the exclusion constraint with
+        // nothing to say — and 'overlaps-booking' is the right guess THERE,
+        // because something was genuinely written on top of this time.
+        refusedReasons:
+          error.reasons.length > 0
+            ? [...error.reasons]
+            : error instanceof SlotTaken
+              ? ['overlaps-booking']
+              : [],
       };
     }
     // RES-04 — the room is full, and that is a decision, not a refusal.
@@ -230,9 +239,22 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
   }
 }
 
-export interface OfferedSlot {
+export interface GridTime {
+  /** The INSTANT (D-4). On fall-back day two entries share the label "01:30"
+   *  and differ only here, which is the whole point of carrying it. */
   at: string;
   label: string;
+  /**
+   * Empty when the engine offered this time. Otherwise the engine's OWN
+   * reasons, which the panel renders beside the time and which make picking
+   * it a decision rather than a guess (A-042, A-032's deferred half).
+   *
+   * Staff only — `overlaps-booking` tells whoever reads it exactly when the
+   * provider is with a client (spec §1.3). Every caller of this action is
+   * behind `requireStaff()`; there is no public equivalent and there must not
+   * be one.
+   */
+  reasons: readonly string[];
 }
 
 /**
@@ -251,11 +273,11 @@ export interface OfferedSlot {
  * So a gap link now means "book around here": the panel lists the real
  * offered times and preselects the first one at or after it.
  */
-export async function staffSlotsFor(providerId: string, serviceIds: string[], day: string): Promise<OfferedSlot[]> {
+export async function staffSlotsFor(providerId: string, serviceIds: string[], day: string): Promise<GridTime[]> {
   const staff = await requireStaff();
   if (serviceIds.length === 0 || !providerId) return [];
 
-  const { slots } = await computeDaySlots(prisma, {
+  const { slots, excluded } = await computeDaySlots(prisma, {
     businessId: staff.businessId,
     providerId,
     serviceIds,
@@ -265,7 +287,83 @@ export async function staffSlotsFor(providerId: string, serviceIds: string[], da
     audience: 'staff',
   });
 
-  return slots.map((slot) => ({ at: toDate(slot.start).toISOString(), label: slot.label.time }));
+  // A-042 — THE WHOLE COLUMN, not only the sellable part of it.
+  //
+  // Until now the panel listed `slots` alone, so a fully booked stylist showed
+  // an empty list and BOOK-05's override could only be reached by hand-typing
+  // an `?at=` the product never emits. The engine has always returned the
+  // refused candidates WITH their reasons on `audience: 'staff'`; nothing read
+  // them. "10:00 — she already has a client" with the time still tappable is
+  // the feature, and it is D-8's knowing double-book finally having a door.
+  const candidates = [
+    ...slots.map((slot) => ({ start: slot.start, label: slot.label.time, reasons: [] as readonly string[] })),
+    ...excluded
+      // "That time has passed" on every morning candidate is noise on every
+      // afternoon of the year, and it is the one exclusion nobody can act on.
+      // A past time that is ALSO occupied stays listed, with the reason that
+      // matters — this drops the pure case only.
+      .filter((e) => !(e.reasons.length === 1 && e.reasons[0] === 'in-the-past'))
+      .map((e) => ({ start: e.candidateStart, label: e.label.time, reasons: e.reasons as readonly string[] })),
+  ];
+
+  // Sorted on the INSTANT, never the label: on fall-back day two candidates
+  // are both called "01:30" and only the instant orders them (D-4).
+  return candidates
+    .sort((a, b) => a.start - b.start)
+    .map(({ start, label, reasons }) => ({ at: toDate(start).toISOString(), label, reasons }));
+}
+
+export interface ComposedTime {
+  /** The instant, offset-bearing (D-4). */
+  at: string;
+  label: string;
+  /** Set only on fall-back day, when the typed label names two instants. */
+  note?: string;
+}
+
+/**
+ * A-042 — "move her to 6pm, we'll stay late", composed SERVER-SIDE.
+ *
+ * The grid above covers the working windows and nothing else: with the grid
+ * anchored to window-open, a time after close is never an engine candidate at
+ * all, so it can never appear as a refused chip. That is exactly the case
+ * BOOK-05 names first, the case A-038 routes back here, and the case the e2e
+ * spec was faking with a hand-built `?at=18:00`.
+ *
+ * The browser sends `{day, "18:00"}` and gets back an INSTANT. It never
+ * composes one itself: a `new Date("2026-06-09T18:00")` in the browser is the
+ * visitor's timezone, which is the silent axis-crossing this whole project
+ * exists to practise avoiding. `resolve()` is the one module allowed to cross,
+ * and its three arms are all answered here rather than collapsed to a bare
+ * instant — a spring-forward 02:30 does not exist and a fall-back 01:30 names
+ * two chairs' worth of different times.
+ */
+export async function instantForTime(day: string, time: string): Promise<{ times: ComposedTime[]; error?: string }> {
+  const staff = await requireStaff();
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+
+  let resolution: ReturnType<typeof resolve>;
+  try {
+    resolution = resolve(calendarDay(day), wallTime(time), zoneId(business.timezone));
+  } catch {
+    return { times: [], error: 'That is not a time. Use the 24-hour clock, like 18:00.' };
+  }
+
+  if (resolution.kind === 'unique') return { times: [{ at: toDate(resolution.at).toISOString(), label: time }] };
+  if (resolution.kind === 'gap') {
+    return { times: [], error: `There is no ${time} that day — the clocks go forward. Pick either side of it.` };
+  }
+  // Fall-back. BOTH are offered and the desk picks which one it means: the
+  // salon is open through the repeated hour and the two are an hour apart.
+  return {
+    times: [
+      { at: toDate(resolution.earlier).toISOString(), label: time, note: 'first time round' },
+      { at: toDate(resolution.later).toISOString(), label: time, note: 'second time round' },
+    ],
+  };
 }
 
 // ─────────────────────────── internals ───────────────────────────

@@ -73,6 +73,17 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
       <h2 className="text-sm font-semibold">
         {column.providerName}
         {column.closed ? <span className="ml-2 font-normal text-zinc-500">off today</span> : null}
+        {/* A-042 — the way INTO the booking panel that does not depend on
+            there being a gap. Until this link, the only per-stylist door was a
+            gap chip, so a fully booked column could not be booked into at all
+            and BOOK-05's override was unreachable from any screen. No `at`:
+            the panel lists the day's real times, refusals and all. */}
+        <Link
+          href={`/staff/book?provider=${column.providerId}&day=${model.day}`}
+          className="ml-2 font-normal text-zinc-600 underline underline-offset-4 dark:text-zinc-400"
+        >
+          Book with {column.providerName}
+        </Link>
       </h2>
 
       {column.closed ? null : (

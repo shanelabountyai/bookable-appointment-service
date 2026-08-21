@@ -156,7 +156,11 @@ async function resolvePrefillClient(businessId: string, clientId: string, today:
 function labelFor(atIso: string, zone: ReturnType<typeof zoneId>): string | null {
   try {
     const label = toLabel(fromDate(toDate(instantFromIso(atIso))), zone);
-    return `${readableDay(label.day)} at ${label.time}`;
+    // "STARTING FROM", not a bare time (A-042). A gap begins where the last
+    // appointment's buffer ends — 13:35 — and the panel preselects the first
+    // real slot at or after it, so a heading that read "Tuesday at 13:35" was
+    // naming a time the form was not going to book.
+    return `Starting from ${readableDay(label.day)} at ${label.time} — pick the time below.`;
   } catch {
     return null;
   }
