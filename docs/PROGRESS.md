@@ -1088,7 +1088,7 @@ A-024 committed at 9e82f5c
 
 ## A-036 — reassign and cancel tell the client (AVAIL-05, NOTIF-01, D-32, operator P-5)
 
-**Built:** (commit `PENDING`) An `appointment.provider_changed` outbox row per appointment a bulk reassign actually moves, and an `appointment.cancelled` row for every staff cancellation, both enqueued INSIDE the transaction that does the write. A `notify` flag on `reassignAppointment`/`reassignMany` and on `transitionAppointment`, surfaced as an "I've already rung them" checkbox on the conflicts screen. A "Told: …" line on every conflict row, read from `NotificationOutbox.appointmentId`.
+**Built:** (commit `3d7b65c`) An `appointment.provider_changed` outbox row per appointment a bulk reassign actually moves, and an `appointment.cancelled` row for every staff cancellation, both enqueued INSIDE the transaction that does the write. A `notify` flag on `reassignAppointment`/`reassignMany` and on `transitionAppointment`, surfaced as an "I've already rung them" checkbox on the conflicts screen. A "Told: …" line on every conflict row, read from `NotificationOutbox.appointmentId`.
 
 **Decided:** **D-32 — the notice is ON by default and the desk may silence it.** The owner's alternative was an opt-in "and text her" tick, rejected because an unticked opt-in box IS the silent cancellation AVAIL-05 forbids, and it will be unticked on the morning a stylist calls in sick — the one morning the feature exists for. Default-on makes the worst case a redundant text after a phone call, not a client arriving to a salon that is not expecting her.
 
