@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { loadDayView } from '@bookable/db/day';
+import { listOpenedSlots } from '@bookable/db/appointments';
 import { clientReliability } from '@bookable/db/clients';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
@@ -37,6 +38,11 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
   const day = safeDay(typeof dayParam === 'string' ? dayParam : undefined, today);
 
   const view = await loadDayView(prisma, { businessId: staff.businessId, day, now });
+
+  // A-043: derived, never stored — and NOT scoped to the day being viewed.
+  // What opened up is a fact about the weeks ahead, so paging to last Tuesday
+  // must not empty the tab.
+  const opened = await listOpenedSlots(prisma, { businessId: staff.businessId, now });
 
   // CLIENT-04, one grouped query for the whole day rather than one per chip.
   // Counted against TODAY, not the day being viewed: the window is "the last
@@ -109,6 +115,16 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
             yes yet. */}
         <Link href="/staff/call-down" className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
           Call-down
+        </Link>
+        {/* A-043 (WAIT-02). A cancellation that arrives on a Saturday for next
+            Thursday shows on the grid only on Thursday, which the desk has no
+            reason to open. The count is the whole point of the tab: a door
+            nobody knows to walk through is the gap this row closes. */}
+        <Link
+          href="/staff/opened"
+          className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
+        >
+          Opened up{opened.length > 0 ? ` (${opened.length})` : ''}
         </Link>
       </div>
 

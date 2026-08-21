@@ -6,6 +6,7 @@ export {
   setAppointmentNotes,
 } from './detail';
 export { type UnconfirmedAppointment, listUnconfirmedTomorrow } from './call-down';
+export { FREED_LOOKBACK_DAYS, type OpenedSlot, listOpenedSlots } from './opened';
 export {
   AppointmentAlreadyMoved,
   RescheduleRefused,

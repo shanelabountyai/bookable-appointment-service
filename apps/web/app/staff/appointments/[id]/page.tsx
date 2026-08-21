@@ -13,6 +13,7 @@ import { worstCutoff } from '@bookable/core/settings';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
+import { freedSlotHref } from '@/lib/waitlist/freed-link';
 import { DELIVERY_WORDS, TEMPLATE_WORDS, toReadableEvent } from '@/lib/appointments/event-language';
 import { flagSentence } from '@/components/client-flag';
 import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
@@ -173,7 +174,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
           freed the time (D-7: no_show/completed still occupy it). */}
       {(SLOT_FREEING_STATUSES as readonly string[]).includes(status) && detail.primaryServiceId ? (
         <Link
-          href={`/staff/waitlist?providerId=${detail.providerId}&serviceId=${detail.primaryServiceId}&at=${encodeURIComponent(detail.startAt.toISOString())}&minutes=${freedMinutes(detail)}`}
+          href={freedSlotHref({
+            providerId: detail.providerId,
+            serviceId: detail.primaryServiceId,
+            startAt: detail.startAt,
+            freedMinutes: freedMinutes(detail),
+          })}
           className="text-sm font-medium underline underline-offset-4"
         >
           Who wants this slot?

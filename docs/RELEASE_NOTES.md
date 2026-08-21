@@ -1344,3 +1344,19 @@ the reason the phone number is not unique in the first place.
 **One wrong sentence was fixed on the way past.** When a time was refused because it collided with something, the screen always said "she already has a client" — true when a real booking was in the way, and wrong when it was a buffer, a block, or time off. That was survivable while the only way to hit it was losing a race. It stops being survivable the moment the desk is choosing occupied times on purpose, which is what this work makes possible. A screen that explains itself wrongly is worse than one that says nothing, because staff stop reading it.
 
 **Three items in a row have now found the same shape of gap:** a capability the product genuinely had, fully built and correct underneath, with no honest way in from the screen someone actually uses. The fix each time cost far less than the original feature — and would have cost nothing at all if the test had been written to walk in through the front door.
+
+## A cancelled appointment that nobody found out about
+
+**A client cancels next Thursday's colour on a Saturday, through her own link. The salon is not told, and no screen shows the hole.** The day view draws it only on Thursday, and there is no reason for anyone to open Thursday until Thursday. Three hours of the most expensive service on the menu go unsold for six days — while the client who has been waiting for exactly that appointment sits on the waitlist, one screen away.
+
+**The matching was already built, and it was good.** Given a freed slot, the system finds everyone on the waitlist who wants that service, with that stylist, on a day in their range, in a part of the day they said they could do, and it checks the service actually fits the gap that opened. All of it correct, all of it tested.
+
+**It had one door, and the door needed a key nobody had.** The only way in was a link on the cancelled appointment's own page. So finding out who wants the slot required already knowing which appointment had been cancelled — which is the single fact the front desk does not have on Saturday morning. The feature answered a question nobody was in a position to ask.
+
+**The fix is a list, and most of the work went into what is NOT on it.** Freed time that has already passed is gone. A cancellation from two months ago is not news. A slot somebody has since re-booked is not open. Neither is one the stylist has since taken as time off — that belongs to a different screen, and a product where two screens disagree about the same Thursday is a product staff stop believing. What is left is ordered by how soon it expires, not by how recently it was cancelled: a Thursday 2pm dies on Thursday at 2 whether the news is an hour old or a week old, and the row at the top is the one worth a phone call right now.
+
+**Nothing is stored, which is the point.** "This slot is open" stops being true the instant someone books it. A stored flag would need clearing code in every booking path, every reschedule, every override — and the first path anyone forgot would leave the desk ringing round for a slot that had already gone. The list is recomputed on every read from facts that are already true.
+
+**The re-used check was the deliberate choice.** Asking "is this time still empty?" already has one correct implementation in this codebase — the one that understands intentional double-bookings and the gaps inside a colour service. Writing a faster, cleverer query here would have saved a round trip and risked offering the desk a slot that a stylist had knowingly given to someone else. The list runs the existing check once per candidate instead, and the bounds above keep that to a handful.
+
+**Four items running, the same shape of gap each time:** a capability the product genuinely had — built, correct, tested — with no honest way in from the screen a person actually uses.

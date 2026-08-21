@@ -66,7 +66,13 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                 >
                   <span>
                     <span className="font-medium">{entry.clientName ?? 'No name'}</span>{' '}
-                    <span className="text-zinc-500">{entry.clientPhone ?? ''}</span>
+                    {/* A-043: the resolution to this list is a phone call, so
+                        the number is dialable, same as every other staff list. */}
+                    {entry.clientPhone ? (
+                      <a href={`tel:${entry.clientPhone}`} className="text-zinc-500 underline underline-offset-4">
+                        {entry.clientPhone}
+                      </a>
+                    ) : null}
                   </span>
                   <span className="flex items-center gap-2">
                     <Link
