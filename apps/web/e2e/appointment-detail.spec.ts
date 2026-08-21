@@ -153,7 +153,13 @@ test.describe('the appointment detail panel (A-027)', () => {
     await page.goto(`/staff/appointments/${appointment.id}`);
 
     await page.getByRole('button', { name: 'Check in' }).click();
-    await expect(page.getByText('Changed from booked to checked in by the front desk.')).toBeVisible();
+    // A-037: NAMED, not "the front desk". This action goes through the real
+    // session, so the log resolves its actorRef to whoever is at the desk —
+    // the seeded shared credential, whose name is "Front desk". The two
+    // assertions above still read "by the front desk" because those events are
+    // written directly with an actorRef that matches no staff row, which is
+    // also every event this repo wrote before A-037.
+    await expect(page.getByText('Changed from booked to checked in by Front desk.')).toBeVisible();
 
     const prisma = new PrismaClient();
     try {

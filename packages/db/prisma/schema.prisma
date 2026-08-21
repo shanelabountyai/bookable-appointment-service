@@ -148,8 +148,25 @@ model Business {
 model StaffUser {
   id           String   @id @default(cuid())
   businessId   String
-  email        String
-  passwordHash String
+  /// NULLABLE since A-037: a PIN-only staff member is an IDENTITY, not an
+  /// account. The stylist who needs her name on a check-in does not need a
+  /// way to sign in from home, and giving her one to satisfy a NOT NULL would
+  /// be a credential nobody asked for. No email = cannot authenticate, ever.
+  email        String?
+  passwordHash String?
+  /// A-037: the name the event log says. `actorRef` has carried this row's id
+  /// since A-005 and nothing could render it, so every mutation read "by the
+  /// front desk" for all four people at the terminal.
+  name         String
+  /// The desk switch (D-33). Null means this person cannot be switched to —
+  /// they still have a full credential, they just have no fast path. Hashed
+  /// with the same scrypt as a password: a PIN is a secret at rest whatever
+  /// its length.
+  pinHash      String?
+  /// Off-boarding is DEACTIVATION, never deletion. Deleting the row would
+  /// take the name out of every event it ever stamped, and "who moved this
+  /// appointment" losing its answer is the thing A-037 exists to prevent.
+  active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @db.Timestamptz(3)
 

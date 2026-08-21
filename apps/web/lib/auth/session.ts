@@ -10,6 +10,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
   type Actor,
+  type SessionPayload,
   SESSION_TTL_MS,
   signSession,
   staffActor,
@@ -54,23 +55,68 @@ export async function endStaffSession(): Promise<void> {
   jar.delete(SESSION_COOKIE);
 }
 
-/**
- * The current staff user, or null. Never throws for a bad cookie — a forged,
- * expired or malformed value is simply "not logged in".
- *
- * Re-reads the StaffUser row on every call rather than trusting the cookie's
- * contents, so deleting a staff user invalidates their live sessions on the
- * next request with no revocation list to maintain.
- */
-export async function currentStaff(now = Date.now()): Promise<StaffIdentity | null> {
+/** The verified session payload, or null. The one place the cookie is read. */
+async function readSession(now: number): Promise<SessionPayload | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
+  return verifySession(token, sessionSecret(), now);
+}
 
-  const session = verifySession(token, sessionSecret(), now);
+/**
+ * WHO IS AT THE DESK — the person every mutation is stamped with (A-037).
+ *
+ * Not necessarily the account that signed in. The salon terminal authenticates
+ * once in the morning and four people use it, so `act` names whichever of them
+ * tapped their PIN last; absent, it is the account holder.
+ *
+ * Never throws for a bad cookie — a forged, expired or malformed value is
+ * simply "not logged in".
+ *
+ * Re-reads the StaffUser row on every call rather than trusting the cookie's
+ * contents, so deactivating somebody invalidates their live sessions on the
+ * next request with no revocation list to maintain. **An acting person who has
+ * been deactivated falls back to the account holder rather than logging the
+ * terminal out**: off-boarding the temp must not throw the front desk out of
+ * the system mid-Saturday.
+ */
+export async function currentStaff(now = Date.now()): Promise<StaffIdentity | null> {
+  const session = await readSession(now);
   if (!session) return null;
 
-  return findStaffById(prisma, session.sub);
+  const acting = session.act ? await findStaffById(prisma, session.act) : null;
+  return acting ?? findStaffById(prisma, session.sub);
+}
+
+/**
+ * Puts a different name on the next mutation (D-33).
+ *
+ * The caller is responsible for having verified the PIN; this only re-signs
+ * the cookie. `sub` and `exp` are carried through unchanged — switching who is
+ * at the desk is not a re-authentication and must not extend the shift's
+ * session by eight more hours.
+ */
+export async function actAsStaff(staffUserId: string | null, now = Date.now()): Promise<void> {
+  const session = await readSession(now);
+  if (!session) return;
+
+  const jar = await cookies();
+  const token = signSession(
+    // Dropping the field entirely for "back to the account holder", rather
+    // than storing `sub` twice — one state, so nothing downstream has to know
+    // the two spellings are the same thing.
+    staffUserId && staffUserId !== session.sub
+      ? { sub: session.sub, exp: session.exp, act: staffUserId }
+      : { sub: session.sub, exp: session.exp },
+    sessionSecret(),
+  );
+  jar.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    expires: toDate(instant(session.exp)),
+  });
 }
 
 /**

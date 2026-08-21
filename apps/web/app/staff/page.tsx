@@ -19,7 +19,7 @@ export default async function StaffHome() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Staff</h1>
         <p className="mt-1 text-zinc-500">
-          Signed in as <span className="font-medium text-zinc-700 dark:text-zinc-300">{staff.email}</span>
+          At the desk: <span className="font-medium text-zinc-700 dark:text-zinc-300">{staff.name}</span>
         </p>
       </div>
 
@@ -29,6 +29,9 @@ export default async function StaffHome() {
         </Link>
         <Link href="/staff/settings" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Settings
+        </Link>
+        <Link href="/staff/people" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Who works here
         </Link>
         <Link href="/staff/providers" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Providers

@@ -132,6 +132,41 @@ describe('session tokens', () => {
   });
 });
 
+/**
+ * A-037 / D-33 — who is at the desk rides INSIDE the signature.
+ *
+ * `act` names whose id the next mutation is stamped with. An id a client could
+ * edit would let anybody put anybody else's name on anything, which is the
+ * whole audit trail this item exists to create.
+ */
+describe('the acting staff member (A-037)', () => {
+  it('round-trips alongside the authenticated account', () => {
+    const token = signSession({ sub: 'owner', exp: NOW + SESSION_TTL_MS, act: 'priya' }, SECRET);
+    expect(verifySession(token, SECRET, NOW)).toMatchObject({ sub: 'owner', act: 'priya' });
+  });
+
+  it('is absent, not null, when the account holder is at the desk', () => {
+    const token = signSession({ sub: 'owner', exp: NOW + SESSION_TTL_MS }, SECRET);
+    expect(verifySession(token, SECRET, NOW)?.act).toBeUndefined();
+  });
+
+  it('cannot be edited into the cookie', () => {
+    const token = signSession({ sub: 'owner', exp: NOW + SESSION_TTL_MS }, SECRET);
+    const [body, signature] = token.split('.');
+    const decoded = JSON.parse(Buffer.from(String(body), 'base64url').toString('utf8')) as Record<string, unknown>;
+    const forged = Buffer.from(JSON.stringify({ ...decoded, act: 'the-manager' }), 'utf8').toString('base64url');
+
+    expect(verifySession(`${forged}.${signature}`, SECRET, NOW)).toBeNull();
+  });
+
+  /** A non-string would flow on to a database lookup as an unvalidated
+   *  value, which is a shape check rather than a signature one. */
+  it('rejects a signed payload whose act is not a string', () => {
+    const token = signSession({ sub: 'owner', exp: NOW + SESSION_TTL_MS, act: 42 } as never, SECRET);
+    expect(verifySession(token, SECRET, NOW)).toBeNull();
+  });
+});
+
 describe('actors (D-9)', () => {
   it('builds the three actor kinds with the right refs', () => {
     expect(staffActor('staff1')).toEqual({ type: 'staff', ref: 'staff1' });

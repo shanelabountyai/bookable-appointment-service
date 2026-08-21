@@ -24,6 +24,17 @@ export interface AppointmentEventRow {
   type: string;
   actor: string;
   actorRef: string | null;
+  /**
+   * A-037: the person behind `actorRef`, when it is a staff id that still
+   * resolves. Null for a customer token, for `system`, and for a staff id
+   * whose row has been deleted — the log then falls back to "the front desk",
+   * which is what every event said before this item.
+   *
+   * Resolved HERE rather than by the screen, because `actorRef` is a bare
+   * string with no foreign key (it holds token ids too), so there is no
+   * relation for a select to follow.
+   */
+  actorName: string | null;
   reason: string | null;
   payload: unknown;
   createdAt: Date;
@@ -175,9 +186,31 @@ export async function loadAppointmentDetail(
     conflicted,
     conflictAcknowledgedAt: appointment.conflictAckAt,
     conflictAcknowledgedReason: appointment.conflictAckReason,
-    events: appointment.events,
+    events: await withActorNames(db, appointment.events),
     notifications: appointment.notifications,
   };
+}
+
+/**
+ * Puts a name on every staff-stamped event, in ONE query for the whole log.
+ *
+ * Deactivated people are included deliberately — the whole reason off-boarding
+ * deactivates rather than deletes is that "who moved this appointment" must
+ * still have an answer after somebody leaves.
+ */
+async function withActorNames(
+  db: Db,
+  events: Omit<AppointmentEventRow, 'actorName'>[],
+): Promise<AppointmentEventRow[]> {
+  const staffIds = [...new Set(events.filter((e) => e.actor === 'staff' && e.actorRef).map((e) => e.actorRef!))];
+  if (staffIds.length === 0) return events.map((event) => ({ ...event, actorName: null }));
+
+  const rows = await db.staffUser.findMany({ where: { id: { in: staffIds } }, select: { id: true, name: true } });
+  const names = new Map(rows.map((row) => [row.id, row.name]));
+  return events.map((event) => ({
+    ...event,
+    actorName: (event.actor === 'staff' && event.actorRef ? names.get(event.actorRef) : undefined) ?? null,
+  }));
 }
 
 /** Time off or an ad-hoc block over this appointment's own body. */

@@ -32,7 +32,9 @@ export const EVENT_TYPES = [
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
-/** Who did it, in the words a person would use. D-9's actor, read aloud. */
+/** Who did it when there is no name — D-9's actor, read aloud. A-037 gave
+ *  staff events a real name; these remain the fallback for a customer's own
+ *  link, for the system, and for events stamped before anybody was named. */
 const ACTORS: Record<string, string> = {
   staff: 'the front desk',
   customer_token: 'the client, using her link',
@@ -62,7 +64,9 @@ export interface ReadableEvent {
 
 export function toReadableEvent(event: AppointmentEventRow, zone: ZoneId): ReadableEvent {
   const label = toLabel(fromDate(event.createdAt), zone);
-  const who = ACTORS[event.actor] ?? event.actor;
+  // A-037: the name if the log knows one. "Changed to checked in by Priya" is
+  // the answer; "by the front desk" was four people and a shrug.
+  const who = event.actorName ?? ACTORS[event.actor] ?? event.actor;
   const payload = (event.payload ?? {}) as Record<string, unknown>;
 
   return {

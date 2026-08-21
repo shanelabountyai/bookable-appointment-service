@@ -1,9 +1,10 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { authenticateStaff } from '@bookable/db/auth';
+import { revalidatePath } from 'next/cache';
+import { authenticateStaff, verifyStaffPin } from '@bookable/db/auth';
 import { prisma } from '@bookable/db';
-import { endStaffSession, startStaffSession } from './session';
+import { actAsStaff, endStaffSession, requireStaff, startStaffSession } from './session';
 
 export interface LoginState {
   error?: string;
@@ -29,6 +30,42 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
 
   await startStaffSession(staff.id);
   redirect('/staff');
+}
+
+export interface SwitchState {
+  error?: string;
+  message?: string;
+}
+
+/**
+ * "Who is at the desk?" (A-037, D-33).
+ *
+ * NOT a login. The session is already authenticated — `requireStaff()` is the
+ * first statement and it redirects if it is not — so this decides only whose
+ * name goes on the next mutation. That is why a four-digit PIN is enough here
+ * and would not be enough on the sign-in form: this door is already inside the
+ * building.
+ *
+ * The business comes from the SESSION, never from the form, so a posted id
+ * cannot put a name from another salon onto this salon's audit log.
+ */
+export async function switchStaff(_prev: SwitchState, formData: FormData): Promise<SwitchState> {
+  const current = await requireStaff();
+  const staffUserId = String(formData.get('staffUserId') ?? '');
+  const pin = String(formData.get('pin') ?? '');
+
+  // One message for every failure — an unknown id, a wrong PIN, a person with
+  // no PIN set. Distinguishing them turns the switcher into a probe for who
+  // works here, on a screen anyone standing at reception can read.
+  const GENERIC = 'That name and PIN do not match.';
+  if (!staffUserId || !pin) return { error: GENERIC };
+
+  const staff = await verifyStaffPin(prisma, { businessId: current.businessId, staffUserId, pin });
+  if (!staff) return { error: GENERIC };
+
+  await actAsStaff(staff.id);
+  revalidatePath('/staff', 'layout');
+  return { message: `${staff.name} is at the desk.` };
 }
 
 export async function logout(): Promise<void> {

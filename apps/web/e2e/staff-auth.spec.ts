@@ -13,7 +13,7 @@ test.describe('staff session', () => {
     await expect(page).toHaveURL(/\/staff\/login$/);
     // The protected content must not render at all — not merely be hidden.
     await expect(page.getByRole('heading', { name: 'Staff sign in' })).toBeVisible();
-    await expect(page.getByText('Signed in as')).toHaveCount(0);
+    await expect(page.getByText('At the desk')).toHaveCount(0);
   });
 
   test('the wrong password is refused with one generic message', async ({ page }) => {
@@ -45,7 +45,9 @@ test.describe('staff session', () => {
 
     await expect(page).toHaveURL(/\/staff$/);
     await expect(page.getByRole('heading', { name: 'Staff' })).toBeVisible();
-    await expect(page.getByText(STAFF_EMAIL)).toBeVisible();
+    // A-037: the page names the person at the desk, not the account's email.
+    // Scoped to <main> because the desk-switcher bar says the same name.
+    await expect(page.getByRole('main').getByText('Front desk')).toBeVisible();
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/staff\/login$/);

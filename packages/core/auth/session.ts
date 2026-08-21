@@ -15,8 +15,21 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export interface SessionPayload {
-  /** The StaffUser id. */
+  /** The StaffUser id that AUTHENTICATED — the account whose email and
+   *  password opened this session. Never changes for the life of the cookie. */
   sub: string;
+  /**
+   * A-037/D-33: the StaffUser id currently AT THE DESK, when it is not `sub`.
+   *
+   * The salon terminal signs in once in the morning and four people use it.
+   * This is who the next mutation is stamped with, and it lives inside the
+   * SIGNED payload for the obvious reason: an id a client could edit would
+   * let anyone put anyone else's name on anything.
+   *
+   * Absent means "the account holder is at the desk" — one state, not two, so
+   * a session written before this field existed still reads correctly.
+   */
+  act?: string;
   /** Expiry, epoch milliseconds. Inside the signed payload so it cannot be
    *  extended by editing the cookie — a cookie's own Max-Age is a hint to the
    *  browser, not a control the server can trust. */
@@ -79,7 +92,10 @@ export function verifySession(token: string, secret: string, now: number): Sessi
     typeof payload !== 'object' ||
     payload === null ||
     typeof (payload as SessionPayload).sub !== 'string' ||
-    typeof (payload as SessionPayload).exp !== 'number'
+    typeof (payload as SessionPayload).exp !== 'number' ||
+    // Optional, but never junk: an `act` of the wrong type would flow on to a
+    // database lookup as an unvalidated value.
+    !['string', 'undefined'].includes(typeof (payload as SessionPayload).act)
   ) {
     return null;
   }

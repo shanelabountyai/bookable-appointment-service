@@ -17,6 +17,9 @@ export interface SeedStaffInput {
   timezone?: string;
   email: string;
   password: string;
+  /** A-037: what the event log calls this account. Defaults to the name the
+   *  one shared credential effectively had before names existed. */
+  name?: string;
 }
 
 export async function seedStaffUser(
@@ -41,10 +44,11 @@ export async function seedStaffUser(
       },
     }));
 
+  const name = input.name?.trim() || 'Front desk';
   const staff = await prisma.staffUser.upsert({
     where: { businessId_email: { businessId: business.id, email } },
-    create: { businessId: business.id, email, passwordHash },
-    update: { passwordHash },
+    create: { businessId: business.id, email, passwordHash, name },
+    update: { passwordHash, name },
     select: { id: true },
   });
 

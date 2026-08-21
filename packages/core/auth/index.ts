@@ -6,7 +6,7 @@ export {
   manageTokenExpiry,
   mintManageToken,
 } from './manage-token';
-export { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './password';
+export { DUMMY_HASH_PROMISE, hashPassword, isValidPin, verifyPassword } from './password';
 export {
   MissingSessionSecret,
   SESSION_TTL_MS,

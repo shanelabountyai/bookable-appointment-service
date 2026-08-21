@@ -3,7 +3,15 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
-import { authenticateStaff, findStaffById } from './staff';
+import {
+  InvalidPin,
+  authenticateStaff,
+  findStaffById,
+  listStaff,
+  listSwitchableStaff,
+  saveStaffMember,
+  verifyStaffPin,
+} from './staff';
 import { seedStaffUser } from './seed-staff';
 import { resetDatabase } from '../testing';
 
@@ -32,7 +40,7 @@ beforeEach(async () => {
 describe('authenticateStaff', () => {
   it('accepts the right credential and returns the identity', async () => {
     const staff = await authenticateStaff(prisma, EMAIL, PASSWORD);
-    expect(staff).toEqual({ id: staffUserId, businessId, email: EMAIL });
+    expect(staff).toEqual({ id: staffUserId, businessId, email: EMAIL, name: 'Front desk' });
   });
 
   it('is case-insensitive on email and tolerates surrounding whitespace', async () => {
@@ -79,7 +87,7 @@ describe('authenticateStaff', () => {
 
 describe('findStaffById', () => {
   it('loads a staff user', async () => {
-    expect(await findStaffById(prisma, staffUserId)).toEqual({ id: staffUserId, businessId, email: EMAIL });
+    expect(await findStaffById(prisma, staffUserId)).toEqual({ id: staffUserId, businessId, email: EMAIL, name: 'Front desk' });
   });
 
   // This is what makes a deleted staff user's live sessions stop working on
@@ -109,5 +117,151 @@ describe('seedStaffUser', () => {
       vi.unstubAllEnvs();
       expect(process.env.NODE_ENV).toBe(original);
     }
+  });
+});
+
+/**
+ * A-037 / D-33 — THE DESK SWITCH.
+ *
+ * The PIN is NOT the login. It acts inside a session that was already opened
+ * with a real credential, and decides only whose name goes on the next
+ * mutation. Everything below is about that boundary holding.
+ */
+describe('A-037 — named staff identity', () => {
+  const add = (name: string, pin?: string, over: { businessId?: string } = {}) =>
+    saveStaffMember(prisma, { businessId: over.businessId ?? businessId, name, ...(pin ? { pin } : {}) });
+
+  describe('saveStaffMember', () => {
+    /** A stylist who needs her name on a check-in does not need a way to sign
+     *  in from home. A credential nobody asked for is one somebody has to
+     *  rotate. */
+    it('adds an identity with no account at all', async () => {
+      const { id } = await add('Priya', '4821');
+
+      const row = await prisma.staffUser.findUniqueOrThrow({ where: { id } });
+      expect(row.name).toBe('Priya');
+      expect(row.email).toBeNull();
+      expect(row.passwordHash).toBeNull();
+      expect(row.active).toBe(true);
+      // Hashed, never stored as typed.
+      expect(row.pinHash).not.toBe('4821');
+    });
+
+    it('allows several account-less identities, which a unique email index must tolerate', async () => {
+      await add('Priya', '4821');
+      await add('Marcus', '9137');
+      expect(await prisma.staffUser.count({ where: { email: null } })).toBe(2);
+    });
+
+    it('refuses a PIN that is not 4 to 6 digits', async () => {
+      await expect(add('Priya', '123')).rejects.toBeInstanceOf(InvalidPin);
+      await expect(add('Priya', '12345678')).rejects.toBeInstanceOf(InvalidPin);
+      await expect(add('Priya', 'abcd')).rejects.toBeInstanceOf(InvalidPin);
+    });
+
+    /** Correcting a spelling must not silently drop somebody off the
+     *  switcher — which is the kind of thing nobody notices until the log
+     *  says "the front desk" again. */
+    it('leaves an existing PIN alone when none is given', async () => {
+      const { id } = await add('Prya', '4821');
+      await saveStaffMember(prisma, { businessId, id, name: 'Priya' });
+
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toMatchObject({
+        name: 'Priya',
+      });
+    });
+
+    it('clears a PIN only when asked to', async () => {
+      const { id } = await add('Priya', '4821');
+      await saveStaffMember(prisma, { businessId, id, name: 'Priya', clearPin: true });
+
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toBeNull();
+      expect(await listSwitchableStaff(prisma, businessId)).toHaveLength(0);
+    });
+
+    it('edits nothing when the id belongs to another business', async () => {
+      const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+      const { id } = await add('Priya', '4821', { businessId: other.id });
+
+      await expect(saveStaffMember(prisma, { businessId, id, name: 'Hijacked' })).rejects.toThrow();
+      expect((await prisma.staffUser.findUniqueOrThrow({ where: { id } })).name).toBe('Priya');
+    });
+  });
+
+  describe('verifyStaffPin', () => {
+    it('accepts the right PIN and returns the name to stamp', async () => {
+      const { id } = await add('Priya', '4821');
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toMatchObject({
+        id,
+        businessId,
+        name: 'Priya',
+      });
+    });
+
+    it('rejects the wrong PIN', async () => {
+      const { id } = await add('Priya', '4821');
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '1234' })).toBeNull();
+    });
+
+    it('rejects somebody who has no PIN set', async () => {
+      const { id } = await add('Priya');
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toBeNull();
+    });
+
+    /** The whole security boundary of the switch: a session may only put a
+     *  name from ITS OWN salon onto ITS OWN audit log. */
+    it('refuses a staff member from another business, right PIN and all', async () => {
+      const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+      const { id } = await add('Priya', '4821', { businessId: other.id });
+
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toBeNull();
+    });
+
+    it('refuses somebody who has been taken off the roster', async () => {
+      const { id } = await add('Priya', '4821');
+      await saveStaffMember(prisma, { businessId, id, name: 'Priya', active: false });
+
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toBeNull();
+    });
+  });
+
+  describe('the roster', () => {
+    it('offers only active people who have a PIN', async () => {
+      await add('Priya', '4821');
+      await add('Marcus'); // no PIN — has no fast path
+      const { id: gone } = await add('Sam', '5150');
+      await saveStaffMember(prisma, { businessId, id: gone, name: 'Sam', active: false });
+
+      expect((await listSwitchableStaff(prisma, businessId)).map((o) => o.name)).toEqual(['Priya']);
+    });
+
+    /** Off-boarding hides somebody from the switcher, never from the owner. */
+    it('still lists the deactivated, and never leaks a hash', async () => {
+      const { id } = await add('Sam', '5150');
+      await saveStaffMember(prisma, { businessId, id, name: 'Sam', active: false });
+
+      const sam = (await listStaff(prisma, businessId)).find((row) => row.id === id);
+      expect(sam).toMatchObject({ name: 'Sam', active: false, hasPin: true });
+      expect(JSON.stringify(sam)).not.toContain('$');
+    });
+
+    /** Deactivation is the off-boarding path BECAUSE the name has to survive
+     *  on every event it ever stamped. Deleting the row would take the answer
+     *  to "who moved this appointment" with it. */
+    it('ends live sessions on deactivation without losing the row', async () => {
+      const { id } = await add('Priya', '4821');
+      await saveStaffMember(prisma, { businessId, id, name: 'Priya', active: false });
+
+      expect(await findStaffById(prisma, id)).toBeNull();
+      expect(await prisma.staffUser.findUnique({ where: { id } })).not.toBeNull();
+    });
+  });
+
+  /** A PIN-only identity has no password, so the sign-in form can never be a
+   *  way in for one. */
+  it('cannot sign in as an account-less identity', async () => {
+    await add('Priya', '4821');
+    expect(await authenticateStaff(prisma, '', '4821')).toBeNull();
+    expect(await authenticateStaff(prisma, 'Priya', '4821')).toBeNull();
   });
 });

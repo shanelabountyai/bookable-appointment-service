@@ -16,6 +16,8 @@ import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
+import { saveStaffMember } from '../auth';
+import { loadAppointmentDetail } from './detail';
 import { AppointmentMovedFirst, TransitionRefused, transitionAppointment } from './transition';
 
 const prisma = new PrismaClient();
@@ -424,5 +426,79 @@ describe('A-036 — the cancellation notice', () => {
     ).rejects.toBeInstanceOf(TransitionRefused);
 
     expect(await notices()).toHaveLength(1);
+  });
+});
+
+/**
+ * A-037 — THE LOG SAYS WHO, NOT "THE FRONT DESK".
+ *
+ * `actorRef` has carried the StaffUser id on every mutation since A-005 and
+ * nothing could render it, so all four people at the terminal read identically
+ * — and the brief's rule is that "who moved this appointment and when" always
+ * has an answer.
+ */
+describe('A-037 — the event log names the person', () => {
+  const eventsFor = async (appointmentId: string) =>
+    (await loadAppointmentDetail(prisma, { businessId, appointmentId }))!.events;
+
+  it('resolves a staff actorRef to the name on the roster', async () => {
+    const { id: priyaId } = await saveStaffMember(prisma, { businessId, name: 'Priya', pin: '4821' });
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'checked_in',
+      actor: staffActor(priyaId),
+      now: TEN_AM,
+    });
+
+    const changed = (await eventsFor(appointment.id)).find((e) => e.type === 'status_changed');
+    expect(changed?.actorName).toBe('Priya');
+  });
+
+  /** The reason off-boarding deactivates instead of deleting: the answer has
+   *  to outlive the person's last shift. */
+  it('still names somebody who has left the roster', async () => {
+    const { id: samId } = await saveStaffMember(prisma, { businessId, name: 'Sam', pin: '5150' });
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'checked_in',
+      actor: staffActor(samId),
+      now: TEN_AM,
+    });
+    await saveStaffMember(prisma, { businessId, id: samId, name: 'Sam', active: false });
+
+    const changed = (await eventsFor(appointment.id)).find((e) => e.type === 'status_changed');
+    expect(changed?.actorName).toBe('Sam');
+  });
+
+  /** A customer's `actorRef` is a manage-token id, not a staff id — looking it
+   *  up in the roster must not produce a name, and must not produce a crash. */
+  it('names nobody for a customer acting on her own link', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      actor: CUSTOMER,
+      now: at('2026-06-08T08:00:00-05:00'),
+    });
+
+    const changed = (await eventsFor(appointment.id)).find((e) => e.type === 'status_changed');
+    expect(changed?.actorName).toBeNull();
+  });
+
+  /** Every event written before this item carries an actorRef that matches no
+   *  StaffUser. The log has to keep reading, in the old words. */
+  it('falls back for a staff id that is not on any roster', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'checked_in',
+      actor: STAFF,
+      now: TEN_AM,
+    });
+
+    const changed = (await eventsFor(appointment.id)).find((e) => e.type === 'status_changed');
+    expect(changed?.actorName).toBeNull();
   });
 });

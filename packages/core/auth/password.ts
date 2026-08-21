@@ -105,3 +105,16 @@ export async function verifyPassword(plain: string, stored: string): Promise<boo
  * do the same work.
  */
 export const DUMMY_HASH_PROMISE: Promise<string> = hashPassword('bookable-dummy-password-for-timing-parity');
+
+/**
+ * A desk PIN is 4 to 6 digits (A-037, D-33).
+ *
+ * Short on purpose: it is typed dozens of times a day on a tablet at
+ * reception, and a PIN long enough to be a password is a PIN people write on
+ * the monitor. It is not load-bearing as authentication — the session it acts
+ * within was opened with a real credential (D-33) — so its job is to stop a
+ * client leaning over the counter putting the manager's name on a discount,
+ * not to withstand an internet-facing attacker.
+ */
+export const isValidPin = (pin: string): boolean => /^\d{4,6}$/.test(pin);
+
