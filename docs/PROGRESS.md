@@ -1038,7 +1038,7 @@ A-024 committed at 9e82f5c
 
 ## A-038 — reschedule across providers (APPT-05, D-31, answers OQ-9)
 
-**Built:** `toProviderId` on `rescheduleAppointment` and `rescheduleOptions`, a provider control on A-033's move panel, and `packages/db/qualification.ts` — one module for "can she do this whole visit?", now shared with A-019's bulk reassign.
+**Built:** (commit `0c8b128`) `toProviderId` on `rescheduleAppointment` and `rescheduleOptions`, a provider control on A-033's move panel, and `packages/db/qualification.ts` — one module for "can she do this whole visit?", now shared with A-019's bulk reassign.
 
 **Decided:** **The lock reasoning D-31 was recorded with was wrong, and building the row is what found it.** The decision text said a cross-provider move needs one advisory lock on the destination provider-day and no ordering, because the source calendar is only ever vacated. That argument is right about the *advisory* lock and misses the constraint: **an exclusion constraint does not fail fast against an uncommitted conflicting row — it waits on the other transaction.** Two desks doing the two halves of a swap therefore deadlock on each other's old blocks, and Postgres resolves it as `40P01`, which is not `23P01`, does not map to `SlotTaken`, and reaches the desk as a 500. The correction is recorded inline in D-31; the decision itself did not change.
 
