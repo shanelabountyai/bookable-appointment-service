@@ -160,6 +160,14 @@ test.describe('the staff day grid (A-016)', () => {
     await expect(page.getByRole('heading', { name: 'Tuesday 9 June' })).toBeVisible();
   });
 
+  /** A-039: "same again in six weeks" is one gesture, not forty-two taps of
+   *  Next — jumping straight to a named date. */
+  test('jumps straight to a named date', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByLabel('Jump to a day').fill('2026-07-21');
+    await expect(page.getByRole('heading', { name: 'Tuesday 21 July' })).toBeVisible();
+  });
+
   /**
    * THE STALENESS CONTRACT. The grid re-reads every 15 seconds, so a booking
    * made elsewhere — the other terminal at the desk, a customer's phone — is

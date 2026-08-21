@@ -7,6 +7,7 @@ import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 import { toGridModel } from '@/lib/day/view-model';
 import { flagSentence } from '@/components/client-flag';
+import { DateJump } from '@/components/date-jump';
 import { DayGrid } from './day-grid';
 import { ProviderDay } from './provider-day';
 
@@ -78,6 +79,14 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
           <Link href={link(addDays(calendarDay(day), 1), providerId)} className="underline underline-offset-4">
             Next →
           </Link>
+          {/* A-039: "same again in six weeks" is one gesture, not forty-two
+              taps of Next. */}
+          <DateJump
+            basePath="/staff/day"
+            day={day}
+            extraParams={providerId ? { provider: providerId } : undefined}
+            label="Jump to a day"
+          />
         </nav>
       </div>
 

@@ -102,6 +102,36 @@ test.describe('staff booking (A-017)', () => {
     }
   });
 
+  /** A-039: the panel changes its OWN day rather than sending the desk back
+   *  to the grid to pick again. */
+  test('changes day inside the panel and books on the new day', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let providerId = '';
+    try {
+      providerId = (await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } })).id;
+    } finally {
+      await prisma.$disconnect();
+    }
+    // A week ahead, same weekday, so the seeded roster still works there.
+    const nextWeek = addDays(calendarDay(DAY), 7);
+
+    await page.goto(`/staff/book?provider=${providerId}&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    await page.getByLabel('Which day?').fill(nextWeek);
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    const prisma2 = new PrismaClient();
+    try {
+      const appointment = await prisma2.appointment.findFirstOrThrow();
+      expect(appointment.startDay).toBe(nextWeek);
+    } finally {
+      await prisma2.$disconnect();
+    }
+  });
+
   test('finds an existing client by part of her number', async ({ page }) => {
     const prisma = new PrismaClient();
     try {

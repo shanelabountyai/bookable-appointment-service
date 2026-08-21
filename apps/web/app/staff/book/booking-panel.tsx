@@ -39,7 +39,7 @@ const field = 'rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-s
  * it is what makes the marker on the appointment mean something later.
  */
 export function BookingPanel({
-  day,
+  day: initialDay,
   services,
   provider,
   at,
@@ -53,6 +53,9 @@ export function BookingPanel({
 }) {
   const [state, formAction, booking] = useActionState(bookAsStaff, initial);
 
+  // A-039: the panel changes ITS OWN day rather than sending the desk back to
+  // the grid to pick again — the URL's day is only where this screen started.
+  const [day, setDay] = useState(initialDay);
   const [chosen, setChosen] = useState<string[]>([]);
   const [options, setOptions] = useState<WalkInChoice[]>([]);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
@@ -74,27 +77,26 @@ export function BookingPanel({
   const startAt = pick?.at ?? chosenSlot ?? '';
   const ready = chosen.length > 0 && providerId !== '' && startAt !== '';
 
-  function toggleService(id: string) {
-    // ORDER MATTERS (VISIT-01): the buffers come from the ends, so "cut then
-    // colour" is a different appointment from "colour then cut". Selection
-    // order is the visit order.
-    const next = chosen.includes(id) ? chosen.filter((s) => s !== id) : [...chosen, id];
-    setChosen(next);
+  // Shared by "pick a service" and "pick a day" (A-039) — either one
+  // invalidates whatever times were offered for the OLD combination.
+  function loadFor(nextDay: string, nextServices: string[]) {
     setPick(null);
     setOptions([]);
     setSlots([]);
     setChosenSlot(null);
-    if (walkIn && next.length > 0) {
-      startLoadingOptions(async () => setOptions(await findWalkInOptions(next, day)));
+    if (nextServices.length === 0) return;
+    if (walkIn) {
+      startLoadingOptions(async () => setOptions(await findWalkInOptions(nextServices, nextDay)));
       return;
     }
-    if (!walkIn && next.length > 0 && provider) {
+    if (provider) {
       startLoadingOptions(async () => {
-        const offered = await staffSlotsFor(provider.id, next, day);
+        const offered = await staffSlotsFor(provider.id, nextServices, nextDay);
         setSlots(offered);
         // Preselect the first offered time at or after the gap the desk
         // tapped, so the ordinary case is one tap and the list is there to
-        // correct it.
+        // correct it. Only on the day the gap actually came from — a gap's
+        // instant means nothing once the desk has picked a different day.
         //
         // FALLING BACK TO `at` ITSELF, never to the day's first slot: if
         // nothing is offered at or after the requested time, the desk asked
@@ -102,9 +104,24 @@ export function BookingPanel({
         // shut — and that has to reach the refusal so BOOK-05's override is
         // still on offer. Substituting the morning's first slot would book a
         // completely different appointment and call it success.
-        setChosenSlot(offered.find((slot) => !at || slot.at >= at)?.at ?? at ?? offered[0]?.at ?? null);
+        const anchor = nextDay === initialDay ? at : null;
+        setChosenSlot(offered.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? offered[0]?.at ?? null);
       });
     }
+  }
+
+  function toggleService(id: string) {
+    // ORDER MATTERS (VISIT-01): the buffers come from the ends, so "cut then
+    // colour" is a different appointment from "colour then cut". Selection
+    // order is the visit order.
+    const next = chosen.includes(id) ? chosen.filter((s) => s !== id) : [...chosen, id];
+    setChosen(next);
+    loadFor(day, next);
+  }
+
+  function changeDay(nextDay: string) {
+    setDay(nextDay);
+    loadFor(nextDay, chosen);
   }
 
   function search(text: string) {
@@ -118,6 +135,8 @@ export function BookingPanel({
     return (
       <div className="flex flex-col gap-4">
         <p className="text-lg font-medium">{state.message}</p>
+        {/* The day just booked, not the day the panel was opened on — the
+            desk may have moved forward from here (A-039). */}
         <Link href={`/staff/day?day=${day}`} className={primary + ' self-start'}>
           Back to the day
         </Link>
@@ -133,6 +152,20 @@ export function BookingPanel({
       {chosen.map((id) => (
         <input key={id} type="hidden" name="serviceIds" value={id} />
       ))}
+
+      {/* A-039: change the day from right here — no trip back to the grid to
+          pick again. Not shown for a walk-in standing at the desk today. */}
+      {!walkIn ? (
+        <label className="flex w-fit flex-col gap-1 text-sm">
+          Which day?
+          <input
+            type="date"
+            value={day}
+            onChange={(event) => event.target.value && changeDay(event.target.value)}
+            className={field}
+          />
+        </label>
+      ) : null}
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">

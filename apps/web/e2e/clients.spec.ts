@@ -197,6 +197,82 @@ test.describe('the client record (A-015)', () => {
     await expect(page.getByRole('group')).toContainText('Which day suits you?');
   });
 
+  /**
+   * A-039: Mrs. Hall rings to move an appointment she can see right here —
+   * this used to be plain text with nowhere to click, so the desk had to
+   * read the date off the screen and walk the day grid to it one day at a
+   * time. Split into Upcoming/Past, and every row links to the appointment.
+   */
+  test('the future appointment is separated from the past and links to it', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let clientId = '';
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const client = await prisma.client.findFirstOrThrow({ where: { name: 'Ada Chen' } });
+      clientId = client.id;
+      // One appointment behind "now" and one ahead of it — a decade in
+      // either direction, so the split cannot pass by accident of when the
+      // suite happens to run.
+      await prisma.appointment.createMany({
+        data: [
+          {
+            businessId: business.id,
+            providerId: dana.id,
+            clientId: client.id,
+            startAt: at('2016-06-09T15:00:00.000Z'),
+            endAt: at('2016-06-09T15:45:00.000Z'),
+            blockedStart: at('2016-06-09T15:00:00.000Z'),
+            blockedEnd: at('2016-06-09T15:45:00.000Z'),
+            startDay: '2016-06-09',
+            startWallTime: '10:00',
+            status: 'completed',
+          },
+          {
+            businessId: business.id,
+            providerId: dana.id,
+            clientId: client.id,
+            startAt: at('2036-06-09T15:00:00.000Z'),
+            endAt: at('2036-06-09T15:45:00.000Z'),
+            blockedStart: at('2036-06-09T15:00:00.000Z'),
+            blockedEnd: at('2036-06-09T15:45:00.000Z'),
+            startDay: '2036-06-09',
+            startWallTime: '10:00',
+            status: 'booked',
+          },
+        ],
+      });
+      // `createMany` writes no lines, and the page reads `lines` for the
+      // service list — a real visit always has at least one.
+      const [past, future] = await prisma.appointment.findMany({
+        where: { businessId: business.id, clientId: client.id },
+        orderBy: { startAt: 'asc' },
+      });
+      await prisma.appointmentServiceLine.createMany({
+        data: [past!, future!].map((appointment) => ({
+          businessId: business.id,
+          appointmentId: appointment.id,
+          serviceId: service.id,
+          ordinal: 0,
+          priceCents: 5500,
+          durationMinutes: 45,
+        })),
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/clients/${clientId}`);
+
+    const upcoming = page.getByRole('heading', { name: 'Upcoming' }).locator('..');
+    await expect(upcoming.getByRole('link', { name: 'Details' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Past' })).toBeVisible();
+
+    await upcoming.getByRole('link', { name: 'Details' }).click();
+    await expect(page).toHaveURL(/\/staff\/appointments\//);
+  });
+
   test('has no accessibility violations', async ({ page }) => {
     await search(page, 'Ada');
     await page.getByRole('link', { name: /Ada Chen/ }).click();

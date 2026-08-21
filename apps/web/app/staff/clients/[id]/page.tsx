@@ -1,7 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
-import { clientHistory, findClient, missedAppointments, rebookSuggestion, reliabilityFor } from '@bookable/db/clients';
+import {
+  type ClientVisit,
+  clientHistory,
+  findClient,
+  missedAppointments,
+  rebookSuggestion,
+  reliabilityFor,
+} from '@bookable/db/clients';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
@@ -31,7 +38,8 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
     where: { id: staff.businessId },
     select: { timezone: true },
   });
-  const today = toLabel(fromDate(new Date()), zoneId(business.timezone)).day;
+  const now = new Date();
+  const today = toLabel(fromDate(now), zoneId(business.timezone)).day;
 
   const [history, rebook, reliability, missed] = await Promise.all([
     clientHistory(prisma, staff.businessId, client.id),
@@ -39,6 +47,13 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
     reliabilityFor(prisma, { businessId: staff.businessId, clientId: client.id, today }),
     missedAppointments(prisma, { businessId: staff.businessId, clientId: client.id, today }),
   ]);
+
+  // `history` arrives startAt DESC (packages/db/clients/clients.ts) — that
+  // already orders "past" correctly (most recent first) after filtering, but
+  // "upcoming" needs the opposite direction: soonest first, because that is
+  // the one she is most likely calling about.
+  const upcoming = history.filter((v) => v.startAt >= now).sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  const past = history.filter((v) => v.startAt < now);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-8">
@@ -131,27 +146,58 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
         {history.length === 0 ? (
           <p className="text-zinc-500">No appointments yet.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {history.map((visit) => (
-              <li
-                key={visit.appointmentId}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 rounded-md border border-zinc-300 px-4 py-3 dark:border-zinc-700"
-              >
-                <span className="font-medium">{readableInstant(visit.startAt, business.timezone)}</span>
-                <span className="text-sm text-zinc-500">
-                  {visit.services.join(' + ')} · {visit.providerName} · {money(visit.priceCents)}
-                </span>
-                {/* No-shows and late cancels are shown, not hidden (CLIENT-02):
-                    they are what the counter in A-020 is built from. */}
-                <span className="text-sm font-medium">{visit.status.replace('_', ' ')}</span>
-                {visit.notes ? <p className="w-full text-sm text-zinc-500">{visit.notes}</p> : null}
-              </li>
-            ))}
-          </ul>
+          <>
+            {/* A-039: Mrs. Hall rings to move an appointment she can see right
+                here — this list used to be plain text with nowhere to click,
+                so the desk had to read the date off the screen and go walk
+                the day grid to it one day at a time. Separated from the past
+                so "what's coming up" doesn't require reading every status. */}
+            {upcoming.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Upcoming</h3>
+                <ul className="flex flex-col gap-2">
+                  {upcoming.map((visit) => (
+                    <HistoryRow key={visit.appointmentId} visit={visit} timezone={business.timezone} />
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {past.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {upcoming.length > 0 ? <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Past</h3> : null}
+                <ul className="flex flex-col gap-2">
+                  {past.map((visit) => (
+                    <HistoryRow key={visit.appointmentId} visit={visit} timezone={business.timezone} />
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 
       <MergePanel survivorId={client.id} survivorName={client.name ?? 'this record'} />
     </main>
+  );
+}
+
+/** One row, upcoming or past — same shape either way, differing only in
+ *  which section it lands in above. */
+function HistoryRow({ visit, timezone }: { visit: ClientVisit; timezone: string }) {
+  return (
+    <li className="flex flex-wrap items-baseline justify-between gap-x-4 rounded-md border border-zinc-300 px-4 py-3 dark:border-zinc-700">
+      <span className="font-medium">{readableInstant(visit.startAt, timezone)}</span>
+      <span className="text-sm text-zinc-500">
+        {visit.services.join(' + ')} · {visit.providerName} · {money(visit.priceCents)}
+      </span>
+      {/* No-shows and late cancels are shown, not hidden (CLIENT-02): they
+          are what the counter in A-020 is built from. */}
+      <span className="text-sm font-medium">{visit.status.replace('_', ' ')}</span>
+      {/* A-039: this used to be plain text with nowhere to click. */}
+      <Link href={`/staff/appointments/${visit.appointmentId}`} className="text-xs text-zinc-500 underline underline-offset-4">
+        Details
+      </Link>
+      {visit.notes ? <p className="w-full text-sm text-zinc-500">{visit.notes}</p> : null}
+    </li>
   );
 }
