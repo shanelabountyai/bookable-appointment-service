@@ -1217,6 +1217,8 @@ Full review: `docs/reviews/09-operator-review-phase-3-close.md`. Walked 2026-08-
 
 ## A-043 — what's opened up (operator P-10, WAIT-02)
 
+**Commit:** `80a9ae2`
+
 **Built.** The matcher (`matchFreedSlot`) has been correct since A-023 and had exactly ONE door: a URL assembled on the cancelled appointment's own detail page. Reaching it therefore required already knowing WHICH appointment cancelled — the one thing the desk does not know when the cancellation arrived through a client's manage link on a Saturday for next Thursday. Three hours of the salon's most valuable service sat unsold for six days with the waitlist entry that fits it two screens away.
 
 `listOpenedSlots` (`packages/db/appointments/opened.ts`) derives future time freed by a recent cancellation and still empty, soonest-to-expire first. `/staff/opened` renders it, one tap from the day grid beside Walk-in / Conflicts / Call-down with a count on the tab, each row carrying a `tel:` link to the client who gave the slot back and a link straight into the matcher.
