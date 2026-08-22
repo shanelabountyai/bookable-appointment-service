@@ -19,7 +19,7 @@ import {
 import { transitionAppointment } from '@bookable/db/appointments';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
-import { DELIVERY_WORDS, TEMPLATE_WORDS } from '@/lib/appointments/event-language';
+import { TEMPLATE_WORDS, deliveryWord } from '@/lib/appointments/event-language';
 import { readableDay } from '@/lib/customer-format';
 import { requireStaff } from '@/lib/auth/session';
 
@@ -190,9 +190,7 @@ function shape(conflict: ConflictingAppointment, zone: ReturnType<typeof zoneId>
     acknowledged: conflict.acknowledgedAt !== null,
     acknowledgedReason: conflict.acknowledgedReason,
     lastNotice: conflict.lastNotice
-      ? `${TEMPLATE_WORDS[conflict.lastNotice.template] ?? conflict.lastNotice.template} — ${
-          DELIVERY_WORDS[conflict.lastNotice.status] ?? conflict.lastNotice.status
-        }`
+      ? `${TEMPLATE_WORDS[conflict.lastNotice.template] ?? conflict.lastNotice.template} — ${deliveryWord(conflict.lastNotice.status)}`
       : null,
   };
 }

@@ -30,6 +30,21 @@ export interface SessionPayload {
    * a session written before this field existed still reads correctly.
    */
   act?: string;
+  /**
+   * A-044: when the person named by `act` stops being at the desk.
+   *
+   * ABSOLUTE, from the moment of the switch — not a sliding idle window. A
+   * sliding one would have to re-sign the cookie on every request, and a Next
+   * server component cannot set a cookie during render, so the "activity" it
+   * measured would be the subset of requests that happen to be actions. An
+   * absolute window is a smaller promise, kept exactly.
+   *
+   * Absent means the same thing as an expired one: nobody has taken the desk.
+   * A session signed before this field existed therefore reads as the account
+   * holder rather than as a `act` that never lapses — the safe direction, and
+   * the reason this is not `actExp?: number | null` with three states.
+   */
+  actExp?: number;
   /** Expiry, epoch milliseconds. Inside the signed payload so it cannot be
    *  extended by editing the cookie — a cookie's own Max-Age is a hint to the
    *  browser, not a control the server can trust. */
@@ -95,7 +110,11 @@ export function verifySession(token: string, secret: string, now: number): Sessi
     typeof (payload as SessionPayload).exp !== 'number' ||
     // Optional, but never junk: an `act` of the wrong type would flow on to a
     // database lookup as an unvalidated value.
-    !['string', 'undefined'].includes(typeof (payload as SessionPayload).act)
+    !['string', 'undefined'].includes(typeof (payload as SessionPayload).act) ||
+    // Same reflex for the timeout. A non-finite one is NOT rejected here: the
+    // reader compares `actExp > now`, which is false for NaN, so junk lapses
+    // the acting identity rather than extending it.
+    !['number', 'undefined'].includes(typeof (payload as SessionPayload).actExp)
   ) {
     return null;
   }
@@ -109,3 +128,14 @@ export function verifySession(token: string, secret: string, now: number): Sessi
  *  re-authenticating, short enough that a session left open on a shared
  *  reception machine is not valid tomorrow morning. */
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * How long a tapped-in identity stays at the desk (A-044).
+ *
+ * Half an hour, and short is the safe direction. Too short costs an event the
+ * stylist's name and stamps the account holder instead — a thinner audit
+ * trail, which is what this product had before A-037. Too long puts somebody
+ * ELSE's name on what you did, which is a false record. Those two are not
+ * symmetrical, so the window is sized for the second.
+ */
+export const ACT_TTL_MS = 30 * 60 * 1000;

@@ -144,6 +144,41 @@ test.describe('the appointment detail panel (A-027)', () => {
   });
 
   /**
+   * A-044 — A `sent` ROW IS NOT A CLIENT WHO HAS BEEN TOLD.
+   *
+   * There is no real driver yet (D-14): every send is a line on the server
+   * console, and the adapter succeeding is what writes `sent`. A desk reading
+   * "sent" on this screen skips the phone call, so until something actually
+   * delivers, the screen says queued.
+   *
+   * The status is forced here rather than dispatched, because a build with no
+   * driver has no honest way to produce a delivered row — and a test that only
+   * ever looked at `pending` would pass whatever this screen said about
+   * `sent`, which is the whole subject.
+   */
+  test('a message the logging adapter “sent” still reads as queued', async ({ page }) => {
+    const appointment = await bookOne();
+
+    const prisma = new PrismaClient();
+    try {
+      const updated = await prisma.notificationOutbox.updateMany({
+        where: { appointmentId: appointment.id },
+        data: { status: 'sent', sentAt: toDate(instant(Date.now())) },
+      });
+      expect(updated.count).toBeGreaterThan(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    const row = page.locator('li').filter({ hasText: 'Booking confirmation' });
+    await expect(row).toContainText('queued');
+    // Not merely "contains queued somewhere": the word this replaces must be
+    // gone, or a row saying "sent · queued" would pass the assertion above.
+    await expect(row).not.toContainText('sent');
+  });
+
+  /**
    * The status controls come from the §7 table. Checking in writes the ACTUAL
    * timestamp (APPT-03) and a new line in the log — the two halves of
    * "what really happened" versus "what was planned".

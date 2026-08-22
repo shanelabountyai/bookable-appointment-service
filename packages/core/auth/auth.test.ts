@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hashPassword, verifyPassword } from './password';
-import { MissingSessionSecret, SESSION_TTL_MS, signSession, verifySession } from './session';
+import { ACT_TTL_MS, MissingSessionSecret, SESSION_TTL_MS, signSession, verifySession } from './session';
 import { customerTokenActor, staffActor, systemActor } from './actor';
 
 const SECRET = 'test-secret-not-a-real-one';
@@ -164,6 +164,59 @@ describe('the acting staff member (A-037)', () => {
   it('rejects a signed payload whose act is not a string', () => {
     const token = signSession({ sub: 'owner', exp: NOW + SESSION_TTL_MS, act: 42 } as never, SECRET);
     expect(verifySession(token, SECRET, NOW)).toBeNull();
+  });
+});
+
+/**
+ * A-044 — the acting identity lapses.
+ *
+ * Nothing used to hand the desk back, so whoever tapped last kept the log's
+ * name all day, including after they had gone home. `verifySession` does NOT
+ * apply the timeout — an expired `act` is not a bad cookie, it is a session
+ * whose acting person went home, and the session itself is still good. The
+ * reader decides; this only guarantees the field survives the round trip and
+ * is never junk.
+ */
+describe('the acting timeout (A-044)', () => {
+  it('round-trips inside the signature, so it cannot be pushed out by an edit', () => {
+    const actExp = NOW + 30 * 60 * 1000;
+    const token = signSession({ sub: 'owner', exp: NOW + SESSION_TTL_MS, act: 'priya', actExp }, SECRET);
+    expect(verifySession(token, SECRET, NOW)).toMatchObject({ act: 'priya', actExp });
+
+    const [body, signature] = token.split('.');
+    const decoded = JSON.parse(Buffer.from(String(body), 'base64url').toString('utf8')) as Record<string, unknown>;
+    const stretched = Buffer.from(
+      JSON.stringify({ ...decoded, actExp: NOW + SESSION_TTL_MS }),
+      'utf8',
+    ).toString('base64url');
+    expect(verifySession(`${stretched}.${signature}`, SECRET, NOW)).toBeNull();
+  });
+
+  /** A LAPSED act still verifies: the SESSION has not expired, only the
+   *  borrowed name has. Sending the terminal to the login page because the
+   *  stylist wandered off would be a worse bug than the one being fixed. */
+  it('leaves the session valid when only the acting window has passed', () => {
+    const token = signSession(
+      { sub: 'owner', exp: NOW + SESSION_TTL_MS, act: 'priya', actExp: NOW - 1 },
+      SECRET,
+    );
+    expect(verifySession(token, SECRET, NOW)).toMatchObject({ sub: 'owner', actExp: NOW - 1 });
+  });
+
+  it('rejects a signed payload whose actExp is not a number', () => {
+    const token = signSession(
+      { sub: 'owner', exp: NOW + SESSION_TTL_MS, act: 'priya', actExp: 'forever' } as never,
+      SECRET,
+    );
+    expect(verifySession(token, SECRET, NOW)).toBeNull();
+  });
+
+  /** Half an hour, and the direction matters more than the number: too short
+   *  costs an event a stylist's name, too long puts somebody else's name on
+   *  what you did. Only the second is a false record. */
+  it('is much shorter than the session it lives inside', () => {
+    expect(ACT_TTL_MS).toBeLessThan(SESSION_TTL_MS);
+    expect(ACT_TTL_MS).toBe(30 * 60 * 1000);
   });
 });
 

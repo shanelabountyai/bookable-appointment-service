@@ -13,36 +13,53 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
 import { InvalidPin, type StaffRow, listStaff, saveStaffMember } from '@bookable/db/auth';
-import { requireStaff } from './session';
+import { requireDesk, requireStaff } from './session';
 
 export interface PeopleState {
   ok?: boolean;
   message?: string;
 }
 
-export async function listPeople(): Promise<StaffRow[]> {
-  const staff = await requireStaff();
-  return listStaff(prisma, staff.businessId);
+/** The roster, plus whether this session may hand out PINs — the screen hides
+ *  the fields it would only be refused for. The refusal in `savePerson` is the
+ *  control; this is the courtesy that stops somebody typing a PIN twice before
+ *  finding out. */
+export async function listPeople(): Promise<{ people: StaffRow[]; canSetPins: boolean }> {
+  const desk = await requireDesk();
+  return { people: await listStaff(prisma, desk.staff.businessId), canSetPins: desk.isAccountHolder };
 }
 
 export async function savePerson(_prev: PeopleState, formData: FormData): Promise<PeopleState> {
-  const staff = await requireStaff();
+  const desk = await requireDesk();
   const id = String(formData.get('id') ?? '') || undefined;
   const name = String(formData.get('name') ?? '');
   const pin = String(formData.get('pin') ?? '');
+  const clearPin = formData.get('clearPin') !== null;
 
   if (!name.trim()) return { ok: false, message: 'Everybody needs a name — it is what the log says.' };
 
+  // A-044. Checked on the POSTED FIELDS, not on what the screen chose to draw:
+  // hiding an input hides nothing from anybody willing to send the form
+  // themselves, and this action is the only place the refusal is real.
+  if ((pin || clearPin) && !desk.isAccountHolder) {
+    return {
+      ok: false,
+      message:
+        'Only the account this terminal signed in with can set a desk PIN. ' +
+        'Everything else on this screen is yours to change.',
+    };
+  }
+
   try {
     await saveStaffMember(prisma, {
-      businessId: staff.businessId,
+      businessId: desk.staff.businessId,
       id,
       name,
       // Blank leaves an existing PIN alone. Clearing one is the separate
       // "Remove PIN" button, so correcting a spelling cannot silently drop
       // somebody off the switcher.
       pin: pin || undefined,
-      clearPin: formData.get('clearPin') !== null,
+      clearPin,
     });
   } catch (error) {
     if (error instanceof InvalidPin) return { ok: false, message: 'A desk PIN is 4 to 6 digits.' };

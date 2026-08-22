@@ -7,7 +7,8 @@
  * and decides only whose name goes on the next thing that happens.
  */
 import AxeBuilder from '@axe-core/playwright';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
+import { SESSION_TTL_MS, signSession } from '@bookable/core/auth';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
@@ -24,6 +25,15 @@ async function signIn(page: Page) {
  *  in its own paragraph, so the summary has to be named explicitly. */
 function deskBar(page: Page) {
   return page.locator('summary').filter({ hasText: 'At the desk:' });
+}
+
+/** Take the desk as Priya, through the bar, exactly as the salon does. */
+async function beMePriya(page: Page) {
+  await deskBar(page).click();
+  await page.getByLabel('Who').selectOption({ label: 'Priya' });
+  await page.getByLabel('PIN').fill('4821');
+  await page.getByRole('button', { name: 'That’s me' }).click();
+  await expect(page.getByText('Priya is at the desk.')).toBeVisible();
 }
 
 async function addPriya(page: Page) {
@@ -125,4 +135,162 @@ test.describe('named staff identity', () => {
     const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
     expect(serious).toEqual([]);
   });
+
+  /**
+   * A-044 — THE GUARD, AND IT IS ON THE ACTION, NOT ON THE SCREEN.
+   *
+   * The roster is reachable by anybody, and a PIN is the credential every "by
+   * Priya" in the log rests on. Priya setting Dana's PIN forges Dana's name in
+   * thirty seconds, which is precisely what A-037 built the trail to prevent.
+   *
+   * The two tabs are not a contrivance — this is the shared salon terminal,
+   * and the point of the test is that the roster form was rendered BEFORE the
+   * desk changed hands, so its PIN field is sitting right there in the DOM.
+   * A screen that only hides the input protects nothing; the refusal has to
+   * happen when the values arrive.
+   */
+  test('somebody at the desk on a borrowed name cannot set a PIN, even with the field in front of them', async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+    await addPriya(page);
+
+    // Rendered as the account holder, so the PIN field is real and fillable.
+    await page.goto('/staff/people');
+    const priyaRow = page.locator('li').filter({ hasText: 'Priya' });
+    await expect(priyaRow.getByLabel('New desk PIN')).toBeVisible();
+
+    // The desk changes hands in another tab. Same terminal, same cookie jar.
+    const other = await context.newPage();
+    await other.goto('/staff');
+    await beMePriya(other);
+    await other.close();
+
+    // This page never re-rendered. Priya types a new PIN into the form the
+    // owner left open and saves it.
+    await priyaRow.getByLabel('New desk PIN').fill('9999');
+    await priyaRow.getByRole('button', { name: 'Save' }).click();
+
+    await expect(page.getByText('Only the account this terminal signed in with can set a desk PIN.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const priya = await prisma.staffUser.findFirstOrThrow({ where: { name: 'Priya' } });
+      // Assert the PIN is UNCHANGED by using it, not by inspecting the hash:
+      // a hash that merely differs from '9999' would also be true of a
+      // successful re-hash of 9999, which is the failure this must catch.
+      await page.goto('/staff');
+      await deskBar(page).click();
+      await page.getByLabel('Who').selectOption({ label: 'Priya' });
+      await page.getByLabel('PIN').fill('9999');
+      await page.getByRole('button', { name: 'That’s me' }).click();
+      await expect(page.getByText('That name and PIN do not match.')).toBeVisible();
+      expect(priya.id).toBeTruthy();
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /** The courtesy half: once somebody has taken the desk the fields are not
+   *  drawn at all, so nobody types a PIN twice to find out it was refused.
+   *  Naming and off-boarding stay open — A-044 is a guard on one credential,
+   *  NOT the roles question D-9 and D-33 deferred. */
+  test('the roster still names and off-boards on a borrowed identity — only the PIN fields go', async ({ page }) => {
+    await signIn(page);
+    await addPriya(page);
+    await page.goto('/staff');
+    await beMePriya(page);
+
+    await page.goto('/staff/people');
+    await expect(page.getByText('Desk PINs are set by whoever signed this terminal in.')).toBeVisible();
+    await expect(page.getByLabel('New desk PIN')).toHaveCount(0);
+    await expect(page.getByLabel('Desk PIN')).toHaveCount(0);
+    await expect(page.getByText('Remove PIN')).toHaveCount(0);
+
+    // Still hers to change: the name the log uses.
+    const priyaRow = page.locator('li').filter({ hasText: 'Priya' });
+    await priyaRow.getByLabel('Name').fill('Priya S');
+    await priyaRow.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('Saved.')).toBeVisible();
+  });
+
+  /**
+   * A-044 — THE DESK COMES BACK BY ITSELF.
+   *
+   * Nothing used to hand it back, so whoever tapped last kept the log's name
+   * all day, including after they had gone home. The cookie is signed here
+   * rather than waited out: half an hour of real time is not a test, and the
+   * signature is the only thing that makes `actExp` trustworthy anyway.
+   */
+  test('a lapsed desk falls back to the account holder without logging the terminal out', async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+    await addPriya(page);
+
+    const prisma = new PrismaClient();
+    try {
+      const priya = await prisma.staffUser.findFirstOrThrow({ where: { name: 'Priya' } });
+      const holder = await prisma.staffUser.findFirstOrThrow({ where: { email: STAFF_EMAIL } });
+      await stampSession(context, { sub: holder.id, act: priya.id, actExp: Date.now() - 1 });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // Still signed in — a lapsed NAME is not a lapsed session, and throwing
+    // the front desk at the login page mid-Saturday would be the worse bug.
+    await page.goto('/staff/people');
+    await expect(page).toHaveURL(/\/staff\/people$/);
+    await expect(deskBar(page)).toContainText('Front desk');
+
+    // And the account holder has their own screen back, guard included.
+    await expect(page.getByText('Desk PINs are set by whoever signed this terminal in.')).toHaveCount(0);
+    await expect(page.locator('li').filter({ hasText: 'Priya' }).getByLabel('New desk PIN')).toBeVisible();
+  });
+
+  /** The other side of the same coin: inside the window, she is still at the
+   *  desk. Without this the test above passes for a build that ignores `act`
+   *  entirely. */
+  test('inside the window the acting name still holds', async ({ page, context }) => {
+    await signIn(page);
+    await addPriya(page);
+
+    const prisma = new PrismaClient();
+    try {
+      const priya = await prisma.staffUser.findFirstOrThrow({ where: { name: 'Priya' } });
+      const holder = await prisma.staffUser.findFirstOrThrow({ where: { email: STAFF_EMAIL } });
+      await stampSession(context, { sub: holder.id, act: priya.id, actExp: Date.now() + 60_000 });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto('/staff/people');
+    await expect(deskBar(page)).toContainText('Priya');
+    await expect(page.getByText('Desk PINs are set by whoever signed this terminal in.')).toBeVisible();
+  });
 });
+
+/**
+ * Writes a session cookie the server will accept — signed with the same secret
+ * the app runs on, which is what makes `act` and `actExp` worth trusting in
+ * the first place. Only the acting fields are the subject; `exp` is left long
+ * so nothing under test can be confused with an ordinary logout.
+ */
+async function stampSession(
+  context: BrowserContext,
+  args: { sub: string; act: string; actExp: number },
+): Promise<void> {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error('SESSION_SECRET is not set — the e2e env is not loaded.');
+
+  await context.addCookies([
+    {
+      name: 'bookable_staff_session',
+      value: signSession({ ...args, exp: Date.now() + SESSION_TTL_MS }, secret),
+      domain: 'localhost',
+      path: '/',
+    },
+  ]);
+}

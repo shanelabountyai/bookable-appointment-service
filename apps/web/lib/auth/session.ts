@@ -9,6 +9,7 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
+  ACT_TTL_MS,
   type Actor,
   type SessionPayload,
   SESSION_TTL_MS,
@@ -64,28 +65,73 @@ async function readSession(now: number): Promise<SessionPayload | null> {
 }
 
 /**
+ * The session's TWO identities, resolved together (A-037, A-044).
+ *
+ * `staff` is who the next mutation is stamped with. `isAccountHolder` says
+ * whether that is the account whose email and password opened the session —
+ * which is the whole of A-044's guard: setting a desk PIN decides who can put
+ * a name on the log, so it is the one thing a borrowed identity must not do.
+ *
+ * Re-reads the StaffUser row on every call rather than trusting the cookie's
+ * contents, so deactivating somebody invalidates their live sessions on the
+ * next request with no revocation list to maintain.
+ *
+ * THREE ways to stop being the acting person, and all three land in the same
+ * place — the account holder, never a logged-out terminal. Off-boarding the
+ * Saturday temp must not throw the front desk out of the system mid-shift:
+ *   - somebody else taps their PIN in;
+ *   - the acting person is deactivated (`findStaffById` filters on `active`);
+ *   - `actExp` passes.
+ */
+async function readDesk(now: number): Promise<{ staff: StaffIdentity; isAccountHolder: boolean } | null> {
+  const session = await readSession(now);
+  if (!session) return null;
+
+  // `(session.actExp ?? 0) > now` — an `act` with no timeout at all is a
+  // cookie signed before A-044 and reads as lapsed, not as permanent.
+  const acting =
+    session.act && (session.actExp ?? 0) > now ? await findStaffById(prisma, session.act) : null;
+  if (acting) return { staff: acting, isAccountHolder: acting.id === session.sub };
+
+  const holder = await findStaffById(prisma, session.sub);
+  return holder ? { staff: holder, isAccountHolder: true } : null;
+}
+
+/**
  * WHO IS AT THE DESK — the person every mutation is stamped with (A-037).
  *
  * Not necessarily the account that signed in. The salon terminal authenticates
  * once in the morning and four people use it, so `act` names whichever of them
- * tapped their PIN last; absent, it is the account holder.
+ * tapped their PIN last; absent or lapsed, it is the account holder.
  *
  * Never throws for a bad cookie — a forged, expired or malformed value is
  * simply "not logged in".
- *
- * Re-reads the StaffUser row on every call rather than trusting the cookie's
- * contents, so deactivating somebody invalidates their live sessions on the
- * next request with no revocation list to maintain. **An acting person who has
- * been deactivated falls back to the account holder rather than logging the
- * terminal out**: off-boarding the temp must not throw the front desk out of
- * the system mid-Saturday.
  */
 export async function currentStaff(now = Date.now()): Promise<StaffIdentity | null> {
-  const session = await readSession(now);
-  if (!session) return null;
+  return (await readDesk(now))?.staff ?? null;
+}
 
-  const acting = session.act ? await findStaffById(prisma, session.act) : null;
-  return acting ?? findStaffById(prisma, session.sub);
+/**
+ * The guard for anything only the ACCOUNT HOLDER may do (A-044).
+ *
+ * Exactly one thing today: setting or clearing a desk PIN. That is not a
+ * permissions matrix and must not grow into one — D-9 and D-33 stand, every
+ * staff member can still do everything a staff member could do before. The
+ * distinction here is narrower than a role: a PIN is the credential the audit
+ * trail rests on, so handing it out cannot itself be done with a borrowed
+ * identity, or the trail forges in thirty seconds.
+ *
+ * Redirects when there is no session at all. When there IS one and it is
+ * acting as somebody else, this returns `isAccountHolder: false` rather than
+ * redirecting: the caller is mid-form and needs to say why, not be thrown at
+ * the login page for a thing they are legitimately signed in for.
+ */
+export async function requireDesk(
+  now = Date.now(),
+): Promise<{ staff: StaffIdentity; isAccountHolder: boolean }> {
+  const desk = await readDesk(now);
+  if (!desk) redirect('/staff/login');
+  return desk;
 }
 
 /**
@@ -95,6 +141,10 @@ export async function currentStaff(now = Date.now()): Promise<StaffIdentity | nu
  * the cookie. `sub` and `exp` are carried through unchanged — switching who is
  * at the desk is not a re-authentication and must not extend the shift's
  * session by eight more hours.
+ *
+ * A-044: the switch now carries its own, much shorter expiry. Nothing used to
+ * hand the desk BACK, so whoever tapped last stayed all day — including after
+ * they had gone home, which is when their name on an event stops being true.
  */
 export async function actAsStaff(staffUserId: string | null, now = Date.now()): Promise<void> {
   const session = await readSession(now);
@@ -106,7 +156,7 @@ export async function actAsStaff(staffUserId: string | null, now = Date.now()): 
     // than storing `sub` twice — one state, so nothing downstream has to know
     // the two spellings are the same thing.
     staffUserId && staffUserId !== session.sub
-      ? { sub: session.sub, exp: session.exp, act: staffUserId }
+      ? { sub: session.sub, exp: session.exp, act: staffUserId, actExp: now + ACT_TTL_MS }
       : { sub: session.sub, exp: session.exp },
     sessionSecret(),
   );

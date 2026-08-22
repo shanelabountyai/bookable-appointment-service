@@ -14,7 +14,7 @@ import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
-import { DELIVERY_WORDS, TEMPLATE_WORDS, toReadableEvent } from '@/lib/appointments/event-language';
+import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
 import { flagSentence } from '@/components/client-flag';
 import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
 import { MovePanel } from './move-panel';
@@ -236,7 +236,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
                 <span className="text-zinc-600 dark:text-zinc-400">
                   {notification.recipient ?? 'no contact details'} · {notification.channel}
                 </span>
-                <span className="ml-auto">{DELIVERY_WORDS[notification.status] ?? notification.status}</span>
+                <span className="ml-auto">{deliveryWord(notification.status)}</span>
               </li>
             ))}
           </ul>

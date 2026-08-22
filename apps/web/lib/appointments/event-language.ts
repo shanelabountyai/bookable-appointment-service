@@ -18,6 +18,7 @@ import 'server-only';
  */
 import type { AppointmentEventRow } from '@bookable/db/appointments';
 import { type ZoneId, fromDate, instantFromIso, toLabel } from '@bookable/core/time';
+import { notificationsReallySend } from '@bookable/db/notifications';
 
 export const EVENT_TYPES = [
   'booked',
@@ -129,14 +130,31 @@ function clock(iso: unknown, zone: ZoneId): string {
   }
 }
 
-/** Operator R-4's answer to "was she actually told?" — the outbox row's own
- *  status, in words rather than an enum. */
-export const DELIVERY_WORDS: Record<string, string> = {
+/**
+ * Operator R-4's answer to "was she actually told?" — the outbox row's fate,
+ * in words rather than an enum.
+ *
+ * A-044: `sent` is not the same claim as "she has a text". Until a real driver
+ * exists (D-14) every send is a line on the server console, and a screen that
+ * says "Told: Cancellation — sent" is read by staff as "no need to call her".
+ * `deliveryWord()` is what every surface goes through, so that reading cannot
+ * be fixed on one screen and left standing on the other — the map itself is no
+ * longer exported, which is what makes that structural rather than a habit.
+ */
+const DELIVERY_WORDS: Record<string, string> = {
   pending: 'queued',
   sent: 'sent',
   failed: 'failed to send',
   suppressed: 'not sent — no contact details on file',
 };
+
+export function deliveryWord(status: string): string {
+  // With no real driver, a `sent` row never reached anybody. `pending` —
+  // "queued" — is the true word for it, and reusing that spelling means the
+  // screens gain no fourth vocabulary for the same state.
+  const honest = status === 'sent' && !notificationsReallySend ? 'pending' : status;
+  return DELIVERY_WORDS[honest] ?? honest;
+}
 
 export const TEMPLATE_WORDS: Record<string, string> = {
   'appointment.confirmed': 'Booking confirmation',

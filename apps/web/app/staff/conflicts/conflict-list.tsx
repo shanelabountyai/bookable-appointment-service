@@ -71,9 +71,16 @@ export function ConflictList({
             </div>
 
             {/* A-036: what she has already been told, so the next call does
-                not contradict a text sent an hour ago. */}
+                not contradict a text sent an hour ago.
+
+                A-044 renamed the label. "Told:" was a claim the row could not
+                back — it means "an outbox row exists", and until a real driver
+                is wired in (D-14) that row is a line on the server console. A
+                desk that reads "Told" skips the call. "Notice:" states what
+                there is, and the status word after the dash says whether it
+                actually went. */}
             {conflict.lastNotice ? (
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">Told: {conflict.lastNotice}</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-400">Notice: {conflict.lastNotice}</p>
             ) : null}
 
             {conflict.acknowledged ? (
