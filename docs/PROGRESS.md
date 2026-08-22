@@ -1287,6 +1287,8 @@ Demo checkpoint 3 committed at `aec430a`.
 
 ## A-045 — what is only true the second time (demo checkpoint 3's open question)
 
+**Commit:** `38e6bdd`
+
 **Built.** No feature. Checkpoint 3 closed on a question it could not answer from inside itself — *what else is only true the second time?* — and this answers it by measurement, then makes the measurement permanent.
 
 **The method, because it is the whole item.** Run the real seeds twice on a clean database with **no reset between**, and diff every column of every row of every table. A statement whose effect depends on rows created later in the same pass cannot survive that comparison: run 1 and run 2 disagree by construction, in whichever direction it is wrong. Nothing has to be guessed about *where* such a statement might be.
