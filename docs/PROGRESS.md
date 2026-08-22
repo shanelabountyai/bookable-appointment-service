@@ -1281,4 +1281,6 @@ Full transcript and findings: `docs/reviews/10-demo-checkpoint-3.md`. Walked 202
 
 **One methodological note, recorded because it nearly cost more than the defect was worth.** Two of the walk's first three findings were the walk's own bad assertions — it checked `blockedStart >= the new start`, and `blockedStart` is the start *minus* the before-buffer, so `12:50` for a `13:00` move is correct. A checkpoint is only useful if believed, and a false finding costs more than a missed one. Rule: prove the assertion before reporting the defect.
 
+Demo checkpoint 3 committed at `aec430a`.
+
 **Left behind:** the open question this raises is about fixtures rather than features — *what else is only true the second time?* Every seeded artefact in this repo is set up by a suite that seeds twice.
