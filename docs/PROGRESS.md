@@ -1239,7 +1239,7 @@ Full review: `docs/reviews/09-operator-review-phase-3-close.md`. Walked 2026-08-
 
 ## A-044 — the audit trail cannot be forged in thirty seconds (D-9, D-33, NOTIF-01)
 
-**Commit:** _(recorded below)_
+**Commit:** `799eaa2`
 
 **Built.** Three small things, one theme: A-037 gave the log a name, and left two ways for that name to be untrue.
 
