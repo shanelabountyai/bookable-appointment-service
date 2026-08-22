@@ -76,9 +76,21 @@ after ONE seed run (what db:reset:test leaves):        0 / 8 services require a 
 after a SECOND seedSetup (every e2e beforeEach):       8 / 8
 ```
 
-- **Every e2e spec** calls `seedSetup()` in `beforeEach`, on top of a database
+- ~~**Every e2e spec** calls `seedSetup()` in `beforeEach`, on top of a database
   `db:reset:test` has already seeded. That is always the *second* run. E2E has
-  therefore only ever tested the healed state.
+  therefore only ever tested the healed state.~~ **WRONG — corrected by A-045,
+  2026-08-22.** `e2e/fixtures.ts` installs an `auto: true` fixture that
+  `TRUNCATE`s every table before each test, and Playwright runs it *before* the
+  spec's own `beforeEach`. So the `seedSetup()` there runs on an empty database:
+  **e2e has always exercised the FIRST run.** The defect was live in this suite
+  too and survived because no e2e spec ever asserted that a seeded service
+  required a chair. The claim above came from a stale doc-comment in
+  `fixtures.ts` describing a `global-setup.ts` that was registered nowhere and
+  imported nowhere; both have been fixed, and the dead file deleted. The
+  correct lesson is **"add the assertion"**, not "reset harder" — and it is
+  worth noticing that the sentence below, *"the way the suite seeds is what hid
+  it"*, is the more comfortable of the two explanations, which is probably why
+  it went unchecked.
 - **Every unit test** for A-031/A-032/A-034 builds its own fixtures and sets
   `requiredResourceTypeId` by hand — correctly, since they are testing the
   resource logic, not the seed.
@@ -89,6 +101,17 @@ after a SECOND seedSetup (every e2e beforeEach):       8 / 8
 A green suite was not merely failing to notice; the way the suite seeds is
 what hid it. The one arrangement never exercised is the one every deployment
 begins with.
+
+> **A-045's amendment to the paragraph above.** Half of it holds and half does
+> not. It holds for the unit tests, which set the requirement by hand and so
+> could never see the seed get it wrong. It does not hold for e2e, which seeds
+> exactly once on a truncated database and simply had nothing asserting a chair.
+> What actually hid the defect across BOTH suites is narrower and more useful:
+> the seed's own idempotence test counted providers and services, and **the
+> defect was in a column.** No count can see a column. A-045 replaces the
+> inspection with a measurement — the seeds now run twice with no reset between
+> and every column of every table is diffed — so the question this checkpoint
+> closed on is answered by the suite rather than by the next person to wonder.
 
 ### The fix, and the test that would have caught it
 

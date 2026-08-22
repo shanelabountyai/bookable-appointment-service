@@ -2,8 +2,10 @@
  * Per-test database reset for e2e — every spec file imports `test`/`expect`
  * from HERE, never directly from `@playwright/test`.
  *
- * WHY THIS EXISTS. `globalSetup` resets the database once per `npm run
- * test:e2e` invocation, not once per test. Every spec shares one app instance
+ * WHY THIS EXISTS. There is no `globalSetup` — this file replaced it, and the
+ * unregistered leftover was deleted after demo checkpoint 3 mis-diagnosed a
+ * defect from its stale description. A once-per-invocation reset is not enough:
+ * every spec shares one app instance
  * and one Postgres test database (CLAUDE.md), and the provider roster and
  * service catalog are genuinely global rows — there is no per-test tenant.
  * Two specs that each independently add a provider named "Dana" (the obvious
@@ -15,6 +17,14 @@
  * every `beforeEach(resetDatabase(...))` already used across this repo's
  * vitest DB tests (packages/db/**\/*.test.ts). This file is that same pattern
  * for Playwright.
+ *
+ * A CONSEQUENCE WORTH STATING, because a checkpoint got it backwards. The
+ * truncate below runs before every test's `beforeEach`, so a spec that calls
+ * `seedSetup()` there is seeding an EMPTY database: e2e has always exercised
+ * the FIRST run, not the second. Checkpoint 3's dormant-resource defect was
+ * therefore present in this suite too, and survived because nothing asserted
+ * a chair — not because anything here seeded twice. "Add the assertion" is
+ * the lesson; "reset harder" is not.
  */
 import { expect, test as base } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';

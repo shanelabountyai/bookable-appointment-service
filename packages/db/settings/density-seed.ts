@@ -81,6 +81,29 @@ export async function seedDensity(
     throw new Error('seedDensity needs the A-025 setup seed first (4 providers, 8 services).');
   }
 
+  // NOT IDEMPOTENT, and it refuses rather than pretending otherwise.
+  //
+  // `seedSetup` next door IS idempotent and is tested as such. This one cannot
+  // cheaply be: `fill()` sizes its target off the slots still FREE, so a second
+  // pass books into whatever the first pass left (and into the two slots the
+  // `cancelled_late` transitions gave back), and the `booked → … → completed`
+  // walk cannot be re-applied to a row already sitting in `completed`.
+  //
+  // Measured, before this guard existed: a second run wrote 11 more
+  // appointments and THEN threw `completed → checked_in: not-permitted`,
+  // leaving a book that was neither the first run's nor the second's. A clean
+  // refusal costs three lines; the alternative is state-dependent arithmetic
+  // for a case with no legitimate caller — every real one (`db:reset:test`,
+  // `db:seed:dev` on a fresh database, and every test that seeds density)
+  // starts from an empty book.
+  const existingAppointments = await prisma.appointment.count({ where: { businessId: business.id } });
+  if (existingAppointments > 0) {
+    throw new Error(
+      `seedDensity refuses to run on a book that already holds ${existingAppointments} appointments: ` +
+        'it is not idempotent. Reset the database first (npm run db:reset:test).',
+    );
+  }
+
   // Both DST days are SUNDAYS, and the setup seed opens Tue–Sat. Without
   // these overrides the two fixtures the whole project exists for would
   // contain zero appointments — and nothing would fail to say so. Opening

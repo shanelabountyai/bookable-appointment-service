@@ -1394,3 +1394,23 @@ the reason the phone number is not unique in the first place.
 **And with the chairs finally live, the thing they were built for happened for the first time.** A colour at nine o'clock, forty minutes of which the client spends developing while her stylist is free. A blow-dry sold into that gap at 09:45. Two clients, one stylist, one moment — and two different chairs, because the developing client is still sitting in hers. That is the exact scenario the constraint was written to protect, and until this walk it had never once occurred outside a hand-built test.
 
 **Two of the walk's first three findings were the walk's own mistakes.** It checked that an appointment's blocked time started no earlier than its new start — forgetting that blocked time deliberately starts earlier, to hold the preparation buffer. A checkpoint is only worth running if its findings are believed, and a false alarm costs more than a missed one, so the assertion now compares how far things moved rather than where they landed. Prove the assertion before reporting the defect.
+
+## Asking the database what the seed forgot
+
+**The previous entry ended on an uncomfortable question.** A feature had sat switched off in every real installation because one instruction ran before the data it applied to existed, and it healed itself the second time anything ran. The obvious follow-up: *what else is only true the second time?*
+
+**That question can be inspected, or it can be measured.** Inspecting means reading the setup code and reasoning about ordering — which is exactly what had already been done, four separate times, by people writing features on top of it. So instead: run the setup twice on a clean database with nothing cleared in between, and compare every column of every row of every table. An instruction that depends on data created later in the same pass cannot survive that comparison. The two runs disagree, and the comparison names the table.
+
+**It found two things, and neither was the predicted one.**
+
+The main setup routine came back byte-identical across both runs — genuinely repeatable, across twenty-five tables. The routine that fills the demo book with appointments did not: run twice, it wrote eleven more appointments and then crashed partway through, leaving a book that was neither the first run's nor the second's. Anyone who ran the demo-data command twice on their own database got that, silently, until the crash.
+
+**The fix there was to stop pretending.** Making it repeatable means making it count what is still free rather than what it wants to book, and re-walking appointments that have already been completed — real machinery for a situation with no legitimate caller, since every real one starts from an empty book. It now refuses up front and names the command to run instead. The test checks that nothing was written before it refused, because a guard that refuses *after* writing passes a naive test perfectly and prevents nothing.
+
+**The third finding was a file that did nothing.** A setup script left over from an earlier arrangement, referenced by no configuration and imported by nothing. Deleted.
+
+**But the most useful outcome is a correction to the previous walk's explanation.** It had recorded that the browser tests all prepare themselves on top of an already-prepared database, and had therefore only ever seen the healed state. That is not what happens: the test harness wipes every table before each test, so those tests have always exercised a *first* run. The feature was dormant in that suite too — and it survived because no test ever asserted the thing that was missing.
+
+**One explanation was structural and blameless. The other was "nobody wrote the assertion."** The flattering one went unchallenged. The previous walk had itself concluded that a false finding costs more than a missed one, and that assertions must be proven before defects are reported — and that rule turns out to apply to a review's conclusions just as much as to its findings.
+
+**The measurement is now a test, not an audit.** It runs on every build, compares the whole database rather than the handful of facts someone thought to name, and discovers its own table list — because a table nobody remembers to add is precisely where the next one of these will live. It was proven by putting the original defect back: it goes red, and it says which table.

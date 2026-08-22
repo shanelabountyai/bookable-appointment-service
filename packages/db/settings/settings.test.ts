@@ -159,6 +159,63 @@ describe('setup seed (operator S-1)', () => {
     expect(await prisma.service.count()).toBe(8);
   });
 
+  /**
+   * THE GENERIC FIRST-RUN DETECTOR (demo checkpoint 3's carried-forward
+   * question: "what else is only true the second time?").
+   *
+   * Checkpoint 3 found four items' worth of resource machinery dormant in
+   * every environment that starts clean, because one `updateMany` ran before
+   * the rows it matched existed. It healed on the second run, so the seed's
+   * own idempotence test — which counted providers and services — passed
+   * either way. The defect was in a COLUMN, and no count can see a column.
+   *
+   * So this asserts the whole database instead: every table, every column of
+   * every row, run 1 against run 2. Any statement whose effect depends on rows
+   * created later in the same pass differs between the two runs by
+   * construction, whichever direction it is wrong in.
+   *
+   * Discovered from `information_schema`, deliberately, and this is the one
+   * place in the repo where discovery beats the explicit list in
+   * `testing/reset.ts`: a seeded table nobody remembers to add here is exactly
+   * the table the next instance of this bug will live in.
+   *
+   * `id` is excluded along with the timestamps: the seed replaces a colour's
+   * segments rather than appending them (and must), so those rows carry fresh
+   * cuids on every pass. Their CONTENT is what has to be stable.
+   */
+  it('changes nothing on a second run — every column of every table (checkpoint 3)', async () => {
+    const shape = async (): Promise<Record<string, string>> => {
+      const tables = await prisma.$queryRawUnsafe<{ table_name: string }[]>(
+        `SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+            AND table_name NOT LIKE '\\_prisma%'
+          ORDER BY table_name`,
+      );
+      const out: Record<string, string> = {};
+      for (const { table_name } of tables) {
+        const [row] = await prisma.$queryRawUnsafe<{ n: bigint; digest: string }[]>(
+          `SELECT count(*)::bigint AS n, md5(coalesce(string_agg(d, '' ORDER BY d), '')) AS digest
+             FROM (SELECT md5((to_jsonb(t) - 'id' - 'createdAt' - 'updatedAt')::text) AS d
+                     FROM "${table_name}" t) s`,
+        );
+        out[table_name] = `${row!.n} rows / ${row!.digest}`;
+      }
+      return out;
+    };
+
+    await seedSetup(prisma);
+    const first = await shape();
+    await seedSetup(prisma);
+    const second = await shape();
+
+    // Compared as whole objects so the failure names the offending TABLE, not
+    // just "false !== true".
+    expect(second).toEqual(first);
+    // The detector is worthless against an empty database, and a truncate that
+    // silently outran the seed would leave it exactly that.
+    expect(Object.values(first).some((v) => !v.startsWith('0 rows'))).toBe(true);
+  });
+
   it('never rosters more providers than there are chairs (D-20)', async () => {
     const { providerIds } = await seedSetup(prisma);
     expect(providerIds.length).toBeLessThanOrEqual(CHAIR_COUNT);

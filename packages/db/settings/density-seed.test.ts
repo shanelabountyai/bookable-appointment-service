@@ -226,4 +226,26 @@ describe('determinism and safety', () => {
     await prisma.business.create({ data: { name: 'Empty', timezone: 'America/Chicago' } });
     await expect(seedDensity(prisma)).rejects.toThrow(/setup seed/);
   });
+
+  /**
+   * The counterpart to `seedSetup`'s "changes nothing on a second run": this
+   * seed genuinely cannot make that promise, so it refuses instead of half
+   * keeping it. Before the guard, a second pass wrote 11 more appointments and
+   * then threw `completed → checked_in` partway through, leaving a book that
+   * was neither run's.
+   *
+   * Asserted by COUNT, not just by the throw: a guard that refuses *after*
+   * writing would satisfy `rejects.toThrow` perfectly well, and writing is the
+   * whole harm.
+   */
+  it('refuses to run on a book that already holds appointments', async () => {
+    await resetDatabase(prisma);
+    await seedSetup(prisma);
+    await seedDensity(prisma);
+    const before = await prisma.appointment.count();
+    expect(before).toBeGreaterThan(20);
+
+    await expect(seedDensity(prisma)).rejects.toThrow(/not idempotent/);
+    expect(await prisma.appointment.count()).toBe(before);
+  }, SEED_TIMEOUT);
 });
