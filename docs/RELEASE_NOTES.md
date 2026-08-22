@@ -1376,3 +1376,21 @@ the reason the phone number is not unique in the first place.
 **There is deliberately no "hand the desk back" button.** A one-tap way to become the account holder would undo the guard in a tap. The fast way back is for the owner to give themselves a PIN like everyone else, and the screen now says so.
 
 **One sentence of copy, for the same reason as all of the above.** A column on the conflicts screen said "Told: Cancellation — sent". No message service is connected yet; a send writes a line to the server log. Staff read "sent" as "she knows, no need to call" — so the screen now says **queued**, and the label says "Notice" rather than "Told". A system that overstates what it did is worse than one that says nothing, because the front desk stops making the call.
+
+## Four chairs the salon owned and never used
+
+**The third milestone walk found a feature that was switched off.** Not broken — off. The salon's chairs had been modelled for four items: a pool of them, a rule that a stylist and a developing client need two, a chair that follows an appointment when it moves to another day or another stylist, and a database constraint whose only job is to stop two clients being put in the same one. All of it written, all of it tested, all of it passing.
+
+**On a freshly installed system, not one service asked for a chair.** Zero of eight. So no appointment ever took one, the constraint spent its life guarding an empty table, and the room could never be full because nothing was ever in it.
+
+**The cause was four lines above where they should have been.** The setup routine created the chairs, then said "every service happens in a chair", then created the services. On an empty database that middle instruction applied to nothing.
+
+**Why two full test suites missed it is the part worth telling.** Setup routines are written to be safe to re-run, and this one was: the second time through, the services already exist and the rule lands correctly. Measured directly — after one run, none of the eight services required a chair; after a second, all eight did. Every browser test in the project sets itself up on top of an already-prepared database, so every one of them was seeing the second run. Every unit test built its own data by hand and set the requirement itself, correctly, because it was testing the chairs rather than the setup. The only arrangement nobody ever created is the one a real installation begins in.
+
+**The suite wasn't failing to look. The way it prepares its data is what hid the problem.** That's a more uncomfortable finding than a bug, and a more useful one.
+
+**The fix is one statement moved. The test is one sentence rewritten.** It asserts the requirement after a *single* run on a clean database — the only phrasing that catches this — and it names the services that fail rather than counting them, because "none of them" and "all of them" both pass a check that counts against itself. Confirmed by putting the bug back: the new test goes red, the other fourteen stay green.
+
+**And with the chairs finally live, the thing they were built for happened for the first time.** A colour at nine o'clock, forty minutes of which the client spends developing while her stylist is free. A blow-dry sold into that gap at 09:45. Two clients, one stylist, one moment — and two different chairs, because the developing client is still sitting in hers. That is the exact scenario the constraint was written to protect, and until this walk it had never once occurred outside a hand-built test.
+
+**Two of the walk's first three findings were the walk's own mistakes.** It checked that an appointment's blocked time started no earlier than its new start — forgetting that blocked time deliberately starts earlier, to hold the preparation buffer. A checkpoint is only worth running if its findings are believed, and a false alarm costs more than a missed one, so the assertion now compares how far things moved rather than where they landed. Prove the assertion before reporting the defect.

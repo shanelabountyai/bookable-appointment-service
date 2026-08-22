@@ -138,13 +138,6 @@ export async function seedSetup(
       });
     }
   }
-  // Every service happens in a chair. A business that defines no resources
-  // keeps working exactly as before — that is what the nullable column is for.
-  await prisma.service.updateMany({
-    where: { businessId: business.id },
-    data: { requiredResourceTypeId: chairType.id },
-  });
-
   const serviceIds: string[] = [];
   for (const s of SERVICES) {
     const existing = await prisma.service.findFirst({ where: { businessId: business.id, name: s.name } });
@@ -186,6 +179,24 @@ export async function seedSetup(
     }
     serviceIds.push(service.id);
   }
+
+  // Every service happens in a chair. A business that defines no resources
+  // keeps working exactly as before — that is what the nullable column is for.
+  //
+  // AFTER the loop above, and that is the whole point: this used to sit beside
+  // the chair rows, where on a FRESH database it matched nothing, because the
+  // services did not exist yet. The seed then left four chairs that no service
+  // ever asked for, so no appointment took one and A-031/A-032/A-034's entire
+  // resource layer was dormant in every environment that starts clean —
+  // `db:reset:test`, `db:seed:dev`, a first deploy. It healed itself on the
+  // SECOND run, which is exactly why nothing caught it: every e2e spec seeds
+  // in `beforeEach` on top of an already-seeded database, and the unit tests
+  // build their own fixtures with the requirement set by hand. Found by demo
+  // checkpoint 3, which walked a freshly reset database.
+  await prisma.service.updateMany({
+    where: { businessId: business.id },
+    data: { requiredResourceTypeId: chairType.id },
+  });
 
   // Qualification: NOT everyone does everything. Tess is junior — cuts,
   // blow-dries and trims only. A catalogue where every provider is qualified

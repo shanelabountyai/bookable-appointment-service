@@ -200,6 +200,27 @@ describe('the seeded catalogue (SEG-01)', () => {
     expect(services.filter((s) => !bySvc.has(s.id)).length).toBeGreaterThan(0);
   });
 
+  /**
+   * Demo checkpoint 3. ONE seed run, on a clean database — which is what
+   * `db:reset:test`, `db:seed:dev` and a first deploy all do, and the one
+   * configuration nothing else covers. The requirement used to be applied
+   * before the services existed, so a fresh install had four chairs that
+   * nothing ever asked for and the resource layer never engaged; it healed on
+   * the second run, which is every e2e `beforeEach` and every fixture-built
+   * unit test. The assertion is deliberately "after ONE run".
+   */
+  it('requires a chair for every service after a SINGLE run on a clean database', async () => {
+    await seedSetup(prisma);
+    const businessId = (await prisma.business.findFirstOrThrow()).id;
+    const chairType = await prisma.resourceType.findFirstOrThrow({ where: { businessId, name: 'Chair' } });
+    const services = await prisma.service.findMany({ where: { businessId }, select: { name: true, requiredResourceTypeId: true } });
+
+    expect(services.length).toBeGreaterThan(0);
+    // Named, not counted: "0 of 8" and "8 of 8" both satisfy a length check
+    // against itself, and the failure this catches is every one of them null.
+    expect(services.filter((s) => s.requiredResourceTypeId !== chairType.id).map((s) => s.name)).toEqual([]);
+  });
+
   it("re-running the seed does not double a colour's parts", async () => {
     await seedSetup(prisma);
     await seedSetup(prisma);
