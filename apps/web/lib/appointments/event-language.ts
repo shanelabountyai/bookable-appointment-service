@@ -29,6 +29,7 @@ export const EVENT_TYPES = [
   'provider_changed',
   'column_pushed',
   'conflict_acknowledged',
+  'hours_changed_underneath',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -99,8 +100,20 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
       return `Pushed ${String(payload.minutes ?? '')} minutes later by ${who}, with the day running behind.`;
     case 'conflict_acknowledged':
       return `Kept despite a clash, by ${who}.`;
+    // A-047. The availability row that carried the actor is gone — a delete
+    // takes it with it — so this is where "who did that?" survives, on the
+    // appointment it stranded.
+    case 'hours_changed_underneath':
+      return `${HOURS_CHANGE[String(payload.change)] ?? 'The working hours changed'} by ${who}, leaving this one outside them.`;
   }
 }
+
+const HOURS_CHANGE: Record<string, string> = {
+  weekly_window_added: 'Weekly hours were added',
+  weekly_window_removed: 'The weekly hours this sat in were removed',
+  override_saved: 'The hours for this day were changed',
+  override_removed: 'The one-off hours for this day were removed',
+};
 
 const word = (status: unknown): string => STATUS_WORDS[String(status)] ?? String(status);
 

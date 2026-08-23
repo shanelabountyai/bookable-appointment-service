@@ -1430,3 +1430,21 @@ The main setup routine came back byte-identical across both runs — genuinely r
 **The test that matters is the one that changes the answer.** Fill the room, be refused, then clear one service's requirement through the same form an owner would use — and the client who was just turned away books, holding nothing. Two siblings run the other directions: add a chair through the settings screen and the refused client is seated in it; retire one and the refusal arrives a client earlier. Proven by putting the old behaviour back, where the first of those goes red on its own.
 
 **Two of the new tests were wrong before they were right, and both were caught by the same habit.** One hand-wrote a value that the database derives, and read a zero it had caused itself. The other placed its "someone is still in this chair" appointment on a date in the past, where the answer is correctly nobody. Both now prove their own premise before asserting anything about it — the rule the previous walk arrived at, applied to the tests that were meant to enforce it.
+
+## The doors that closed quietly
+
+**One way of taking hours away had learned to speak. The other four had not.**
+
+Entering a sick day already told the desk what it had just stranded — nine clients, here they are, with phone numbers. That was the previous milestone's work, and it was wired to exactly one of the five places a salon can take working time away.
+
+The other four said nothing. Changing a day's hours said "Override saved." Removing them said nothing at all — and the form threw away even that. The worst of the four was the one nobody had listed: **deleting a weekly window is how a salon says "I don't work Thursdays any more,"** and it quietly orphaned every future Thursday booking on the books.
+
+**The fix was not four fixes.** It is tempting to reason about each case separately — surely adding hours cannot strand anyone; surely removing a "closed for the holiday" only frees time up. Every one of those arguments is a chance to be wrong once and never find out. So instead of arguing, the system re-derives who no longer fits the working hours, whatever the change was, and says nothing when the answer is nobody.
+
+**That decision justified itself within minutes.** The first end-to-end run of the new behaviour reported that *adding* a stylist's hours had stranded a client — which turned out to be correct, because working time is the overlap of the salon's hours and the stylist's, and the salon had no hours that day at all. The careful per-case argument would have declared adding hours safe and shipped.
+
+**How far ahead does it look?** As far as the appointment book actually goes, and no further. A salon with nothing booked past Friday checks nothing; one booked eleven months out is answered exactly. And it says nothing about the past, because changing next month's hours cannot strand a client who came in last Tuesday.
+
+**Deleting something takes its history with it.** Every change to the hours records who made it — but the record lives on the row, and deleting the row deletes the record. So when a deletion strands people, the note goes where the question actually gets asked: on each affected client's own appointment history, in plain language. *The weekly hours this sat in were removed by Sam, leaving this one outside them.* Nothing is written when nobody was affected; a history full of "nothing happened to you" is a history nobody reads.
+
+**And a lock that was never fitted.** All four deletion paths took an identifier straight from a form field and deleted whatever it named — including, in principle, another business's Thursday. Now every one of them is scoped to the business doing the deleting. That was not in the plan for this work; it was found while reading the code the plan pointed at.

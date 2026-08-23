@@ -26,6 +26,11 @@ export interface ConflictingAppointment {
   id: string;
   startAt: Date;
   endAt: Date;
+  /** A-047. The business-zone calendar day this sits on, stored `CHAR(10)`
+   *  (never `@db.Date`). It is what "send the desk to the right day" needs,
+   *  and taking it from the column rather than re-labelling `startAt` means
+   *  the link cannot disagree with the row. */
+  startDay: string;
   status: string;
   providerId: string;
   providerName: string;
@@ -53,6 +58,7 @@ const SELECT = {
   id: true,
   startAt: true,
   endAt: true,
+  startDay: true,
   status: true,
   providerId: true,
   conflictAckAt: true,
@@ -71,6 +77,7 @@ type Row = {
   id: string;
   startAt: Date;
   endAt: Date;
+  startDay: string;
   status: string;
   providerId: string;
   conflictAckAt: Date | null;
@@ -85,6 +92,7 @@ const toConflict = (row: Row): ConflictingAppointment => ({
   id: row.id,
   startAt: row.startAt,
   endAt: row.endAt,
+  startDay: row.startDay,
   status: row.status,
   providerId: row.providerId,
   providerName: row.provider.displayName,
@@ -183,6 +191,135 @@ export async function appointmentsOutsideHours(
       return !windows.some((w) => start >= w.start && end <= w.end);
     })
     .map(toConflict);
+}
+
+/**
+ * A-047 — WHAT AN HOURS EDIT STRANDED (AVAIL-05, D-2).
+ *
+ * A-041 built `appointmentsOutsideHours` and wired ONE caller. The other four
+ * availability writes — adding a weekly window, saving an override, and
+ * REMOVING either — returned `{ ok: true }` and said nothing at all. Removing
+ * a Thursday window *is* "I don't work Thursdays any more", and it orphaned
+ * every Thursday booking on the books in silence.
+ *
+ * Nothing here refuses (D-2): the write has already happened when this is
+ * called. This is the sentence that comes back with it.
+ *
+ * ONE DERIVATION FOR ALL FOUR, deliberately. It is tempting to reason per
+ * case — "adding hours cannot strand anyone, removing an `isClosed` override
+ * only frees time" — and every one of those arguments is a place to be wrong
+ * once and never notice. Re-deriving *who no longer fits the resolved windows*
+ * gives the right answer for all four and returns zero for the cases that
+ * genuinely strand nobody. The precedence chain is asked, not re-implemented.
+ */
+export type HoursScope =
+  /** An override: exactly one calendar day. */
+  | { kind: 'day'; day: string }
+  /** A weekly window: every FUTURE occurrence of that weekday. */
+  | { kind: 'weekday'; weekday: number };
+
+export async function strandedByHoursChange(
+  db: Db,
+  args: {
+    businessId: string;
+    /** `null` is a BUSINESS-level window (AVAIL-04) — it moves the ceiling for
+     *  every provider, so every provider has to be re-checked. */
+    providerId: string | null;
+    scope: HoursScope;
+    now: Date;
+  },
+): Promise<ConflictingAppointment[]> {
+  const providerIds = args.providerId
+    ? [args.providerId]
+    : (await db.provider.findMany({ where: { businessId: args.businessId }, select: { id: true } })).map((p) => p.id);
+  if (providerIds.length === 0) return [];
+
+  const days = await daysToRecheck(db, { businessId: args.businessId, providerIds, scope: args.scope, now: args.now });
+
+  const perDay = await Promise.all(
+    days.flatMap((day) =>
+      providerIds.map((providerId) => appointmentsOutsideHours(db, { businessId: args.businessId, providerId, day })),
+    ),
+  );
+
+  // One entry per appointment however many ways it is reachable, and only what
+  // is still AHEAD: an hours edit cannot strand a client who already came in,
+  // and reporting last Tuesday's completed cut as "now stranded" is the kind of
+  // false alarm that teaches the desk to stop reading the sentence.
+  const byId = new Map(
+    perDay
+      .flat()
+      .filter((conflict) => conflict.startAt >= args.now)
+      .map((conflict) => [conflict.id, conflict]),
+  );
+  return [...byId.values()].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+}
+
+/**
+ * A-047 — WHO MOVED THE HOURS OUT FROM UNDER HER.
+ *
+ * A deletion removes the row that carried `createdByActor`/`actorRef`, so
+ * "who deleted Dana's Thursday?" has nowhere to live on the availability
+ * tables — and since A-037 every other availability write can answer it. The
+ * answer goes where the desk actually asks the question: on the appointment
+ * that is now in conflict, in the append-only log it already reads (APPT-07).
+ *
+ * Written only for the appointments that were ACTUALLY stranded. An hours edit
+ * that strands nobody is not an event about anybody's appointment, and a log
+ * full of "nothing happened to you" is a log nobody reads.
+ */
+export type HoursChange = 'weekly_window_added' | 'weekly_window_removed' | 'override_saved' | 'override_removed';
+
+export async function recordHoursStranding(
+  db: Db,
+  args: {
+    businessId: string;
+    conflicts: readonly ConflictingAppointment[];
+    actor: Actor;
+    change: HoursChange;
+  },
+): Promise<void> {
+  if (args.conflicts.length === 0) return;
+  await db.appointmentEvent.createMany({
+    data: args.conflicts.map((conflict) => ({
+      businessId: args.businessId,
+      appointmentId: conflict.id,
+      type: 'hours_changed_underneath',
+      actor: args.actor.type,
+      actorRef: args.actor.ref,
+      payload: { change: args.change } satisfies Prisma.InputJsonValue,
+    })),
+  });
+}
+
+/**
+ * Which calendar days the change could have moved.
+ *
+ * For a weekday change this is bounded by the BOOK, not by a horizon constant:
+ * the days that actually hold a future appointment on that weekday. A salon
+ * with nothing booked past Friday re-checks nothing, and one booked out eleven
+ * months is still answered exactly. `startDay` is a stored `CHAR(10)`, so the
+ * weekday comes from string arithmetic and never from a `Date`.
+ */
+async function daysToRecheck(
+  db: Db,
+  args: { businessId: string; providerIds: string[]; scope: HoursScope; now: Date },
+): Promise<string[]> {
+  if (args.scope.kind === 'day') return [args.scope.day];
+
+  const rows = await db.appointment.findMany({
+    where: {
+      businessId: args.businessId,
+      providerId: { in: args.providerIds },
+      status: { in: [...ACTIVE_STATUSES] },
+      startAt: { gte: args.now },
+    },
+    distinct: ['startDay'],
+    select: { startDay: true },
+  });
+
+  const weekday = args.scope.weekday;
+  return rows.map((row) => row.startDay).filter((day) => weekdayOf(calendarDay(day)) === weekday);
 }
 
 /**

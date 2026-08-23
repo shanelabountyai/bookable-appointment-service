@@ -177,8 +177,17 @@ export async function createWeeklyWindow(db: Db, input: WeeklyWindowInput, actor
   });
 }
 
-export async function deleteWeeklyWindow(db: Db, id: string): Promise<void> {
-  await db.weeklyWindow.delete({ where: { id } });
+/**
+ * A-047. Scoped to the BUSINESS, not just to the id.
+ *
+ * The id arrives from a form field, which makes it ordinary untrusted input:
+ * `delete({ where: { id } })` deletes whatever that id names, including
+ * another tenant's Thursday. `deleteMany` with both keys is the whole fix —
+ * it deletes nothing when the row is not this business's, rather than
+ * throwing, which is the right answer for a button clicked twice.
+ */
+export async function deleteWeeklyWindow(db: Db, args: { businessId: string; id: string }): Promise<void> {
+  await db.weeklyWindow.deleteMany({ where: { id: args.id, businessId: args.businessId } });
 }
 
 export interface DateOverrideInput {
@@ -261,8 +270,9 @@ export async function upsertDateOverride(db: Db, input: DateOverrideInput, actor
   });
 }
 
-export async function deleteDateOverride(db: Db, id: string): Promise<void> {
-  await db.dateOverride.delete({ where: { id } });
+/** Business-scoped for the same reason as `deleteWeeklyWindow`. */
+export async function deleteDateOverride(db: Db, args: { businessId: string; id: string }): Promise<void> {
+  await db.dateOverride.deleteMany({ where: { id: args.id, businessId: args.businessId } });
 }
 
 export interface AbsenceInput {
@@ -346,18 +356,22 @@ function assertInterval(input: AbsenceInput): void {
   }
 }
 
-export async function deleteTimeOff(db: Db, id: string): Promise<void> {
+export async function deleteTimeOff(db: Db, args: { businessId: string; id: string }): Promise<void> {
   // Read before deleting: the range is what says WHICH acknowledgments were
   // about this absence. Removing an absence resolves the conflict, so the
   // acknowledgment about it is equally out of date.
-  const row = await db.timeOff.findUnique({ where: { id } });
-  await db.timeOff.delete({ where: { id } });
+  //
+  // A-047 scoped both halves to the business — the read decides what gets
+  // freshened, so an unscoped one would let another tenant's id clear THIS
+  // business's acknowledgments even when the delete itself matched nothing.
+  const row = await db.timeOff.findFirst({ where: { id: args.id, businessId: args.businessId } });
+  await db.timeOff.deleteMany({ where: { id: args.id, businessId: args.businessId } });
   if (row) await freshenAcknowledgments(db, row);
 }
 
-export async function deleteAdHocBlock(db: Db, id: string): Promise<void> {
-  const row = await db.adHocBlock.findUnique({ where: { id } });
-  await db.adHocBlock.delete({ where: { id } });
+export async function deleteAdHocBlock(db: Db, args: { businessId: string; id: string }): Promise<void> {
+  const row = await db.adHocBlock.findFirst({ where: { id: args.id, businessId: args.businessId } });
+  await db.adHocBlock.deleteMany({ where: { id: args.id, businessId: args.businessId } });
   if (row) await freshenAcknowledgments(db, row);
 }
 

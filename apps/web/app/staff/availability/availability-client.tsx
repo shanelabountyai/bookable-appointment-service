@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 import {
-  type AbsenceState,
   type FormState,
+  type ImpactState,
   addAbsence,
   addWeeklyWindow,
   removeDateOverride,
@@ -13,14 +13,43 @@ import {
   saveDateOverride,
 } from '@/lib/settings/availability-actions';
 
-const initial: FormState = {};
-const initialAbsence: AbsenceState = {};
+const initial: ImpactState = {};
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const input = 'rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950';
 const button =
   'rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900';
 const ghost =
   'rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-900';
+
+/**
+ * A-041's sentence, hoisted by A-047 so all five writes say it the same way.
+ *
+ * NOT a confirmation gate: the write has already happened by the time this
+ * renders (D-2, AVAIL-03). It is the answer to "who did that strand?", and the
+ * link is there because the resolution is a phone call, not an acknowledgment.
+ *
+ * `strandedCount === 0` renders the plain message — a count of nothing said
+ * out loud on every save is how a warning becomes wallpaper.
+ */
+function Impact({ state }: { state: ImpactState }) {
+  if (!state.ok) return null;
+  return (
+    <p aria-live="polite" className="text-sm">
+      {state.message}
+      {state.strandedCount ? (
+        <>
+          {' '}
+          <span className="font-medium text-amber-800 dark:text-amber-300">
+            {state.strandedCount} appointment{state.strandedCount === 1 ? '' : 's'} now stranded.
+          </span>{' '}
+          <Link href={`/staff/conflicts?day=${state.conflictsDay}`} className="underline underline-offset-4">
+            Deal with them
+          </Link>
+        </>
+      ) : null}
+    </p>
+  );
+}
 
 function Errors({ state }: { state: FormState }) {
   const messages = Object.values(state.errors ?? {});
@@ -42,7 +71,10 @@ export interface WindowView {
 
 export function WeeklyHours({ providerId, windows }: { providerId: string; windows: WindowView[] }) {
   const [state, action, pending] = useActionState(addWeeklyWindow, initial);
-  const [, removeAction] = useActionState(removeWeeklyWindow, initial);
+  // A-047: the remove's state was DISCARDED — `const [, removeAction]` — so
+  // even once the action returned a count there was nothing to render it.
+  // Removing a Thursday window is "I don't work Thursdays any more".
+  const [removeState, removeAction] = useActionState(removeWeeklyWindow, initial);
 
   return (
     <section className="flex flex-col gap-3">
@@ -76,6 +108,8 @@ export function WeeklyHours({ providerId, windows }: { providerId: string; windo
           ))}
         </ul>
       )}
+
+      <Impact state={removeState} />
 
       <form action={action} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="providerId" value={providerId} />
@@ -124,6 +158,7 @@ export function WeeklyHours({ providerId, windows }: { providerId: string; windo
         </button>
       </form>
       <Errors state={state} />
+      <Impact state={state} />
     </section>
   );
 }
@@ -138,7 +173,7 @@ export interface OverrideView {
 
 export function DateOverrides({ providerId, overrides }: { providerId: string; overrides: OverrideView[] }) {
   const [state, action, pending] = useActionState(saveDateOverride, initial);
-  const [, removeAction] = useActionState(removeDateOverride, initial);
+  const [removeState, removeAction] = useActionState(removeDateOverride, initial);
 
   return (
     <section className="flex flex-col gap-3">
@@ -164,6 +199,8 @@ export function DateOverrides({ providerId, overrides }: { providerId: string; o
           ))}
         </ul>
       )}
+
+      <Impact state={removeState} />
 
       <form action={action} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="providerId" value={providerId} />
@@ -200,6 +237,7 @@ export function DateOverrides({ providerId, overrides }: { providerId: string; o
         </button>
       </form>
       <Errors state={state} />
+      <Impact state={state} />
     </section>
   );
 }
@@ -213,7 +251,7 @@ export interface AbsenceView {
 }
 
 export function Absences({ providerId, absences }: { providerId: string; absences: AbsenceView[] }) {
-  const [state, action, pending] = useActionState(addAbsence, initialAbsence);
+  const [state, action, pending] = useActionState(addAbsence, initial);
   const [, removeAction] = useActionState(removeTimeOff, initial);
 
   return (
@@ -293,22 +331,7 @@ export function Absences({ providerId, absences }: { providerId: string; absence
       <Errors state={state} />
       {/* AVAIL-05 (operator P-8): the write above already happened — this is
           not a confirmation gate, it is the answer to "who did that strand?" */}
-      {state.ok && (
-        <p aria-live="polite" className="text-sm">
-          {state.message}
-          {state.strandedCount ? (
-            <>
-              {' '}
-              <span className="font-medium text-amber-800 dark:text-amber-300">
-                {state.strandedCount} appointment{state.strandedCount === 1 ? '' : 's'} now stranded.
-              </span>{' '}
-              <Link href={`/staff/conflicts?day=${state.conflictsDay}`} className="underline underline-offset-4">
-                Deal with them
-              </Link>
-            </>
-          ) : null}
-        </p>
-      )}
+      <Impact state={state} />
     </section>
   );
 }

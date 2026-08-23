@@ -1,10 +1,14 @@
 export {
   type ConflictingAppointment,
+  type HoursChange,
+  type HoursScope,
   acknowledgeConflict,
   appointmentsInRange,
   appointmentsOutsideHours,
   conflictsForDay,
   futureAppointments,
+  recordHoursStranding,
+  strandedByHoursChange,
 } from './impact';
 export { type ReassignFailure, type ReassignOutcome, reassignAppointment, reassignMany } from './reassign';
 export {

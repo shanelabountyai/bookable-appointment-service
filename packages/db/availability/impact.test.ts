@@ -16,7 +16,9 @@ import {
   createAdHocBlock,
   createTimeOff,
   createWeeklyWindow,
+  deleteDateOverride,
   deleteTimeOff,
+  deleteWeeklyWindow,
   upsertDateOverride,
 } from './availability';
 import {
@@ -25,6 +27,8 @@ import {
   appointmentsOutsideHours,
   conflictsForDay,
   futureAppointments,
+  recordHoursStranding,
+  strandedByHoursChange,
 } from './impact';
 import { enqueueNotification } from '../notifications';
 import { reassignAppointment, reassignMany } from './reassign';
@@ -205,6 +209,226 @@ describe('AVAIL-05 — an hours edit', () => {
   });
 });
 
+/**
+ * A-047 — the four availability writes that were silent (AVAIL-05, D-2).
+ *
+ * A-041 built the mechanism and wired one caller. Everything here is about the
+ * ones that returned `{ ok: true }` and said nothing — and the deletes are the
+ * worst of them, because removing a Thursday window IS "I don't work Thursdays
+ * any more".
+ */
+describe('A-047 — an hours change says who it stranded', () => {
+  const findWindow = (providerId: string, weekday: number) =>
+    prisma.weeklyWindow.findFirstOrThrow({ where: { businessId, providerId, weekday }, select: { id: true } });
+
+  /** THE regression test the item names. */
+  it('deleting a weekly window returns the count and leaves every one of them untouched', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    await book('2026-06-09T14:00:00-05:00');
+    const before = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+
+    const window = await findWindow(danaId, 2);
+    await deleteWeeklyWindow(prisma, { businessId, id: window.id });
+
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: danaId,
+      scope: { kind: 'weekday', weekday: 2 },
+      now: NOW,
+    });
+    expect(stranded).toHaveLength(2);
+    expect(stranded.map((c) => c.clientName)).toEqual(['Ada Chen', 'Ada Chen']);
+
+    // Nothing silently cancelled, moved or hidden — the whole point of D-2.
+    // Compared row by row rather than counted: a count of 2 survives a
+    // cancellation and a re-book perfectly.
+    const after = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+    expect(after).toEqual(before);
+  });
+
+  it('scopes to the weekday, so another day’s bookings are not reported', async () => {
+    // Wednesday hours, and a Wednesday booking that must be left out of it.
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId: danaId, weekday: 3, open: '09:00', close: '17:00', endsNextDay: false },
+      STAMP,
+    );
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId: null, weekday: 3, open: '09:00', close: '18:00', endsNextDay: false },
+      STAMP,
+    );
+    await book('2026-06-09T10:00:00-05:00'); // Tuesday
+    await book('2026-06-10T10:00:00-05:00'); // Wednesday
+
+    const window = await findWindow(danaId, 2);
+    await deleteWeeklyWindow(prisma, { businessId, id: window.id });
+
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: danaId,
+      scope: { kind: 'weekday', weekday: 2 },
+      now: NOW,
+    });
+    expect(stranded).toHaveLength(1);
+    expect(stranded[0]?.startDay).toBe('2026-06-09');
+  });
+
+  /** The link's day comes from the appointment's own stored calendar day, so
+   *  it cannot point at a page where she is not listed. */
+  it('reports the stranded appointment’s own calendar day, earliest first', async () => {
+    await book('2026-06-16T14:00:00-05:00'); // a later Tuesday
+    await book('2026-06-09T10:00:00-05:00');
+
+    const window = await findWindow(danaId, 2);
+    await deleteWeeklyWindow(prisma, { businessId, id: window.id });
+
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: danaId,
+      scope: { kind: 'weekday', weekday: 2 },
+      now: NOW,
+    });
+    expect(stranded.map((c) => c.startDay)).toEqual(['2026-06-09', '2026-06-16']);
+  });
+
+  it('says nothing about the past — an hours edit cannot strand a client who already came in', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    const window = await findWindow(danaId, 2);
+    await deleteWeeklyWindow(prisma, { businessId, id: window.id });
+
+    // Same deletion, asked from a clock AFTER that Tuesday.
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: danaId,
+      scope: { kind: 'weekday', weekday: 2 },
+      now: at('2026-06-20T08:00:00-05:00'),
+    });
+    expect(stranded).toEqual([]);
+  });
+
+  /** AVAIL-04: a business-level window is the ceiling for EVERY provider. */
+  it('a business-level window re-checks every provider, not just one', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    await book('2026-06-09T11:00:00-05:00', { providerId: priyaId });
+
+    const business = await prisma.weeklyWindow.findFirstOrThrow({
+      where: { businessId, providerId: null, weekday: 2 },
+      select: { id: true },
+    });
+    await deleteWeeklyWindow(prisma, { businessId, id: business.id });
+
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: null,
+      scope: { kind: 'weekday', weekday: 2 },
+      now: NOW,
+    });
+    expect(stranded.map((c) => c.providerName).sort()).toEqual(['Dana', 'Priya']);
+  });
+
+  it('removing an override restores the pattern, and strands whoever was in the late hours', async () => {
+    // Dana opens late that one Tuesday, and takes a 17:30 booking that only
+    // the override makes legal.
+    await upsertDateOverride(
+      prisma,
+      { businessId, providerId: danaId, day: DAY, isClosed: false, windows: [{ open: '09:00', close: '19:00', endsNextDay: false }] },
+      STAMP,
+    );
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId: null, weekday: 2, open: '09:00', close: '19:00', endsNextDay: false },
+      STAMP,
+    );
+    await book('2026-06-09T17:30:00-05:00');
+
+    const override = await prisma.dateOverride.findFirstOrThrow({
+      where: { businessId, providerId: danaId, day: DAY },
+      select: { id: true },
+    });
+    await deleteDateOverride(prisma, { businessId, id: override.id });
+
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: danaId,
+      scope: { kind: 'day', day: DAY },
+      now: NOW,
+    });
+    expect(stranded).toHaveLength(1);
+    expect(stranded[0]?.startDay).toBe(DAY);
+  });
+
+  it('returns nothing for the changes that genuinely strand nobody', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    // Closing the salon on a day nothing is booked.
+    await upsertDateOverride(
+      prisma,
+      { businessId, providerId: danaId, day: '2026-06-16', isClosed: true, windows: [] },
+      STAMP,
+    );
+    expect(
+      await strandedByHoursChange(prisma, {
+        businessId,
+        providerId: danaId,
+        scope: { kind: 'day', day: '2026-06-16' },
+        now: NOW,
+      }),
+    ).toEqual([]);
+  });
+
+  /** The delete takes an id straight off a form. */
+  it('refuses to delete another business’s window', async () => {
+    const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+    const window = await findWindow(danaId, 2);
+
+    await deleteWeeklyWindow(prisma, { businessId: other.id, id: window.id });
+
+    expect(await prisma.weeklyWindow.findUnique({ where: { id: window.id } })).not.toBeNull();
+  });
+});
+
+describe('A-047 — who moved the hours', () => {
+  it('writes one event per stranded appointment, naming the actor', async () => {
+    const first = await book('2026-06-09T10:00:00-05:00');
+    await book('2026-06-09T14:00:00-05:00');
+
+    const window = await prisma.weeklyWindow.findFirstOrThrow({
+      where: { businessId, providerId: danaId, weekday: 2 },
+      select: { id: true },
+    });
+    await deleteWeeklyWindow(prisma, { businessId, id: window.id });
+    const stranded = await strandedByHoursChange(prisma, {
+      businessId,
+      providerId: danaId,
+      scope: { kind: 'weekday', weekday: 2 },
+      now: NOW,
+    });
+    await recordHoursStranding(prisma, {
+      businessId,
+      conflicts: stranded,
+      actor: staffActor('sam'),
+      change: 'weekly_window_removed',
+    });
+
+    const events = await prisma.appointmentEvent.findMany({ where: { type: 'hours_changed_underneath' } });
+    expect(events).toHaveLength(2);
+    // The row that carried the actor was deleted with the window; this is
+    // where "who did that?" survives.
+    expect(events.every((e) => e.actorRef === 'sam')).toBe(true);
+    expect(events.some((e) => e.appointmentId === first.id)).toBe(true);
+  });
+
+  it('writes nothing when the change stranded nobody — a log of non-events is a log nobody reads', async () => {
+    await recordHoursStranding(prisma, {
+      businessId,
+      conflicts: [],
+      actor: staffActor('sam'),
+      change: 'weekly_window_added',
+    });
+    expect(await prisma.appointmentEvent.count({ where: { type: 'hours_changed_underneath' } })).toBe(0);
+  });
+});
+
 describe('AVAIL-05 — deactivating a provider (operator S-2)', () => {
   it('lists everything still ahead of her', async () => {
     await book('2026-06-09T10:00:00-05:00');
@@ -277,7 +501,7 @@ describe('operator R-7 — the acknowledgment', () => {
     const timeOff = await createTimeOff(prisma, { businessId, providerId: danaId, ...absence, reason: 'sick' }, STAMP);
     await acknowledgeConflict(prisma, { appointmentId: appointment.id, businessId, reason: 'called her', actor: ACTOR, now: NOW });
 
-    await deleteTimeOff(prisma, timeOff.id);
+    await deleteTimeOff(prisma, { businessId, id: timeOff.id });
 
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     expect(row.conflictAckAt).toBeNull();

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { PrismaClient } from '@bookable/db';
-import { instantFromIso, toDate } from '@bookable/core/time';
+import { createWeeklyWindow } from '@bookable/db/availability';
+import { calendarDay, fromDate, instant, instantFromIso, toDate, toLabel, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 /** Through the one conversion module, like every other spec (D-3/D-4). */
@@ -193,6 +194,115 @@ test.describe('availability (A-007)', () => {
     await page.getByRole('link', { name: 'Deal with them' }).click();
     await expect(page).toHaveURL(/\/staff\/conflicts\?day=2026-06-09/);
     await expect(page.getByText('Ada Chen')).toBeVisible();
+  });
+
+  /**
+   * A-047 — THE DELETES, WHICH ARE THE WORST OF THE FOUR.
+   *
+   * Removing a Thursday window IS "I don't work Thursdays any more", and it
+   * silently orphaned every future Thursday booking: the action returned a
+   * bare `{ ok: true }`, and the form discarded even that.
+   *
+   * The fixture is computed from the real clock rather than pinned to a date,
+   * because this is one of the few paths whose answer genuinely depends on
+   * `now` — an hours edit cannot strand a client who already came in, so a
+   * fixture in the past reports zero and asserts nothing.
+   */
+  test('removing a weekly window says who it stranded, and leaves them booked', async ({ page }) => {
+    await signIn(page);
+    await addProvider(page, 'Dana');
+
+    const prisma = new PrismaClient();
+    let day: string;
+    let weekday: number;
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const zone = zoneId(business.timezone);
+      // Three weeks out, on the minute — every stored instant has to.
+      const startAt = toDate(instant(Math.floor(Date.now() / 60_000) * 60_000 + 21 * 24 * 60 * 60_000));
+      const label = toLabel(fromDate(startAt), zone);
+      day = label.day;
+      weekday = weekdayOf(calendarDay(label.day));
+
+      const provider = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      // Effective availability is business ∩ provider (AVAIL-04), so the
+      // business has to be open that weekday or Dana's own hours cannot hold
+      // anything. Without this the ADD reports the booking stranded — which is
+      // correct, and would make the assertion below ambiguous about which
+      // write said it.
+      await createWeeklyWindow(
+        prisma,
+        {
+          businessId: business.id,
+          providerId: null,
+          weekday: weekdayOf(calendarDay(label.day)),
+          open: '00:00',
+          close: '23:59',
+          endsNextDay: false,
+        },
+        { createdByActor: 'staff', actorRef: 'fixture' },
+      );
+      const service = await prisma.service.create({
+        data: { businessId: business.id, name: 'Cut', durationMinutes: 45, priceCents: 5500 },
+      });
+      const client = await prisma.client.create({
+        data: { businessId: business.id, name: 'Ada Chen', phone: '5125550101' },
+      });
+      const endAt = toDate(instant(startAt.getTime() + 45 * 60_000));
+      await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: provider.id,
+          clientId: client.id,
+          startAt,
+          endAt,
+          blockedStart: startAt,
+          blockedEnd: endAt,
+          startDay: label.day,
+          startWallTime: label.time,
+          status: 'booked',
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          },
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto('/staff/availability');
+    await page.getByRole('link', { name: 'Dana' }).click();
+
+    // Give her hours on that weekday, wide enough to hold the booking...
+    // Scoped by the section's own heading rather than by ARIA: these sections
+    // are plain <section>s, and giving them labels to satisfy a test would be
+    // turning them into landmarks for the test's benefit.
+    const weekly = page.locator('section').filter({ hasText: 'Weekly hours' });
+    // `exact` — "Ends next day" contains "Day" as far as an accessible-name
+    // substring match is concerned.
+    await weekly.getByLabel('Day', { exact: true }).selectOption(String(weekday));
+    await weekly.getByLabel('Open').fill('00:00');
+    await weekly.getByLabel('Close').fill('23:59');
+    await weekly.getByRole('button', { name: 'Add hours' }).click();
+    // ...which strands nobody, and says so by saying nothing extra. The
+    // control for the assertion below: both sentences come from the same
+    // derivation, so a mechanism that always reported "1 stranded" would pass
+    // the remove case on its own.
+    const added = page.getByRole('paragraph').filter({ hasText: 'Hours added.' });
+    await expect(added).toBeVisible();
+    await expect(added).not.toContainText('stranded');
+
+    // ...then take them away again, which is the whole point.
+    await weekly.getByRole('button', { name: 'Remove' }).first().click();
+
+    const removed = page.getByRole('paragraph').filter({ hasText: 'Hours removed.' });
+    await expect(removed).toContainText('1 appointment now stranded.');
+
+    await page.getByRole('link', { name: 'Deal with them' }).click();
+    await expect(page).toHaveURL(new RegExp(`/staff/conflicts\\?day=${day}`));
+    await expect(page.getByText('Ada Chen')).toBeVisible();
+    // Nothing silently cancelled (D-2): she is still booked, on the list.
+    await expect(page.getByText('booked')).toBeVisible();
   });
 
   // D-4: a zoneless payload is undecidable on fall-back day.
