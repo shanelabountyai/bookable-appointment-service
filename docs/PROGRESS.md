@@ -1315,7 +1315,7 @@ Demo checkpoint 3 committed at `aec430a`.
 
 ## A-046 — the chair the desk cannot see
 
-**Commit:** `PENDING`
+**Commit:** `61e34da`
 
 **Built.** The room, as something the operator owns and can look at. `ResourceType`, `Resource` and `Service.requiredResourceTypeId` had been written by the setup seed and by **nothing else** since A-031: `/staff/resources` now owns them, the service form owns the requirement, the appointment detail says which chair she is in, and the day grid carries a room strip — a track per chair, on the same vertical scale as the provider columns.
 
