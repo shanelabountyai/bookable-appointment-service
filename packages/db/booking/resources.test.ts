@@ -10,6 +10,7 @@ import { PrismaClient } from '../generated/client/index.js';
 import { staffActor } from '../../core/auth';
 import { instantFromIso, toDate } from '../../core/time';
 import { resetDatabase } from '../testing';
+import { createResource, setResourceActive, updateService } from '../settings';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from './book';
 import { NoResourceFree, SlotTaken } from './errors';
@@ -250,6 +251,75 @@ describe('findFreeResource', () => {
     const appointment = await book({ providerId: providerIds[2]!, serviceIds: [consult.id] });
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     expect(row.resourceId).toBeNull();
+  });
+});
+
+/**
+ * A-046 — THE REQUIREMENT IS DATA, NOT A CONSTANT (RES-01, D-30).
+ *
+ * The whole item exists because `requiredResourceTypeId` and the `Resource`
+ * rows were written by the setup seed and by nothing else, while the desk was
+ * being refused bookings on their authority. The only assertion that proves
+ * that is fixed is one that CHANGES them through the product's own write path
+ * and watches the engine's answer change with them.
+ *
+ * `updateService` and `createResource` are the settings-layer writes the
+ * `/staff/services` and `/staff/resources` forms call. Reaching for
+ * `prisma.service.update` here would test Prisma; these test the product.
+ */
+describe('A-046 — the room is data the operator owns', () => {
+  const fill = async () => {
+    await book();
+    await book({ providerId: providerIds[1]! });
+    await expect(book({ providerId: providerIds[2]! })).rejects.toBeInstanceOf(NoResourceFree);
+  };
+
+  it('a service whose requirement is CLEARED books into a full room', async () => {
+    await fill();
+
+    await updateService(prisma, businessId, serviceId, {
+      name: 'Cut',
+      durationMinutes: 60,
+      bufferBeforeMinutes: 0,
+      bufferAfterMinutes: 0,
+      priceCents: 5500,
+      cancellationCutoffMinutes: null,
+      // The blow-dry-at-the-basin answer: this occupies no chair.
+      requiredResourceTypeId: null,
+    });
+
+    const third = await book({ providerId: providerIds[2]! });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: third.id } });
+    // It books, AND it holds nothing — a booking that succeeded while quietly
+    // taking a chair would pass a bare `resolves` and be the same bug.
+    expect(row.resourceId).toBeNull();
+    expect(await prisma.appointmentResourceHold.count({ where: { appointmentId: row.id } })).toBe(0);
+  });
+
+  it('a THIRD chair added through settings seats the client who was refused', async () => {
+    await fill();
+    const chair = await createResource(prisma, businessId, { resourceTypeId: chairTypeId, name: 'Chair 3' });
+
+    const third = await book({ providerId: providerIds[2]! });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: third.id } });
+    expect(row.resourceId).toBe(chair.id);
+  });
+
+  it('a chair taken out of service stops being seated, and keeps whoever is in it', async () => {
+    const first = await book();
+    const seated = await prisma.appointment.findUniqueOrThrow({
+      where: { id: first.id },
+      select: { resourceId: true },
+    });
+
+    await setResourceActive(prisma, seated.resourceId!, false);
+
+    // Her hold survives — retiring never rewrites history.
+    expect(await prisma.appointmentResourceHold.count({ where: { resourceId: seated.resourceId! } })).toBe(1);
+    // And the room is now ONE chair, so the second concurrent client is the
+    // one refused rather than the third.
+    await book({ providerId: providerIds[1]! });
+    await expect(book({ providerId: providerIds[2]! })).rejects.toBeInstanceOf(NoResourceFree);
   });
 });
 

@@ -21,6 +21,11 @@ const toInt = (v: FormDataEntryValue | null): number => {
   return Number.isFinite(n) ? n : Number.NaN;
 };
 
+const toNullableString = (v: FormDataEntryValue | null): string | null => {
+  const s = String(v ?? '').trim();
+  return s === '' ? null : s;
+};
+
 const toNullableInt = (v: FormDataEntryValue | null): number | null => {
   const s = String(v ?? '').trim();
   if (s === '') return null;
@@ -36,6 +41,11 @@ function serviceInputFrom(formData: FormData) {
     bufferAfterMinutes: toInt(formData.get('bufferAfterMinutes')),
     priceCents: toInt(formData.get('priceCents')),
     cancellationCutoffMinutes: toNullableInt(formData.get('cancellationCutoffMinutes')),
+    // A-046. An empty option value is "needs no room resource" — NULL, which
+    // is a different thing from a type whose name happens to be blank, and the
+    // distinction is the whole point of the regression test: a cleared
+    // requirement must book into a full room.
+    requiredResourceTypeId: toNullableString(formData.get('requiredResourceTypeId')),
   };
 }
 

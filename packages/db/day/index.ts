@@ -6,6 +6,7 @@ export {
   type DayView,
   loadDayView,
 } from './day-view';
+export { type DayHold, type DayResource, type DayRoom, loadRoom } from './room';
 export {
   type PushCandidate,
   type PushPreview,

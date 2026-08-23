@@ -39,6 +39,9 @@ export default async function StaffHome() {
         <Link href="/staff/services" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Services
         </Link>
+        <Link href="/staff/resources" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          The room
+        </Link>
         <Link href="/staff/availability" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Availability
         </Link>

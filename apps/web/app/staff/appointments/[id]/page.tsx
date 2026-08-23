@@ -161,6 +161,17 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
             {gapMinutes} min of processing time — she is not needed for it
           </Row>
         ) : null}
+        {/* A-046 (RES-01, D-30). WHERE she is — the axis that has been
+            refusing bookings since A-031 and appearing on no screen. Absent
+            when this visit holds nothing, which is a real state: an override
+            holds no chair by design, and so does a service that needs none.
+            Saying "no chair" out loud on an override is the difference between
+            a desk that trusts the room's count and one that does not. */}
+        {detail.resourceName ? (
+          <Row label="Where">{detail.resourceName}</Row>
+        ) : detail.isOverride ? (
+          <Row label="Where">Holds no chair — booked as an override</Row>
+        ) : null}
         <Row label="Status">{status.replace('_', ' ')}</Row>
         {detail.confirmedAt ? <Row label="Confirmed">{readableInstant(detail.confirmedAt, business.timezone)}</Row> : null}
         {/* APPT-03's actual-vs-scheduled: what really happened, beside what

@@ -36,6 +36,7 @@ export interface ServiceRow {
   active: boolean;
   displayOrder: number;
   cancellationCutoffMinutes: number | null;
+  requiredResourceTypeId: string | null;
 }
 
 const select = {
@@ -48,6 +49,7 @@ const select = {
   active: true,
   displayOrder: true,
   cancellationCutoffMinutes: true,
+  requiredResourceTypeId: true,
 } as const;
 
 export async function listServices(db: Db, businessId: string, includeInactive = true): Promise<ServiceRow[]> {
@@ -60,6 +62,14 @@ export async function listServices(db: Db, businessId: string, includeInactive =
 
 export interface SaveServiceInput extends ServiceInput {
   cancellationCutoffMinutes: number | null;
+  /**
+   * A-046 (RES-01). NULL means this service needs no room resource — a phone
+   * consult, a blow-dry at the basin, and every service in a business that has
+   * not defined resources at all. Written from the service form as of A-046;
+   * before that only the setup seed ever set it, which is why the desk could
+   * be refused on the authority of a value nobody could edit.
+   */
+  requiredResourceTypeId: string | null;
 }
 
 /**
@@ -83,6 +93,18 @@ async function assertValid(db: Db, businessId: string, input: SaveServiceInput):
   if (cutoffViolations.length > 0) {
     throw new ServiceRejected(cutoffViolations[0]!.field, cutoffViolations[0]!.message);
   }
+
+  // A-046. `requiredResourceTypeId` arrives from a form, so it is ordinary
+  // untrusted input: checked against THIS business rather than merely against
+  // existence, or a hand-edited option value attaches the salon's colour
+  // service to another tenant's chairs and the room silently stops binding.
+  if (input.requiredResourceTypeId !== null) {
+    const type = await db.resourceType.findFirst({
+      where: { id: input.requiredResourceTypeId, businessId },
+      select: { id: true },
+    });
+    if (!type) throw new ServiceRejected('requiredResourceTypeId', 'That resource type no longer exists.');
+  }
 }
 
 export async function createService(db: Db, businessId: string, input: SaveServiceInput): Promise<ServiceRow> {
@@ -98,6 +120,7 @@ export async function createService(db: Db, businessId: string, input: SaveServi
       bufferAfterMinutes: input.bufferAfterMinutes,
       priceCents: input.priceCents,
       cancellationCutoffMinutes: input.cancellationCutoffMinutes,
+      requiredResourceTypeId: input.requiredResourceTypeId,
       displayOrder: (maxOrder ?? -1) + 1,
     },
     select,
@@ -121,6 +144,7 @@ export async function updateService(
       bufferAfterMinutes: input.bufferAfterMinutes,
       priceCents: input.priceCents,
       cancellationCutoffMinutes: input.cancellationCutoffMinutes,
+      requiredResourceTypeId: input.requiredResourceTypeId,
     },
     select,
   });

@@ -27,6 +27,7 @@ const svc = (over: Record<string, unknown> = {}) => ({
   bufferAfterMinutes: 20,
   priceCents: 14000,
   cancellationCutoffMinutes: null,
+  requiredResourceTypeId: null,
   ...over,
 });
 

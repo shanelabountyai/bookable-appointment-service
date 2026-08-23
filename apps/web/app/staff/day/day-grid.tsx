@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { STATUS_WORDS } from '@/lib/day/view-model';
 import { ColumnControls } from './column-controls';
@@ -17,15 +18,15 @@ import { StatusActions } from './status-actions';
  */
 
 /**
- * Vertical scale. One minute of the salon's day is one and a half pixels:
- * a 45-minute cut is a chip tall enough to hold two lines of text.
+ * Vertical scale — one minute is one and a half pixels, so a 45-minute cut is
+ * a chip tall enough to hold two lines of text. Shared with the room strip
+ * (A-046) from `lib/day/scale`.
  *
  * The greys below are zinc-600 rather than the zinc-400/500 that reads better
  * at a glance, because at 12px on white those measure 2.6:1 and 4.4:1 — both
  * under WCAG AA's 4.5:1, and axe said so before this shipped. Small grey text
  * is exactly where contrast quietly fails.
  */
-const PX_PER_MINUTE = 1.5;
 
 /**
  * The staleness bound the backlog asks for is 30 seconds, so the grid
@@ -44,7 +45,10 @@ export function DayGrid({ model }: { model: GridModel }) {
   const height = model.totalMinutes * PX_PER_MINUTE;
 
   return (
-    <div className="flex gap-2 overflow-x-auto">
+    // Same tab stop as the room strip, for the same reason: a day where every
+    // provider is off has no gap chips and no appointments, so this box holds
+    // nothing focusable and a keyboard cannot scroll it.
+    <div tabIndex={0} className="flex gap-2 overflow-x-auto">
       <div className="relative w-14 shrink-0" style={{ height }} aria-hidden="true">
         {model.ticks.map((tick) => (
           <span

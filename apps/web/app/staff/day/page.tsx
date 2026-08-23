@@ -11,6 +11,7 @@ import { flagSentence } from '@/components/client-flag';
 import { DateJump } from '@/components/date-jump';
 import { DayGrid } from './day-grid';
 import { ProviderDay } from './provider-day';
+import { RoomStrip } from './room-strip';
 
 export const dynamic = 'force-dynamic';
 
@@ -155,6 +156,11 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
       ) : (
         <DayGrid model={model} />
       )}
+
+      {/* A-046. Below the columns and on both views, because the room is
+          shared: a stylist reading her own day on her phone is refused by the
+          same four chairs as the desk is. */}
+      <RoomStrip model={model} />
     </main>
   );
 }

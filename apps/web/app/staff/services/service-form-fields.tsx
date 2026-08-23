@@ -5,6 +5,7 @@
 export function ServiceFormFields({
   idPrefix,
   defaults,
+  resourceTypes,
   errors,
 }: {
   idPrefix: string;
@@ -15,7 +16,12 @@ export function ServiceFormFields({
     bufferAfterMinutes: number;
     priceCents: number;
     cancellationCutoffMinutes: number | null;
+    requiredResourceTypeId: string | null;
   };
+  /** A-046 (RES-01). Empty for a business with no resource types defined, and
+   *  the selector is then absent rather than an empty dropdown asking a
+   *  question with one answer. */
+  resourceTypes: { id: string; name: string }[];
   errors?: Record<string, string>;
 }) {
   const inputClass =
@@ -110,6 +116,35 @@ export function ServiceFormFields({
           <p className="text-sm text-red-600 dark:text-red-400">{errors.bufferAfterMinutes}</p>
         )}
       </div>
+
+      {resourceTypes.length > 0 && (
+        <div className="col-span-2 flex flex-col gap-1.5">
+          <label htmlFor={id('requiredResourceTypeId')} className="text-sm font-medium">
+            Needs
+          </label>
+          {/* RES-01. The empty value is NULL — "needs nothing" — which is a
+              real answer and not a missing one: a blow-dry at the basin does
+              not take a chair, and until this control the only way to say so
+              was to edit the database. */}
+          <select
+            id={id('requiredResourceTypeId')}
+            name="requiredResourceTypeId"
+            defaultValue={defaults?.requiredResourceTypeId ?? ''}
+            aria-invalid={errors?.requiredResourceTypeId ? true : undefined}
+            className={inputClass}
+          >
+            <option value="">Nothing — this does not occupy a chair or room</option>
+            {resourceTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+          {errors?.requiredResourceTypeId && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errors.requiredResourceTypeId}</p>
+          )}
+        </div>
+      )}
 
       <div className="col-span-2 flex flex-col gap-1.5">
         <label htmlFor={id('cancellationCutoffMinutes')} className="text-sm font-medium">

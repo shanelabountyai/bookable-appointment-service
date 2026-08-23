@@ -6,7 +6,7 @@ import { ServiceFormFields } from './service-form-fields';
 
 const initial: FormState = {};
 
-export function AddServiceForm() {
+export function AddServiceForm({ resourceTypes }: { resourceTypes: { id: string; name: string }[] }) {
   const [state, formAction, pending] = useActionState(addService, initial);
   return (
     <details className="rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
@@ -14,7 +14,7 @@ export function AddServiceForm() {
         Add a service
       </summary>
       <form action={formAction} className="mt-4 flex flex-col gap-4">
-        <ServiceFormFields idPrefix="add" errors={state.errors} />
+        <ServiceFormFields idPrefix="add" resourceTypes={resourceTypes} errors={state.errors} />
         <div className="flex items-center gap-3">
           <button
             type="submit"

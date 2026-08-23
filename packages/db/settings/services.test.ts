@@ -31,6 +31,7 @@ const svc = (over: Partial<Parameters<typeof createService>[2]> = {}) => ({
   bufferAfterMinutes: 10,
   priceCents: 5500,
   cancellationCutoffMinutes: null,
+  requiredResourceTypeId: null,
   ...over,
 });
 

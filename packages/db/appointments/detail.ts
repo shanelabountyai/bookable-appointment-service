@@ -63,6 +63,17 @@ export interface AppointmentDetail {
   notes: string | null;
   providerId: string;
   providerName: string;
+  /**
+   * A-046 (RES-01, D-30). WHICH CHAIR she is in, and null when this
+   * appointment holds none — a staff override, a service that needs no
+   * resource, or a business with no resources defined at all. Until this item
+   * the room was invisible on every screen while the desk was being refused
+   * bookings on its authority; `resourceTypeName` is carried alongside so the
+   * surface can say "Chair 2" without a second lookup and without hardcoding
+   * the word "chair", which is a salon's word and not the product's.
+   */
+  resourceName: string | null;
+  resourceTypeName: string | null;
   services: { name: string; priceCents: number; durationMinutes: number }[];
   /** SEG-03/D-29 — minutes of this appointment the provider is not needed for,
    *  from its own `segmentPattern` snapshot. Zero for an unsegmented visit. */
@@ -119,6 +130,10 @@ export async function loadAppointmentDetail(
       conflictAckAt: true,
       conflictAckReason: true,
       provider: { select: { displayName: true } },
+      // The hold and not `Appointment.resource` — same row in practice, but
+      // the hold is what the exclusion constraint ranges over, so reading it
+      // means the screen can never show a chair the database is not defending.
+      resourceHold: { select: { resource: { select: { name: true, resourceType: { select: { name: true } } } } } },
       client: { select: { id: true, name: true, phone: true, notes: true } },
       lines: {
         orderBy: { ordinal: 'asc' },
@@ -168,6 +183,8 @@ export async function loadAppointmentDetail(
     notes: appointment.notes,
     providerId: appointment.providerId,
     providerName: appointment.provider.displayName,
+    resourceName: appointment.resourceHold?.resource.name ?? null,
+    resourceTypeName: appointment.resourceHold?.resource.resourceType.name ?? null,
     primaryServiceId: appointment.lines[0]?.serviceId ?? '',
     gapMinutes: patternGapSpans(appointment.segmentPattern).reduce((sum, gap) => sum + gap.minutes, 0),
     services: appointment.lines.map((line) => ({

@@ -12,7 +12,7 @@ import 'server-only';
  * Minutes rather than pixels, so the grid's scale is a CSS decision and this
  * file has no opinion about it.
  */
-import type { DayColumn, DayView } from '@bookable/db/day';
+import type { DayColumn, DayRoom, DayView } from '@bookable/db/day';
 import { type AppointmentStatus, availableTransitions } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
 
@@ -73,6 +73,30 @@ export interface GridColumn {
   windows: { top: number; minutes: number }[];
 }
 
+/** A-046. One chair, as a track down the same day the columns run down. */
+export interface RoomTrack {
+  resourceId: string;
+  name: string;
+  active: boolean;
+  blocks: {
+    key: string;
+    top: number;
+    minutes: number;
+    title: string;
+    detail: string;
+    href: string;
+    label: string;
+  }[];
+}
+
+export interface RoomModel {
+  typeName: string;
+  /** ACTIVE resources — the number the engine's "room full" answer was
+   *  computed against, shown so the desk can check it against what it can see. */
+  capacity: number;
+  tracks: RoomTrack[];
+}
+
 export interface GridModel {
   day: string;
   /** "Tuesday 9 June", server-formatted. */
@@ -84,6 +108,8 @@ export interface GridModel {
    *  page pointing at Tuesday's 2pm is a lie the eye believes. */
   nowTop: number | null;
   columns: GridColumn[];
+  /** A-046 — the room, on the same vertical scale as the columns. */
+  room: RoomModel[];
 }
 
 export function toGridModel(
@@ -124,6 +150,50 @@ export function toGridModel(
         view.cancellationCutoffMinutes,
       ),
     ),
+    room: view.room.map((type) => toRoom(type, { minutesFrom, clock, range, shift }, total)),
+  };
+}
+
+/**
+ * A-046 — the room as tracks.
+ *
+ * Clamped to the rendered height rather than allowed to stretch it: a hold's
+ * envelope includes buffers, so a 09:00 colour with a ten-minute before-buffer
+ * legitimately starts before the first working window. Letting that widen the
+ * grid would move every provider column to make room for a strip that is
+ * explaining them — so the block is trimmed, and a block trimmed to nothing is
+ * dropped rather than drawn as a hairline nobody can read.
+ */
+function toRoom(type: DayRoom, f: Formatters, total: number): RoomModel {
+  return {
+    typeName: type.typeName,
+    capacity: type.capacity,
+    tracks: type.resources.map((resource) => ({
+      resourceId: resource.id,
+      name: resource.name,
+      active: resource.active,
+      blocks: resource.holds.flatMap((hold) => {
+        const top = Math.max(0, f.minutesFrom(hold.start));
+        const minutes = Math.min(total, f.minutesFrom(hold.end)) - top;
+        if (minutes <= 0) return [];
+        const who = hold.clientName ?? 'Walk-in';
+        const services = hold.serviceNames.join(' + ');
+        return [
+          {
+            key: hold.appointmentId,
+            top,
+            minutes,
+            title: who,
+            detail: [hold.providerName, services].filter(Boolean).join(' · '),
+            href: `/staff/appointments/${hold.appointmentId}`,
+            // The envelope's OWN range, not the appointment's body: this strip
+            // exists to show that the chair is held longer than the stylist is
+            // busy, and a label reading the body times would hide exactly that.
+            label: `${resource.name}, ${f.range(hold.start, hold.end)}, ${who} with ${hold.providerName}${services ? `, ${services}` : ''}`,
+          },
+        ];
+      }),
+    })),
   };
 }
 

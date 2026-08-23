@@ -23,6 +23,7 @@
 import { type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
+import { type DayRoom, loadRoom } from './room';
 import { findRunningLate } from './running-late';
 import { findBusyAppointments } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -103,6 +104,11 @@ export interface DayView {
   from: Date;
   to: Date;
   columns: DayColumn[];
+  /** A-046. The same day seen from the ROOM rather than from the roster — the
+   *  axis that has been refusing bookings since A-031 and appearing on no
+   *  screen. Empty for a business with no resource types, which is every
+   *  business that has not defined any. */
+  room: DayRoom[];
 }
 
 export async function loadDayView(
@@ -149,12 +155,18 @@ export async function loadDayView(
     ),
   );
 
+  // The room is read over the SAME wide query bounds the columns used, so a
+  // hold whose envelope hangs off either end is fetched rather than clipped
+  // out of the data; the view model clamps it to the rendered height.
+  const room = await loadRoom(db, { businessId: args.businessId, from, to });
+
   return {
     day: args.day,
     timezone: business.timezone,
     cancellationCutoffMinutes: business.cancellationCutoffMinutes,
     ...renderBounds(day, zone, columns),
     columns,
+    room,
   };
 }
 

@@ -99,7 +99,11 @@ test.describe('the appointment detail panel (A-027)', () => {
   test('is where a chip on the day grid goes', async ({ page }) => {
     await bookOne();
     await page.goto(`/staff/day?day=${DAY}`);
-    await page.getByRole('link', { name: /Ada Chen/ }).click();
+    // Scoped to her stylist's COLUMN. A-046 put a second view of the same
+    // appointment on this page — the room strip's chair track — so an
+    // unscoped "the link with her name on it" now names two, and this test is
+    // about the chip.
+    await page.getByRole('region', { name: /Dana/ }).getByRole('link', { name: /Ada Chen/ }).click();
     await expect(page).toHaveURL(/\/staff\/appointments\//);
     await expect(page.getByRole('heading', { name: 'Ada Chen' })).toBeVisible();
   });

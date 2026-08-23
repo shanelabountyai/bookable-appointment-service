@@ -29,6 +29,17 @@ export {
   unqualifyProvider,
   updateService,
 } from './services';
+export {
+  ResourceRejected,
+  type ResourceRow,
+  type ResourceTypeRow,
+  countFutureHolds,
+  createResource,
+  createResourceType,
+  listResourceTypeChoices,
+  listResourceTypes,
+  setResourceActive,
+} from './resources';
 export { CHAIR_COUNT, type SetupSeedResult, seedSetup } from './setup-seed';
 export {
   DEMO_WEEK,

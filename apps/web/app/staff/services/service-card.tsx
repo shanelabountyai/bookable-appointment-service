@@ -18,13 +18,16 @@ interface ServiceCardProps {
     priceCents: number;
     active: boolean;
     cancellationCutoffMinutes: number | null;
+    requiredResourceTypeId: string | null;
   };
   providers: ProviderRow[];
+  /** A-046 (RES-01) — the choices for "Needs", empty when none are defined. */
+  resourceTypes: { id: string; name: string }[];
   qualifications: Array<{ providerId: string; durationOverrideMinutes: number | null; priceOverrideCents: number | null }>;
   segments: SegmentDraft[];
 }
 
-export function ServiceCard({ service, providers, qualifications, segments }: ServiceCardProps) {
+export function ServiceCard({ service, providers, resourceTypes, qualifications, segments }: ServiceCardProps) {
   const [editState, editAction, editPending] = useActionState(editService, initial);
   const [toggleState, toggleAction, togglePending] = useActionState(toggleServiceActive, initial);
   const [pendingConfirm, setPendingConfirm] = useState(false);
@@ -81,7 +84,12 @@ export function ServiceCard({ service, providers, qualifications, segments }: Se
         <summary className="cursor-pointer text-sm text-zinc-500">Edit</summary>
         <form action={editAction} className="mt-3 flex flex-col gap-4">
           <input type="hidden" name="serviceId" value={service.id} />
-          <ServiceFormFields idPrefix={`edit-${service.id}`} defaults={service} errors={editState.errors} />
+          <ServiceFormFields
+            idPrefix={`edit-${service.id}`}
+            defaults={service}
+            resourceTypes={resourceTypes}
+            errors={editState.errors}
+          />
           <div className="flex items-center gap-3">
             <button
               type="submit"
