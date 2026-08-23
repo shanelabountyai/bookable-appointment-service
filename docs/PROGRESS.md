@@ -1344,7 +1344,7 @@ Demo checkpoint 3 committed at `aec430a`.
 
 ## A-047 — the other doors that strand appointments in silence
 
-**Commit:** `PENDING`
+**Commit:** `0bd55bf`
 
 **Built.** The four availability writes that were not absences now say what they stranded, in the same sentence and with the same link A-041 built for the fifth. `addWeeklyWindow` returned `{ ok: true, message: 'Hours added.' }`; `saveDateOverride` returned `'Override saved.'`; `removeWeeklyWindow` and `removeDateOverride` returned a bare `{ ok: true }` — **and the forms discarded even that** (`const [, removeAction] = useActionState(...)`), so a count would have had nowhere to render.
 
