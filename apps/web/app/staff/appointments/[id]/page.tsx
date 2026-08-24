@@ -247,7 +247,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
                 <span className="text-zinc-600 dark:text-zinc-400">
                   {notification.recipient ?? 'no contact details'} · {notification.channel}
                 </span>
-                <span className="ml-auto">{deliveryWord(notification.status)}</span>
+                <span className="ml-auto">{deliveryWord(notification.status, notification.deliveredBy)}</span>
               </li>
             ))}
           </ul>

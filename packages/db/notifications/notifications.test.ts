@@ -6,7 +6,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/notifications';
 import { PrismaClient } from '../generated/client/index.js';
+import { LOGGING_ADAPTER_ID } from '../../core/notifications';
 import { dispatchPendingNotifications } from './dispatch';
+import { reallyDelivered } from './provider';
 import { enqueueNotification } from './enqueue';
 import { resetDatabase } from '../testing';
 
@@ -16,6 +18,7 @@ let businessId: string;
 /** A controllable fake — records every call, and can be told to fail or to
  *  refuse a channel, so dispatch's branches are each independently testable. */
 class FakeAdapter implements ChannelAdapter {
+  readonly id = 'fake';
   readonly sent: OutboundMessage[] = [];
   failNext = false;
   unsupportedChannels = new Set<string>();
@@ -31,6 +34,44 @@ class FakeAdapter implements ChannelAdapter {
       throw new Error('provider rejected the message');
     }
     return { externalId: 'fake-1' };
+  }
+}
+
+/**
+ * A-048. Blocks inside `send()` until released, so two `dispatchPending-
+ * Notifications` calls are genuinely IN FLIGHT at the same time rather than
+ * merely started in the same tick. Without this the race test can pass on
+ * accidental serialisation and prove nothing.
+ */
+class BlockingAdapter implements ChannelAdapter {
+  readonly id = 'blocking';
+  readonly sent: OutboundMessage[] = [];
+  private release!: () => void;
+  readonly gate = new Promise<void>((resolve) => {
+    this.release = resolve;
+  });
+  readonly entered: Promise<void>;
+  private markEntered!: () => void;
+
+  constructor() {
+    this.entered = new Promise<void>((resolve) => {
+      this.markEntered = resolve;
+    });
+  }
+
+  open(): void {
+    this.release();
+  }
+
+  supports(): boolean {
+    return true;
+  }
+
+  async send(message: OutboundMessage): Promise<SendResult> {
+    this.sent.push(message);
+    this.markEntered();
+    await this.gate;
+    return { externalId: `blocking-${this.sent.length}` };
   }
 }
 
@@ -280,6 +321,150 @@ describe('dispatchPendingNotifications — send', () => {
     expect(row.recipient).toBe('real-client@example.com'); // the record of who this was actually for
   });
 
+  /**
+   * A-048 — THE REGRESSION TEST THE ITEM NAMES.
+   *
+   * Two concurrent dispatchers over ONE pending row produce exactly one send.
+   * Before the claim, both `findMany`d the same `pending` row and both sent
+   * it — invisible while the adapter is a console log, and a client texted
+   * twice on the first day Twilio is real.
+   */
+  it('two concurrent dispatchers over one pending row send it exactly once', async () => {
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: 'confirmation:race',
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient: 'ada@example.com',
+      payload: {},
+    });
+
+    const first = new BlockingAdapter();
+    const second = new FakeAdapter();
+
+    // Start the first and WAIT until it is inside `send()` — the row is
+    // claimed and the send is in flight. Only then does the second run start,
+    // which is exactly the overlap that used to double-send.
+    const firstRun = dispatchPendingNotifications(prisma, first);
+    await first.entered;
+
+    const secondResult = await dispatchPendingNotifications(prisma, second);
+    first.open();
+    const firstResult = await firstRun;
+
+    expect(first.sent).toHaveLength(1);
+    expect(second.sent).toHaveLength(0);
+    expect(firstResult.sent + secondResult.sent).toBe(1);
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'confirmation:race' } });
+    expect(row.status).toBe('sent');
+    // Claimed once, so attempted once. A second claim would have incremented
+    // it even if the send had somehow been skipped.
+    expect(row.attempts).toBe(1);
+  });
+
+  it('records WHICH adapter handled it and what the provider called the message', async () => {
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: 'confirmation:provenance',
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient: 'ada@example.com',
+      payload: {},
+    });
+    await dispatchPendingNotifications(prisma, new FakeAdapter());
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'confirmation:provenance' } });
+    expect(row.deliveredBy).toBe('fake');
+    // `dispatch.ts` used to receive this and throw it away for want of a column.
+    expect(row.externalId).toBe('fake-1');
+  });
+
+  it('a failure records the adapter too — "which driver could not send this" is the question then', async () => {
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: 'confirmation:failed-provenance',
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient: 'ada@example.com',
+      payload: {},
+    });
+    const adapter = new FakeAdapter();
+    adapter.failNext = true;
+    await dispatchPendingNotifications(prisma, adapter);
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({
+      where: { dedupeKey: 'confirmation:failed-provenance' },
+    });
+    expect(row.status).toBe('failed');
+    expect(row.deliveredBy).toBe('fake');
+  });
+
+  /**
+   * A row whose dispatcher died mid-send would otherwise be stranded
+   * `sending` forever — a message nobody ever sends, which is worse than one
+   * sent twice. This is the one place a double-send remains possible, and it
+   * is a deliberate trade.
+   */
+  it('reclaims a stale `sending` row, and leaves a fresh one alone', async () => {
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: 'confirmation:stale',
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient: 'ada@example.com',
+      payload: {},
+    });
+    const id = (await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'confirmation:stale' } })).id;
+
+    // Freshly claimed: another dispatcher must NOT take it.
+    await prisma.notificationOutbox.update({ where: { id }, data: { status: 'sending' } });
+    expect((await dispatchPendingNotifications(prisma, new FakeAdapter())).sent).toBe(0);
+
+    // Claimed twenty minutes ago and never resolved: the holder is gone.
+    await prisma.$executeRaw`
+      UPDATE "NotificationOutbox" SET "updatedAt" = now() - interval '20 minutes' WHERE id = ${id}
+    `;
+    const adapter = new FakeAdapter();
+    expect((await dispatchPendingNotifications(prisma, adapter)).sent).toBe(1);
+    expect(adapter.sent).toHaveLength(1);
+  });
+
+  /**
+   * A-048 — the defect the ITEM did not name, found by probing the path.
+   *
+   * `enqueueNotification`'s duplicate branch used to catch the unique
+   * violation and then READ the existing row. Postgres aborts a transaction
+   * on a constraint violation, so inside a transaction — which is where the
+   * booking path calls it — that read failed and the caller got an unknown
+   * error instead of `duplicate`. The booking rolled back rather than being
+   * idempotent, and every test passed because they all called it outside one.
+   */
+  it('reports a duplicate correctly from INSIDE a transaction, not just outside one', async () => {
+    const input = {
+      businessId,
+      dedupeKey: 'confirmation:in-tx',
+      channel: 'email' as const,
+      template: 'appointment.confirmed',
+      recipient: 'ada@example.com',
+      payload: {},
+    };
+    const first = await enqueueNotification(prisma, input);
+    expect(first.outcome).toBe('recorded');
+
+    const inside = await prisma.$transaction(async (tx) => {
+      const again = await enqueueNotification(tx, input);
+      // The transaction must still be USABLE afterwards — an aborted one
+      // fails here, which is exactly how the old version failed.
+      const total = await tx.notificationOutbox.count({ where: { dedupeKey: input.dedupeKey } });
+      return { again, total };
+    });
+
+    expect(inside.again.outcome).toBe('duplicate');
+    expect(inside.again.id).toBe(first.id);
+    expect(inside.total).toBe(1);
+  });
+
   it('respects the limit and processes oldest first', async () => {
     for (let i = 0; i < 5; i++) {
       await enqueueNotification(prisma, {
@@ -296,5 +481,23 @@ describe('dispatchPendingNotifications — send', () => {
     expect(result.sent).toBe(3);
     const remaining = await prisma.notificationOutbox.count({ where: { status: 'pending' } });
     expect(remaining).toBe(2);
+  });
+});
+
+/**
+ * A-048 — "was she actually told?" is a question about the ROW.
+ *
+ * A-044 answered it from the build, so the day a real driver landed every
+ * message ever queued would retroactively have read "sent".
+ */
+describe('reallyDelivered (A-048)', () => {
+  it('is false for the console adapter and for rows written before the column existed', () => {
+    expect(reallyDelivered(LOGGING_ADAPTER_ID)).toBe(false);
+    expect(reallyDelivered(null)).toBe(false);
+    expect(reallyDelivered(undefined)).toBe(false);
+  });
+
+  it('is true for anything else — the swap is still one assignment (D-14)', () => {
+    expect(reallyDelivered('twilio')).toBe(true);
   });
 });

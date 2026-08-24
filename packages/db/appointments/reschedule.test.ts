@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import { customerTokenActor, staffActor } from '../../core/auth';
+import { Client as PgClient } from 'pg';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
@@ -23,6 +24,29 @@ const STAFF = staffActor('staff-1');
 
 const at = (iso: string) => toDate(instantFromIso(iso));
 const after = (base: Date, ms: number) => toDate(instant(fromDate(base) + ms));
+
+/**
+ * Blocks until `count` transactions are waiting on the advisory lock `key`.
+ *
+ * `pg_locks.granted = false` IS the happens-before edge — the same role the
+ * explicit barriers play in `races.test.ts`, except the thing being waited on
+ * is inside library code this test cannot reach into. Polling a real database
+ * condition, never a timer: a `sleep` here would reintroduce exactly the
+ * flakiness it exists to remove.
+ */
+async function waitForLockWaiters(client: PgClient, key: string, count: number): Promise<void> {
+  for (;;) {
+    const { rows } = await client.query<{ n: string }>(
+      `SELECT count(*) AS n
+         FROM pg_locks
+        WHERE locktype = 'advisory'
+          AND NOT granted
+          AND (classid::bigint << 32) | objid::bigint = hashtext($1)::bigint`,
+      [key],
+    );
+    if (Number(rows[0]?.n ?? 0) >= count) return;
+  }
+}
 
 // Tuesday 9 June 2026, Chicago. The business opens 09:00–18:00, Dana 09:00–17:00.
 const TEN_AM = at('2026-06-09T10:00:00-05:00');
@@ -382,14 +406,50 @@ describe('the write is conditional on the time it was decided against', () => {
    * destinations do not conflict with each other. Without the conditional
    * `WHERE startAt = ...`, both would write and the appointment would end up
    * at one time with two events claiming different ones.
+   *
+   * DETERMINISTIC BY CONSTRUCTION (A-048 made it so; it was 1-in-6 flaky
+   * before, on this code and on the code before it).
+   *
+   * The premise — "both read 10:00" — is the whole test, and simply firing two
+   * promises does not establish it: `rescheduleAppointment` reads the
+   * appointment BEFORE it takes D-24's advisory lock, so a second call that
+   * happens to start after the first commits reads 14:00 and then legitimately
+   * succeeds moving to 16:00. Two fulfilled results, no defect. A race test
+   * that reports a defect only when the machine is busy is a broken race test
+   * (CLAUDE.md), so the overlap is forced here rather than hoped for: this
+   * holds the SAME advisory lock both moves need, which lets both of them
+   * complete their reads and then blocks them, and does not let go until both
+   * are provably waiting on it.
    */
   it('refuses the second of two concurrent moves', async () => {
     const appointment = await book();
 
-    const results = await Promise.allSettled([
-      move(appointment.id, at('2026-06-09T14:00:00-05:00')),
-      move(appointment.id, at('2026-06-09T16:00:00-05:00')),
-    ]);
+    const holder = new PgClient({ connectionString: process.env.DATABASE_URL });
+    await holder.connect();
+    // The key both moves derive: same provider, and both destinations are on
+    // the source day, so `moveLockKeys` collapses to one.
+    const day = '2026-06-09';
+    const key = moveLockKeys({ source: `${providerId}:${day}`, destination: `${providerId}:${day}` })[0]!;
+
+    let results: PromiseSettledResult<unknown>[];
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+
+      const pending = Promise.allSettled([
+        move(appointment.id, at('2026-06-09T14:00:00-05:00')),
+        move(appointment.id, at('2026-06-09T16:00:00-05:00')),
+      ]);
+
+      // A real condition, not a sleep: both have read the appointment and are
+      // now queued behind the lock this test is holding.
+      await waitForLockWaiters(holder, key, 2);
+      await holder.query('COMMIT');
+
+      results = await pending;
+    } finally {
+      await holder.end();
+    }
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
     expect(fulfilled).toHaveLength(1);

@@ -18,7 +18,7 @@ import 'server-only';
  */
 import type { AppointmentEventRow } from '@bookable/db/appointments';
 import { type ZoneId, fromDate, instantFromIso, toLabel } from '@bookable/core/time';
-import { notificationsReallySend } from '@bookable/db/notifications';
+import { reallyDelivered } from '@bookable/db/notifications';
 
 export const EVENT_TYPES = [
   'booked',
@@ -156,16 +156,26 @@ function clock(iso: unknown, zone: ZoneId): string {
  */
 const DELIVERY_WORDS: Record<string, string> = {
   pending: 'queued',
+  // A-048's fifth state. "Sending" and "queued" are the same thing to the
+  // front desk — she has not been told either way — so it reuses the spelling
+  // rather than giving the screens a new word for the same decision.
+  sending: 'queued',
   sent: 'sent',
   failed: 'failed to send',
   suppressed: 'not sent — no contact details on file',
 };
 
-export function deliveryWord(status: string): string {
-  // With no real driver, a `sent` row never reached anybody. `pending` —
-  // "queued" — is the true word for it, and reusing that spelling means the
-  // screens gain no fourth vocabulary for the same state.
-  const honest = status === 'sent' && !notificationsReallySend ? 'pending' : status;
+/**
+ * A-048 asks the ROW, not the build. `deliveredBy` is stamped by whichever
+ * adapter handled it, so a message the console adapter "sent" last March still
+ * reads "queued" after a real driver lands — which is the truth about that
+ * message, and was not what the build-wide predicate said.
+ */
+export function deliveryWord(status: string, deliveredBy: string | null = null): string {
+  // A `sent` row that no real driver touched never reached anybody. `pending`
+  // — "queued" — is the true word for it, and reusing that spelling means the
+  // screens gain no extra vocabulary for the same state.
+  const honest = status === 'sent' && !reallyDelivered(deliveredBy) ? 'pending' : status;
   return DELIVERY_WORDS[honest] ?? honest;
 }
 

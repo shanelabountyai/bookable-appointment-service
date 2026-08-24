@@ -35,9 +35,9 @@ export interface OutboundMessage {
 
 export interface SendResult {
   /** Provider message id (Resend id, Twilio SID), when the provider returns
-   *  one. Nothing in v1 persists this yet — no field exists for it on
-   *  NotificationOutbox, and adding one before a real driver needs it would
-   *  be exactly the speculative column D-13 refuses. */
+   *  one. A-048 gave this somewhere to land (`NotificationOutbox.externalId`):
+   *  the dispatcher was already receiving it and throwing it away, and a real
+   *  driver needs it to reconcile against the provider's own record. */
   externalId?: string;
 }
 
@@ -54,9 +54,24 @@ export class ChannelSendError extends Error {
 }
 
 export interface ChannelAdapter {
+  /**
+   * A-048. Stable identifier for THIS adapter, recorded on every row it
+   * handles (`NotificationOutbox.deliveredBy`).
+   *
+   * It is what makes "was she actually told?" a question about the row rather
+   * than about the build. The predicate it replaced was
+   * `!(adapter instanceof LoggingChannelAdapter)`, evaluated at render time —
+   * so the day a real driver shipped, every message ever queued would
+   * retroactively have read "sent" on the appointment panel.
+   */
+  readonly id: string;
   /** Which channels this adapter can deliver. The dispatcher records
    *  `unsupported_channel` rather than throwing when a channel isn't
    *  covered — a missing SMS provider must not stop the email going out. */
   supports(channel: NotificationChannel): boolean;
   send(message: OutboundMessage): Promise<SendResult>;
 }
+
+/** The console adapter's id. Exported because "really delivered?" is exactly
+ *  "handled by something that is not this". */
+export const LOGGING_ADAPTER_ID = 'log';

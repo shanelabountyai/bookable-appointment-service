@@ -11,7 +11,6 @@
  * third party's outage.
  */
 import type { NotificationChannel, OutboxStatus, Prisma, PrismaClient } from '../generated/client/index.js';
-import { isUniqueViolation } from '../errors';
 import { notificationConfig } from './config';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -75,9 +74,24 @@ export async function enqueueNotification(db: Db, input: EnqueueInput): Promise<
 
   const suppressedReason = !config.enabled ? 'kill_switch' : recipient === null ? 'no_recipient' : null;
 
-  try {
-    const created = await db.notificationOutbox.create({
-      data: {
+  // A-048 — `createMany({ skipDuplicates })` rather than create-and-catch.
+  //
+  // THE CATCH VERSION DID NOT WORK INSIDE A TRANSACTION, which is where the
+  // main caller runs it: a booking enqueues its confirmation inside the
+  // booking's own transaction (that coupling is the whole point of this
+  // module). Postgres ABORTS a transaction on a constraint violation, so the
+  // recovery read that followed the catch failed with "current transaction is
+  // aborted" and the caller got an unknown error instead of `duplicate` — the
+  // booking rolled back rather than being idempotent. Measured, not reasoned:
+  // the same call outside a transaction returned `duplicate` correctly, which
+  // is why every test of this path passed.
+  //
+  // `skipDuplicates` never raises, so the transaction stays healthy and the
+  // read below is an ordinary query. The uniqueness guarantee is unchanged —
+  // it is still the database's index doing the work.
+  const written = await db.notificationOutbox.createMany({
+    data: [
+      {
         businessId: input.businessId,
         dedupeKey: input.dedupeKey,
         appointmentId: input.appointmentId ?? null,
@@ -88,19 +102,19 @@ export async function enqueueNotification(db: Db, input: EnqueueInput): Promise<
         status: suppressedReason ? 'suppressed' : 'pending',
         lastError: suppressedReason ? `suppressed:${suppressedReason}` : null,
       },
-      select: { id: true, status: true },
-    });
-    return { outcome: 'recorded', id: created.id, status: created.status };
-  } catch (error) {
-    if (isUniqueViolation(error, 'dedupeKey')) {
-      // The invariant holding, not a failure: some other call — a retried
-      // write path, a re-run job — already decided this exact notification.
-      const existing = await db.notificationOutbox.findUniqueOrThrow({
-        where: { dedupeKey: input.dedupeKey },
-        select: { id: true, status: true },
-      });
-      return { outcome: 'duplicate', id: existing.id, status: existing.status };
-    }
-    throw error;
-  }
+    ],
+    skipDuplicates: true,
+  });
+
+  // One read either way: `createMany` does not return rows, and the duplicate
+  // case has to return the EXISTING decision unchanged.
+  const row = await db.notificationOutbox.findUniqueOrThrow({
+    where: { dedupeKey: input.dedupeKey },
+    select: { id: true, status: true },
+  });
+
+  // `count === 0` is the invariant holding, not a failure: some other call —
+  // a retried write path, a re-run job, a concurrent one — already decided
+  // this exact notification.
+  return { outcome: written.count === 1 ? 'recorded' : 'duplicate', id: row.id, status: row.status };
 }

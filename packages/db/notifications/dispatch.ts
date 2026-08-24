@@ -2,16 +2,27 @@
  * dispatchPendingNotifications — the "send" half of NOTIF-01. See enqueue.ts
  * for why deciding and sending are separate steps.
  *
- * ponytail: no claim-before-send row locking. Two concurrent dispatchers could
- * both pick up the same `pending` row and send it twice. Left this way
- * because the one caller that exists (A-022's reminder job route) is a single
- * scheduled trigger, not proven-concurrent — the risk is a slow run
- * overlapping a retry, not routine operation. Upgrade path if that changes:
- * an `UPDATE ... WHERE status = 'pending' RETURNING ...` claim (the pattern
- * A-003's blocked-range trigger already established for this schema), or a
- * fifth `sending` OutboxStatus.
+ * A-048 — THE CLAIM (NOTIF-01, D-14).
+ *
+ * This used to `findMany({ where: { status: 'pending' } })` and then send.
+ * Two overlapping runs both picked up the same row and both sent it, and the
+ * only reason nobody saw it is that the wired adapter writes to a console. On
+ * the first day Twilio is real that is a client texted twice, and the bill is
+ * where you find out. Fixing it after the driver lands means debugging a race
+ * against live SMS charges, which is why it is cheapest now.
+ *
+ * The claim is ONE statement — `UPDATE ... WHERE status = 'pending' ...
+ * RETURNING` — so exactly one dispatcher can win a row. The same division of
+ * labour D-2 established for bookings: the database is the enforcer, not a
+ * check the application performs first and hopes about.
+ *
+ * `FOR UPDATE SKIP LOCKED` on the inner select is what makes a second
+ * dispatcher pick up DIFFERENT work rather than block on the first one's.
+ * Without it the claim is still correct — the re-evaluated `status = 'pending'`
+ * predicate matches nothing after the winner commits — just serialised.
  */
 import type { ChannelAdapter } from '../../core/notifications';
+import { instant, toDate } from '../../core/time';
 import type { OutboxStatus, PrismaClient } from '../generated/client/index.js';
 import { notificationConfig } from './config';
 
@@ -19,6 +30,29 @@ export interface DispatchResult {
   sent: number;
   failed: number;
   suppressed: number;
+}
+
+/**
+ * How long a row may sit `sending` before another dispatcher may take it.
+ *
+ * THE ONE PLACE A DOUBLE-SEND IS STILL POSSIBLE, and it is a deliberate
+ * trade: a process that dies mid-send (a serverless timeout is the realistic
+ * case) would otherwise strand its claim forever, and a message nobody ever
+ * sends is worse than one sent twice. Fifteen minutes is far longer than any
+ * provider call, so reclaiming a merely-slow dispatcher's row takes a genuine
+ * hang rather than ordinary latency — and `externalId` is what lets a real
+ * driver reconcile if it ever happens.
+ */
+const STALE_CLAIM_MS = 15 * 60 * 1000;
+
+/** The columns the claim returns — `SELECT *` would silently change shape
+ *  under a later migration. */
+interface ClaimedRow {
+  id: string;
+  channel: 'email' | 'sms';
+  template: string;
+  recipient: string | null;
+  payload: unknown;
 }
 
 /**
@@ -36,11 +70,26 @@ export async function dispatchPendingNotifications(
   const config = notificationConfig();
   if (!config.enabled) return { sent: 0, failed: 0, suppressed: 0 };
 
-  const due = await prisma.notificationOutbox.findMany({
-    where: { status: 'pending' },
-    orderBy: { createdAt: 'asc' },
-    take: limit,
-  });
+  // Through the one conversion module (D-3), like every other instant here.
+  const staleBefore = toDate(instant(Date.now() - STALE_CLAIM_MS));
+
+  // Raw because this has to be ONE statement. Prisma's `updateMany` cannot
+  // return the rows it touched, and a findMany-then-updateMany is precisely
+  // the check-then-write this exists to remove.
+  const due = await prisma.$queryRaw<ClaimedRow[]>`
+    UPDATE "NotificationOutbox" AS o
+       SET status = 'sending', attempts = o.attempts + 1, "updatedAt" = now()
+     WHERE o.id IN (
+             SELECT c.id
+               FROM "NotificationOutbox" AS c
+              WHERE c.status = 'pending'
+                 OR (c.status = 'sending' AND c."updatedAt" < ${staleBefore})
+              ORDER BY c."createdAt" ASC
+              LIMIT ${limit}
+                FOR UPDATE SKIP LOCKED
+           )
+    RETURNING o.id, o.channel, o.template, o.recipient, o.payload
+  `;
 
   let sent = 0;
   let failed = 0;
@@ -53,7 +102,6 @@ export async function dispatchPendingNotifications(
         data: {
           status: 'suppressed' satisfies OutboxStatus,
           lastError: 'suppressed:unsupported_channel',
-          attempts: { increment: 1 },
         },
       });
       suppressed++;
@@ -74,16 +122,25 @@ export async function dispatchPendingNotifications(
       });
       await prisma.notificationOutbox.update({
         where: { id: row.id },
-        data: { status: 'sent', sentAt: new Date(), attempts: { increment: 1 }, lastError: null },
+        data: {
+          status: 'sent',
+          sentAt: new Date(),
+          lastError: null,
+          // A-048: WHO handled it and WHAT the provider called it. Recorded
+          // together because either one alone leaves the question half
+          // answered — the adapter's id says whether anybody was really
+          // reached, the provider's id is how you go and check.
+          deliveredBy: adapter.id,
+          externalId: result.externalId ?? null,
+        },
       });
-      void result; // externalId has nowhere to land yet — see adapter.ts.
       sent++;
     } catch (error) {
       await prisma.notificationOutbox.update({
         where: { id: row.id },
         data: {
           status: 'failed',
-          attempts: { increment: 1 },
+          deliveredBy: adapter.id,
           lastError: error instanceof Error ? error.message : String(error),
         },
       });

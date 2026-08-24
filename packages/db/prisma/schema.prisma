@@ -72,6 +72,18 @@ enum NotificationChannel {
 
 enum OutboxStatus {
   pending
+  /// A-048. CLAIMED by a dispatcher and not yet resolved. The fifth state is
+  /// what makes "exactly one send" a database fact rather than a hope: the
+  /// claim is a single `UPDATE ... WHERE status = 'pending' ... RETURNING`, so
+  /// a second dispatcher racing for the same row matches nothing.
+  ///
+  /// A row can be STUCK here if the process holding it dies mid-send (a
+  /// function timeout is the realistic case), so `dispatchPendingNotifications`
+  /// reclaims `sending` rows that have gone stale. That reclaim is the one
+  /// place a double-send is still possible — a merely slow dispatcher, not a
+  /// dead one — which is why the window is generous and why `externalId`
+  /// exists to reconcile against the provider.
+  sending
   sent
   failed
   suppressed
@@ -841,6 +853,19 @@ model NotificationOutbox {
   lastError String?
   sentAt    DateTime?    @db.Timestamptz(3)
 
+  /// A-048. WHICH adapter handled this row — `log` for the console adapter,
+  /// the driver's own id once a real one lands. Per ROW, deliberately: the
+  /// build-wide derivation it replaces meant that the day a real driver
+  /// shipped, every message ever queued retroactively read "sent" on the
+  /// appointment panel. NULL for rows written before this column existed,
+  /// which is the same answer as `log` and correctly reads as "queued".
+  deliveredBy String?
+  /// A-048. The provider's own message id (Resend id, Twilio SID), when it
+  /// returns one. `dispatch.ts` already received this and threw it away for
+  /// want of somewhere to put it; a real driver needs it to reconcile, and a
+  /// value you already hold is not a speculative column (D-13).
+  externalId  String?
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
@@ -852,6 +877,9 @@ model NotificationOutbox {
 
   @@index([businessId, status])
   @@index([appointmentId])
+  /// A-048's claim orders the whole queue by age, across businesses — the
+  /// dispatcher is not per-tenant. `[businessId, status]` cannot serve it.
+  @@index([status, createdAt])
 }
 
 // ─────────────────────────── waitlist ───────────────────────────

@@ -167,7 +167,9 @@ test.describe('the appointment detail panel (A-027)', () => {
     try {
       const updated = await prisma.notificationOutbox.updateMany({
         where: { appointmentId: appointment.id },
-        data: { status: 'sent', sentAt: toDate(instant(Date.now())) },
+        // A-048: `deliveredBy` is now the thing the screen asks about, so the
+        // fixture stamps it the way the console adapter would.
+        data: { status: 'sent', sentAt: toDate(instant(Date.now())), deliveredBy: 'log' },
       });
       expect(updated.count).toBeGreaterThan(0);
     } finally {
@@ -180,6 +182,39 @@ test.describe('the appointment detail panel (A-027)', () => {
     // Not merely "contains queued somewhere": the word this replaces must be
     // gone, or a row saying "sent · queued" would pass the assertion above.
     await expect(row).not.toContainText('sent');
+  });
+
+  /**
+   * A-048 — the other half, which A-044 could not test at all.
+   *
+   * The honest wording used to be derived from the BUILD, so there was no way
+   * to show a genuinely-delivered row without swapping the adapter. Now it is
+   * a column, and "a real driver handled this one" is an ordinary fixture —
+   * which is what proves the screen is reading the row rather than the build.
+   */
+  test('a message a REAL driver sent reads as sent', async ({ page }) => {
+    const appointment = await bookOne();
+
+    const prisma = new PrismaClient();
+    try {
+      const updated = await prisma.notificationOutbox.updateMany({
+        where: { appointmentId: appointment.id },
+        data: {
+          status: 'sent',
+          sentAt: toDate(instant(Date.now())),
+          deliveredBy: 'twilio',
+          externalId: 'SM123',
+        },
+      });
+      expect(updated.count).toBeGreaterThan(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    const row = page.locator('li').filter({ hasText: 'Booking confirmation' });
+    await expect(row).toContainText('sent');
+    await expect(row).not.toContainText('queued');
   });
 
   /**

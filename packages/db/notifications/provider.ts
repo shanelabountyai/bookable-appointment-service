@@ -6,28 +6,30 @@
  * the kill switch, the sandbox redirect — is already exercised against
  * whatever is assigned here.
  */
-import { LoggingChannelAdapter } from '../../core/notifications';
+import { LOGGING_ADAPTER_ID, LoggingChannelAdapter } from '../../core/notifications';
 import type { ChannelAdapter } from '../../core/notifications';
 
 export const notificationAdapter: ChannelAdapter = new LoggingChannelAdapter();
 
 /**
- * Does a `sent` outbox row mean anybody was actually reached? (A-044)
+ * Did anybody actually get this? (A-044, made per-ROW by A-048)
  *
- * DERIVED FROM THE ASSIGNMENT ABOVE, never from an environment variable or a
- * hand-maintained boolean. D-14 promised the real driver is a one-assignment
- * swap, and a second thing to remember to flip would quietly break that
- * promise — the failure mode being a screen that says "sent" for a year.
- *
- * The outbox column is not wrong: the adapter genuinely succeeded. This is a
+ * The outbox column is not wrong — the adapter genuinely succeeded. This is a
  * narrower question that only a staff SCREEN needs to ask, because "Told:
  * Cancellation — sent" is read at the front desk as "no need to call her",
- * and today it means a line on the server console.
+ * and with the console adapter it means a line on the server log.
  *
- * ponytail: build-wide, not per row. The honest version is a provider id on
- * the outbox — `dispatch.ts` already discards the adapter's `externalId`
- * because there is no column for it — and then old rows keep saying `queued`
- * after a real driver lands, which is what actually happened to them. Add the
- * column when a real driver arrives; it needs it anyway, to reconcile.
+ * A-044 answered it from the BUILD: `!(notificationAdapter instanceof
+ * LoggingChannelAdapter)`, evaluated at render time. That is wrong in exactly
+ * one direction and it is the direction that matters — the day a real driver
+ * is wired in, every message ever queued retroactively reads "sent", because
+ * the predicate knows nothing about which adapter actually handled each row.
+ * `dispatch.ts` now stamps `deliveredBy` per row, so the question is asked of
+ * the row that was sent rather than of the code that is running.
+ *
+ * NULL — every row written before the column existed — is `log`'s answer, and
+ * correctly reads as "queued".
  */
-export const notificationsReallySend = !(notificationAdapter instanceof LoggingChannelAdapter);
+export function reallyDelivered(deliveredBy: string | null | undefined): boolean {
+  return !!deliveredBy && deliveredBy !== LOGGING_ADAPTER_ID;
+}

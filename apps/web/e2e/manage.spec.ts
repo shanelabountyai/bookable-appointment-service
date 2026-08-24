@@ -38,8 +38,19 @@ const lastOption = (page: Page) => page.locator('fieldset ul > li > button').las
 async function bookAndTakeTheLink(page: Page, { far = false }: { far?: boolean } = {}): Promise<string> {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+  await expect(page.getByRole('group')).toContainText('Who would you like to see?');
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
+  // WAIT FOR EACH STEP BEFORE CLICKING THE NEXT ONE — the same two assertions
+  // `booking.spec.ts` has always had, and their absence here is why this spec
+  // was intermittently timing out at "Your name" (it predates A-048; verified
+  // by reproducing it on the previous commit). Every step renders the same
+  // `fieldset ul > li > button` list, so a click issued before the transition
+  // settles re-clicks the PREVIOUS step's list and the wizard never advances.
+  // The failure looks nothing like its cause: a 30-second wait for a field on
+  // step 5, from a page still sitting on step 4.
+  await expect(page.getByRole('group')).toContainText('Which day suits you?');
   await (far ? lastOption(page) : firstOption(page)).click(); // the day
+  await expect(page.getByRole('group')).toContainText('What time on');
   await firstOption(page).click(); // the time
   await page.getByLabel('Your name').fill('Ada Chen');
   await page.getByLabel('Phone').fill('(512) 555-0101');

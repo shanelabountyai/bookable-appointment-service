@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { LOGGING_ADAPTER_ID } from './adapter';
 import type { ChannelAdapter, NotificationChannel, OutboundMessage, SendResult } from './adapter';
 
 /**
@@ -20,6 +21,8 @@ import type { ChannelAdapter, NotificationChannel, OutboundMessage, SendResult }
  * else.
  */
 export class LoggingChannelAdapter implements ChannelAdapter {
+  readonly id = LOGGING_ADAPTER_ID;
+
   supports(_channel?: NotificationChannel): boolean {
     return true;
   }

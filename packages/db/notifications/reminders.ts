@@ -22,7 +22,7 @@
 import { REMINDER_ELIGIBLE_STATUSES } from '../../core/scheduling';
 import { reminderWindow } from '../../core/notifications';
 import { fromDate, toDate } from '../../core/time';
-import type { PrismaClient } from '../generated/client/index.js';
+import type { Prisma, PrismaClient } from '../generated/client/index.js';
 // Direct file import, not the `../appointments` barrel: that barrel pulls in
 // reschedule.ts, which imports `../notifications` — importing the barrel here
 // would close a cycle between the two packages' index files.
@@ -78,18 +78,18 @@ export async function sendDueReminders(prisma: PrismaClient, now: Date): Promise
     // token nobody is about to be sent would needlessly kill a link she may
     // already be holding from the FIRST run's message.
     //
-    // ponytail: this check-then-act is not race-proof against two genuinely
-    // CONCURRENT runs (the gap dispatch.ts already accepts for the same
-    // reason — no second trigger exists yet beyond this one scheduled job).
-    // Upgrade path if a second trigger ever appears: an advisory lock keyed
-    // on `dedupeKey`, same pattern dispatch.ts names for its own claim race.
+    // A-048 closed the race this used to only name. The pre-check stays as
+    // the CHEAP path — it saves a transaction on every ordinary re-sweep —
+    // but it is no longer the thing correctness rests on: the enqueue below
+    // reports `duplicate` from the database's own unique index, and losing
+    // that race now rolls the token reissue back (see `AlreadyReminded`).
     const already = await prisma.notificationOutbox.findUnique({ where: { dedupeKey }, select: { id: true } });
     if (already) {
       duplicate++;
       continue;
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await runReminder(prisma, async (tx) => {
       // D-28: reissues rather than reuses. The raw token is never stored —
       // only its hash — so nothing later can recover the one already sent at
       // booking time. The reminder is itself a brand-new outgoing message, so
@@ -121,9 +121,40 @@ export async function sendDueReminders(prisma: PrismaClient, now: Date): Promise
       });
     });
 
-    if (result.outcome === 'recorded') enqueued++;
+    if (result?.outcome === 'recorded') enqueued++;
     else duplicate++;
   }
 
   return { due: due.length, enqueued, duplicate };
+}
+
+/**
+ * A-048 — a reminder that LOSES the race must undo its token reissue.
+ *
+ * The harm of two concurrent runs was never a duplicate message: the unique
+ * index on `dedupeKey` has always stopped that. It was the manage link. Each
+ * run reissues a token first (D-28, revoke-on-reissue), so the loser's
+ * reissue REVOKED the winner's token — and the winner's is the one embedded
+ * in the message that actually goes out. The client would have received a
+ * reminder whose link was already dead.
+ *
+ * Throwing rolls the whole transaction back, token included, which is the
+ * only outcome that leaves the live message holding a live link.
+ */
+class AlreadyReminded extends Error {}
+
+async function runReminder<T extends { outcome: 'recorded' | 'duplicate' }>(
+  prisma: PrismaClient,
+  body: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const result = await body(tx);
+      if (result.outcome === 'duplicate') throw new AlreadyReminded();
+      return result;
+    });
+  } catch (error) {
+    if (error instanceof AlreadyReminded) return null;
+    throw error;
+  }
 }

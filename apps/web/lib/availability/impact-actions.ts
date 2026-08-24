@@ -190,7 +190,7 @@ function shape(conflict: ConflictingAppointment, zone: ReturnType<typeof zoneId>
     acknowledged: conflict.acknowledgedAt !== null,
     acknowledgedReason: conflict.acknowledgedReason,
     lastNotice: conflict.lastNotice
-      ? `${TEMPLATE_WORDS[conflict.lastNotice.template] ?? conflict.lastNotice.template} — ${deliveryWord(conflict.lastNotice.status)}`
+      ? `${TEMPLATE_WORDS[conflict.lastNotice.template] ?? conflict.lastNotice.template} — ${deliveryWord(conflict.lastNotice.status, conflict.lastNotice.deliveredBy)}`
       : null,
   };
 }

@@ -46,6 +46,9 @@ export interface NotificationRow {
   channel: string;
   recipient: string | null;
   status: string;
+  /** A-048. Which adapter handled it — the per-ROW answer to "was she
+   *  actually told?", replacing a predicate about the running build. */
+  deliveredBy: string | null;
   createdAt: Date;
   sentAt: Date | null;
   lastError: string | null;
@@ -157,6 +160,7 @@ export async function loadAppointmentDetail(
           channel: true,
           recipient: true,
           status: true,
+          deliveredBy: true,
           createdAt: true,
           sentAt: true,
           lastError: true,

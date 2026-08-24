@@ -51,7 +51,7 @@ export interface ConflictingAppointment {
    * question turned around). The desk works down this list on the phone, and
    * "she already got a text an hour ago" changes what the next call says.
    */
-  lastNotice: { template: string; status: string; at: Date } | null;
+  lastNotice: { template: string; status: string; deliveredBy: string | null; at: Date } | null;
 }
 
 const SELECT = {
@@ -69,7 +69,7 @@ const SELECT = {
   notifications: {
     orderBy: { createdAt: 'desc' as const },
     take: 1,
-    select: { template: true, status: true, createdAt: true },
+    select: { template: true, status: true, deliveredBy: true, createdAt: true },
   },
 } as const;
 
@@ -85,7 +85,7 @@ type Row = {
   provider: { displayName: string };
   client: { id: string; name: string | null; phone: string | null } | null;
   lines: { serviceId: string; service: { name: string } }[];
-  notifications: { template: string; status: string; createdAt: Date }[];
+  notifications: { template: string; status: string; deliveredBy: string | null; createdAt: Date }[];
 };
 
 const toConflict = (row: Row): ConflictingAppointment => ({
@@ -104,7 +104,12 @@ const toConflict = (row: Row): ConflictingAppointment => ({
   acknowledgedAt: row.conflictAckAt,
   acknowledgedReason: row.conflictAckReason,
   lastNotice: row.notifications[0]
-    ? { template: row.notifications[0].template, status: row.notifications[0].status, at: row.notifications[0].createdAt }
+    ? {
+        template: row.notifications[0].template,
+        status: row.notifications[0].status,
+        deliveredBy: row.notifications[0].deliveredBy,
+        at: row.notifications[0].createdAt,
+      }
     : null,
 });
 
