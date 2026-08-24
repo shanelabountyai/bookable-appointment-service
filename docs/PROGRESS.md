@@ -1541,7 +1541,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## A-052 — who blocked the time, on the screen that shows the time
 
-**Commit:** `TBD`
+**Commit:** `bfd4792`
 
 **Verified before building, as every recent scoping pass has insisted on.** `createdByActor`/`actorRef` are written on `WeeklyWindow`, `DateOverride`, `TimeOff` and `AdHocBlock` — since A-007, restamped correctly by every write path (`packages/db/availability/availability.ts`'s `ActorStamp`). `grep` over `apps/web/app/staff/availability/` found no render of either column: eleven items of data collection, shown to nobody. The oldest outstanding operator finding in the file (R-8).
 
