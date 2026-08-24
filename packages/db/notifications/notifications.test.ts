@@ -6,14 +6,39 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/notifications';
 import { PrismaClient } from '../generated/client/index.js';
-import { LOGGING_ADAPTER_ID } from '../../core/notifications';
+import { ChannelSendError, LOGGING_ADAPTER_ID } from '../../core/notifications';
+import { instant, instantFromIso, toDate } from '../../core/time';
 import { dispatchPendingNotifications } from './dispatch';
+import { countFailedNotifications, listStuckNotifications, retryNotification } from './stuck';
 import { reallyDelivered } from './provider';
 import { enqueueNotification } from './enqueue';
 import { resetDatabase } from '../testing';
 
 const prisma = new PrismaClient();
 let businessId: string;
+
+/**
+ * A-051 — a FROZEN now, so the backoff is tested by advancing a clock rather
+ * than by sleeping through two hours of it. Through the one conversion module,
+ * like every other instant in this repo.
+ */
+const AT = toDate(instantFromIso('2026-06-09T15:00:00.000Z'));
+const later = (ms: number) => toDate(instant(instantFromIso('2026-06-09T15:00:00.000Z') + ms));
+
+/** Fails every send with a given provider code — the input the retry policy
+ *  actually branches on. */
+class CodedAdapter implements ChannelAdapter {
+  readonly id = 'coded';
+  attempts = 0;
+  constructor(private readonly code: string) {}
+  supports(): boolean {
+    return true;
+  }
+  async send(): Promise<SendResult> {
+    this.attempts++;
+    throw new ChannelSendError(this.code, 'the provider said no');
+  }
+}
 
 /** A controllable fake — records every call, and can be told to fail or to
  *  refuse a channel, so dispatch's branches are each independently testable. */
@@ -218,7 +243,7 @@ describe('dispatchPendingNotifications — send', () => {
     });
     const adapter = new FakeAdapter();
     const result = await dispatchPendingNotifications(prisma, adapter);
-    expect(result).toEqual({ sent: 1, failed: 0, suppressed: 0 });
+    expect(result).toEqual({ sent: 1, failed: 0, retrying: 0, suppressed: 0 });
     expect(adapter.sent).toHaveLength(1);
     expect(adapter.sent[0]).toMatchObject({ channel: 'email', to: 'dana@example.com', template: 'appointment.confirmed' });
 
@@ -239,11 +264,20 @@ describe('dispatchPendingNotifications — send', () => {
     });
     const adapter = new FakeAdapter();
     const result = await dispatchPendingNotifications(prisma, adapter);
-    expect(result).toEqual({ sent: 0, failed: 0, suppressed: 0 });
+    expect(result).toEqual({ sent: 0, failed: 0, retrying: 0, suppressed: 0 });
     expect(adapter.sent).toHaveLength(0);
   });
 
-  it('marks a row failed and records the error when the adapter throws', async () => {
+  /**
+   * A-051 CHANGED WHAT THIS TEST ASSERTS, and the change is the item.
+   *
+   * It used to assert `failed` after one throw — which was true, and was the
+   * defect: a row that reached `failed` was terminal, so a provider's bad
+   * minute became a client who was never told. An unrecognised error is
+   * TRANSIENT now, so the row goes back to `pending` with a wait on it and
+   * the reason kept.
+   */
+  it('puts a row back with a wait when the adapter throws something unrecognised', async () => {
     await enqueueNotification(prisma, {
       businessId,
       dedupeKey: 'confirmation:appt4',
@@ -254,13 +288,15 @@ describe('dispatchPendingNotifications — send', () => {
     });
     const adapter = new FakeAdapter();
     adapter.failNext = true;
-    const result = await dispatchPendingNotifications(prisma, adapter);
-    expect(result).toEqual({ sent: 0, failed: 1, suppressed: 0 });
+    const result = await dispatchPendingNotifications(prisma, adapter, 100, AT);
+    expect(result).toEqual({ sent: 0, failed: 0, retrying: 1, suppressed: 0 });
 
     const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'confirmation:appt4' } });
-    expect(row.status).toBe('failed');
+    expect(row.status).toBe('pending');
     expect(row.lastError).toBe('provider rejected the message');
     expect(row.attempts).toBe(1);
+    // A minute, from the table in `core/notifications/retry.ts`.
+    expect(row.nextAttemptAt?.getTime()).toBe(AT.getTime() + 60_000);
   });
 
   it('suppresses a row on an unsupported channel without throwing', async () => {
@@ -275,7 +311,7 @@ describe('dispatchPendingNotifications — send', () => {
     const adapter = new FakeAdapter();
     adapter.unsupportedChannels.add('sms');
     const result = await dispatchPendingNotifications(prisma, adapter);
-    expect(result).toEqual({ sent: 0, failed: 0, suppressed: 1 });
+    expect(result).toEqual({ sent: 0, failed: 0, retrying: 0, suppressed: 1 });
 
     const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'confirmation:appt5' } });
     expect(row.status).toBe('suppressed');
@@ -296,7 +332,7 @@ describe('dispatchPendingNotifications — send', () => {
     process.env.NOTIFICATIONS_ENABLED = 'false';
     const adapter = new FakeAdapter();
     const result = await dispatchPendingNotifications(prisma, adapter);
-    expect(result).toEqual({ sent: 0, failed: 0, suppressed: 0 });
+    expect(result).toEqual({ sent: 0, failed: 0, retrying: 0, suppressed: 0 });
     expect(adapter.sent).toHaveLength(0);
 
     const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'confirmation:appt6' } });
@@ -391,12 +427,16 @@ describe('dispatchPendingNotifications — send', () => {
     });
     const adapter = new FakeAdapter();
     adapter.failNext = true;
-    await dispatchPendingNotifications(prisma, adapter);
+    await dispatchPendingNotifications(prisma, adapter, 100, AT);
 
     const row = await prisma.notificationOutbox.findFirstOrThrow({
       where: { dedupeKey: 'confirmation:failed-provenance' },
     });
-    expect(row.status).toBe('failed');
+    // A-051 moved the STATUS an unrecognised failure lands in — it goes back
+    // to `pending` with a wait rather than straight to `failed`. A-048's
+    // subject is unchanged and is the reason this test exists: whichever
+    // driver could not send it is on the row either way.
+    expect(row.status).toBe('pending');
     expect(row.deliveredBy).toBe('fake');
   });
 
@@ -499,5 +539,219 @@ describe('reallyDelivered (A-048)', () => {
 
   it('is true for anything else — the swap is still one assignment (D-14)', () => {
     expect(reallyDelivered('twilio')).toBe(true);
+  });
+});
+
+/**
+ * A-051 — RETRY, BACKOFF, AND THE SCREEN THAT SHOWS WHAT IS STUCK.
+ *
+ * Before this, a row that reached `failed` was never looked at again: the
+ * A-048 claim matches `pending` or a stale `sending` and nothing else. Against
+ * the console adapter that is invisible. Against a real provider it is a
+ * client who is never told because the provider had a bad minute.
+ */
+describe('A-051 — the retry policy', () => {
+  const queue = (dedupeKey: string, recipient: string | null = 'dana@example.com') =>
+    enqueueNotification(prisma, {
+      businessId,
+      dedupeKey,
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient,
+      payload: {},
+    });
+
+  /** The rule the backlog row states in one line: retry a 503, never retry a
+   *  bad phone number. */
+  it('never retries a failure that is about the recipient', async () => {
+    await queue('retry:permanent');
+    const adapter = new CodedAdapter('invalid_recipient');
+
+    const result = await dispatchPendingNotifications(prisma, adapter, 100, AT);
+    expect(result).toEqual({ sent: 0, failed: 1, retrying: 0, suppressed: 0 });
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'retry:permanent' } });
+    expect(row.status).toBe('failed');
+    expect(row.nextAttemptAt).toBeNull();
+    // The CODE is kept in front of the message — the part a policy branches on
+    // and the part a human can search for. `dispatch.ts` used to store only
+    // `error.message`, throwing away the one stable identifier the contract
+    // has promised since A-004.
+    expect(row.lastError).toBe('invalid_recipient: the provider said no');
+
+    // And it is not tried again on the next run, whatever the clock says.
+    await dispatchPendingNotifications(prisma, adapter, 100, later(24 * 60 * 60_000));
+    expect(adapter.attempts).toBe(1);
+  });
+
+  it('retries a transient failure on a growing backoff, then gives up', async () => {
+    await queue('retry:transient');
+    const adapter = new CodedAdapter('rate_limited');
+
+    // A minute, five minutes, twenty-five minutes, two hours — the table in
+    // `core/notifications/retry.ts`, asserted as elapsed time from the first
+    // attempt rather than re-derived here.
+    const schedule = [60_000, 5 * 60_000, 25 * 60_000, 2 * 60 * 60_000];
+    let elapsed = 0;
+    for (const wait of schedule) {
+      const at = later(elapsed);
+      const result = await dispatchPendingNotifications(prisma, adapter, 100, at);
+      expect(result.retrying).toBe(1);
+      const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'retry:transient' } });
+      expect(row.status).toBe('pending');
+      expect(row.nextAttemptAt?.getTime()).toBe(at.getTime() + wait);
+      elapsed += wait;
+    }
+
+    // The fifth attempt is the last one MAX_ATTEMPTS allows.
+    const final = await dispatchPendingNotifications(prisma, adapter, 100, later(elapsed));
+    expect(final).toEqual({ sent: 0, failed: 1, retrying: 0, suppressed: 0 });
+    expect(adapter.attempts).toBe(5);
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'retry:transient' } });
+    expect(row.status).toBe('failed');
+    expect(row.attempts).toBe(5);
+    expect(row.nextAttemptAt).toBeNull();
+  });
+
+  /** The backoff has to be a PREDICATE, not a hope: a dispatcher running a
+   *  second later must not pick the row straight back up. */
+  it('leaves a waiting row alone until its next attempt is due', async () => {
+    await queue('retry:waiting');
+    const adapter = new CodedAdapter('temporarily_unavailable');
+    await dispatchPendingNotifications(prisma, adapter, 100, AT);
+    expect(adapter.attempts).toBe(1);
+
+    // One second later: still waiting.
+    const tooSoon = await dispatchPendingNotifications(prisma, adapter, 100, later(1_000));
+    expect(tooSoon).toEqual({ sent: 0, failed: 0, retrying: 0, suppressed: 0 });
+    expect(adapter.attempts).toBe(1);
+
+    // A minute later: due.
+    await dispatchPendingNotifications(prisma, adapter, 100, later(60_000));
+    expect(adapter.attempts).toBe(2);
+  });
+
+  /** The happy ending, which is the whole point of retrying at all. */
+  it('sends on a later attempt and clears the wait behind it', async () => {
+    await queue('retry:recovers');
+    const failing = new CodedAdapter('server_error');
+    await dispatchPendingNotifications(prisma, failing, 100, AT);
+
+    const working = new FakeAdapter();
+    const result = await dispatchPendingNotifications(prisma, working, 100, later(60_000));
+    expect(result).toEqual({ sent: 1, failed: 0, retrying: 0, suppressed: 0 });
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'retry:recovers' } });
+    expect(row.status).toBe('sent');
+    expect(row.attempts).toBe(2);
+    // A stale wait on a sent row is a lie on the screen.
+    expect(row.nextAttemptAt).toBeNull();
+    expect(row.lastError).toBeNull();
+  });
+
+  /**
+   * A row with nobody to send to used to be handed to the adapter as an empty
+   * string. The console adapter cheerfully "delivered" it; a real one would
+   * have failed it four more times on a backoff first.
+   */
+  it('gives up immediately on a row with no recipient at all', async () => {
+    // Written directly: `enqueueNotification` suppresses a null recipient up
+    // front (P2-4), so the only way into this state is a row that lost its
+    // contact details afterwards — which is exactly the case worth defending.
+    await prisma.notificationOutbox.create({
+      data: {
+        businessId,
+        dedupeKey: 'retry:no-recipient',
+        channel: 'email',
+        template: 'appointment.confirmed',
+        recipient: null,
+        payload: {},
+        status: 'pending',
+      },
+    });
+    const adapter = new FakeAdapter();
+    const result = await dispatchPendingNotifications(prisma, adapter, 100, AT);
+
+    expect(result).toEqual({ sent: 0, failed: 1, retrying: 0, suppressed: 0 });
+    expect(adapter.sent).toHaveLength(0);
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'retry:no-recipient' } });
+    expect(row.status).toBe('failed');
+    expect(row.lastError).toMatch(/^no_recipient:/);
+  });
+});
+
+describe('A-051 — what did not go out', () => {
+  const queue = (dedupeKey: string) =>
+    enqueueNotification(prisma, {
+      businessId,
+      dedupeKey,
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient: 'dana@example.com',
+      payload: {},
+    });
+
+  /** Both kinds on one list — the desk's question is one question. */
+  it('lists the given-up and the still-trying, and nothing that is merely new', async () => {
+    // Written directly, because the SUBJECT here is which rows the query
+    // selects, and driving three different outcomes through the dispatcher to
+    // get there would be testing the dispatcher again with more steps.
+    const row = (dedupeKey: string, status: 'pending' | 'failed' | 'sent', attempts: number) =>
+      prisma.notificationOutbox.create({
+        data: {
+          businessId,
+          dedupeKey,
+          channel: 'email',
+          template: 'appointment.confirmed',
+          recipient: 'dana@example.com',
+          payload: {},
+          status,
+          attempts,
+        },
+      });
+
+    await row('stuck:dead', 'failed', 5);
+    await row('stuck:waiting', 'pending', 2);
+    await row('stuck:fresh', 'pending', 0); // queued a second ago — not stuck
+    await row('stuck:gone-out', 'sent', 1);
+
+    const stuck = await listStuckNotifications(prisma, businessId);
+    const keys = await Promise.all(
+      stuck.map(async (found) => (await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: found.id } })).dedupeKey),
+    );
+    expect(keys.sort()).toEqual(['stuck:dead', 'stuck:waiting']);
+    expect(stuck.find((found) => found.status === 'failed')?.attempts).toBe(5);
+  });
+
+  it('counts only what has been given up on', async () => {
+    await queue('count:waiting');
+    await dispatchPendingNotifications(prisma, new CodedAdapter('server_error'), 100, AT);
+    expect(await countFailedNotifications(prisma, businessId)).toBe(0);
+
+    await dispatchPendingNotifications(prisma, new CodedAdapter('invalid_recipient'), 100, later(60_000));
+    expect(await countFailedNotifications(prisma, businessId)).toBe(1);
+  });
+
+  /** The desk fixed the phone number. The row gets a FULL budget back — a
+   *  retry with its budget already spent would try once, give up again, and
+   *  look from the desk like the button does not work. */
+  it('puts a failed row back with its attempts reset, and refuses one from another salon', async () => {
+    await queue('retry:by-hand');
+    await dispatchPendingNotifications(prisma, new CodedAdapter('invalid_recipient'), 100, AT);
+    const failed = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'retry:by-hand' } });
+
+    const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+    expect(await retryNotification(prisma, { businessId: other.id, id: failed.id })).toBe(false);
+
+    expect(await retryNotification(prisma, { businessId, id: failed.id })).toBe(true);
+    const requeued = await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: failed.id } });
+    expect(requeued.status).toBe('pending');
+    expect(requeued.attempts).toBe(0);
+    expect(requeued.nextAttemptAt).toBeNull();
+
+    // And it really does go out on the next run.
+    const working = new FakeAdapter();
+    expect((await dispatchPendingNotifications(prisma, working, 100, later(1_000))).sent).toBe(1);
   });
 });

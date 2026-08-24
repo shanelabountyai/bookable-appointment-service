@@ -21,9 +21,16 @@ export interface UnconfirmedAppointment {
   id: string;
   startAt: Date;
   providerName: string;
+  /** A-051 (OQ-5): needed to put the no-show flag on the row. Null for a
+   *  walk-in with no record, which has no history to flag. */
+  clientId: string | null;
   clientName: string | null;
   clientPhone: string | null;
   serviceNames: string[];
+  /** A-051 (OQ-5): what tomorrow loses if this one does not turn up. Summed
+   *  from the appointment's OWN line prices, never the live catalogue — the
+   *  visit was priced when it was booked (D-16's reflex). */
+  valueCents: number;
 }
 
 /**
@@ -31,9 +38,14 @@ export interface UnconfirmedAppointment {
  * reads no clock and derives no timezone, same discipline as
  * `clientReliability`'s `today`.
  *
- * Sorted by time: the desk works down the day in order. OQ-3's sibling open
- * question, OQ-5, asks whether this should instead rank by ticket value or
- * no-show risk — unanswered, so this stays the plain reading until it is.
+ * SORTED BY TIME, and A-051 settled that rather than leaving it open (D-37).
+ * OQ-5 asked whether this should rank by ticket value or no-show risk
+ * instead; the answer is neither. The desk works down the day in order,
+ * usually with the diary open beside it, and silently reordering that list
+ * makes every row's position mean something the person reading it does not
+ * know. What the row now CARRIES is the triage information — the ticket value
+ * and the no-show flag — so a desk that runs out of afternoon can pick, which
+ * is the need behind the question without the surprise behind the answer.
  */
 export async function listUnconfirmedTomorrow(
   db: Db,
@@ -46,8 +58,11 @@ export async function listUnconfirmedTomorrow(
       id: true,
       startAt: true,
       provider: { select: { displayName: true } },
-      client: { select: { name: true, phone: true } },
-      lines: { orderBy: { ordinal: 'asc' }, select: { service: { select: { name: true } } } },
+      client: { select: { id: true, name: true, phone: true } },
+      lines: {
+        orderBy: { ordinal: 'asc' },
+        select: { priceCents: true, service: { select: { name: true } } },
+      },
     },
   });
 
@@ -55,8 +70,10 @@ export async function listUnconfirmedTomorrow(
     id: row.id,
     startAt: row.startAt,
     providerName: row.provider.displayName,
+    clientId: row.client?.id ?? null,
     clientName: row.client?.name ?? null,
     clientPhone: row.client?.phone ?? null,
     serviceNames: row.lines.map((l) => l.service.name),
+    valueCents: row.lines.reduce((total, line) => total + line.priceCents, 0),
   }));
 }

@@ -3,6 +3,8 @@ import { prisma } from '@bookable/db';
 import { addDays, fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
+import { clientReliability } from '@bookable/db/clients';
+import { flagSentence } from '@/components/client-flag';
 import { listCallDown } from '@/lib/appointments/call-down-actions';
 import { ConfirmButton } from './confirm-button';
 
@@ -30,6 +32,16 @@ export default async function CallDownPage() {
   const tomorrow = addDays(today, 1);
 
   const unconfirmed = await listCallDown(tomorrow);
+
+  // A-051 settles OQ-5 (D-37): the list stays in TIME order and carries the
+  // triage information instead of being reordered by it. One query for the
+  // whole page — `clientReliability` takes the ids together, the same way the
+  // booking panel's client search asks it.
+  const flags = await clientReliability(prisma, {
+    businessId: staff.businessId,
+    clientIds: unconfirmed.map((appointment) => appointment.clientId).filter((id): id is string => id !== null),
+    today,
+  });
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -64,6 +76,16 @@ export default async function CallDownPage() {
                   <a href={`tel:${appointment.clientPhone}`} className="underline underline-offset-4">
                     {appointment.clientPhone}
                   </a>
+                ) : null}
+                {/* What tomorrow loses if she does not turn up. On the row
+                    rather than in the sort, so the desk chooses. */}
+                <span className="text-zinc-600 dark:text-zinc-400">
+                  ${(appointment.valueCents / 100).toFixed(2)}
+                </span>
+                {appointment.clientId && flagSentence(flags.get(appointment.clientId)!) ? (
+                  <span className="text-amber-800 dark:text-amber-300">
+                    ⚑ {flagSentence(flags.get(appointment.clientId)!)}
+                  </span>
                 ) : null}
               </div>
               <div className="flex items-center gap-3">

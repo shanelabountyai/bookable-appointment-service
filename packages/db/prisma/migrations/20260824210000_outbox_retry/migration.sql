@@ -1,0 +1,17 @@
+-- A-051 — a failed notification is retried, and the backoff is a column.
+--
+-- The A-048 claim matches `pending` or a stale `sending`, so a row that
+-- reached `failed` was terminal: no backoff, no re-claim, no surface. Against
+-- a console adapter that is invisible. Against a real provider it is a client
+-- who is never told, because the provider had a bad minute.
+--
+-- NO NEW STATUS. A row waiting for its next try is `pending` with
+-- `nextAttemptAt` in the future — the claim already asks for `pending`, and
+-- this is the single extra predicate it needed. Adding a `retrying` state
+-- would have meant revisiting every list that reads this enum (the claim, the
+-- surfaces, the tests), which is the "a status enum is never one edit" trap
+-- that CLAUDE.md names and that the rental build paid for twice.
+--
+-- NULL means "no wait" — the state every row is in on its first pass, and the
+-- reason the column needs no backfill.
+ALTER TABLE "NotificationOutbox" ADD COLUMN "nextAttemptAt" TIMESTAMPTZ(3);

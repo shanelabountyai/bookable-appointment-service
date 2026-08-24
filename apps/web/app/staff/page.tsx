@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { prisma } from '@bookable/db';
+import { countFailedNotifications } from '@bookable/db/notifications';
 import { requireStaff } from '@/lib/auth/session';
 import { logout } from '@/lib/auth/actions';
 
@@ -13,6 +15,13 @@ import { logout } from '@/lib/auth/actions';
  */
 export default async function StaffHome() {
   const staff = await requireStaff();
+
+  // A-051. The COUNT, not just the link: a screen about messages nobody was
+  // told about is only as useful as the reason somebody has to open it. Only
+  // the given-up rows are counted — a message still working through its
+  // backoff is not a number anybody should act on, and counting it would
+  // train the desk to ignore the badge.
+  const notTold = await countFailedNotifications(prisma, staff.businessId);
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
@@ -53,6 +62,9 @@ export default async function StaffHome() {
         </Link>
         <Link href="/staff/waitlist" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Waitlist
+        </Link>
+        <Link href="/staff/messages" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+          Messages{notTold > 0 ? ` — ${notTold} not sent` : ''}
         </Link>
         {/* A-050 (D-36). Hidden for a stylist, and REFUSED by the route as
             well — hiding a link hides nothing from anybody who has seen the

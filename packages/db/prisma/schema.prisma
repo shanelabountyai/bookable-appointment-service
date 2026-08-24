@@ -941,6 +941,13 @@ model NotificationOutbox {
   /// value you already hold is not a speculative column (D-13).
   externalId  String?
 
+  /// A-051. NOT BEFORE THIS INSTANT — the backoff, as a column rather than as
+  /// a sleep. A row waiting to be retried is `pending` with this set in the
+  /// future, which is why the retry needed no new status: the claim already
+  /// looks for `pending`, and this is the only thing it had to also ask.
+  /// NULL means "as soon as you like", which is every row on its first pass.
+  nextAttemptAt DateTime? @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
@@ -954,6 +961,8 @@ model NotificationOutbox {
   @@index([appointmentId])
   /// A-048's claim orders the whole queue by age, across businesses — the
   /// dispatcher is not per-tenant. `[businessId, status]` cannot serve it.
+  /// A-051 added `nextAttemptAt` to the claim's predicate; the leading
+  /// `status` still does the work, so the index is unchanged.
   @@index([status, createdAt])
 }
 

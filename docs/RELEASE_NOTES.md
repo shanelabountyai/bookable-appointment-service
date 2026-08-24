@@ -1517,3 +1517,27 @@ For the same reason, the last owner cannot be demoted, and cannot be taken off t
 Both count *failures*, not attempts: signing in correctly forgets the count. A desk that legitimately signs in eleven times on a Saturday must not lock itself out, and an attacker who has already guessed right has no use for the budget they just cleared.
 
 The lockout also gets its own message, and it is the only sign-in failure that does. Every other failure says the same deliberately vague thing, because a form that distinguishes "no such user" from "wrong password" is a directory of who works here. But a desk typing the right password into a door that has quietly closed needs to be told the door is closed — otherwise the software has produced a phone call instead of preventing one.
+
+## The message that was never sent again
+
+A notification that failed once was never tried again. It was recorded as failed, and that was the end of it — no second attempt, no delay and retry, and no screen anywhere that would tell a human it had happened.
+
+That was invisible, because this system's message sender currently writes to a server log rather than to a real email or SMS provider, and a log file does not have bad minutes. Real providers do. A rate limit, a five-second outage, a 503 from a datacentre having an afternoon — every one of those is a temporary condition that clears on its own, and every one of them meant a client who was simply never told, permanently, with nothing on any screen to say so.
+
+**Now a failed message is tried again on a widening schedule**: a minute later, then five, then twenty-five, then two hours. Five attempts in all, and then it stops. The whole sequence is spent in a little over two hours, which is deliberate — it is comfortably longer than a provider's bad minute and comfortably shorter than the useful life of a reminder for tomorrow morning. A reminder that finally goes out at midnight is not a reminder.
+
+**The interesting decision is which failures are worth retrying.** Not all of them are, and getting this wrong is expensive in both directions. A phone number that is not in service will not be in service in five minutes; retrying it four more times is four more charges and, on some providers, a reputation penalty for repeatedly messaging a dead number. So failures that are about *the recipient* — a dead number, an address that does not exist, someone who has unsubscribed — are permanent, and are given up on immediately.
+
+Everything else is retried. Including, deliberately, failures the software does not recognise.
+
+That default is worth explaining, because the instinct runs the other way. The two mistakes are not equally bad. Retrying something that was actually permanent costs a handful of attempts that fail, and the message still lands on the "nobody was told" screen at the end with its reason attached. *Not* retrying something that was actually temporary costs a client who never hears from the salon and nobody who ever finds out. One of those has a floor under it. The other is the exact problem this release exists to remove — so the unfamiliar case gets the safe treatment, not the strict one.
+
+**And there is now a screen.** A retry policy nobody can see is the same silence with better manners.
+
+It shows two things at once, on purpose, because the front desk is asking one question — *is anybody not going to hear from us?* At the top, the messages that were given up on, each with the provider's own reason written out rather than a friendly paraphrase: "the number is not in service" is what sends someone to fix the number, and a softer wording throws that away. Below them, the messages still working through their retries — which is there to be *reassuring*. Without it, a message quietly waiting five minutes for its next attempt is invisible, and the desk phones a client the system was about to reach anyway.
+
+The count on the staff home page counts only the first group. A message still trying is not something anybody should act on, and a badge that lights up for it is a badge people learn to ignore.
+
+Fixed the phone number? There is a button that puts the message back in the queue with a full set of attempts again — not the one remaining attempt it had left, which would fail once more and look, from the desk, like the button was broken.
+
+**Two smaller things came with it.** A message with no contact details on it at all used to be handed to the sender as an empty address, which the log adapter cheerfully reported as delivered; it is now recognised for what it is and said out loud once. And the call-down list — tomorrow's unconfirmed appointments — now shows each booking's value and any no-show history next to it. It stays in time order deliberately: the desk works down the day with the diary open, and silently re-ranking that list would make every row's position mean something the person reading it does not know. The information to triage by is on the row; the choice stays with the person.
