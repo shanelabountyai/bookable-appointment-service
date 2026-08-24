@@ -1504,7 +1504,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## A-051 — the retry policy, and the screen that shows what is stuck
 
-**Commit:** `TBD`
+**Commit:** `00cd18b`
 
 **The defect, verified before it was fixed.** A-048's claim matches `pending` or a stale `sending` and nothing else, so a row that reached `failed` was never looked at again — no backoff, no re-claim, no surface. Invisible while the wired adapter writes to a console. On the first day a real provider has a bad minute it is a client who is simply never told, silently, forever.
 
