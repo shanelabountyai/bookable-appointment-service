@@ -1467,7 +1467,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## A-050 — per-person credentials, two roles, and a brake on both doors
 
-**Commit:** `TBD`
+**Commit:** `d83762e`
 
 **The finding, restated exactly.** A-037 put four names on the audit trail. It did not put four credentials under the desk — there was one, shared, and `grep` for a `role` column in `schema.prisma` returned nothing. So every stylist who could sign in could open `/staff/dashboard`: revenue, utilization, and each of her colleagues' no-show counts. Two prior items (A-005, A-044) had also left the brute-force brake as a `ponytail:` note, with the scrypt cost as the only control.
 
