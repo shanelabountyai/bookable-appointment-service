@@ -1559,7 +1559,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## A-054 — demo checkpoint 4, walked at the seams
 
-**Commit:** `TBD`
+**Commit:** `5b10d0d`
 
 Full transcript and findings: `docs/reviews/11-demo-checkpoint-4.md`. Walked 2026-08-24, when A-052 closed the last built row and the scoped backlog ran out for the sixth time. Scenes were chosen at the **seams between** items — the three the backlog row named — rather than down the middle of any one of them.
 
