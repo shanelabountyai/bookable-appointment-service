@@ -17,18 +17,24 @@ import { prisma } from '@bookable/db';
 import {
   BookingRejected,
   NoResourceFree,
+  type SeriesOccurrenceResult,
+  type SkipReason,
   SlotNotOffered,
   SlotTaken,
   bookAppointment,
   clientAlreadyBookedAround,
+  createSeries,
   walkInOptions,
 } from '@bookable/db/booking';
 import { computeDaySlots } from '@bookable/db/scheduling';
 import { clientReliability, searchClients } from '@bookable/db/clients';
 import { normalizePhone } from '@bookable/core/clients';
 import { calendarDay, fromDate, instantFromIso, resolve, toDate, toLabel, wallTime, zoneId } from '@bookable/core/time';
+import { InvalidSeries } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
+import { readableDay } from '@/lib/customer-format';
+import { readableReason } from '@/lib/scheduling-words';
 import { flagSentence } from '@/components/client-flag';
 
 export interface StaffBookingState {
@@ -49,6 +55,29 @@ export interface StaffBookingState {
   /** The engine's own words, when it has any. */
   refusedReasons?: string[];
   bookedId?: string;
+  /** A-049 — set when this was a standing appointment rather than one. */
+  series?: SeriesSummary;
+}
+
+/** One week of a standing appointment, as the desk reads it back. */
+export interface SeriesLine {
+  /** "Tuesday 9 June", in the salon's zone. */
+  day: string;
+  /** Set when that week booked — the desk taps through to it. */
+  appointmentId?: string;
+  /**
+   * Why it did not book, or what was odd about the week it did. Empty on an
+   * ordinary occurrence. A SENTENCE, never a code: this list is read at a desk
+   * with a client standing at it, and "not-offered" is not an answer.
+   */
+  note?: string;
+}
+
+export interface SeriesSummary {
+  booked: number;
+  requested: number;
+  intervalWeeks: number;
+  lines: SeriesLine[];
 }
 
 export interface ClientChoice {
@@ -175,6 +204,34 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
     startAt = toDate(instantFromIso(atIso));
   } catch {
     return { ok: false, message: 'That time is not readable. Go back to the day and pick again.' };
+  }
+
+  // A-049 — "and every four weeks after that". One form and one submit for
+  // both, because a standing appointment is the same booking said twice: the
+  // panel's whole shape above (services, day, time, who she is) is the anchor
+  // occurrence, and the repeat is two numbers beside the button. A second
+  // screen for it would be a second booking form to keep in step with this one.
+  const repeatCount = Number(formData.get('repeatCount') ?? 1);
+  const intervalWeeks = Number(formData.get('repeatEveryWeeks') ?? 4);
+  if (Number.isFinite(repeatCount) && repeatCount > 1) {
+    // An override is one appointment with a reason typed against it (BOOK-05).
+    // Repeating it would apply that one reason to six bookings the desk has
+    // not looked at — which is exactly how an override marker stops meaning
+    // anything. Refused with the way forward, never silently dropped.
+    if (isOverride) {
+      return {
+        ok: false,
+        message: 'An override books one appointment. Book this one, then set the repeat up from a time she is free.',
+      };
+    }
+    return bookStandingSeries(staff, {
+      providerId,
+      serviceIds,
+      clientId: clientIdRaw || null,
+      startAt,
+      intervalWeeks,
+      count: repeatCount,
+    });
   }
 
   try {
@@ -364,6 +421,120 @@ export async function instantForTime(day: string, time: string): Promise<{ times
       { at: toDate(resolution.later).toISOString(), label: time, note: 'second time round' },
     ],
   };
+}
+
+/**
+ * A-049 — the standing appointment, written from the instant the desk tapped.
+ *
+ * The rule is stored on the CALENDAR axis (D-34): a day and a wall time, never
+ * an instant plus an offset, because four weeks is 168 hours only when no
+ * clock changes in between. So the picked instant is LABELLED back into
+ * `(day, time)` here, at the boundary, and `createSeries` never sees an
+ * instant at all.
+ *
+ * Partial by design: it books what it can and names every week it could not.
+ * The summary this returns is that list, already in sentences — the desk reads
+ * it and makes two phone calls.
+ */
+async function bookStandingSeries(
+  staff: { id: string; businessId: string },
+  input: {
+    providerId: string;
+    serviceIds: string[];
+    clientId: string | null;
+    startAt: Date;
+    intervalWeeks: number;
+    count: number;
+  },
+): Promise<StaffBookingState> {
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+  const zone = zoneId(business.timezone);
+  const anchor = toLabel(fromDate(input.startAt), zone);
+
+  // THE ROUND TRIP HAS TO HOLD. Writing the rule down as a wall time and
+  // reading it back gives the same instant every day of the year except one:
+  // on fall-back day "01:30" names two, and `bookableInstant` takes the
+  // earlier (reusing `offer-earlier-only`). If the desk deliberately tapped
+  // the SECOND 01:30 — a real choice the panel offers by name — the anchor
+  // occurrence would silently book the first, an hour from the appointment
+  // just agreed with the client. Refused, with both ways out.
+  const roundTrip = resolve(calendarDay(anchor.day), wallTime(anchor.time), zone);
+  if (roundTrip.kind === 'ambiguous' && toDate(roundTrip.earlier).getTime() !== input.startAt.getTime()) {
+    return {
+      ok: false,
+      message: `${anchor.time} happens twice that day — the clocks go back. Start the repeat from the first ${anchor.time}, or book this one on its own.`,
+    };
+  }
+
+  let result;
+  try {
+    result = await createSeries(prisma, {
+      businessId: staff.businessId,
+      providerId: input.providerId,
+      clientId: input.clientId,
+      serviceIds: input.serviceIds,
+      anchorDay: anchor.day,
+      time: anchor.time,
+      intervalWeeks: input.intervalWeeks,
+      count: input.count,
+      now: new Date(),
+      actor: staffActor(staff.id),
+    });
+  } catch (error) {
+    // A mistyped "600" or "every 0 weeks" comes back at the form with its own
+    // sentence. Anything else is a real fault and is not dressed up as one.
+    if (error instanceof InvalidSeries) return { ok: false, message: error.message };
+    throw error;
+  }
+
+  revalidatePath('/staff/day');
+  return {
+    ok: true,
+    bookedId: result.occurrences.find((occurrence) => occurrence.appointmentId)?.appointmentId,
+    message:
+      result.booked === input.count
+        ? `Booked all ${input.count}.`
+        : result.booked === 0
+          ? 'Nothing could be booked. Every week is below, with the reason.'
+          : `Booked ${result.booked} of ${input.count}. The rest are below, with the reason.`,
+    series: {
+      booked: result.booked,
+      requested: input.count,
+      intervalWeeks: input.intervalWeeks,
+      lines: result.occurrences.map((occurrence) => {
+        const note = seriesNote(occurrence, anchor.time);
+        return {
+          day: readableDay(occurrence.day),
+          ...(occurrence.appointmentId ? { appointmentId: occurrence.appointmentId } : {}),
+          ...(note ? { note } : {}),
+        };
+      }),
+    },
+  };
+}
+
+/** A week's outcome as a sentence somebody can act on, never a code. */
+function seriesNote(occurrence: SeriesOccurrenceResult, time: string): string | null {
+  if (occurrence.doubledHour) return `the clocks go back — booked the first ${time}`;
+  if (!occurrence.skipped) return null;
+  const skipped: SkipReason = occurrence.skipped;
+  switch (skipped.kind) {
+    case 'no-such-time':
+      return `there is no ${time} that day — the clocks go forward`;
+    case 'taken':
+      return readableReason('overlaps-booking');
+    case 'no-chair':
+      return readableReason('no-resource-free');
+    case 'not-offered':
+      // The engine's OWN words, carried through. An empty list means this time
+      // was never a candidate at all — outside her hours entirely.
+      return skipped.reasons.length > 0
+        ? skipped.reasons.map(readableReason).join('; ')
+        : readableReason('outside-working-window');
+  }
 }
 
 // ─────────────────────────── internals ───────────────────────────

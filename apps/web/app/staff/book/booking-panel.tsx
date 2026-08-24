@@ -86,6 +86,13 @@ export function BookingPanel({
   // a time nobody chose. The list is there; the desk picks from it.
   const [chosenSlot, setChosenSlot] = useState<string | null>(null);
 
+  // A-049 — "and every four weeks after that". Two numbers, not a wizard: the
+  // rest of this form already IS the anchor occurrence. `1` means just this
+  // one, which is what the field says out loud so the default is never a
+  // repeat nobody asked for.
+  const [repeatCount, setRepeatCount] = useState(1);
+  const [repeatEvery, setRepeatEvery] = useState(4);
+
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<ClientChoice[]>([]);
   const [client, setClient] = useState<ClientChoice | null>(initialClient);
@@ -168,6 +175,31 @@ export function BookingPanel({
     return (
       <div className="flex flex-col gap-4">
         <p className="text-lg font-medium">{state.message}</p>
+        {/* A-049 — EVERY week, booked and skipped alike, in one list.
+            Creation is partial by design (D-34), so a summary that showed
+            only what succeeded would be the silent skip this whole item is
+            the opposite of: the fourth Tuesday is somebody else's, and the
+            desk finds that out here or on the phone in four weeks' time. */}
+        {state.series ? (
+          <ul className="flex flex-col gap-1">
+            {state.series.lines.map((line) => (
+              <li
+                key={line.day}
+                className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
+              >
+                <span className="font-medium">{line.day}</span>
+                {line.appointmentId ? (
+                  <Link href={`/staff/appointments/${line.appointmentId}`} className="underline underline-offset-4">
+                    booked
+                  </Link>
+                ) : (
+                  <span className="text-amber-800 dark:text-amber-300">not booked</span>
+                )}
+                {line.note ? <span className="text-zinc-600 dark:text-zinc-400">— {line.note}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {/* The day just booked, not the day the panel was opened on — the
             desk may have moved forward from here (A-039). */}
         <Link href={`/staff/day?day=${day}`} className={primary + ' self-start'}>
@@ -379,6 +411,48 @@ export function BookingPanel({
         </fieldset>
       ) : null}
 
+      {/* A-049 (D-34). The salon's forward book is mostly standing series —
+          "same time every four weeks" — and until now the desk built each one
+          by hand. Not offered for a walk-in: she is standing at the desk now,
+          and "now, every four weeks" is not a sentence anybody says. */}
+      {!walkIn ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+            Repeat it?
+          </legend>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              How many appointments?
+              <input
+                type="number"
+                name="repeatCount"
+                min={1}
+                max={104}
+                value={repeatCount}
+                onChange={(event) => setRepeatCount(Number(event.target.value))}
+                className={field + ' w-24'}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Every how many weeks?
+              <input
+                type="number"
+                name="repeatEveryWeeks"
+                min={1}
+                max={26}
+                value={repeatEvery}
+                onChange={(event) => setRepeatEvery(Number(event.target.value))}
+                className={field + ' w-24'}
+              />
+            </label>
+          </div>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            1 books just this one. 6 books her next six, this one included — and any week that will not take her is
+            listed rather than skipped.
+          </p>
+        </fieldset>
+      ) : null}
+
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
           Who is she?
@@ -472,14 +546,23 @@ export function BookingPanel({
           <p className="text-sm font-medium" aria-live="polite">
             {state.message}
           </p>
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            {state.refusedReasons?.length
-              ? `${state.refusedReasons.map(readableReason).join('; ')}.`
-              : // No reasons means the engine never considered this time a
-                // candidate — it is outside her working hours entirely, which
-                // is BOOK-05's first override case rather than a dead end.
-                'That time is outside her working hours.'}
-          </p>
+          {/* Gated on `canOverride` — the flag that means THE ENGINE refused —
+              rather than rendered unconditionally. Not every refusal comes
+              from the engine: A-049's "an override cannot repeat" and its
+              doubled-hour anchor are refusals with their own complete
+              sentence, and the fallback below would have told the desk they
+              were "outside her working hours", which is a lie about a time
+              that is free. */}
+          {state.canOverride ? (
+            <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              {state.refusedReasons?.length
+                ? `${state.refusedReasons.map(readableReason).join('; ')}.`
+                : // No reasons means the engine never considered this time a
+                  // candidate — it is outside her working hours entirely,
+                  // which is BOOK-05's first override case, not a dead end.
+                  'That time is outside her working hours.'}
+            </p>
+          ) : null}
 
           {state.canOverride ? (
             <>
@@ -501,7 +584,9 @@ export function BookingPanel({
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={!ready || booking} className={primary}>
-          {booking ? 'Booking…' : 'Book'}
+          {/* The count is ON the button: six rows about to be written into the
+              book is not something the desk should discover afterwards. */}
+          {booking ? 'Booking…' : repeatCount > 1 ? `Book ${repeatCount} appointments` : 'Book'}
         </button>
         {!ready ? (
           <p className="text-sm text-zinc-600 dark:text-zinc-400">

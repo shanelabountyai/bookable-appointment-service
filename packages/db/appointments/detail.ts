@@ -99,6 +99,17 @@ export interface AppointmentDetail {
   startedAt: Date | null;
   endedAt: Date | null;
   confirmedAt: Date | null;
+  /**
+   * A-049 (D-34) — the standing appointment this one is an occurrence of, or
+   * null for an ordinary booking.
+   *
+   * `ordinal` is the position in the PLAN, and `requested` is how many weeks
+   * were asked for — so "3rd of 6" stays true even when the fourth week was
+   * never bookable. The link SURVIVES cancelling and rescheduling as
+   * provenance: an occurrence detaches from the rule's future, not from its
+   * own history.
+   */
+  series: { id: string; ordinal: number; intervalWeeks: number; requested: number } | null;
   /** AVAIL-05's marker: this appointment sits inside an absence. DERIVED here
    *  and on every render (operator R-7), never stored. */
   conflicted: boolean;
@@ -132,6 +143,9 @@ export async function loadAppointmentDetail(
       confirmedAt: true,
       conflictAckAt: true,
       conflictAckReason: true,
+      seriesId: true,
+      seriesOrdinal: true,
+      series: { select: { intervalWeeks: true, requested: true } },
       provider: { select: { displayName: true } },
       // The hold and not `Appointment.resource` — same row in practice, but
       // the hold is what the exclusion constraint ranges over, so reading it
@@ -204,6 +218,17 @@ export async function loadAppointmentDetail(
     startedAt: appointment.startedAt,
     endedAt: appointment.endedAt,
     confirmedAt: appointment.confirmedAt,
+    // Guarded on the RELATION, not on `seriesId`: the column is `SetNull`, so
+    // deleting a rule leaves the booked client exactly where she is and this
+    // screen stops claiming she is the third of six of something gone.
+    series: appointment.series
+      ? {
+          id: appointment.seriesId!,
+          ordinal: appointment.seriesOrdinal ?? 0,
+          intervalWeeks: appointment.series.intervalWeeks,
+          requested: appointment.series.requested,
+        }
+      : null,
     conflicted,
     conflictAcknowledgedAt: appointment.conflictAckAt,
     conflictAcknowledgedReason: appointment.conflictAckReason,

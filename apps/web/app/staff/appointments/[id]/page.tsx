@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
 import { loadAppointmentDetail } from '@bookable/db/appointments';
+import { listSeriesOccurrences } from '@bookable/db/booking';
 import { reliabilityFor } from '@bookable/db/clients';
 import {
   type AppointmentStatus,
@@ -91,6 +92,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
     : null;
   const flag = reliability ? flagSentence(reliability) : null;
 
+  // A-049 — the rest of her standing appointment. Read HERE rather than
+  // linked to a screen of its own: "which one is this and where are the
+  // others" is one question asked in front of a client, and a second route
+  // for four rows is a route to keep in step with this one.
+  const siblings = detail.series ? await listSeriesOccurrences(prisma, detail.series.id) : [];
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
       <div>
@@ -135,6 +142,41 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
             Conflicts
           </Link>
         </p>
+      ) : null}
+
+      {/* A-049 (D-34). "3rd of 6, every 4 weeks", and then the rest of them.
+          The ordinal is the position in the PLAN and `requested` is what was
+          asked for, so the sentence stays true when a week could not be
+          booked — the list below is what actually exists, which is the honest
+          pairing. Cancelled occurrences stay listed: the link is provenance
+          and survives, and "she cancelled the third one" is the fact the desk
+          is looking for. */}
+      {detail.series ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+            Standing appointment
+          </h2>
+          <p className="text-sm font-medium">
+            {ordinalWord(detail.series.ordinal + 1)} of {detail.series.requested}, {everyWeeks(detail.series.intervalWeeks)}.
+          </p>
+          <ul className="flex flex-col gap-1">
+            {siblings.map((sibling) => (
+              <li
+                key={sibling.id}
+                className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
+              >
+                {sibling.id === detail.id ? (
+                  <span className="font-medium">{readableInstant(sibling.startAt, business.timezone)} — this one</span>
+                ) : (
+                  <Link href={`/staff/appointments/${sibling.id}`} className="underline underline-offset-4">
+                    {readableInstant(sibling.startAt, business.timezone)}
+                  </Link>
+                )}
+                <span className="text-zinc-600 dark:text-zinc-400">{sibling.status.replace('_', ' ')}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {detail.isOverride ? (
@@ -261,6 +303,21 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
  *  in whole minutes. Epoch-ms arithmetic (`fromDate`), never wall-clock. */
 function freedMinutes(detail: { blockedStart: Date; blockedEnd: Date }): number {
   return Math.round((fromDate(detail.blockedEnd) - fromDate(detail.blockedStart)) / 60_000);
+}
+
+/** "3rd". A series is read out loud at a desk, and "occurrence 2" is not how
+ *  anybody says it. */
+function ordinalWord(n: number): string {
+  const teens = n % 100;
+  if (teens >= 11 && teens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
+/** The cadence in the salon's words. WEEKS, never days: the rule is stored on
+ *  the calendar axis for exactly this reason (D-34), and "every 28 days" is a
+ *  sentence that stops being true twice a year. */
+function everyWeeks(intervalWeeks: number): string {
+  return intervalWeeks === 1 ? 'every week' : `every ${intervalWeeks} weeks`;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

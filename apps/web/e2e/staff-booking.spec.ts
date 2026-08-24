@@ -469,3 +469,148 @@ test.describe('staff booking (A-017)', () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * A-049 — STANDING APPOINTMENTS, THE SURFACE (D-34).
+ *
+ * Part 1 built the rule, the schema and the write path with 22 tests against
+ * them; none of it was reachable from a browser. These specs are about the
+ * half that was missing: the desk sets a repeat up in the flow it already
+ * uses, reads back EVERY week including the ones that did not take, and finds
+ * its way from one occurrence to the rest.
+ *
+ * No hand-built URL anywhere below — the same rule A-042's specs adopted, and
+ * for the same reason: machinery that works and cannot be reached is not
+ * built.
+ */
+test.describe('standing appointments (A-049)', () => {
+  test('books her next three, a week apart, and links them to each other', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Book with Dana' }).click();
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    // An offered chip is named by its time alone; a refused one carries its
+    // reason in the same accessible name.
+    await page.getByRole('button', { name: /^\d\d:\d\d$/ }).first().click();
+    await page.getByRole('button', { name: 'No name' }).click();
+
+    await page.getByLabel('How many appointments?').fill('3');
+    await page.getByLabel('Every how many weeks?').fill('1');
+
+    // The count is ON the button — six rows about to be written into the book
+    // is not something the desk should discover afterwards.
+    await page.getByRole('button', { name: 'Book 3 appointments' }).click();
+
+    await expect(page.getByText('Booked all 3.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'booked' })).toHaveCount(3);
+
+    const prisma = new PrismaClient();
+    try {
+      const series = await prisma.appointmentSeries.findFirstOrThrow();
+      // THE RULE, on the calendar axis (D-34) — a day and a wall time, never
+      // an instant and an offset.
+      expect(series.anchorDay).toBe(DAY);
+      expect(series.intervalWeeks).toBe(1);
+      expect(series.requested).toBe(3);
+
+      const occurrences = await prisma.appointment.findMany({
+        where: { seriesId: series.id },
+        orderBy: { startAt: 'asc' },
+      });
+      expect(occurrences).toHaveLength(3);
+      expect(occurrences.map((o) => o.seriesOrdinal)).toEqual([0, 1, 2]);
+      expect(occurrences.map((o) => o.startDay)).toEqual([DAY, addDays(calendarDay(DAY), 7), addDays(calendarDay(DAY), 14)]);
+      // Every occurrence is the SAME wall time. The instants may differ by an
+      // hour across a transition; the client's time may not.
+      expect(new Set(occurrences.map((o) => o.startWallTime)).size).toBe(1);
+      expect(occurrences.every((o) => o.isOverride)).toBe(false);
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // "2nd of 3, every week", and the rest of them one tap away — the question
+    // asked in front of a client holding her diary.
+    await page.getByRole('link', { name: 'booked' }).nth(1).click();
+    await expect(page.getByRole('heading', { name: 'Standing appointment' })).toBeVisible();
+    await expect(page.getByText('2nd of 3, every week.')).toBeVisible();
+    await expect(page.getByText('— this one')).toBeVisible();
+  });
+
+  /**
+   * The behaviour the whole item turns on: creation is PARTIAL (D-34), so a
+   * week somebody else already has is NAMED rather than silently dropped. A
+   * summary that showed only successes is the silent skip this product exists
+   * to forbid.
+   */
+  test('names the week it could not book instead of skipping it', async ({ page }) => {
+    const nextWeek = addDays(calendarDay(DAY), 7);
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      // Dana's 09:00 a week today is somebody else's — the fourth-Tuesday
+      // problem, one week earlier so the spec stays short.
+      // Both ends resolved through the ONE conversion module. Adding 45
+      // minutes to a `Date` would be arithmetic on the instant axis with a
+      // wall-clock intent — the axis-crossing the lint rule exists to catch.
+      const on = (time: string) => {
+        const resolution = resolve(calendarDay(nextWeek), wallTime(time), zoneId(ZONE));
+        if (resolution.kind !== 'unique') throw new Error(`${nextWeek} ${time} is not unique in ${ZONE}`);
+        return toDate(resolution.at);
+      };
+      const startAt = on('09:00');
+      const endAt = on('09:45');
+      await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          startAt,
+          endAt,
+          blockedStart: startAt,
+          blockedEnd: endAt,
+          startDay: nextWeek,
+          startWallTime: '09:00',
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          },
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Book with Dana' }).click();
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+    await page.getByRole('button', { name: '09:00', exact: true }).click();
+    await page.getByRole('button', { name: 'No name' }).click();
+
+    await page.getByLabel('How many appointments?').fill('3');
+    await page.getByLabel('Every how many weeks?').fill('1');
+    await page.getByRole('button', { name: 'Book 3 appointments' }).click();
+
+    await expect(page.getByText('Booked 2 of 3. The rest are below, with the reason.')).toBeVisible();
+    // The REASON, in the salon's words, against the week it belongs to.
+    await expect(page.getByText('not booked')).toBeVisible();
+    await expect(page.getByText(/she already has a client then/)).toBeVisible();
+    await expect(page.getByRole('link', { name: 'booked' })).toHaveCount(2);
+
+    const prisma2 = new PrismaClient();
+    try {
+      const series = await prisma2.appointmentSeries.findFirstOrThrow();
+      // The RULE still asked for three. What was booked and what was asked for
+      // are different facts and the row keeps both.
+      expect(series.requested).toBe(3);
+      const occurrences = await prisma2.appointment.findMany({
+        where: { seriesId: series.id },
+        orderBy: { startAt: 'asc' },
+      });
+      // The blocked week is ABSENT, not booked on top of somebody: ordinals 0
+      // and 2, with 1 missing.
+      expect(occurrences.map((o) => o.seriesOrdinal)).toEqual([0, 2]);
+    } finally {
+      await prisma2.$disconnect();
+    }
+  });
+});
