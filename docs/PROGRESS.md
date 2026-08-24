@@ -1396,3 +1396,24 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 **One methodological note, since it cost a run.** I looped three e2e runs back to back without killing the server between them, so runs 2 and 3 adopted run 1's server and its in-memory rate-limit state, and the rate-limit spec failed for a reason that had nothing to do with the code. The repo's own rule — confirm the previous sweep is dead before starting another — exists for exactly that. I also piped one of those loops through `grep` as its only record and lost the output, which is the other rule in the same section.
 
 **Left behind:** the `manage.spec.ts` hydration race above — rare, pre-existing, and now diagnosable in five seconds instead of thirty. `attempts` now increments on CLAIM rather than on send, which is the honest meaning ("how many times has this been picked up") but does change what the number counts; nothing reads it yet. There is still no retry policy — a `failed` row is never re-claimed, by design, because retrying without a backoff against a real provider is how you get rate-limited. And `ChannelSendError.code` is still unused: the dispatcher records `error.message` for a human rather than branching on the code, which is what a retry policy would want first.
+
+## Phase 5 scoping — written at the Phase 4 close-out
+
+**Commit:** `PENDING`
+
+**No feature.** A-048 emptied the backlog for the fifth time, so this is the scoping pass that follows — six rows, A-049 to A-054, in `06-backlog.md`.
+
+**The one thing to know about it: the salon-operator review is STILL OWED, and this is not it.** Phase 4's own scoping note said "run the operator agent before building A-048 or later"; that did not happen then, and it did not happen here. The owner declined the run this session. So the *content* of these rows is verified engineering, and the *ordering* is an engineer's opinion of a front desk — which is exactly the judgement the operator pass exists to supply. The section says so in its own header rather than quietly reading as a normal backlog.
+
+**Method, because the last two scoping passes were only as good as this.** Every claim was checked against the code in this session, not carried forward from the `**Left behind:**` note that predicted it — the same discipline A-045 arrived at after checkpoint 3's flattering-but-wrong diagnosis. What that changed:
+
+- **Recurring appointments are genuinely absent**, not partly built: `grep -riE "recurring|rrule|standing appointment"` across `packages` and `apps` returns one unrelated comment. Promoted to A-049 and to the top, because a salon's forward book is mostly standing series and today the desk builds each one by hand.
+- **There is no `role` column anywhere in `schema.prisma`**, and `StaffUser.email`/`passwordHash` are nullable by design. So A-037/A-044 delivered four *names* on the audit trail against one shared *credential*, and every stylist who can sign in can open the owner's revenue dashboard. That is a sharper finding than "multi-user auth is unscoped" implied, and it became A-050.
+- **A `failed` outbox row is terminal.** The A-048 claim predicate matches `pending` or stale `sending` and nothing else, so there is no retry, no backoff and no surface — invisible today, and the first thing to bite when a real driver lands. A-051.
+- **`createdByActor`/`actorRef` render on no availability screen.** Written since A-007, restated as a left-behind by A-044, verified again here by grepping `apps/web/app/staff/availability/`. The oldest outstanding operator finding in the file (R-8), and an S. A-052.
+
+**Where a row is gated on a decision, it says so and does not start.** A-049 needs "does cancelling one occurrence ever cancel the series?" — that answer changes the data shape, not the copy. A-053 needs OQ-4, for the same reason: a sequential soft-hold needs a hold record with an expiry and a fairness order, and parallel first-to-accept needs neither.
+
+**What was deliberately NOT promoted, and the reason is a prior argument that still holds.** The real Resend/Twilio adapters are the obvious next thing and they are the owner's to unblock: `logging-adapter.ts` argues that with no API key, no verified domain and no approved SMS campaign a real driver cannot be run once, let alone tested, and would ship as an untested HTTP call that looks finished. A-048 made the outbox ready for that swap and A-051 makes it survivable; the swap itself stays a small row waiting on accounts. Re-opening a decision because it is the exciting one is what `07-decisions.md` exists to prevent.
+
+**Left behind:** the operator review. Also the loose debt from this session, which was folded into A-054 rather than left in a comment nobody greps: `manage.spec.ts`'s hydration race, `testing/reset.ts`'s comment about failing loudly on an unlisted table when `CASCADE` means it would not, and `resolvePrefill`'s dead public contract.
