@@ -1541,3 +1541,15 @@ The count on the staff home page counts only the first group. A message still tr
 Fixed the phone number? There is a button that puts the message back in the queue with a full set of attempts again — not the one remaining attempt it had left, which would fail once more and look, from the desk, like the button was broken.
 
 **Two smaller things came with it.** A message with no contact details on it at all used to be handed to the sender as an empty address, which the log adapter cheerfully reported as delivered; it is now recognised for what it is and said out loud once. And the call-down list — tomorrow's unconfirmed appointments — now shows each booking's value and any no-show history next to it. It stays in time order deliberately: the desk works down the day with the diary open, and silently re-ranking that list would make every row's position mean something the person reading it does not know. The information to triage by is on the row; the choice stays with the person.
+
+## The oldest unanswered question in the file, answered
+
+"Who blocked Dana's Thursday afternoon, and why?" has been askable at the front desk since the very first version of the availability screen — and until this release, unanswerable. The system recorded the answer every single time somebody changed a stylist's hours or blocked out a slot. It just never showed it to anyone.
+
+That is now on the screen, next to the hours it explains: "blocked by Priya", right beside the reason she already typed in. Every weekly hour, every one-off date, every block of time off now carries who set it.
+
+The interesting part is not the feature — it is a single sentence answering a question that was already being logged in the database and simply never surfaced. The two things worth noting are both about not repeating work already done elsewhere in the system:
+
+The logic for "turn a list of staff IDs into their names" already existed, built for the appointment history a few releases back. Rather than writing it a second time for this screen, it was pulled out into a shared piece both features now call — so a name shown on one screen and a name shown on the other will never quietly start disagreeing about who a departed employee was.
+
+And a blank space where a name should be is treated as real information, not an oversight to paper over. A handful of availability records exist from before the system started tracking who made a change; for those, the screen shows nothing rather than guessing. A wrong name is worse than no name — it is a wrong answer to exactly the question this feature exists to answer correctly.

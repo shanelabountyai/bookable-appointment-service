@@ -11,6 +11,7 @@ import {
   findStaffById,
   listStaff,
   listSwitchableStaff,
+  resolveStaffNames,
   saveStaffMember,
   verifyStaffPin,
 } from './staff';
@@ -498,5 +499,37 @@ describe('A-050 — credentials, roles and rate limiting', () => {
         name: 'Marcus',
       });
     });
+  });
+});
+
+/**
+ * A-052 — shared with the appointment event log (A-037) rather than
+ * reimplemented for the availability screen. Deactivated people are included
+ * on purpose: "who did this" must still have an answer after somebody leaves.
+ */
+describe('resolveStaffNames', () => {
+  it('maps ids to names, including a deactivated person', async () => {
+    const { id: priya } = await saveStaffMember(prisma, { businessId, name: 'Priya' });
+    const { id: marcus } = await saveStaffMember(prisma, { businessId, name: 'Marcus' });
+    await saveStaffMember(prisma, { businessId, id: marcus, name: 'Marcus', active: false });
+
+    const names = await resolveStaffNames(prisma, [priya, marcus]);
+    expect(names.get(priya)).toBe('Priya');
+    expect(names.get(marcus)).toBe('Marcus');
+  });
+
+  it('ignores an id from nowhere rather than throwing', async () => {
+    const names = await resolveStaffNames(prisma, ['does-not-exist']);
+    expect(names.size).toBe(0);
+  });
+
+  it('does not query at all for an empty batch', async () => {
+    expect((await resolveStaffNames(prisma, [])).size).toBe(0);
+  });
+
+  it('de-duplicates the input', async () => {
+    const { id } = await saveStaffMember(prisma, { businessId, name: 'Priya' });
+    const names = await resolveStaffNames(prisma, [id, id, id]);
+    expect(names.size).toBe(1);
   });
 });

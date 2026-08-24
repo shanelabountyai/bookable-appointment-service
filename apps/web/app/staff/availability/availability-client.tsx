@@ -67,6 +67,9 @@ export interface WindowView {
   close: string;
   endsNextDay: boolean;
   breaks: { open: string; close: string }[];
+  /** A-052 (operator R-8): who set this hour. Null for a row written before
+   *  anybody was named — never guessed at. */
+  who: string | null;
 }
 
 export function WeeklyHours({ providerId, windows }: { providerId: string; windows: WindowView[] }) {
@@ -98,6 +101,9 @@ export function WeeklyHours({ providerId, windows }: { providerId: string; windo
                   break {w.breaks.map((b) => `${b.open.trim()}–${b.close.trim()}`).join(', ')}
                 </span>
               )}
+              {/* R-8: "the book said she worked till 5, why did the system
+                  stop offering 4:30?" — this is that answer. */}
+              {w.who && <span className="text-xs text-zinc-500">set by {w.who}</span>}
               <form action={removeAction}>
                 <input type="hidden" name="windowId" value={w.id} />
                 <button type="submit" className={ghost}>
@@ -169,6 +175,7 @@ export interface OverrideView {
   isClosed: boolean;
   reason: string | null;
   windows: { open: string; close: string }[];
+  who: string | null;
 }
 
 export function DateOverrides({ providerId, overrides }: { providerId: string; overrides: OverrideView[] }) {
@@ -189,6 +196,7 @@ export function DateOverrides({ providerId, overrides }: { providerId: string; o
               <span className="w-28 text-zinc-500">{o.day.trim()}</span>
               <span>{o.isClosed ? 'Closed' : o.windows.map((w) => `${w.open.trim()}–${w.close.trim()}`).join(', ')}</span>
               {o.reason && <span className="text-xs text-zinc-500">{o.reason}</span>}
+              {o.who && <span className="text-xs text-zinc-500">set by {o.who}</span>}
               <form action={removeAction}>
                 <input type="hidden" name="overrideId" value={o.id} />
                 <button type="submit" className={ghost}>
@@ -248,6 +256,9 @@ export interface AbsenceView {
   endAt: string;
   reason: string | null;
   kind: 'time_off' | 'ad_hoc_block';
+  /** A-052 (operator R-8): "who blocked Dana's 2-4, and why?" — the reason is
+   *  already shown; this is the "who". */
+  who: string | null;
 }
 
 export function Absences({ providerId, absences }: { providerId: string; absences: AbsenceView[] }) {
@@ -271,6 +282,7 @@ export function Absences({ providerId, absences }: { providerId: string; absence
                 {a.startAt} → {a.endAt}
               </span>
               {a.reason && <span className="text-xs text-zinc-500">{a.reason}</span>}
+              {a.who && <span className="text-xs text-zinc-500">blocked by {a.who}</span>}
               {a.kind === 'time_off' && (
                 <form action={removeAction}>
                   <input type="hidden" name="timeOffId" value={a.id} />

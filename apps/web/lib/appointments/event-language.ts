@@ -43,6 +43,22 @@ const ACTORS: Record<string, string> = {
   system: 'the system',
 };
 
+/**
+ * The actor as a name a sentence can end with — "by Priya", "by the front
+ * desk". Exported so other logs that stamp `(actor, actorRef)` render the
+ * SAME words rather than growing a second fallback table that drifts from
+ * this one (A-052 reuses it for the availability screen's audit trail).
+ *
+ * `null` is the honest answer for a row written before an actor was ever
+ * recorded — never coerced to "the front desk", which would claim knowledge
+ * the row does not have.
+ */
+export function actorWord(actor: string | null, actorName: string | null): string | null {
+  if (actorName) return actorName;
+  if (!actor) return null;
+  return ACTORS[actor] ?? actor;
+}
+
 const STATUS_WORDS: Record<string, string> = {
   booked: 'booked',
   confirmed: 'confirmed',
@@ -68,7 +84,7 @@ export function toReadableEvent(event: AppointmentEventRow, zone: ZoneId): Reada
   const label = toLabel(fromDate(event.createdAt), zone);
   // A-037: the name if the log knows one. "Changed to checked in by Priya" is
   // the answer; "by the front desk" was four people and a shrug.
-  const who = event.actorName ?? ACTORS[event.actor] ?? event.actor;
+  const who = actorWord(event.actor, event.actorName) ?? event.actor;
   const payload = (event.payload ?? {}) as Record<string, unknown>;
 
   return {

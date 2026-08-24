@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listDateOverrides, listWeeklyWindows } from '@bookable/db/availability';
+import { resolveStaffNames } from '@bookable/db/auth';
 import { listProviders } from '@bookable/db/settings';
 import { requireStaff } from '@/lib/auth/session';
+import { actorWord } from '@/lib/appointments/event-language';
 import { Absences, DateOverrides, WeeklyHours } from './availability-client';
 
 /**
@@ -34,6 +36,17 @@ export default async function AvailabilityPage({
       : Promise.resolve([]),
   ]);
 
+  // A-052 (operator R-8): "who blocked Dana's 2-4, and why?" — data collected
+  // since A-007, rendered on no screen. ONE lookup for the whole page rather
+  // than one per row-render — the same shape `withActorNames` uses for the
+  // event log, via the shared `resolveStaffNames`.
+  const staffIds = [...windows, ...overrides, ...timeOff, ...blocks]
+    .filter((row) => row.createdByActor === 'staff' && row.actorRef)
+    .map((row) => row.actorRef!);
+  const names = await resolveStaffNames(prisma, staffIds);
+  const who = (row: { createdByActor: string | null; actorRef: string | null }) =>
+    actorWord(row.createdByActor, row.actorRef ? (names.get(row.actorRef) ?? null) : null);
+
   const absences = [
     ...timeOff.map((t) => ({
       id: t.id,
@@ -41,6 +54,7 @@ export default async function AvailabilityPage({
       endAt: t.endAt.toISOString(),
       reason: t.reason,
       kind: 'time_off' as const,
+      who: who(t),
     })),
     ...blocks.map((b) => ({
       id: b.id,
@@ -48,6 +62,7 @@ export default async function AvailabilityPage({
       endAt: b.endAt.toISOString(),
       reason: b.reason,
       kind: 'ad_hoc_block' as const,
+      who: who(b),
     })),
   ].sort((a, b) => a.startAt.localeCompare(b.startAt));
 
@@ -104,6 +119,7 @@ export default async function AvailabilityPage({
           close: w.close,
           endsNextDay: w.endsNextDay,
           breaks: w.breaks.map((b) => ({ open: b.open, close: b.close })),
+          who: who(w),
         }))}
       />
 
@@ -115,6 +131,7 @@ export default async function AvailabilityPage({
           isClosed: o.isClosed,
           reason: o.reason,
           windows: o.windows.map((w) => ({ open: w.open, close: w.close })),
+          who: who(o),
         }))}
       />
 

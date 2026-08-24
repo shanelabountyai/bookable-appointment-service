@@ -15,6 +15,7 @@
  */
 import { patternGapSpans } from '../../core/settings';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
+import { resolveStaffNames } from '../auth';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -248,11 +249,14 @@ async function withActorNames(
   db: Db,
   events: Omit<AppointmentEventRow, 'actorName'>[],
 ): Promise<AppointmentEventRow[]> {
-  const staffIds = [...new Set(events.filter((e) => e.actor === 'staff' && e.actorRef).map((e) => e.actorRef!))];
-  if (staffIds.length === 0) return events.map((event) => ({ ...event, actorName: null }));
-
-  const rows = await db.staffUser.findMany({ where: { id: { in: staffIds } }, select: { id: true, name: true } });
-  const names = new Map(rows.map((row) => [row.id, row.name]));
+  // `db` may be a transaction client mid-write; `resolveStaffNames` wants a
+  // full PrismaClient. Every caller of `loadAppointmentDetail` reads outside
+  // any transaction (it is a read model), so the cast is a type gap, not a
+  // behavioural one — this file has always queried `db.staffUser` directly.
+  const names = await resolveStaffNames(
+    db as PrismaClient,
+    events.filter((e) => e.actor === 'staff' && e.actorRef).map((e) => e.actorRef!),
+  );
   return events.map((event) => ({
     ...event,
     actorName: (event.actor === 'staff' && event.actorRef ? names.get(event.actorRef) : undefined) ?? null,

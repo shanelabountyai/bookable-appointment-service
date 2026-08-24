@@ -10,6 +10,7 @@ export {
   findStaffById,
   listStaff,
   listSwitchableStaff,
+  resolveStaffNames,
   saveStaffMember,
   verifyStaffPin,
 } from './staff';

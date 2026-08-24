@@ -212,6 +212,27 @@ export async function verifyStaffPin(
   };
 }
 
+/**
+ * The names behind a batch of staff ids, for a log or an audit trail to put a
+ * name on an event (A-037, operator R-8/R-8-adjacent).
+ *
+ * Shared rather than reimplemented per screen — the appointment event log
+ * (A-037) and the availability screen (A-052) both ask this exact question of
+ * a batch of `actorRef`s, and a second copy of the same three lines is how one
+ * of them drifts (deactivated staff visible on one screen and silently
+ * dropped on the other, say).
+ *
+ * DEACTIVATED PEOPLE ARE INCLUDED deliberately — the whole reason off-boarding
+ * deactivates rather than deletes is that "who did this" must still have an
+ * answer after somebody leaves.
+ */
+export async function resolveStaffNames(prisma: PrismaClient, staffIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(staffIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await prisma.staffUser.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+  return new Map(rows.map((row) => [row.id, row.name]));
+}
+
 /** Everyone on the roster, including the deactivated — off-boarding hides
  *  somebody from the switcher, never from the owner's own list. */
 export async function listStaff(prisma: PrismaClient, businessId: string): Promise<StaffRow[]> {

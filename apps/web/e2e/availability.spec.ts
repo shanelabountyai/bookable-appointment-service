@@ -22,6 +22,15 @@ async function addProvider(page: import('@playwright/test').Page, name: string) 
   await expect(page.getByText(name)).toBeVisible();
 }
 
+async function providerIdFor(displayName: string): Promise<string> {
+  const prisma = new PrismaClient();
+  try {
+    return (await prisma.provider.findFirstOrThrow({ where: { displayName } })).id;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 test.describe('availability (A-007)', () => {
   test('refuses an anonymous visitor', async ({ page }) => {
     await page.goto('/staff/availability');
@@ -37,8 +46,12 @@ test.describe('availability (A-007)', () => {
     await page.getByRole('button', { name: 'Add hours' }).click();
 
     await expect(page.getByText('09:00–18:00')).toBeVisible();
+    // A-052 (operator R-8): who set it, resolved from the signed-in session —
+    // not a placeholder, the actual name the seed gave this account.
+    await expect(page.getByText('set by Front desk')).toBeVisible();
     await page.reload();
     await expect(page.getByText('09:00–18:00')).toBeVisible();
+    await expect(page.getByText('set by Front desk')).toBeVisible();
   });
 
   // AVAIL-01: never swapped, never silently empty.
@@ -99,6 +112,8 @@ test.describe('availability (A-007)', () => {
     await expect(page.getByText('2026-12-24')).toBeVisible();
     await expect(page.getByText('10:00–14:00')).toBeVisible();
     await expect(page.getByText('Christmas Eve')).toBeVisible();
+    // R-8's other half: not just WHY (the reason, already shown) but WHO.
+    await expect(page.getByText('set by Front desk')).toBeVisible();
   });
 
   test('a closed-all-day override is recorded as closed', async ({ page }) => {
@@ -136,6 +151,9 @@ test.describe('availability (A-007)', () => {
     const row = page.getByRole('listitem').filter({ hasText: 'Dentist' });
     await expect(row).toBeVisible();
     await expect(row.getByText('Time off')).toBeVisible();
+    // A-052: "who blocked Dana's 2-4, and why?" — the reason was already on
+    // the row (Dentist); this is the who.
+    await expect(row.getByText('blocked by Front desk')).toBeVisible();
   });
 
   /**
@@ -318,6 +336,63 @@ test.describe('availability (A-007)', () => {
     await page.getByRole('button', { name: 'Add', exact: true }).click();
 
     await expect(page.getByText(/explicit timezone offset/)).toBeVisible();
+  });
+
+  /**
+   * A-052 — THE OLDEST OUTSTANDING OPERATOR FINDING (R-8), CLOSED.
+   *
+   * The data has existed since A-007; nothing rendered it. Proved with a
+   * SECOND name deliberately — the seeded owner appearing everywhere else in
+   * this spec could pass with the actor column hardcoded to a literal
+   * string, and only a switch to somebody else's PIN proves it is actually
+   * resolved.
+   */
+  test('names WHO blocked the time, not just why', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.create({
+        data: { businessId: business.id, displayName: 'Dana', active: true },
+      });
+      await createWeeklyWindow(
+        prisma,
+        { businessId: business.id, providerId: dana.id, weekday: 2, open: '09:00', close: '17:00', endsNextDay: false, breaks: [] },
+        { createdByActor: 'staff', actorRef: null },
+      );
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await signIn(page);
+    await page.goto('/staff/availability');
+    // A row written before an actor was ever recorded says nothing rather
+    // than claiming a name the row does not actually have.
+    await expect(page.getByText('set by')).toHaveCount(0);
+
+    await page.goto('/staff/people');
+    const addForm = page.locator('form').filter({ hasText: 'Add somebody' });
+    await addForm.getByLabel('Name').fill('Priya');
+    await addForm.getByLabel('Desk PIN').fill('4821');
+    await addForm.getByRole('button', { name: 'Add' }).click();
+    await expect(page.getByText('Priya added.')).toBeVisible();
+
+    await page.goto('/staff');
+    await page.locator('summary').filter({ hasText: 'At the desk:' }).click();
+    await page.getByLabel('Who').selectOption({ label: 'Priya' });
+    await page.getByLabel('PIN').fill('4821');
+    await page.getByRole('button', { name: 'That’s me' }).click();
+    await expect(page.getByText('Priya is at the desk.')).toBeVisible();
+
+    await page.goto('/staff/availability?provider=' + (await providerIdFor('Dana')));
+    await page.locator('input[name="startAt"]').fill('2026-06-09T14:00:00-05:00');
+    await page.locator('input[name="endAt"]').fill('2026-06-09T16:00:00-05:00');
+    await page.locator('select[name="kind"]').selectOption('ad_hoc_block');
+    await page.locator('input[name="reason"]').last().fill('Plumber');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+    const row = page.getByRole('listitem').filter({ hasText: 'Plumber' });
+    await expect(row).toBeVisible();
+    await expect(row.getByText('blocked by Priya')).toBeVisible();
   });
 
   test('the availability page has no serious accessibility violations', async ({ page }) => {
