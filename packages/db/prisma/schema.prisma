@@ -65,6 +65,15 @@ enum Actor {
   system
 }
 
+/// A-050. TWO ROLES, and the resistance to a third is the decision (D-36).
+/// A 4-chair salon has an owner and it has stylists; a permissions matrix is
+/// a product nobody here asked for and a screen nobody would maintain.
+/// `owner` is the only role that can see the money and hand out credentials.
+enum StaffRole {
+  owner
+  staff
+}
+
 enum NotificationChannel {
   email
   sms
@@ -176,6 +185,11 @@ model StaffUser {
   /// with the same scrypt as a password: a PIN is a secret at rest whatever
   /// its length.
   pinHash      String?
+  /// A-050 (D-36). Defaults to `staff`, so somebody added to the roster gets
+  /// the LEAST access by existing — the direction that fails safe. The
+  /// migration backfills `owner` onto every row that already had a password,
+  /// because those are precisely the people who could already see everything.
+  role         StaffRole @default(staff)
   /// Off-boarding is DEACTIVATION, never deletion. Deleting the row would
   /// take the name out of every event it ever stamped, and "who moved this
   /// appointment" losing its answer is the thing A-037 exists to prevent.

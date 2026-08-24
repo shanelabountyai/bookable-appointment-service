@@ -4,7 +4,45 @@
  * the storage has integration tests with no policy.
  */
 import { DUMMY_HASH_PROMISE, hashPassword, isValidPin, verifyPassword } from '../../core/auth';
+import { consumeRateLimit, resetRateLimit } from '../rate-limit';
 import type { PrismaClient } from '../generated/client/index.js';
+
+/** A-050 (D-36). Two, and the resistance to a third is the decision. */
+export type StaffRole = 'owner' | 'staff';
+
+/**
+ * A-050 — the brute-force brake A-005 left as a `ponytail:` note.
+ *
+ * Thrown rather than folded into the generic "those do not match", and that is
+ * deliberate on both counts. It cannot enumerate users: the counter is
+ * consumed BEFORE the row is looked up, so an unknown email locks out exactly
+ * as an existing one does. And a desk typing the right password into a locked
+ * door needs to be told the door is locked — "that email and password do not
+ * match" at 5pm on a Saturday is the message that produces a phone call.
+ */
+export class TooManyAttempts extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TooManyAttempts';
+  }
+}
+
+/**
+ * The password door: generous, because the salon signs in once a shift and a
+ * lockout here costs a Saturday. The scrypt cost (~100ms) is what makes this
+ * enough — ten guesses per quarter-hour against a work factor that expensive
+ * is not a keyspace anybody walks.
+ */
+const LOGIN_LIMIT = 10;
+const LOGIN_WINDOW_MS = 15 * 60_000;
+
+/**
+ * The PIN door: tighter, because the keyspace IS walkable — four digits is ten
+ * thousand, and this door is standing open in a room the public is in. Keyed
+ * per staff row, so one stylist fat-fingering hers never locks out the desk.
+ */
+const PIN_LIMIT = 5;
+const PIN_WINDOW_MS = 5 * 60_000;
 
 export interface StaffIdentity {
   id: string;
@@ -12,6 +50,8 @@ export interface StaffIdentity {
   email: string;
   /** A-037: what the event log calls this person. */
   name: string;
+  /** A-050 (D-36). `owner` sees the money and hands out credentials. */
+  role: StaffRole;
 }
 
 /** One name on the desk switcher (A-037). No email, no id beyond what the
@@ -32,23 +72,40 @@ export interface StaffOption {
  * user-enumeration endpoint. When no user is found we verify against a dummy
  * hash instead, so both paths pay the same cost.
  *
- * ponytail: no rate limiting or lockout. The scrypt cost is the only
- * brute-force control today, which is reasonable for one shared credential on
- * a single-tenant v1 but is NOT a substitute for a limiter. Upgrade path when
- * this is public: a `RateLimitCounter` table keyed on `login:{email}` and
- * `login:{ip}`, consumed inside a transaction with an advisory lock (the
- * sibling rental build's shape) — A-013 already needs exactly that machinery
- * for the manage-token route, so build it once there and call it here too.
+ * A-050 — RATE LIMITED, which is the `ponytail:` note A-005 left here being
+ * paid off with the machinery A-013 built for the manage-token route. Keyed on
+ * the normalized email and consumed BEFORE the lookup, so a locked-out unknown
+ * address behaves exactly like a locked-out real one and the limiter cannot
+ * become the enumeration oracle the timing equalisation above exists to close.
+ *
+ * ponytail: keyed on the EMAIL only, not on the IP as the old note proposed.
+ * A single-tenant salon has one address for the whole building, so an IP
+ * limiter's first victim is the front desk on the busiest afternoon of the
+ * year — and the email key already defends the thing worth defending, which is
+ * an account. Upgrade path if this ever serves many salons from one origin: a
+ * second, much looser `login:ip:{addr}` bucket beside this one.
  */
 export async function authenticateStaff(
   prisma: PrismaClient,
   email: string,
   password: string,
+  now: Date = new Date(),
 ): Promise<StaffIdentity | null> {
   const normalized = email.trim().toLowerCase();
+
+  const within = await consumeRateLimit(prisma, {
+    key: `login:${normalized}`,
+    limit: LOGIN_LIMIT,
+    windowMs: LOGIN_WINDOW_MS,
+    now,
+  });
+  if (!within) {
+    throw new TooManyAttempts('Too many sign-in attempts. Wait a few minutes and try again.');
+  }
+
   const staff = await prisma.staffUser.findFirst({
     where: { email: normalized, active: true },
-    select: { id: true, businessId: true, email: true, name: true, passwordHash: true },
+    select: { id: true, businessId: true, email: true, name: true, role: true, passwordHash: true },
   });
 
   // A PIN-only identity has no `passwordHash` and can never sign in — the
@@ -64,7 +121,17 @@ export async function authenticateStaff(
   const ok = await verifyPassword(password, staff.passwordHash);
   if (!ok) return null;
 
-  return { id: staff.id, businessId: staff.businessId, email: staff.email ?? '', name: staff.name };
+  // The counter measures FAILURES, not sign-ins: a desk that legitimately
+  // signs in eleven times on a Saturday must not lock itself out.
+  await resetRateLimit(prisma, `login:${normalized}`);
+
+  return {
+    id: staff.id,
+    businessId: staff.businessId,
+    email: staff.email ?? '',
+    name: staff.name,
+    role: staff.role,
+  };
 }
 
 /** Loads the staff user a session claims to be. Returns null if the row is
@@ -75,7 +142,7 @@ export async function authenticateStaff(
 export async function findStaffById(prisma: PrismaClient, id: string): Promise<StaffIdentity | null> {
   return prisma.staffUser.findFirst({
     where: { id, active: true },
-    select: { id: true, businessId: true, email: true, name: true },
+    select: { id: true, businessId: true, email: true, name: true, role: true },
   }).then((row) => (row ? { ...row, email: row.email ?? '' } : null));
 }
 
@@ -104,11 +171,26 @@ export async function listSwitchableStaff(prisma: PrismaClient, businessId: stri
  */
 export async function verifyStaffPin(
   prisma: PrismaClient,
-  args: { businessId: string; staffUserId: string; pin: string },
+  args: { businessId: string; staffUserId: string; pin: string; now?: Date },
 ): Promise<StaffIdentity | null> {
+  // A-050 — the limiter A-037 noted as missing and A-044 restated. This door
+  // matters MORE than the password one: four digits is ten thousand
+  // possibilities, the switcher lists the names to try them against, and it is
+  // standing in a room the public walks into. Keyed per staff row so one
+  // stylist mistyping hers cannot lock the desk out of everybody else's.
+  const within = await consumeRateLimit(prisma, {
+    key: `pin:${args.staffUserId}`,
+    limit: PIN_LIMIT,
+    windowMs: PIN_WINDOW_MS,
+    now: args.now ?? new Date(),
+  });
+  if (!within) {
+    throw new TooManyAttempts('Too many PIN attempts for that name. Wait a few minutes.');
+  }
+
   const staff = await prisma.staffUser.findFirst({
     where: { id: args.staffUserId, businessId: args.businessId, active: true },
-    select: { id: true, businessId: true, email: true, name: true, pinHash: true },
+    select: { id: true, businessId: true, email: true, name: true, role: true, pinHash: true },
   });
 
   if (!staff?.pinHash) {
@@ -119,7 +201,15 @@ export async function verifyStaffPin(
   const ok = await verifyPassword(args.pin, staff.pinHash);
   if (!ok) return null;
 
-  return { id: staff.id, businessId: staff.businessId, email: staff.email ?? '', name: staff.name };
+  await resetRateLimit(prisma, `pin:${args.staffUserId}`);
+
+  return {
+    id: staff.id,
+    businessId: staff.businessId,
+    email: staff.email ?? '',
+    name: staff.name,
+    role: staff.role,
+  };
 }
 
 /** Everyone on the roster, including the deactivated — off-boarding hides
@@ -128,16 +218,18 @@ export async function listStaff(prisma: PrismaClient, businessId: string): Promi
   const rows = await prisma.staffUser.findMany({
     where: { businessId },
     orderBy: [{ active: 'desc' }, { name: 'asc' }],
-    select: { id: true, name: true, email: true, active: true, pinHash: true },
+    select: { id: true, name: true, email: true, role: true, active: true, pinHash: true, passwordHash: true },
   });
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
     email: row.email,
+    role: row.role,
     active: row.active,
-    // The hash never leaves this function. Whether one EXISTS is what the
+    // Neither hash ever leaves this function. Whether one EXISTS is what the
     // owner's screen needs, and it is the whole of what it needs.
     hasPin: row.pinHash !== null,
+    hasPassword: row.passwordHash !== null,
   }));
 }
 
@@ -145,8 +237,12 @@ export interface StaffRow {
   id: string;
   name: string;
   email: string | null;
+  role: StaffRole;
   active: boolean;
   hasPin: boolean;
+  /** A-050: whether this person can sign in at all, as opposed to being a
+   *  name the log uses. Never the hash, and never the password. */
+  hasPassword: boolean;
 }
 
 export class InvalidPin extends Error {
@@ -155,6 +251,19 @@ export class InvalidPin extends Error {
     this.name = 'InvalidPin';
   }
 }
+
+/** A-050 — a credential that could not be used, or one that must not be
+ *  taken away. Both are refusals a person can act on, so both carry the
+ *  sentence rather than a code. */
+export class InvalidCredential extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidCredential';
+  }
+}
+
+/** The shortest password this will store. Not a policy engine — a floor. */
+const MIN_PASSWORD = 10;
 
 /**
  * Adds or edits somebody on the roster (A-037).
@@ -171,7 +280,18 @@ export class InvalidPin extends Error {
  */
 export async function saveStaffMember(
   prisma: PrismaClient,
-  args: { businessId: string; id?: string; name: string; pin?: string; active?: boolean; clearPin?: boolean },
+  args: {
+    businessId: string;
+    id?: string;
+    name: string;
+    pin?: string;
+    active?: boolean;
+    clearPin?: boolean;
+    /** A-050. Blank leaves an existing one alone, like the PIN. */
+    email?: string;
+    password?: string;
+    role?: StaffRole;
+  },
 ): Promise<{ id: string }> {
   const name = args.name.trim();
   if (!name) throw new Error('A staff member needs a name.');
@@ -181,22 +301,86 @@ export async function saveStaffMember(
 
   const pinHash = args.clearPin ? null : pin ? await hashPassword(pin) : undefined;
 
+  const email = args.email?.trim().toLowerCase() || undefined;
+  const password = args.password?.trim() || undefined;
+  if (password && password.length < MIN_PASSWORD) {
+    throw new InvalidCredential(`A sign-in password needs at least ${MIN_PASSWORD} characters.`);
+  }
+
+  const existing = args.id
+    ? await prisma.staffUser.findFirst({
+        where: { id: args.id, businessId: args.businessId },
+        select: { role: true, active: true, email: true },
+      })
+    : null;
+  if (args.id && !existing) throw new Error('No such staff member.');
+
+  // A password with nothing to sign in WITH is a credential that can never be
+  // used — `authenticateStaff` finds by email, so a null email is a second
+  // lock on that door and this is the sentence that explains it at the form.
+  if (password && !email && !existing?.email) {
+    throw new InvalidCredential('Give them an email address first — that is what they sign in with.');
+  }
+
+  // THE LOCKOUT GUARD. Demoting or deactivating the last active owner leaves a
+  // salon with no screen that can grant the role back: the dashboard is gone,
+  // and so is the only place credentials are handed out. Refused here, in the
+  // one function both the role form and the roster toggle go through, rather
+  // than in each caller — the "a status enum is never one edit" reflex applied
+  // to a privilege.
+  if (existing?.role === 'owner' && existing.active && (args.role === 'staff' || args.active === false)) {
+    const otherOwners = await prisma.staffUser.count({
+      where: { businessId: args.businessId, role: 'owner', active: true, id: { not: args.id! } },
+    });
+    if (otherOwners === 0) {
+      throw new InvalidCredential(
+        'This is the only owner. Make somebody else an owner first, or nobody can hand the role back.',
+      );
+    }
+  }
+
+  // The unique index is `[businessId, email]`, so giving two people the same
+  // sign-in raises a constraint violation rather than quietly overwriting one
+  // of them — which is correct, and reaches a server action as a 500 unless
+  // somebody turns it into a sentence. Checked here, and the constraint is
+  // still what actually enforces it: this is the message, not the guard.
+  if (email) {
+    const clash = await prisma.staffUser.findFirst({
+      where: { businessId: args.businessId, email, ...(args.id ? { id: { not: args.id } } : {}) },
+      select: { name: true },
+    });
+    if (clash) {
+      throw new InvalidCredential(`${clash.name} already signs in with that email address.`);
+    }
+  }
+
+  const credentials = {
+    ...(email !== undefined ? { email } : {}),
+    ...(password !== undefined ? { passwordHash: await hashPassword(password) } : {}),
+    ...(args.role !== undefined ? { role: args.role } : {}),
+  };
+
   if (args.id) {
     const updated = await prisma.staffUser.updateMany({
       // Scoped by business, so an id from elsewhere edits nothing rather than
       // somebody else's roster.
       where: { id: args.id, businessId: args.businessId },
-      data: { name, ...(pinHash !== undefined ? { pinHash } : {}), ...(args.active !== undefined ? { active: args.active } : {}) },
+      data: {
+        name,
+        ...(pinHash !== undefined ? { pinHash } : {}),
+        ...(args.active !== undefined ? { active: args.active } : {}),
+        ...credentials,
+      },
     });
     if (updated.count === 0) throw new Error('No such staff member.');
     return { id: args.id };
   }
 
   const created = await prisma.staffUser.create({
-    // No email and no password: a new person on the roster is an IDENTITY, not
-    // an account. Giving her a credential she never asked for is a credential
-    // somebody has to rotate.
-    data: { businessId: args.businessId, name, pinHash: pinHash ?? null },
+    // Still no credential BY DEFAULT: a new person on the roster is an
+    // IDENTITY, not an account (A-037), and the role falls to `staff` from the
+    // schema. A-050 only adds the ability to give one deliberately.
+    data: { businessId: args.businessId, name, pinHash: pinHash ?? null, ...credentials },
     select: { id: true },
   });
   return created;

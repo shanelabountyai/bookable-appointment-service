@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { dashboardSummary } from '@bookable/db/reports';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
-import { requireStaff } from '@/lib/auth/session';
+import { requireOwner } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,10 @@ const percent = (fraction: number | null) => (fraction === null ? 'n/a' : `${(fr
  * it is supposed to describe.
  */
 export default async function DashboardPage({ searchParams }: PageProps<'/staff/dashboard'>) {
-  const staff = await requireStaff();
+  // A-050 (D-36). THE MONEY IS OWNER-ONLY. This screen is revenue,
+  // utilization and every stylist's no-show count, and until this item any of
+  // the four people who could sign in could read all three.
+  const staff = await requireOwner();
   const params = await searchParams;
 
   const business = await prisma.business.findUniqueOrThrow({ where: { id: staff.businessId }, select: { timezone: true } });

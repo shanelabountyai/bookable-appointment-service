@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listReportAppointments } from '@bookable/db/reports';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
-import { requireStaff } from '@/lib/auth/session';
+import { requireOwner } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { STATUS_WORDS } from '@/lib/day/view-model';
 
@@ -18,7 +18,10 @@ const asList = (value: string | string[] | undefined): string[] =>
  * anyone can bookmark or hand to someone else, same as A-016's day view.
  */
 export default async function DashboardAppointmentsPage({ searchParams }: PageProps<'/staff/dashboard/appointments'>) {
-  const staff = await requireStaff();
+  // A-050 (D-36). THE MONEY IS OWNER-ONLY. This screen is revenue,
+  // utilization and every stylist's no-show count, and until this item any of
+  // the four people who could sign in could read all three.
+  const staff = await requireOwner();
   const params = await searchParams;
 
   const business = await prisma.business.findUniqueOrThrow({ where: { id: staff.businessId }, select: { timezone: true } });

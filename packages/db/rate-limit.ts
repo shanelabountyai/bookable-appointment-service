@@ -58,3 +58,17 @@ export async function consumeRateLimit(db: Db, input: RateLimitInput): Promise<b
 
   return (rows[0]?.count ?? 1) <= input.limit;
 }
+
+/**
+ * Forgets a key — called after a SUCCESSFUL attempt, so the counter measures
+ * failures rather than usage.
+ *
+ * Without this, `consumeRateLimit` counts every try including the right ones,
+ * and a front desk that legitimately signs in eleven times during a busy
+ * Saturday is locked out by its own success. An attacker who guesses correctly
+ * has no further use for the budget they just cleared, so resetting on success
+ * costs nothing that was defending anything.
+ */
+export async function resetRateLimit(db: Db, key: string): Promise<void> {
+  await db.rateLimitCounter.deleteMany({ where: { key } });
+}

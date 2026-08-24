@@ -192,11 +192,18 @@ test.describe('named staff identity', () => {
     }
   });
 
-  /** The courtesy half: once somebody has taken the desk the fields are not
-   *  drawn at all, so nobody types a PIN twice to find out it was refused.
-   *  Naming and off-boarding stay open — A-044 is a guard on one credential,
-   *  NOT the roles question D-9 and D-33 deferred. */
-  test('the roster still names and off-boards on a borrowed identity — only the PIN fields go', async ({ page }) => {
+  /**
+   * The courtesy half: once somebody has taken the desk the fields are not
+   * drawn at all, so nobody types a PIN twice to find out it was refused.
+   * Naming stays open — A-044 is a guard on one credential.
+   *
+   * A-050 TIGHTENED THE OTHER HALF, and this test says so rather than keeping
+   * a title that stopped being true: off-boarding ends somebody's live
+   * sessions, which makes it a credential being taken away, so it moved behind
+   * the owner role with handing one out. Priya is a stylist, so it is gone
+   * from her screen too.
+   */
+  test('the roster still names on a borrowed identity — the PIN and off-boarding go', async ({ page }) => {
     await signIn(page);
     await addPriya(page);
     await page.goto('/staff');
@@ -207,6 +214,9 @@ test.describe('named staff identity', () => {
     await expect(page.getByLabel('New desk PIN')).toHaveCount(0);
     await expect(page.getByLabel('Desk PIN')).toHaveCount(0);
     await expect(page.getByText('Remove PIN')).toHaveCount(0);
+    // A-050 (D-36): a stylist can neither grant a sign-in nor take one away.
+    await expect(page.getByLabel('Sign-in email')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Take off the roster' })).toHaveCount(0);
 
     // Still hers to change: the name the log uses.
     const priyaRow = page.locator('li').filter({ hasText: 'Priya' });

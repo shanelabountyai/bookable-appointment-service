@@ -3,7 +3,7 @@ import { listPeople } from '@/lib/auth/people-actions';
 import { PeopleList } from './people-list';
 
 export default async function PeoplePage() {
-  const { people, canSetPins } = await listPeople();
+  const { people, canSetPins, canSetCredentials } = await listPeople();
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-8">
@@ -18,7 +18,7 @@ export default async function PeoplePage() {
           yourself one too, so you can take it back sooner.
         </p>
       </div>
-      <PeopleList people={people} canSetPins={canSetPins} />
+      <PeopleList people={people} canSetPins={canSetPins} canSetCredentials={canSetCredentials} />
     </main>
   );
 }

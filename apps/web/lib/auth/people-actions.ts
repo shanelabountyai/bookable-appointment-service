@@ -1,18 +1,31 @@
 'use server';
 
 /**
- * A-037's roster: who works here, and what the log calls them.
+ * A-037's roster: who works here, and what the log calls them. A-050 makes it
+ * also the place credentials and the one role split are handed out.
  *
- * IDENTITY, NOT ROLES (the backlog row is explicit, and D-9 is the reason).
- * Nothing here decides what anybody is allowed to do — every staff member can
- * do everything a staff member could do before this item. The only thing that
- * changed is that the log now knows which of them did it. A permissions matrix
- * is a different product decision and does not get smuggled in as a side
- * effect of naming people.
+ * TWO different guards live on this screen and they are not the same guard:
+ *
+ *  - A-044's ACCOUNT HOLDER check gates the desk PIN. A PIN decides whose name
+ *    goes on the audit trail, so it cannot be issued from a borrowed identity
+ *    or the trail forges in thirty seconds.
+ *  - A-050's OWNER check gates the email, the password and the role. This is
+ *    the privilege-escalation surface: a stylist who could grant herself a
+ *    sign-in, or promote herself, would make the role split decorative.
+ *
+ * Both are checked on the POSTED FIELDS. Hiding an input hides nothing from
+ * anybody willing to send the form themselves.
  */
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
-import { InvalidPin, type StaffRow, listStaff, saveStaffMember } from '@bookable/db/auth';
+import {
+  InvalidCredential,
+  InvalidPin,
+  type StaffRole,
+  type StaffRow,
+  listStaff,
+  saveStaffMember,
+} from '@bookable/db/auth';
 import { requireDesk, requireStaff } from './session';
 
 export interface PeopleState {
@@ -20,13 +33,17 @@ export interface PeopleState {
   message?: string;
 }
 
-/** The roster, plus whether this session may hand out PINs — the screen hides
- *  the fields it would only be refused for. The refusal in `savePerson` is the
- *  control; this is the courtesy that stops somebody typing a PIN twice before
- *  finding out. */
-export async function listPeople(): Promise<{ people: StaffRow[]; canSetPins: boolean }> {
+/** The roster, plus what this session may hand out — the screen hides the
+ *  fields it would only be refused for. The refusals in `savePerson` are the
+ *  control; this is the courtesy that stops somebody typing a password twice
+ *  before finding out. */
+export async function listPeople(): Promise<{ people: StaffRow[]; canSetPins: boolean; canSetCredentials: boolean }> {
   const desk = await requireDesk();
-  return { people: await listStaff(prisma, desk.staff.businessId), canSetPins: desk.isAccountHolder };
+  return {
+    people: await listStaff(prisma, desk.staff.businessId),
+    canSetPins: desk.isAccountHolder,
+    canSetCredentials: desk.staff.role === 'owner',
+  };
 }
 
 export async function savePerson(_prev: PeopleState, formData: FormData): Promise<PeopleState> {
@@ -35,6 +52,12 @@ export async function savePerson(_prev: PeopleState, formData: FormData): Promis
   const name = String(formData.get('name') ?? '');
   const pin = String(formData.get('pin') ?? '');
   const clearPin = formData.get('clearPin') !== null;
+  const email = String(formData.get('email') ?? '');
+  const password = String(formData.get('password') ?? '');
+  const rawRole = String(formData.get('role') ?? '');
+  // Only the two the enum has. An unrecognised value is left UNDEFINED rather
+  // than coerced to 'staff': a posted typo must not silently demote somebody.
+  const role: StaffRole | undefined = rawRole === 'owner' || rawRole === 'staff' ? rawRole : undefined;
 
   if (!name.trim()) return { ok: false, message: 'Everybody needs a name — it is what the log says.' };
 
@@ -50,6 +73,17 @@ export async function savePerson(_prev: PeopleState, formData: FormData): Promis
     };
   }
 
+  // A-050. The escalation guard, and the reason it is separate from the PIN
+  // one above: a sign-in and a role are what somebody could give THEMSELVES to
+  // stop the split meaning anything. Checked on the posted fields, so the
+  // hidden inputs on the screen are a courtesy and this is the control.
+  if ((email || password || role) && desk.staff.role !== 'owner') {
+    return {
+      ok: false,
+      message: 'Only an owner can give somebody a sign-in or change what they are. Names and the roster are yours.',
+    };
+  }
+
   try {
     await saveStaffMember(prisma, {
       businessId: desk.staff.businessId,
@@ -60,9 +94,18 @@ export async function savePerson(_prev: PeopleState, formData: FormData): Promis
       // somebody off the switcher.
       pin: pin || undefined,
       clearPin,
+      // Same rule for the credential fields: blank leaves what is there. A
+      // password box that cleared the password when left empty would sign
+      // somebody out of their own salon every time their name was corrected.
+      email: email || undefined,
+      password: password || undefined,
+      role,
     });
   } catch (error) {
     if (error instanceof InvalidPin) return { ok: false, message: 'A desk PIN is 4 to 6 digits.' };
+    // Already a sentence written for this screen — a bad password, a password
+    // with no email to use it with, or the last-owner refusal.
+    if (error instanceof InvalidCredential) return { ok: false, message: error.message };
     throw error;
   }
 
@@ -79,6 +122,16 @@ export async function savePerson(_prev: PeopleState, formData: FormData): Promis
  */
 export async function setPersonActive(_prev: PeopleState, formData: FormData): Promise<PeopleState> {
   const staff = await requireStaff();
+
+  // A-050. OWNER ONLY, which is a tightening of A-037's behaviour and is
+  // deliberate: deactivating somebody ends their live sessions on the next
+  // request, so "off the roster" is a credential being taken away — the same
+  // authority as handing one out, and the same person's to exercise. Left
+  // open, a stylist could put the owner off her own roster.
+  if (staff.role !== 'owner') {
+    return { ok: false, message: 'Only an owner can take somebody off the roster or put them back on it.' };
+  }
+
   const id = String(formData.get('id') ?? '');
   const active = formData.get('active') === 'true';
   const name = String(formData.get('name') ?? '');
@@ -87,7 +140,16 @@ export async function setPersonActive(_prev: PeopleState, formData: FormData): P
     return { ok: false, message: 'You cannot deactivate whoever is currently at the desk.' };
   }
 
-  await saveStaffMember(prisma, { businessId: staff.businessId, id, name, active });
+  try {
+    await saveStaffMember(prisma, { businessId: staff.businessId, id, name, active });
+  } catch (error) {
+    // The last-owner refusal reaches HERE too, and that is the point of it
+    // living in `saveStaffMember`: taking the only owner off the roster locks
+    // the salon out exactly as demoting her does, and a guard that only knew
+    // about the role form would have missed the other half.
+    if (error instanceof InvalidCredential) return { ok: false, message: error.message };
+    throw error;
+  }
   revalidatePath('/staff/people');
   revalidatePath('/staff', 'layout');
   return { ok: true, message: active ? `${name} is back on the roster.` : `${name} is off the roster.` };

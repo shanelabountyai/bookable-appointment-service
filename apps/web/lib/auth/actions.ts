@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { authenticateStaff, verifyStaffPin } from '@bookable/db/auth';
+import { TooManyAttempts, authenticateStaff, verifyStaffPin } from '@bookable/db/auth';
 import { prisma } from '@bookable/db';
 import { actAsStaff, endStaffSession, requireStaff, startStaffSession } from './session';
 
@@ -25,7 +25,18 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const GENERIC = 'That email and password do not match.';
   if (!email || !password) return { error: GENERIC };
 
-  const staff = await authenticateStaff(prisma, email, password);
+  // A-050. The lockout is the ONE failure that gets its own words. It cannot
+  // enumerate anybody — the limiter is keyed on the typed email and consumed
+  // before the row is looked up, so an address that does not exist locks out
+  // identically — and a desk typing the right password into a closed door
+  // needs to be told the door is closed rather than doubting the password.
+  let staff;
+  try {
+    staff = await authenticateStaff(prisma, email, password);
+  } catch (error) {
+    if (error instanceof TooManyAttempts) return { error: error.message };
+    throw error;
+  }
   if (!staff) return { error: GENERIC };
 
   await startStaffSession(staff.id);
@@ -60,7 +71,16 @@ export async function switchStaff(_prev: SwitchState, formData: FormData): Promi
   const GENERIC = 'That name and PIN do not match.';
   if (!staffUserId || !pin) return { error: GENERIC };
 
-  const staff = await verifyStaffPin(prisma, { businessId: current.businessId, staffUserId, pin });
+  let staff;
+  try {
+    staff = await verifyStaffPin(prisma, { businessId: current.businessId, staffUserId, pin });
+  } catch (error) {
+    // A-050 — four digits is a walkable keyspace and this form is in a room
+    // the public stands in. Per-name, so one stylist's fat finger cannot lock
+    // the desk out of everybody else.
+    if (error instanceof TooManyAttempts) return { error: error.message };
+    throw error;
+  }
   if (!staff) return { error: GENERIC };
 
   await actAsStaff(staff.id);

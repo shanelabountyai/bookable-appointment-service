@@ -45,10 +45,14 @@ export async function seedStaffUser(
     }));
 
   const name = input.name?.trim() || 'Front desk';
+  // A-050 — THE OWNER. This is the account the salon signs in with, and the
+  // migration's backfill says the same thing about every row that already had
+  // a password: seeding a `staff` here would leave a fresh install with a
+  // dashboard nobody can open and no screen that could grant the role.
   const staff = await prisma.staffUser.upsert({
     where: { businessId_email: { businessId: business.id, email } },
-    create: { businessId: business.id, email, passwordHash, name },
-    update: { passwordHash, name },
+    create: { businessId: business.id, email, passwordHash, name, role: 'owner' },
+    update: { passwordHash, name, role: 'owner' },
     select: { id: true },
   });
 

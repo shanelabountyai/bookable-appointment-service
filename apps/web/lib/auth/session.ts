@@ -135,6 +135,27 @@ export async function requireDesk(
 }
 
 /**
+ * A-050 (D-36) — the guard on anything only an OWNER may see or do.
+ *
+ * Asked of the ACTING person, not of the account that opened the session. The
+ * salon terminal signs in once in the morning as the owner and four people use
+ * it, so if the role came from `sub` then any stylist who tapped her PIN in
+ * would still be holding the owner's dashboard — revenue, utilization, and
+ * every colleague's no-show count. Taking the desk therefore hands the money
+ * back, and the owner takes it again with her own PIN or her own sign-in.
+ *
+ * Redirects to `/staff`, never to the login page: they ARE signed in, and
+ * throwing a legitimately-authenticated person at a sign-in form is how a
+ * front desk concludes the system is broken. The link is hidden from
+ * non-owners too, so reaching this at all means a typed URL or a stale tab.
+ */
+export async function requireOwner(now = Date.now()): Promise<StaffIdentity> {
+  const staff = await requireStaff(now);
+  if (staff.role !== 'owner') redirect('/staff');
+  return staff;
+}
+
+/**
  * Puts a different name on the next mutation (D-33).
  *
  * The caller is responsible for having verified the PIN; this only re-signs

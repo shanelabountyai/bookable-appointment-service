@@ -1,6 +1,9 @@
 export {
+  InvalidCredential,
   InvalidPin,
   type StaffIdentity,
+  type StaffRole,
+  TooManyAttempts,
   type StaffOption,
   type StaffRow,
   authenticateStaff,

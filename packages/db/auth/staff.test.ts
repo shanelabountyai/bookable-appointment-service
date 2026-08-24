@@ -4,7 +4,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
 import {
+  InvalidCredential,
   InvalidPin,
+  TooManyAttempts,
   authenticateStaff,
   findStaffById,
   listStaff,
@@ -13,6 +15,7 @@ import {
   verifyStaffPin,
 } from './staff';
 import { seedStaffUser } from './seed-staff';
+import { instant, instantFromIso, toDate } from '../../core/time';
 import { resetDatabase } from '../testing';
 
 const prisma = new PrismaClient();
@@ -40,7 +43,9 @@ beforeEach(async () => {
 describe('authenticateStaff', () => {
   it('accepts the right credential and returns the identity', async () => {
     const staff = await authenticateStaff(prisma, EMAIL, PASSWORD);
-    expect(staff).toEqual({ id: staffUserId, businessId, email: EMAIL, name: 'Front desk' });
+    // The seeded account is the OWNER (A-050) — the same thing the
+    // migration's backfill says about every row that already had a password.
+    expect(staff).toEqual({ id: staffUserId, businessId, email: EMAIL, name: 'Front desk', role: 'owner' });
   });
 
   it('is case-insensitive on email and tolerates surrounding whitespace', async () => {
@@ -87,7 +92,13 @@ describe('authenticateStaff', () => {
 
 describe('findStaffById', () => {
   it('loads a staff user', async () => {
-    expect(await findStaffById(prisma, staffUserId)).toEqual({ id: staffUserId, businessId, email: EMAIL, name: 'Front desk' });
+    expect(await findStaffById(prisma, staffUserId)).toEqual({
+      id: staffUserId,
+      businessId,
+      email: EMAIL,
+      name: 'Front desk',
+      role: 'owner',
+    });
   });
 
   // This is what makes a deleted staff user's live sessions stop working on
@@ -263,5 +274,229 @@ describe('A-037 — named staff identity', () => {
     await add('Priya', '4821');
     expect(await authenticateStaff(prisma, '', '4821')).toBeNull();
     expect(await authenticateStaff(prisma, 'Priya', '4821')).toBeNull();
+  });
+});
+
+/**
+ * A-050 — PER-PERSON CREDENTIALS, TWO ROLES, AND A BRAKE ON BOTH DOORS.
+ *
+ * Before this item the salon had four names on the audit trail and one
+ * password under the desk, and the only brute-force control anywhere was the
+ * scrypt cost.
+ */
+describe('A-050 — credentials, roles and rate limiting', () => {
+  const add = (name: string, extra: Parameters<typeof saveStaffMember>[1] extends infer T ? Partial<T> : never = {}) =>
+    saveStaffMember(prisma, { businessId, name, ...extra });
+
+  describe('the role', () => {
+    it('defaults a new person to staff, so access is never granted by existing', async () => {
+      const { id } = await add('Priya', { pin: '4821' });
+      expect((await prisma.staffUser.findUniqueOrThrow({ where: { id } })).role).toBe('staff');
+      expect(await findStaffById(prisma, id)).toMatchObject({ role: 'staff' });
+    });
+
+    it('carries onto the identity every guard reads', async () => {
+      const { id } = await add('Marcus', { pin: '9137', email: 'marcus@shear-genius.test', password: 'long-enough-one', role: 'owner' });
+      expect(await authenticateStaff(prisma, 'marcus@shear-genius.test', 'long-enough-one')).toMatchObject({
+        role: 'owner',
+      });
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '9137' })).toMatchObject({ role: 'owner' });
+    });
+
+    /** THE LOCKOUT GUARD. Demoting the last owner leaves a salon with no
+     *  dashboard and no screen that could hand the role back — the state
+     *  nothing in the product can recover from. */
+    it('refuses to demote the last active owner', async () => {
+      await expect(
+        saveStaffMember(prisma, { businessId, id: staffUserId, name: 'Front desk', role: 'staff' }),
+      ).rejects.toBeInstanceOf(InvalidCredential);
+      expect(await findStaffById(prisma, staffUserId)).toMatchObject({ role: 'owner' });
+    });
+
+    /** The same refusal through the OTHER door, which is the reason it lives
+     *  in `saveStaffMember` rather than in the role form: taking the only
+     *  owner off the roster locks the salon out exactly as demoting her does. */
+    it('refuses to deactivate the last active owner', async () => {
+      await expect(
+        saveStaffMember(prisma, { businessId, id: staffUserId, name: 'Front desk', active: false }),
+      ).rejects.toBeInstanceOf(InvalidCredential);
+    });
+
+    it('allows the demotion once somebody else is an owner', async () => {
+      await add('Marcus', { email: 'marcus@shear-genius.test', password: 'long-enough-one', role: 'owner' });
+      await saveStaffMember(prisma, { businessId, id: staffUserId, name: 'Front desk', role: 'staff' });
+      expect(await findStaffById(prisma, staffUserId)).toMatchObject({ role: 'staff' });
+    });
+
+    /** A deactivated owner is not an owner who can hand the role back. */
+    it('does not count a deactivated owner as the somebody else', async () => {
+      const { id } = await add('Marcus', { email: 'marcus@shear-genius.test', password: 'long-enough-one', role: 'owner' });
+      await saveStaffMember(prisma, { businessId, id, name: 'Marcus', active: false });
+
+      await expect(
+        saveStaffMember(prisma, { businessId, id: staffUserId, name: 'Front desk', role: 'staff' }),
+      ).rejects.toBeInstanceOf(InvalidCredential);
+    });
+  });
+
+  describe('per-person credentials', () => {
+    it('gives an existing roster row a sign-in of its own', async () => {
+      const { id } = await add('Priya', { pin: '4821' });
+      await saveStaffMember(prisma, {
+        businessId,
+        id,
+        name: 'Priya',
+        email: 'PRIYA@Shear-Genius.test',
+        password: 'her-own-password',
+      });
+
+      // Normalized on the way in, so whoever types it next finds the row.
+      expect(await authenticateStaff(prisma, 'priya@shear-genius.test', 'her-own-password')).toMatchObject({
+        id,
+        name: 'Priya',
+        role: 'staff',
+      });
+    });
+
+    /** A password with no email is a credential that can never be used —
+     *  `authenticateStaff` finds by email. Refused at the form rather than
+     *  stored and discovered later. */
+    it('refuses a password with nothing to sign in with', async () => {
+      await expect(add('Priya', { password: 'her-own-password' })).rejects.toBeInstanceOf(InvalidCredential);
+    });
+
+    it('refuses a password shorter than the floor', async () => {
+      await expect(
+        add('Priya', { email: 'priya@shear-genius.test', password: 'short' }),
+      ).rejects.toBeInstanceOf(InvalidCredential);
+    });
+
+    /** The same rule the PIN has, for the same reason: a blank box on a form
+     *  somebody opened to correct a spelling must not sign them out. */
+    it('leaves an existing password alone when none is given', async () => {
+      const { id } = await add('Priya', { email: 'priya@shear-genius.test', password: 'her-own-password' });
+      await saveStaffMember(prisma, { businessId, id, name: 'Priya Nair' });
+
+      expect(await authenticateStaff(prisma, 'priya@shear-genius.test', 'her-own-password')).toMatchObject({
+        name: 'Priya Nair',
+      });
+    });
+
+    /** The unique index is `[businessId, email]`. Two people given the same
+     *  sign-in is an ordinary slip on a roster screen, and it reached a server
+     *  action as a constraint violation — a 500 where a sentence belongs. The
+     *  constraint is still the guard; this is the wording. */
+    it('refuses an email somebody else already signs in with, by name', async () => {
+      await add('Priya', { email: 'shared@shear-genius.test', password: 'her-own-password' });
+      await expect(
+        add('Marcus', { email: 'shared@shear-genius.test', password: 'his-own-password' }),
+      ).rejects.toBeInstanceOf(InvalidCredential);
+      // And the same salon's other business is untouched by it — the index is
+      // per business, and so is the check.
+      const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+      await saveStaffMember(prisma, {
+        businessId: other.id,
+        name: 'Priya',
+        email: 'shared@shear-genius.test',
+        password: 'her-own-password',
+      });
+    });
+
+    /** Saving somebody's own row without changing their email must not accuse
+     *  them of clashing with themselves. */
+    it('does not refuse somebody their own address', async () => {
+      const { id } = await add('Priya', { email: 'priya@shear-genius.test', password: 'her-own-password' });
+      await saveStaffMember(prisma, { businessId, id, name: 'Priya Nair', email: 'priya@shear-genius.test' });
+      expect(await findStaffById(prisma, id)).toMatchObject({ name: 'Priya Nair' });
+    });
+
+    it('says whether somebody can sign in at all, without leaking either hash', async () => {
+      await add('Priya', { pin: '4821' });
+      const roster = await listStaff(prisma, businessId);
+      expect(roster.find((row) => row.name === 'Priya')).toMatchObject({ hasPin: true, hasPassword: false, role: 'staff' });
+      expect(roster.find((row) => row.name === 'Front desk')).toMatchObject({ hasPassword: true, role: 'owner' });
+      expect(JSON.stringify(roster)).not.toContain('$');
+    });
+  });
+
+  describe('the login limiter', () => {
+    /** `now` is INJECTED, so the window is advanced rather than slept
+     *  through — a limiter that can only be tested by waiting is a limiter
+     *  nobody tests. */
+    // Through the one conversion module — `new Date(string)` is banned
+    // repo-wide, and a limiter window is physical milliseconds anyway.
+    const AT = toDate(instantFromIso('2026-06-09T15:00:00.000Z'));
+    const later = (minutes: number) => toDate(instant(instantFromIso('2026-06-09T15:00:00.000Z') + minutes * 60_000));
+
+    it('locks the door after ten wrong passwords, and says so', async () => {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        expect(await authenticateStaff(prisma, EMAIL, 'wrong', AT)).toBeNull();
+      }
+      // The eleventh is refused before the row is even looked up — and the
+      // RIGHT password is refused too, which is the whole point of a lockout.
+      await expect(authenticateStaff(prisma, EMAIL, PASSWORD, AT)).rejects.toBeInstanceOf(TooManyAttempts);
+    });
+
+    /** The enumeration guard, applied to the limiter itself: an address that
+     *  does not exist must lock out exactly as a real one does, or "locked"
+     *  becomes the oracle the timing equalisation exists to close. */
+    it('locks an address that does not exist, identically', async () => {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        expect(await authenticateStaff(prisma, 'nobody@example.com', 'wrong', AT)).toBeNull();
+      }
+      await expect(authenticateStaff(prisma, 'nobody@example.com', 'wrong', AT)).rejects.toBeInstanceOf(TooManyAttempts);
+      // And the real account is untouched — the buckets are per address.
+      expect(await authenticateStaff(prisma, EMAIL, PASSWORD, AT)).not.toBeNull();
+    });
+
+    it('opens again once the window has passed', async () => {
+      for (let attempt = 0; attempt < 10; attempt++) await authenticateStaff(prisma, EMAIL, 'wrong', AT);
+      await expect(authenticateStaff(prisma, EMAIL, PASSWORD, AT)).rejects.toBeInstanceOf(TooManyAttempts);
+
+      expect(await authenticateStaff(prisma, EMAIL, PASSWORD, later(16))).not.toBeNull();
+    });
+
+    /** The counter measures FAILURES. A desk that legitimately signs in
+     *  eleven times on a Saturday must not lock itself out. */
+    it('forgets the count after a successful sign-in', async () => {
+      for (let attempt = 0; attempt < 9; attempt++) await authenticateStaff(prisma, EMAIL, 'wrong', AT);
+      expect(await authenticateStaff(prisma, EMAIL, PASSWORD, AT)).not.toBeNull();
+
+      for (let attempt = 0; attempt < 9; attempt++) {
+        expect(await authenticateStaff(prisma, EMAIL, 'wrong', AT)).toBeNull();
+      }
+      expect(await authenticateStaff(prisma, EMAIL, PASSWORD, AT)).not.toBeNull();
+    });
+  });
+
+  describe('the PIN limiter', () => {
+    const AT = toDate(instantFromIso('2026-06-09T15:00:00.000Z'));
+
+    /** Tighter than the password door on purpose: four digits is ten
+     *  thousand possibilities and this form stands in a room the public is
+     *  in, with the names listed beside it. */
+    it('locks one name after five wrong PINs', async () => {
+      const { id } = await add('Priya', { pin: '4821' });
+      for (let attempt = 0; attempt < 5; attempt++) {
+        expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '0000', now: AT })).toBeNull();
+      }
+      await expect(
+        verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821', now: AT }),
+      ).rejects.toBeInstanceOf(TooManyAttempts);
+    });
+
+    /** Per name, so one stylist's fat finger cannot lock the desk out of
+     *  everybody else on a Saturday. */
+    it('leaves everybody else alone', async () => {
+      const { id: priya } = await add('Priya', { pin: '4821' });
+      const { id: marcus } = await add('Marcus', { pin: '9137' });
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await verifyStaffPin(prisma, { businessId, staffUserId: priya, pin: '0000', now: AT }).catch(() => null);
+      }
+
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: marcus, pin: '9137', now: AT })).toMatchObject({
+        name: 'Marcus',
+      });
+    });
   });
 });

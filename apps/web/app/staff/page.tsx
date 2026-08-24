@@ -54,9 +54,15 @@ export default async function StaffHome() {
         <Link href="/staff/waitlist" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
           Waitlist
         </Link>
-        <Link href="/staff/dashboard" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Dashboard
-        </Link>
+        {/* A-050 (D-36). Hidden for a stylist, and REFUSED by the route as
+            well — hiding a link hides nothing from anybody who has seen the
+            URL once, so the guard on the page is the control and this is the
+            courtesy that stops it being a dead end anybody taps. */}
+        {staff.role === 'owner' ? (
+          <Link href="/staff/dashboard" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
+            Dashboard
+          </Link>
+        ) : null}
       </nav>
 
       <form action={logout}>

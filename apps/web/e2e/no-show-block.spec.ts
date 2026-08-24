@@ -274,12 +274,29 @@ test.describe('the staff bypass (D-27)', () => {
 });
 
 /** The customer flow, end to end, with a given identity. */
+/**
+ * The customer flow, WAITING FOR EACH STEP TO ARRIVE before clicking the next.
+ *
+ * Every step of `/book` draws the same `fieldset ul > li > button` list, so
+ * clicking straight through resolves the selector against whichever step is on
+ * screen at that instant — and a click sent while React is swapping steps is
+ * simply lost. This failed intermittently on the time click, with the page
+ * left sitting on "Step 4 of 5" and no error anywhere.
+ *
+ * NOT fixed with a retry: a click that is re-sent until it lands is a test
+ * that passes for the wrong reason. `booking.spec.ts` and `manage.spec.ts`
+ * have waited on the step heading since A-048 and this file never learned to
+ * — the same omission A-048 recorded as still outstanding, found here.
+ */
 async function bookAsCustomer(page: Page, who: { name: string; phone: string }) {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
   const firstOption = () => page.locator('fieldset ul > li > button').first();
+
+  await expect(page.getByRole('group')).toContainText('Which day suits you?');
   await firstOption().click();
+  await expect(page.getByRole('group')).toContainText('What time on');
   await firstOption().click();
 
   await page.getByLabel('Your name').fill(who.name);
