@@ -119,6 +119,16 @@ test.describe('staff booking (A-017)', () => {
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
     await page.getByLabel('Which day?').fill(nextWeek);
+    // A-054 (demo checkpoint 4): WAIT FOR THE NEW DAY'S TIMES before booking.
+    //
+    // Both the service tap and the day change ask the server for times, and
+    // until this item nothing said which request an answer belonged to — so a
+    // slow answer for the OLD day could arrive last and reselect a slot on it
+    // while the panel's heading said the new one. This sweep caught it doing
+    // exactly that: panel on 1 September, appointment written on 25 August.
+    // The guard is in the panel; this assertion is what makes the spec able
+    // to see it, instead of booking whichever day happened to win.
+    await expect(page.getByRole('button', { name: /^\d\d:\d\d$/ }).first()).toBeVisible();
     await page.getByRole('button', { name: 'No name' }).click();
     await page.getByRole('button', { name: 'Book', exact: true }).click();
     await expect(page.getByText('Booked.')).toBeVisible();

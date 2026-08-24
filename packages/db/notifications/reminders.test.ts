@@ -9,6 +9,9 @@ import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { issueManageToken } from '../appointments/manage-token';
+import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/notifications';
+import { dispatchPendingNotifications } from './dispatch';
+import { enqueueNotification } from './enqueue';
 import { sendDueReminders } from './reminders';
 
 const prisma = new PrismaClient();
@@ -181,7 +184,18 @@ describe('sendDueReminders — exactly-once (P1-7)', () => {
 describe('sendDueReminders — the link (D-28)', () => {
   const NOW = at('2026-06-08T08:00:00-05:00');
 
-  it('reissues the manage token — the ORIGINAL confirmation link stops working, and that is intended', async () => {
+  /**
+   * A-054 (demo checkpoint 4, D-38) CHANGED WHAT THIS ASSERTS, and the change
+   * is the finding.
+   *
+   * It used to assert that the reminder REVOKES her confirmation link — D-28's
+   * stated intent, whose argument ends "the reminder always carries a fresh
+   * link, so nothing is left dangling". That premise is about DELIVERY and
+   * this code is about ENQUEUING. The walk revoked her link here, failed the
+   * reminder permanently at the provider, and left her holding a dead link
+   * with no replacement — A-048's harm through the other door.
+   */
+  it('mints a fresh link WITHOUT killing the one she is already holding (D-38)', async () => {
     const appointment = await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
     await issueManageToken(prisma, {
       businessId,
@@ -193,11 +207,126 @@ describe('sendDueReminders — the link (D-28)', () => {
 
     await sendDueReminders(prisma, NOW);
 
+    // Still live: a revocation is a promise that a replacement is in her
+    // hands, and at enqueue time nobody can make that promise.
     const originalRow = await prisma.manageToken.findUniqueOrThrow({ where: { id: originalId } });
-    expect(originalRow.revokedAt).not.toBeNull();
+    expect(originalRow.revokedAt).toBeNull();
 
+    // And the reminder still carries a link of its own — D-28's other half is
+    // untouched, because the raw token of the first can never be recovered.
     const live = await prisma.manageToken.findMany({ where: { appointmentId: appointment.id, revokedAt: null } });
-    expect(live).toHaveLength(1);
-    expect(live[0]!.id).not.toBe(originalId);
+    expect(live).toHaveLength(2);
+    expect(live.map((t) => t.id)).toContain(originalId);
+  });
+
+  /** Everything that is NOT the reminder still revokes on reissue — D-38
+   *  narrows D-28 to one caller, it does not repeal it. */
+  it('leaves revoke-on-reissue alone for every other caller', async () => {
+    const appointment = await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    await issueManageToken(prisma, { businessId, appointmentId: appointment.id, endAt: appointment.endAt, now: NOW });
+    const firstId = (await prisma.manageToken.findFirstOrThrow({ where: { appointmentId: appointment.id } })).id;
+
+    await issueManageToken(prisma, { businessId, appointmentId: appointment.id, endAt: appointment.endAt, now: NOW });
+
+    expect((await prisma.manageToken.findUniqueOrThrow({ where: { id: firstId } })).revokedAt).not.toBeNull();
+  });
+});
+
+/**
+ * A-054 (demo checkpoint 4) — A MESSAGE THAT STOPPED BEING TRUE.
+ *
+ * Deciding and sending are separate steps, and the world moves between them.
+ * Walked at the seam: an appointment cancelled a minute after its reminder was
+ * enqueued produced both the cancellation notice AND, after it, a reminder for
+ * the appointment she had just cancelled.
+ */
+describe('the reminder that is no longer true (A-054)', () => {
+  const NOW = at('2026-06-08T08:00:00-05:00');
+
+  class Recorder implements ChannelAdapter {
+    readonly id = 'recorder';
+    readonly sent: OutboundMessage[] = [];
+    supports(): boolean {
+      return true;
+    }
+    async send(message: OutboundMessage): Promise<SendResult> {
+      this.sent.push(message);
+      return { externalId: 'rec-1' };
+    }
+  }
+
+  const templatesSent = (adapter: Recorder) => adapter.sent.map((m) => m.template);
+
+  it('does not remind a client who has cancelled', async () => {
+    const appointment = await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    await sendDueReminders(prisma, NOW);
+
+    await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
+
+    const adapter = new Recorder();
+    const result = await dispatchPendingNotifications(prisma, adapter, 100, NOW);
+    expect(templatesSent(adapter)).not.toContain('appointment.reminder');
+    expect(result.suppressed).toBe(1);
+
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { template: 'appointment.reminder' } });
+    expect(row.status).toBe('suppressed');
+    // The reason a person can act on, on A-051's screen.
+    expect(row.lastError).toBe('stale:the appointment is cancelled');
+  });
+
+  /**
+   * A-051's backoff is what turns this from a race into a window: a transient
+   * provider failure legitimately holds a row for up to two and a half hours,
+   * and the walk sent a reminder naming Tuesday for an appointment that had
+   * moved to Wednesday.
+   */
+  it('does not remind about a time the appointment has moved away from', async () => {
+    const appointment = await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    await sendDueReminders(prisma, NOW);
+
+    await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { startAt: at('2026-06-10T08:00:00-05:00'), endAt: at('2026-06-10T09:00:00-05:00') },
+    });
+
+    const adapter = new Recorder();
+    await dispatchPendingNotifications(prisma, adapter, 100, NOW);
+    expect(templatesSent(adapter)).not.toContain('appointment.reminder');
+    const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { template: 'appointment.reminder' } });
+    expect(row.lastError).toBe('stale:the appointment moved to a different time');
+  });
+
+  /** Nothing changed, so it goes — the check must not eat the ordinary case. */
+  it('still sends a reminder that is still true', async () => {
+    await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    await sendDueReminders(prisma, NOW);
+
+    const adapter = new Recorder();
+    await dispatchPendingNotifications(prisma, adapter, 100, NOW);
+    expect(templatesSent(adapter)).toContain('appointment.reminder');
+  });
+
+  /**
+   * ONLY the reminder can go stale, and that is a property of what it says.
+   * A cancellation notice reports something that HAPPENED — still true when
+   * it arrives late, and suppressing it would be the silence this product is
+   * the opposite of.
+   */
+  it('still sends a CANCELLATION notice for a cancelled appointment', async () => {
+    const appointment = await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: `cancelled:${appointment.id}`,
+      appointmentId: appointment.id,
+      channel: 'email',
+      template: 'appointment.cancelled',
+      recipient: 'ada@example.test',
+      payload: { appointmentId: appointment.id },
+    });
+
+    const adapter = new Recorder();
+    await dispatchPendingNotifications(prisma, adapter, 100, NOW);
+    expect(templatesSent(adapter)).toContain('appointment.cancelled');
   });
 });

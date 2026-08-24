@@ -31,6 +31,17 @@ export interface IssueManageTokenInput {
   /** The appointment's scheduled end — the expiry is derived from it. */
   endAt: Date;
   now: Date;
+  /**
+   * A-054 (D-38). Leave the previous token WORKING alongside the new one.
+   *
+   * Only the reminder passes this, and only because its message may never
+   * arrive: a revocation is a promise that a replacement is in the client's
+   * hands, and at enqueue time nobody can make that promise. Two live links
+   * to one appointment are harmless — same scope, same expiry, same page —
+   * where a revoked link and an undelivered replacement is a client who
+   * cannot reach her own booking.
+   */
+  keepPrevious?: boolean;
 }
 
 export interface IssuedManageToken {
@@ -40,17 +51,24 @@ export interface IssuedManageToken {
 }
 
 /**
- * Mints a token for this appointment and revokes any earlier one.
+ * Mints a token for this appointment and, by default, revokes any earlier one.
  *
  * Takes a transaction client on purpose: A-009 issues this inside the booking
  * transaction, so an appointment can never commit with no way to manage it,
  * for the same reason its confirmation is enqueued there (D-14).
+ *
+ * `keepPrevious` exists for the reminder, and demo checkpoint 4 is why (D-38).
+ * D-28's argument for revoke-on-reissue ends "the reminder always carries a
+ * fresh link, so nothing is left dangling" — which is true only if the
+ * reminder is DELIVERED. Enqueuing is not delivering: the walk revoked her
+ * confirmation link, failed the reminder permanently, and left her holding a
+ * dead link with no replacement.
  */
 export async function issueManageToken(db: Db, input: IssueManageTokenInput): Promise<IssuedManageToken> {
   const { token, tokenHash } = mintManageToken();
   const expiresAt = toDate(manageTokenExpiry(fromDate(input.endAt)));
 
-  await revokeManageTokens(db, input.appointmentId, input.now);
+  if (!input.keepPrevious) await revokeManageTokens(db, input.appointmentId, input.now);
   await db.manageToken.create({
     data: {
       businessId: input.businessId,

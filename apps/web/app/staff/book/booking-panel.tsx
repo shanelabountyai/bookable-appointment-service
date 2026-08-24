@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState, useTransition } from 'react';
+import { useActionState, useRef, useState, useTransition } from 'react';
 import {
   type ClientChoice,
   type ComposedTime,
@@ -107,9 +107,27 @@ export function BookingPanel({
   const startAt = pick?.at ?? chosenSlot ?? '';
   const ready = chosen.length > 0 && providerId !== '' && startAt !== '';
 
+  /**
+   * A-054 (demo checkpoint 4) — WHICH REQUEST'S ANSWER IS THIS?
+   *
+   * `loadFor` runs on every service tap and every day change, and both write
+   * the same two pieces of state. Nothing said which request an answer
+   * belonged to, so the response that arrived LAST won — not the one that was
+   * asked LAST. Change the day while the previous day's times are still in
+   * flight and the older answer silently reselects a slot on the day the desk
+   * has just left, while the heading and the "back to the day" link both name
+   * the new one.
+   *
+   * Found by the checkpoint sweep, and it is not a test artifact: the panel
+   * said Tuesday 1 September, the appointment landed on Tuesday 25 August, and
+   * nothing anywhere said they disagreed.
+   */
+  const latestRequest = useRef(0);
+
   // Shared by "pick a service" and "pick a day" (A-039) — either one
   // invalidates whatever times were offered for the OLD combination.
   function loadFor(nextDay: string, nextServices: string[]) {
+    const request = ++latestRequest.current;
     setPick(null);
     setOptions([]);
     setSlots([]);
@@ -120,12 +138,22 @@ export function BookingPanel({
     setTypedError(null);
     if (nextServices.length === 0) return;
     if (walkIn) {
-      startLoadingOptions(async () => setOptions(await findWalkInOptions(nextServices, nextDay)));
+      startLoadingOptions(async () => {
+        const found = await findWalkInOptions(nextServices, nextDay);
+        if (request !== latestRequest.current) return;
+        setOptions(found);
+      });
       return;
     }
     if (provider) {
       startLoadingOptions(async () => {
         const offered = await staffSlotsFor(provider.id, nextServices, nextDay);
+        // A newer question has been asked since this one went out. Dropping
+        // the answer leaves the panel with no times rather than the WRONG
+        // times, and the newer request is already on its way with the right
+        // ones — an empty list for a moment is recoverable, a slot silently
+        // selected on the wrong day is not.
+        if (request !== latestRequest.current) return;
         setSlots(offered);
         // Preselect the first offered time at or after the gap the desk
         // tapped, so the ordinary case is one tap and the list is there to

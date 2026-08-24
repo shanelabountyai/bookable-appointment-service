@@ -39,25 +39,20 @@ const primary =
   'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900';
 
 /**
- * CLIENT-02's "rebook last visit", resolved SERVER-side and handed over whole.
- *
- * Deliberately not a set of ids the component then looks up in an effect: the
- * page already knows the service, the provider and the open days by the time
- * it renders, so passing them means the flow opens directly on the day list
- * with no second render and no loading state for something already known.
+ * A-054 removed `Prefill` and the `/book?service=&provider=` contract behind
+ * it. A-015 built it for "rebook last visit"; A-040 replaced that with the
+ * staff flow (`/staff/book?services=…&client=…`), and nothing in the product
+ * has emitted the public form since. Owner confirmed the deletion at demo
+ * checkpoint 4. A pasted link now simply starts the flow at the top — which is
+ * what it already did for every link with a retired service or a departed
+ * stylist.
  */
-export interface Prefill {
-  service: Service;
-  provider: { id: string; name: string };
-  openDays: OpenDay[];
-}
-
-export function BookingFlow({ services, prefill }: { services: Service[]; prefill?: Prefill | null }) {
-  const [step, setStep] = useState<Step>(prefill ? 'day' : 'service');
-  const [service, setService] = useState<Service | null>(prefill?.service ?? null);
+export function BookingFlow({ services }: { services: Service[] }) {
+  const [step, setStep] = useState<Step>('service');
+  const [service, setService] = useState<Service | null>(null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
-  const [provider, setProvider] = useState<{ id: string; name: string } | null>(prefill?.provider ?? null);
-  const [openDays, setOpenDays] = useState<OpenDay[]>(prefill?.openDays ?? []);
+  const [provider, setProvider] = useState<{ id: string; name: string } | null>(null);
+  const [openDays, setOpenDays] = useState<OpenDay[]>([]);
   const [day, setDay] = useState<OpenDay | null>(null);
   const [times, setTimes] = useState<OfferedTime[]>([]);
   const [time, setTime] = useState<OfferedTime | null>(null);

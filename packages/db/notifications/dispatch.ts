@@ -25,6 +25,7 @@ import { type ChannelAdapter, ChannelSendError, classifyFailure, retryDelayMs } 
 import { fromDate, instant, toDate } from '../../core/time';
 import type { OutboxStatus, PrismaClient } from '../generated/client/index.js';
 import { notificationConfig } from './config';
+import { staleReason } from './stale';
 
 export interface DispatchResult {
   sent: number;
@@ -59,6 +60,9 @@ interface ClaimedRow {
   template: string;
   recipient: string | null;
   payload: unknown;
+  /** A-054: what this message is about, so the dispatcher can ask whether it
+   *  is still true before saying it. */
+  appointmentId: string | null;
   /** Post-increment: 1 on the first pass. The backoff table is indexed off
    *  this, so it has to come back from the claim rather than be re-read. */
   attempts: number;
@@ -108,7 +112,7 @@ export async function dispatchPendingNotifications(
               LIMIT ${limit}
                 FOR UPDATE SKIP LOCKED
            )
-    RETURNING o.id, o.channel, o.template, o.recipient, o.payload, o.attempts
+    RETURNING o.id, o.channel, o.template, o.recipient, o.payload, o.attempts, o."appointmentId"
   `;
 
   let sent = 0;
@@ -126,6 +130,27 @@ export async function dispatchPendingNotifications(
           // Never coming back, so it must not look like it is waiting.
           nextAttemptAt: null,
         },
+      });
+      suppressed++;
+      continue;
+    }
+
+    // A-054 (demo checkpoint 4) — IS THIS STILL TRUE?
+    //
+    // Deciding and sending are separate steps (NOTIF-01), and the world moves
+    // between them: she rings and cancels, or the desk moves her to
+    // Wednesday. A-051's backoff turned that gap from milliseconds into up to
+    // two and a half hours. Checked HERE, at the last moment before the
+    // provider is called, because that is the only moment the answer is worth
+    // anything.
+    //
+    // `suppressed`, not `failed`: nothing went wrong, and the row does not
+    // belong on the "nobody was told" screen next to a dead phone number.
+    const stale = await staleReason(prisma, row);
+    if (stale) {
+      await prisma.notificationOutbox.update({
+        where: { id: row.id },
+        data: { status: 'suppressed' satisfies OutboxStatus, lastError: stale, nextAttemptAt: null },
       });
       suppressed++;
       continue;

@@ -101,6 +101,16 @@ export async function sendDueReminders(prisma: PrismaClient, now: Date): Promise
         appointmentId: appointment.id,
         endAt: appointment.endAt,
         now,
+        // A-054 / D-38 — KEEP THE LINK SHE IS ALREADY HOLDING.
+        //
+        // D-28's argument for revoking ends "the reminder always carries a
+        // fresh link, so nothing is left dangling", and that premise is about
+        // DELIVERY while this code is about enqueuing. Demo checkpoint 4
+        // walked the gap: her confirmation link was revoked here, the reminder
+        // then failed permanently at the provider, and she was left holding a
+        // dead link with no replacement — the same harm A-048 fixed for two
+        // concurrent runs, through the other door.
+        keepPrevious: true,
       });
 
       return enqueueNotification(tx, {

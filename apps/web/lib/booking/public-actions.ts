@@ -13,7 +13,7 @@
  * crosses this boundary. The only ids returned are the ones the next request
  * must echo back.
  */
-import { type CalendarDay, addDays, calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { type CalendarDay, addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
 import { NoResourceFree, SelfServeBlocked, SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
@@ -91,18 +91,14 @@ export interface OpenDay {
  * their own today would be shown a day the salon has not reached yet. The
  * business's own calendar is the only one that decides (spec §1.3).
  */
-export async function listDaysWithOpenings(
-  serviceId: string,
-  providerId: string,
-  /** CLIENT-02's "jump the slot search to the natural interval". Clamped to
-   *  today: a client last seen a year ago would otherwise open the list on a
-   *  day the salon cannot sell, and a hand-edited URL could ask for 1999. */
-  fromDay?: string,
-): Promise<OpenDay[]> {
+export async function listDaysWithOpenings(serviceId: string, providerId: string): Promise<OpenDay[]> {
   const business = await theBusiness();
   const now = new Date();
-  const today = toLabel(fromDate(now), zoneId(business.timezone)).day;
-  const start = startDayFor(fromDay, today);
+  // A-054: the `fromDay` argument went with `resolvePrefill`. It existed only
+  // for CLIENT-02's "jump to the natural interval", which arrived through the
+  // public `/book?service=` link A-040 replaced and A-054 deleted — the whole
+  // flow starts from today now, which is what every caller already asked for.
+  const start = toLabel(fromDate(now), zoneId(business.timezone)).day as CalendarDay;
 
   const days = await daysWithAvailability(prisma, {
     businessId: business.id,
@@ -116,20 +112,6 @@ export async function listDaysWithOpenings(
   return days.map((day) => ({ day, label: readableDay(day) }));
 }
 
-/** The suggested start, clamped to today and to a day that actually parses.
- *  `fromDay` arrives from a URL, so "2026-13-99" and "" are both ordinary
- *  input here rather than errors worth showing anyone.
- *
- *  NOT exported: every export from a `'use server'` module must be async. */
-function startDayFor(fromDay: string | undefined, today: CalendarDay): CalendarDay {
-  if (!fromDay) return today;
-  try {
-    const day = calendarDay(fromDay);
-    return day > today ? day : today;
-  } catch {
-    return today;
-  }
-}
 
 export async function listTimesOn(serviceId: string, providerId: string, day: string): Promise<OfferedTime[]> {
   const { slots } = await computeDaySlots(prisma, {

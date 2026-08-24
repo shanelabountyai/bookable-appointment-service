@@ -22,17 +22,35 @@ import type { PrismaClient } from '../generated/client/index.js';
 /**
  * Every table, in one statement. CASCADE handles the dependency order.
  *
- * Listed explicitly rather than discovered from `information_schema`: a new
- * table should fail loudly here (leftover rows in an unlisted table) rather
- * than be silently skipped by a query that also silently skips
- * `_prisma_migrations` if you get its filter slightly wrong.
+ * Listed explicitly rather than discovered from `information_schema`, because
+ * a query that finds every table also finds `_prisma_migrations` if you get
+ * its filter slightly wrong, and truncating that turns a test run into a
+ * re-migration.
+ *
+ * THIS COMMENT USED TO CLAIM A NEW TABLE WOULD "FAIL LOUDLY HERE (leftover
+ * rows in an unlisted table)". It would not, and demo checkpoint 4 measured
+ * it: `TRUNCATE ... CASCADE` also truncates every table holding a foreign key
+ * INTO one that is listed, whatever that key's `ON DELETE` says. An
+ * `AppointmentSeries` row written before a reset (a table absent from this
+ * list since A-049) was gone after it — silently, which is the opposite of
+ * loudly.
+ *
+ * So the list is not a safety net; it is an INVENTORY, and its value is that
+ * a reader can see what a reset touches. Keep it complete when a table is
+ * added — nothing will tell you if you forget.
  */
 const TABLES = [
   'AppointmentEvent',
   'AppointmentServiceLine',
   'NotificationOutbox',
   'ManageToken',
+  // These three were absent until demo checkpoint 4 found the comment above
+  // was wrong: CASCADE had been clearing them all along, which is correct
+  // behaviour and was accidental documentation.
+  'AppointmentResourceHold',
+  'AppointmentBlock',
   'Appointment',
+  'AppointmentSeries',
   'WaitlistEntry',
   'Client',
   'WindowBreak',

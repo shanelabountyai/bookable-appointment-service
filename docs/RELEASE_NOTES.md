@@ -1553,3 +1553,39 @@ The interesting part is not the feature — it is a single sentence answering a 
 The logic for "turn a list of staff IDs into their names" already existed, built for the appointment history a few releases back. Rather than writing it a second time for this screen, it was pulled out into a shared piece both features now call — so a name shown on one screen and a name shown on the other will never quietly start disagreeing about who a departed employee was.
 
 And a blank space where a name should be is treated as real information, not an oversight to paper over. A handful of availability records exist from before the system started tracking who made a change; for those, the screen shows nothing rather than guessing. A wrong name is worse than no name — it is a wrong answer to exactly the question this feature exists to answer correctly.
+
+## Reminding someone about an appointment they already cancelled
+
+Every few weeks this project stops adding features and instead walks the system the way a person would, deliberately choosing the places where two separate features meet rather than the middle of either one. Every feature has passing tests. What nothing owns is the seam.
+
+This walk found two problems. The second one is the interesting one, because it was created three weeks ago *by a fix*.
+
+**The system decides what to send and sends it as two separate steps.** That separation is deliberate and correct — deciding happens inside the booking transaction so a message can never be promised and then lost, while sending happens later against an external provider that can be slow or down. But nothing was checking whether the world had changed in between.
+
+So: a client is booked for Tuesday at ten. The evening before, the reminder is prepared. A minute later she rings and cancels. A minute after that, the sender runs — and sends both messages. She is told her appointment is cancelled, and then reminded to come to it. The reminder is the one she reads last.
+
+That gap used to be milliseconds wide, which is why nobody had seen it. **Then the previous release widened it to two and a half hours.** That release added retries, so a message failing against a provider having a bad minute is tried again later instead of being silently dropped — a genuinely good change, and one that made this much worse. The walk confirmed it: the reminder failed, the client rescheduled to Wednesday, and the retry cheerfully sent her a reminder naming Tuesday.
+
+**The fix is to ask, at the last possible moment before handing the message to the provider, whether it is still true.** And only reminders are checked, which is not a shortcut but the actual distinction: every other message reports something that *happened* — you're booked, we moved you, we cancelled, the stylist is running late. Those are still true when they arrive late. A reminder is the only message that makes a claim about the *future*, which makes it the only one the world can turn into a lie while it sits in a queue.
+
+A reminder that has stopped being true is set aside with the reason recorded, not marked failed. Nothing went wrong, and it does not belong on the "nobody was told" list next to a disconnected phone number. She is not left unreminded either: if she moved to Wednesday, the system reminds her about Wednesday when Wednesday comes round.
+
+**The second problem was a promise the system could not keep.**
+
+Each appointment has a private link the client uses to confirm, reschedule or cancel. When the reminder goes out it carries a fresh link, and the old one stops working — deliberately, decided long ago, on the reasoning that "the reminder always carries a fresh link, so nothing is left dangling."
+
+The word doing the work in that sentence is *carries*. The link was being killed at the moment the reminder was **written**, not the moment it was **delivered**. The walk killed her working link, then failed the reminder permanently — a dead email address — and left her holding a link that no longer opened her own booking, with no replacement, and no way to know.
+
+What makes this one worth writing down is that the original decision *already contained the correct test*. One sentence earlier it explains why rescheduling doesn't do the same thing: because a reschedule message carries no link, "there would be nothing to replace the one it broke." Exactly right — and a reminder that never arrives carries no link either. The rule was sound; it was being applied a step too early.
+
+Now the reminder mints its new link and leaves the old one working. Two live links to the same appointment is a non-event: same booking, same expiry, same page. Every other part of the system still retires the old link when it issues a new one.
+
+**And a third problem, found by the test sweep rather than by the walk itself.**
+
+The front desk's booking panel can change which day it is looking at without going back to the calendar. Choosing a service asks the server for that day's available times; changing the day asks again. Nothing was keeping track of which question each answer belonged to — so whichever answer came back *last* was applied, even if it was answering a question the desk had already moved on from.
+
+The result: change the day while the previous day's times are still loading, and the panel quietly re-selects a time on the day you just left, underneath a heading naming the new one. Book, and the appointment lands on the wrong day. The sweep caught it doing exactly that — the panel said 1 September, the appointment was written on 25 August, and nothing on screen suggested the two disagreed.
+
+Answers to superseded questions are now discarded. An empty list for half a second is recoverable; a time silently selected on the wrong day is not.
+
+**Also in this release:** a comment in the test tooling claimed that forgetting to list a new database table would fail loudly. It measured false — the cleanup silently handles unlisted tables — and a comment that describes a safety net which does not exist is worse than no comment, so it now says what actually happens. And an old public booking link format, replaced a while back by the front-desk version and emitted by nothing since, was deleted along with the code that supported it.
