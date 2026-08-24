@@ -1445,7 +1445,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## A-049 — standing appointments, part 2 of 2 (the surface)
 
-**Commit:** `TBD`
+**Commit:** `16d7e20`
 
 **The half a human touches.** Part 1 left 22 tests over a feature no browser could reach; this is the repeat control, the summary the desk reads back, and the marker that says which one of six she is looking at. A-049 is now ✅.
 
