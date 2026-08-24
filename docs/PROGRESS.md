@@ -1366,7 +1366,7 @@ Demo checkpoint 3 committed at `aec430a`.
 
 ## A-048 — the outbox before a real driver lands
 
-**Commit:** `PENDING`
+**Commit:** `6070edd`
 
 **Built.** The three `ponytail:` ceilings on the notification outbox, closed while the wired adapter is still a console log. All three are invisible today and all three become "a client texted twice, and a log that cannot say which driver handled what" on the first day Twilio is real — and the point of doing it now is that the alternative is debugging a double-send against a live SMS bill.
 
