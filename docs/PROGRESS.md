@@ -1420,7 +1420,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## A-049 — standing appointments, part 1 of 2 (the rule, the schema, the write path)
 
-**Commit:** `PENDING`
+**Commit:** `02463d3`
 
 **NOT DONE, and marked 🔨 rather than ✅.** The load-bearing half is built and gated; the surface a human uses is not. Saying so is the point of this entry — an L was always going to span sessions, and a half-item marked ✅ is worse than one marked honestly.
 
