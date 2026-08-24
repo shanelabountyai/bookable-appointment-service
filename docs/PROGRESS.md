@@ -1399,7 +1399,7 @@ That removed the 30-second mystery — a residual failure is now a 5-second asse
 
 ## Phase 5 scoping — written at the Phase 4 close-out
 
-**Commit:** `PENDING`
+**Commit:** `790a574`
 
 **No feature.** A-048 emptied the backlog for the fifth time, so this is the scoping pass that follows — six rows, A-049 to A-054, in `06-backlog.md`.
 
