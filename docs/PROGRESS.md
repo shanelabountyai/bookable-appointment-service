@@ -1593,6 +1593,8 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 
 ## Phase 6 scoping — the operator review that had been owed for three passes
 
+**Commit:** `10ef1d9`
+
 **No feature.** A-054 emptied the backlog for the sixth time, so this is the scoping pass that follows — but this one ran the salon-operator review FIRST, which the last three did not. Review: `docs/reviews/12-operator-review-phase-5-close.md`. Rows: A-055..A-063 in `06-backlog.md`, **in the operator's priority order, not an engineer's**.
 
 **The pass begins by recording that skipping it had a measurable cost.** The operator had written "do not build recurring appointments" in two prior reviews. The Phase 5 scoping pass promoted it to A-049 and put it *first*, on the stated reasoning that "a salon's forward book is mostly standing series" — an engineer's belief about a front desk, written in a section whose own header admitted it needed an operator's opinion first. Their verdict: *"It is not mostly standing series; it is mostly rebooking at checkout, which A-040 correctly fixed. I would still not have built A-049, and it went ahead of both recommendation 1 and recommendation 2, each of which costs money every week."* A-049 was an L across two sessions. The execution was endorsed as the right shape; the *choice* was not.
