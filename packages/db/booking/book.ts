@@ -71,6 +71,17 @@ export interface BookAppointmentInput {
   audience?: 'public' | 'staff';
   notes?: string | null;
   /**
+   * A-049. The standing appointment this occurrence belongs to, if any.
+   *
+   * Carried through rather than written by a second path, because an
+   * occurrence IS an appointment: the exclusion constraint, the chair
+   * assignment, the engine re-check, the outbox row and the event log all have
+   * to apply to it identically, and a `createSeriesAppointment` that skipped
+   * any one of them would be a second way to write a booking.
+   */
+  seriesId?: string | null;
+  seriesOrdinal?: number | null;
+  /**
    * TEST SEAM. Skips D-24's advisory lock so the EXCLUSION CONSTRAINT's own
    * defence — and the 23P01 -> SlotTaken mapping below — can be exercised.
    *
@@ -369,6 +380,8 @@ async function writeAppointment(
       startDay: label.day,
       startWallTime: label.time,
       notes: input.notes ?? null,
+      seriesId: input.seriesId ?? null,
+      seriesOrdinal: input.seriesOrdinal ?? null,
       // blockedStart/blockedEnd are TRIGGER-written (A-003); the values here
       // are placeholders the trigger overwrites before the row is visible.
       blockedStart: input.startAt,

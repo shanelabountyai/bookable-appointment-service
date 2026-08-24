@@ -141,6 +141,7 @@ model Business {
   providers     Provider[]
   services      Service[]
   resourceTypes ResourceType[]
+  series        AppointmentSeries[]
   resources     Resource[]
   weeklyWindows WeeklyWindow[]
   dateOverrides DateOverride[]
@@ -191,41 +192,42 @@ model StaffUser {
 // ─────────────────────────── catalog ───────────────────────────
 
 model Provider {
-  id          String  @id @default(cuid())
-  businessId  String
-  displayName String
+  id           String  @id @default(cuid())
+  businessId   String
+  displayName  String
   /// P1-3: a stylist quitting with three weeks booked is more common and harder
   /// than deactivating a service, and had no field before this.
-  active      Boolean @default(true)
+  active       Boolean @default(true)
   /// Ties in the "any provider" assignment rule are broken by this (SVC-02),
   /// which makes the rule deterministic and therefore assertable.
-  displayOrder Int    @default(0)
+  displayOrder Int     @default(0)
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business         Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
   serviceProviders ServiceProvider[]
   weeklyWindows    WeeklyWindow[]
   dateOverrides    DateOverride[]
   timeOff          TimeOff[]
   adHocBlocks      AdHocBlock[]
   appointments     Appointment[]
+  series           AppointmentSeries[]
   runningLate      ProviderRunningLate[]
 
   @@index([businessId, active])
 }
 
 model Service {
-  id                  String  @id @default(cuid())
-  businessId          String
-  name                String
-  durationMinutes     Int
-  bufferBeforeMinutes Int     @default(0)
-  bufferAfterMinutes  Int     @default(0)
-  priceCents          Int
-  active              Boolean @default(true)
-  displayOrder        Int     @default(0)
+  id                        String  @id @default(cuid())
+  businessId                String
+  name                      String
+  durationMinutes           Int
+  bufferBeforeMinutes       Int     @default(0)
+  bufferAfterMinutes        Int     @default(0)
+  priceCents                Int
+  active                    Boolean @default(true)
+  displayOrder              Int     @default(0)
   /// D-19 + D-11 resolver: `service.cutoff ?? business.cutoff`. Nullable means
   /// "inherit", which is distinct from "zero".
   cancellationCutoffMinutes Int?
@@ -239,7 +241,7 @@ model Service {
   requiredResourceTypeId String?
   requiredResourceType   ResourceType? @relation(fields: [requiredResourceTypeId], references: [id], onDelete: SetNull)
 
-  business         Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business         Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
   serviceProviders ServiceProvider[]
   segments         ServiceSegment[]
   lines            AppointmentServiceLine[]
@@ -305,7 +307,7 @@ model ServiceSegment {
 /// would be enforcement theatre — and adding an axis to a LIVE exclusion
 /// constraint later is the migration D-12 exists to avoid.
 model ResourceType {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   businessId String
   name       String
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
@@ -319,16 +321,16 @@ model ResourceType {
 }
 
 model Resource {
-  id             String @id @default(cuid())
+  id             String   @id @default(cuid())
   businessId     String
   resourceTypeId String
   name           String
-  active         Boolean @default(true)
+  active         Boolean  @default(true)
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
-  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  resourceType ResourceType @relation(fields: [resourceTypeId], references: [id], onDelete: Restrict)
+  business     Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  resourceType ResourceType              @relation(fields: [resourceTypeId], references: [id], onDelete: Restrict)
   appointments Appointment[]
   holds        AppointmentResourceHold[]
 
@@ -345,14 +347,14 @@ model Resource {
 /// AVAIL-01 / AVAIL-04. `providerId = NULL` means this is a BUSINESS-level
 /// window (business hours); effective availability = business ∩ provider.
 model WeeklyWindow {
-  id         String  @id @default(cuid())
-  businessId String
-  providerId String?
+  id          String  @id @default(cuid())
+  businessId  String
+  providerId  String?
   /// 0 = Sunday .. 6 = Saturday.
-  weekday    Int
+  weekday     Int
   /// WallTime "09:00". CHAR(5), never a DateTime — this is a rule, not an occurrence.
-  open       String  @db.Char(5)
-  close      String  @db.Char(5)
+  open        String  @db.Char(5)
+  close       String  @db.Char(5)
   /// Required, never inferred: `close <= open` with endsNextDay=false is
   /// malformed and is refused at write time (AVAIL-01).
   endsNextDay Boolean @default(false)
@@ -360,17 +362,16 @@ model WeeklyWindow {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-
   /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
   /// covers appointments and stops at the appointment boundary, so "who
   /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
   /// system stop offering 4:30?" had no answer at all. Availability edits are
   /// destructive UPDATEs, so without this the previous state is simply gone.
-  createdByActor Actor?  @default(staff)
+  createdByActor Actor?        @default(staff)
   actorRef       String?
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  breaks   WindowBreak[]
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider       Provider?     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  breaks         WindowBreak[]
 
   @@index([businessId, providerId, weekday])
 }
@@ -405,17 +406,16 @@ model DateOverride {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-
   /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
   /// covers appointments and stops at the appointment boundary, so "who
   /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
   /// system stop offering 4:30?" had no answer at all. Availability edits are
   /// destructive UPDATEs, so without this the previous state is simply gone.
-  createdByActor Actor?  @default(staff)
+  createdByActor Actor?               @default(staff)
   actorRef       String?
-  business Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider Provider?             @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  windows  DateOverrideWindow[]
+  business       Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider       Provider?            @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  windows        DateOverrideWindow[]
 
   /// AVAIL-02: two overrides on one date is a validation error, made structural.
   @@unique([businessId, providerId, day])
@@ -454,16 +454,15 @@ model TimeOff {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-
   /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
   /// covers appointments and stops at the appointment boundary, so "who
   /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
   /// system stop offering 4:30?" had no answer at all. Availability edits are
   /// destructive UPDATEs, so without this the previous state is simply gone.
-  createdByActor Actor?  @default(staff)
+  createdByActor Actor?   @default(staff)
   actorRef       String?
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider       Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([businessId, providerId, startAt, endAt])
 }
@@ -479,16 +478,15 @@ model AdHocBlock {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-
   /// WHO changed this, and why (operator review R-8). `AppointmentEvent`
   /// covers appointments and stops at the appointment boundary, so "who
   /// blocked Dana's 2-4?" and "the book said she worked till 5, why did the
   /// system stop offering 4:30?" had no answer at all. Availability edits are
   /// destructive UPDATEs, so without this the previous state is simply gone.
-  createdByActor Actor?  @default(staff)
+  createdByActor Actor?   @default(staff)
   actorRef       String?
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider       Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([businessId, providerId, startAt, endAt])
 }
@@ -508,14 +506,14 @@ model AdHocBlock {
 /// by anonymizing in place — AppointmentEvent is append-only with Restrict FKs,
 /// so there is otherwise no deletion path through this schema at all.
 model Client {
-  id         String  @id @default(cuid())
-  businessId String
-  name       String?
+  id           String    @id @default(cuid())
+  businessId   String
+  name         String?
   /// Normalized E.164 at write time.
-  phone      String?
-  email      String?
+  phone        String?
+  email        String?
   /// Pinned notes render on every appointment surface (CLIENT-03).
-  notes      String?
+  notes        String?
   /// P2-3: consent is collected at booking time and cannot be backfilled —
   /// without it you must assume none and re-ask everyone.
   smsConsentAt DateTime? @db.Timestamptz(3)
@@ -539,24 +537,70 @@ model Client {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  business     Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business     Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
   appointments Appointment[]
+  series       AppointmentSeries[]
   waitlist     WaitlistEntry[]
 
   /// Restrict, not Cascade: a survivor that could be deleted out from under
   /// its tombstones would leave the old phone number pointing at nothing.
-  mergedInto   Client?  @relation("ClientMerge", fields: [mergedIntoClientId], references: [id], onDelete: Restrict)
-  mergedFrom   Client[] @relation("ClientMerge")
+  mergedInto Client?  @relation("ClientMerge", fields: [mergedIntoClientId], references: [id], onDelete: Restrict)
+  mergedFrom Client[] @relation("ClientMerge")
 
   @@index([businessId, phone])
   @@index([businessId, name])
   @@index([mergedIntoClientId])
 }
 
+/// A-049 — A STANDING APPOINTMENT, STORED AS A CALENDAR RULE (D-3, D-34).
+///
+/// "Every four weeks at two o'clock" is a rule on the CALENDAR axis: a day and
+/// a wall time, repeated. It is deliberately NOT an instant plus a duration —
+/// four weeks is 168 hours only when no clock changes in between, and a series
+/// that crosses spring-forward would tell the client an hour she never chose.
+/// `packages/core/scheduling/series.ts` does the arithmetic; this row stores
+/// the rule it was done from.
+///
+/// The occurrences are REAL `Appointment` rows, materialised at creation, not
+/// computed on read. They have to be: `appointment_block_no_overlap` (D-29)
+/// and `AppointmentResourceHold` (D-30) can only defend rows that exist, and a
+/// virtual occurrence is a booking the database has never heard of.
+model AppointmentSeries {
+  id         String  @id @default(cuid())
+  businessId String
+  providerId String
+  /// Nullable for the same reason `Appointment.clientId` is (BOOK-04).
+  clientId   String?
+
+  /// THE RULE. `CHAR(10)`/`CHAR(5)`, never `@db.Date` — the ban in CLAUDE.md
+  /// applies here more than anywhere: this is the one row in the schema whose
+  /// whole purpose is to survive a timezone conversion it never makes.
+  anchorDay     String @db.Char(10)
+  wallTime      String @db.Char(5)
+  /// 1 = weekly, 2 = fortnightly, 4 = "every four weeks".
+  intervalWeeks Int
+  /// How many occurrences the desk asked for, anchor included.
+  requested     Int
+
+  /// Who set it up (operator R-8's question, asked of a series).
+  createdByActor Actor?  @default(staff)
+  actorRef       String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider     Provider      @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+
+  @@index([businessId, providerId])
+}
+
 // ─────────────────────────── the appointment ───────────────────────────
 
 model Appointment {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   businessId String
   providerId String
   /// NULLABLE — BOOK-04 requires booking with no client record ("walk-in, no
@@ -606,7 +650,7 @@ model Appointment {
   /// D-8. A staff override writes a ZERO-WIDTH blocked range, which participates
   /// in no `&&` and so satisfies the constraint without weakening it — and the
   /// true intended range is preserved here.
-  isOverride          Boolean @default(false)
+  isOverride          Boolean                   @default(false)
   overrideReason      String?
   /// D-16. The engine's busy-set query MUST read
   /// COALESCE(overriddenFromRange, tstzrange(blockedStart, blockedEnd, '[)')).
@@ -626,6 +670,16 @@ model Appointment {
   /// against — without it, drift is undetectable for anything booked earlier.
   startDay      String @db.Char(10)
   startWallTime String @db.Char(5)
+
+  /// A-049. The standing appointment this occurrence was created from, and
+  /// which one it is (0-based, the anchor is 0).
+  ///
+  /// It stays set after the occurrence is cancelled or moved (D-34): the link
+  /// is PROVENANCE, not membership. "This was the 3rd of Ada's Tuesday
+  /// series, and somebody moved it" is a thing the desk asks; "it silently
+  /// stopped being part of anything" is not an answer.
+  seriesId      String?
+  seriesOrdinal Int?
 
   /// The PER-VISIT note (CLIENT-03), distinct from Client.notes. "Bring the
   /// reference photo", "patch test done 12/4". Without it these go in the
@@ -653,9 +707,14 @@ model Appointment {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
-  client   Client?   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  business Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider           @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  client   Client?            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// SetNull, not Restrict: deleting the RULE must never be able to take a
+  /// booked appointment with it, and an occurrence that outlives its series
+  /// is just an ordinary appointment — which is exactly what D-34 says one
+  /// becomes the moment anybody touches it.
+  series   AppointmentSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
 
   /// D-30. Which chair this appointment holds. Chosen by the booking path —
   /// first free resource of the service's required type — and never typed by a
@@ -678,6 +737,8 @@ model Appointment {
   /// past midnight and then double-books 00:00.
   @@index([providerId, blockedStart, blockedEnd])
   @@index([businessId, startDay])
+  /// A-049: "show me the rest of this series", one indexed lookup.
+  @@index([seriesId])
   @@index([businessId, status])
   @@index([clientId])
 }
@@ -730,14 +791,14 @@ model AppointmentServiceLine {
 /// constraint cannot join. The trigger is their only writer, and a test still
 /// asserts the constraint predicate equals ACTIVE_STATUSES.
 model AppointmentBlock {
-  id            String @id
+  id            String            @id
   businessId    String
   appointmentId String
   providerId    String
   status        AppointmentStatus
   ordinal       Int
-  blockedStart  DateTime @db.Timestamptz(3)
-  blockedEnd    DateTime @db.Timestamptz(3)
+  blockedStart  DateTime          @db.Timestamptz(3)
+  blockedEnd    DateTime          @db.Timestamptz(3)
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
@@ -756,13 +817,13 @@ model AppointmentBlock {
 /// WRITTEN BY TRIGGER, never by application code — same reasoning as every other
 /// range in this schema.
 model AppointmentResourceHold {
-  id            String @id
+  id            String            @id
   businessId    String
-  appointmentId String @unique
+  appointmentId String            @unique
   resourceId    String
   status        AppointmentStatus
-  blockedStart  DateTime @db.Timestamptz(3)
-  blockedEnd    DateTime @db.Timestamptz(3)
+  blockedStart  DateTime          @db.Timestamptz(3)
+  blockedEnd    DateTime          @db.Timestamptz(3)
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)
@@ -848,10 +909,10 @@ model NotificationOutbox {
   template  String
   recipient String?
   payload   Json
-  status    OutboxStatus @default(pending)
-  attempts  Int          @default(0)
+  status    OutboxStatus        @default(pending)
+  attempts  Int                 @default(0)
   lastError String?
-  sentAt    DateTime?    @db.Timestamptz(3)
+  sentAt    DateTime?           @db.Timestamptz(3)
 
   /// A-048. WHICH adapter handled this row — `log` for the console adapter,
   /// the driver's own id once a real one lands. Per ROW, deliberately: the
@@ -885,17 +946,17 @@ model NotificationOutbox {
 // ─────────────────────────── waitlist ───────────────────────────
 
 model WaitlistEntry {
-  id         String @id @default(cuid())
-  businessId String
-  clientId   String
-  serviceId  String
+  id          String   @id @default(cuid())
+  businessId  String
+  clientId    String
+  serviceId   String
   /// Empty = any qualified provider.
   providerIds String[]
   /// CalendarDay bounds — CHAR(10), never @db.Date.
-  fromDay    String @db.Char(10)
-  toDay      String @db.Char(10)
+  fromDay     String   @db.Char(10)
+  toDay       String   @db.Char(10)
   /// e.g. ["morning","saturday"].
-  dayParts   String[]
+  dayParts    String[]
 
   status    WaitlistStatus @default(active)
   createdAt DateTime       @default(now()) @db.Timestamptz(3)

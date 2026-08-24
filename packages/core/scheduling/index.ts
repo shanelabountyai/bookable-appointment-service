@@ -1,5 +1,12 @@
 export { computeSlots } from './slot-engine';
 export {
+  InvalidSeries,
+  type PlannedOccurrence,
+  type SeriesRule,
+  bookableInstant,
+  planOccurrences,
+} from './series';
+export {
   type ResolvedWindow,
   type Span,
   overlaps,

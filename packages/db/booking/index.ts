@@ -3,3 +3,11 @@ export { BookingRejected, SelfServeBlocked, SlotNotOffered, SlotTaken } from './
 export { type WalkInOption, clientAlreadyBookedAround, walkInOptions } from './walk-in';
 export { NoResourceFree } from './errors';
 export { chairForMove, findFreeResource, requiredResourceTypeId } from './resources';
+export {
+  type CreateSeriesInput,
+  type CreateSeriesResult,
+  type SeriesOccurrenceResult,
+  type SkipReason,
+  createSeries,
+  listSeriesOccurrences,
+} from './series';
