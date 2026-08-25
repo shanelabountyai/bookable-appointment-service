@@ -1669,7 +1669,7 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 
 ## A-057 — "End this series here"
 
-**Commit:** `PENDING`
+**Commit:** `d4824bb`
 
 **D-39 overturned D-35, and this is the first decision in this log reversed by an ANSWER rather than by a later default.** The structural finding, which is the whole item: **creating six appointments is one action and undoing them was six, and any product where the undo costs six times the create teaches the desk not to use the create** — so D-35's "no bulk cancel" would have quietly killed A-049, the feature it was written to protect.
 
