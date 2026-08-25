@@ -1724,7 +1724,7 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 
 ## A-059 — running late tells nobody, so the desk keeps the list on a Post-it
 
-**Commit:** `PENDING`
+**Commit:** `b2087d7`
 
 **The defect, verified before starting.** `setRunningLate` upserts a row and notifies no one. Everything downstream of the delta works — the engine gets its `running-late` BusyInterval, the header shows `+40 min`, the chips get `→ likely 14:30` — and every client already on her way arrives at the time on her confirmation. The honest alternative is `pushColumn`, which D-26 says will move what it can and name the rest, so on a packed day it half-moves. The desk therefore rings people, and the record of who it had got to lived on a sticky note: **the shadow calendar A-018 was built to end, grown back one layer down.**
 
