@@ -26,6 +26,8 @@ export {
   canTransition,
   isCorrection,
   isInsideCancellationCutoff,
+  staffCancellationStatus,
+  canCancel,
   availableTransitions,
   possibleTransitionsFrom,
 } from './transitions';

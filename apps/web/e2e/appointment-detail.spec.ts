@@ -449,3 +449,100 @@ test.describe('changing what she is having (A-055)', () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * A-060 — ONE CANCEL BUTTON (APPT-06, D-19).
+ *
+ * The database tests pin the classification. This is the half only a browser
+ * can see, and it is the actual point of the item: that the desk is no longer
+ * shown two buttons a thumb-width apart and asked to decide, under pressure,
+ * a number that lands on the client's rolling late-cancel count.
+ */
+test.describe('cancelling is one button (A-060)', () => {
+  /** D-19's service override, exaggerated so a future Tuesday falls inside
+   *  it — the seeded business asks two hours' notice and the appointment is
+   *  days away, which is the ordinary case the first test covers. */
+  const demandTendaysNotice = async () => {
+    const prisma = new PrismaClient();
+    try {
+      await prisma.service.updateMany({ where: { name: 'Cut' }, data: { cancellationCutoffMinutes: 10 * 24 * 60 } });
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  /** The escape's own words. A straight apostrophe: `&apos;` in the JSX
+   *  renders as one, and matching a curly one here fails on a button that is
+   *  plainly on the screen. */
+  const ESCAPE = /don't count it late/;
+
+  const statusOf = async (id: string) => {
+    const prisma = new PrismaClient();
+    try {
+      return (await prisma.appointment.findUniqueOrThrow({ where: { id }, select: { status: true } })).status;
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  test('offers one Cancel, never a "Cancel (late)" beside it', async ({ page }) => {
+    const appointment = await bookOne();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+    // The pair this item removed. An exact-name assertion, because "the old
+    // button is gone" is the whole behaviour under test.
+    await expect(page.getByRole('button', { name: 'Cancel (late)' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /counts as late/ })).toHaveCount(0);
+  });
+
+  test('says it will count as late BEFORE it is pressed, and then does', async ({ page }) => {
+    await demandTendaysNotice();
+    const appointment = await bookOne();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    await page.getByRole('button', { name: 'Cancel — counts as late' }).click();
+
+    // The controls REPLACE themselves once it is terminal, so the log line is
+    // the confirmation the screen actually gives — the same one every other
+    // status test in this file reads.
+    await expect(page.getByText('Changed from booked to cancelled late by Front desk.')).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('cancelled_late');
+  });
+
+  test('the escape needs a reason, and records what it overruled', async ({ page }) => {
+    await demandTendaysNotice();
+    const appointment = await bookOne();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    await page.getByRole('button', { name: ESCAPE }).click();
+    await expect(page.getByText(/needs a reason/)).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('booked');
+
+    await page.reload();
+    await page.getByLabel(/^Reason/).fill('Dana was off sick when she rang');
+    await page.getByRole('button', { name: ESCAPE }).click();
+
+    await expect(page.getByText('Changed from booked to cancelled by Front desk.')).toBeVisible();
+    // `cancelled`, so `reliability.ts` — which counts by status alone — never
+    // puts it on an innocent client's rolling count.
+    expect(await statusOf(appointment.id)).toBe('cancelled');
+  });
+
+  test('the owner can see how many were let off, and who', async ({ page }) => {
+    await demandTendaysNotice();
+    const appointment = await bookOne();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    await page.getByLabel(/^Reason/).fill('we moved her twice already');
+    await page.getByRole('button', { name: ESCAPE }).click();
+    await expect(page.getByText('Changed from booked to cancelled by Front desk.')).toBeVisible();
+
+    await page.goto(`/staff/dashboard?week=${DAY}`);
+    await page.getByRole('link', { name: /let off the\s+late count/ }).click();
+
+    await expect(page.getByRole('heading', { name: 'Let off the late count' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ada Chen' })).toBeVisible();
+    await expect(page.getByText('we moved her twice already')).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('cancelled');
+  });
+});

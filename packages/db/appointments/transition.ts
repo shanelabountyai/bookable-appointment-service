@@ -20,6 +20,7 @@ import {
   SLOT_FREEING_STATUSES,
   canTransition,
   isCorrection,
+  staffCancellationStatus,
 } from '../../core/scheduling';
 import { fromDate } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
@@ -90,6 +91,20 @@ export interface TransitionInput {
    * in this product cancels on its own (A-021: no auto-cancel, ever).
    */
   notify?: boolean;
+  /**
+   * A-060 (APPT-06) — THE DESK PRESSES ONE CANCEL BUTTON AND THIS DECIDES.
+   *
+   * `'derive'`: `to` is ignored and the resolved cutoff picks `cancelled` or
+   * `cancelled_late`. `'override'`: the desk deliberately downgrades a late
+   * one — "she gave us proper notice", "this one's on us" — which requires a
+   * reason and records the overruled classification in the event, so the
+   * owner can ask how many were overruled and by whom.
+   *
+   * STAFF ONLY by construction: the customer's manage link names its own
+   * status (A-013) and must keep doing so, because a token holder choosing
+   * between two cancellation statuses is the tell TOKEN-03 forbids.
+   */
+  cancellation?: 'derive' | 'override';
 }
 
 export interface TransitionResult {
@@ -136,16 +151,32 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
       })),
     );
 
-    const decision = canTransition(from, input.to, {
+    const context = {
       actor: input.actor.type,
       now: fromDate(input.now),
       startAt: fromDate(appointment.startAt),
       endAt: fromDate(appointment.endAt),
       cancellationCutoffMinutes: cutoff.minutes,
       reason: input.reason,
-    });
+    };
 
-    if (!decision.allowed) throw new TransitionRefused(from, input.to, decision.refusal);
+    // A-060. The classification is the MACHINE'S, made here where the cutoff
+    // has just been resolved from real rows — never the front desk's guess and
+    // never a second copy of the arithmetic on a screen. `to` is whatever the
+    // caller asked for in every other case, so nothing else moves.
+    const classified = input.cancellation ? staffCancellationStatus(from, context) : null;
+    const to = input.cancellation === 'derive' ? classified! : input.to;
+
+    // What the desk overruled, and only when there was genuinely something to
+    // overrule: pressing the escape on an appointment that was on time anyway
+    // is an ordinary cancellation, and demanding a reason for it would train
+    // the desk to type "." into the box that has to mean something.
+    const overruled = input.cancellation === 'override' && classified === 'cancelled_late' ? classified : null;
+    if (overruled && !input.reason?.trim()) throw new TransitionRefused(from, to, 'reason-required');
+
+    const decision = canTransition(from, to, context);
+
+    if (!decision.allowed) throw new TransitionRefused(from, to, decision.refusal);
 
     // THE WRITE IS CONDITIONAL ON THE STATUS WE DECIDED AGAINST.
     //
@@ -156,7 +187,7 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
     // exclusion constraint — never check-then-write as the mechanism.
     const written = await tx.appointment.updateMany({
       where: { id: appointment.id, status: from },
-      data: { status: input.to, ...timestampsFor(input.to, input.now, isCorrection(from, input.to)) },
+      data: { status: to, ...timestampsFor(to, input.now, isCorrection(from, to)) },
     });
 
     if (written.count === 0) {
@@ -167,7 +198,7 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
       throw new AppointmentMovedFirst(from, actual.status);
     }
 
-    const correction = isCorrection(from, input.to);
+    const correction = isCorrection(from, to);
     await tx.appointmentEvent.create({
       data: {
         businessId: appointment.businessId,
@@ -181,7 +212,11 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
         reason: input.reason?.trim() || null,
         payload: {
           from,
-          to: input.to,
+          to,
+          // A-060: "we called this one on time, and the machine would not
+          // have." The only record that the classification was a human's, so
+          // the owner's drill-down can count them and name who.
+          ...(overruled ? { overruled } : {}),
           // Kept because the update above may have cleared them: a no-show did
           // not arrive, so its arrival timestamps must not survive the
           // correction, and the log is then the only record they existed.
@@ -206,7 +241,7 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
     if (
       input.actor.type === 'staff' &&
       input.notify !== false &&
-      (SLOT_FREEING_STATUSES as readonly AppointmentStatus[]).includes(input.to)
+      (SLOT_FREEING_STATUSES as readonly AppointmentStatus[]).includes(to)
     ) {
       await enqueueNotification(tx, {
         // One cancellation of an appointment is one fact, so the appointment
@@ -227,7 +262,7 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
       });
     }
 
-    return { id: appointment.id, from, to: input.to, isCorrection: correction };
+    return { id: appointment.id, from, to, isCorrection: correction };
   });
 }
 

@@ -80,7 +80,7 @@ describe('dashboardSummary', () => {
     expect(summary.fromDay).toBe('2026-06-08');
     expect(summary.toDay).toBe('2026-06-14');
     expect(summary.bookings).toBe(6);
-    expect(summary.cancels).toEqual({ normal: 1, late: 1 });
+    expect(summary.cancels).toEqual({ normal: 1, late: 1, overruled: 0 });
     expect(summary.noShowsByProvider).toEqual(
       expect.arrayContaining([
         { providerId: danaId, providerName: 'Dana', count: 1 },

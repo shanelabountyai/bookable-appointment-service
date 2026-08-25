@@ -32,11 +32,18 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
   const to = String(formData.get('to') ?? '') as AppointmentStatus;
   const expectedFrom = String(formData.get('expectedFrom') ?? '') as AppointmentStatus;
   const reason = String(formData.get('reason') ?? '');
+  // A-060. The one Cancel button posts an INTENT, never a status: `derive`
+  // lets the cutoff decide, `override` is the desk deliberately letting one
+  // off. `to` is absent on both, so this surface cannot classify a
+  // cancellation even by accident.
+  const cancel = formData.get('cancel');
+  const cancellation = cancel === 'derive' || cancel === 'override' ? cancel : undefined;
 
   try {
     await transitionAppointment(prisma, {
       appointmentId,
-      to,
+      to: cancellation ? 'cancelled' : to,
+      cancellation,
       actor: staffActor(staff.id),
       now: new Date(),
       reason,
@@ -81,6 +88,9 @@ function refusalWording(error: TransitionRefused): string {
   switch (error.refusal) {
     case 'reason-required':
       return 'That one needs a reason — it is the only record of why.';
+    case 'inside-cancellation-cutoff':
+    case 'outside-cancellation-cutoff':
+      return 'The cutoff moved while this screen was open. Reload and try again.';
     case 'before-appointment-start':
       return 'She cannot be a no-show before her appointment has started.';
     case 'correction-window-closed':

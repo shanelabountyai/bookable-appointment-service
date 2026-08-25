@@ -109,6 +109,22 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
           </ul>
         </div>
       </div>
+
+      {/* A-060. The two numbers on the Cancellations tile are only trustworthy
+          because the machine picks between them from the cutoff and the clock.
+          This is the size of the exception — the part a human can quietly grow
+          until the split means nothing again — so it is a line the owner reads
+          without going looking for it, and it disappears in a week with none.
+          A tile cannot hold it: the tile is itself a link. */}
+      {summary.cancels.overruled > 0 ? (
+        <Link
+          href={`/staff/dashboard/overruled?from=${range.from}&to=${range.to}`}
+          className="text-sm underline underline-offset-4"
+        >
+          {summary.cancels.overruled} cancellation{summary.cancels.overruled === 1 ? '' : 's'} let off the
+          late count — who, and why →
+        </Link>
+      ) : null}
     </main>
   );
 }

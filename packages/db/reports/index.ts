@@ -6,3 +6,8 @@ export {
   dashboardSummary,
   listReportAppointments,
 } from './dashboard';
+export {
+  type OverruledCancellation,
+  countOverruledCancellations,
+  listOverruledCancellations,
+} from './overruled';

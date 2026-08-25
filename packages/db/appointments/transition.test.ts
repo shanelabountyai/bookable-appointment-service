@@ -17,6 +17,7 @@ import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
 import { saveStaffMember } from '../auth';
+import { reliabilityFor } from '../clients';
 import { loadAppointmentDetail } from './detail';
 import { AppointmentMovedFirst, TransitionRefused, transitionAppointment } from './transition';
 
@@ -500,5 +501,180 @@ describe('A-037 — the event log names the person', () => {
 
     const changed = (await eventsFor(appointment.id)).find((e) => e.type === 'status_changed');
     expect(changed?.actorName).toBeNull();
+  });
+});
+
+/**
+ * A-060 — THE DESK PRESSES ONE BUTTON (APPT-06, D-19).
+ *
+ * Against the real database because the whole point is that the classification
+ * is made from ROWS: the business default, the service that demands more
+ * notice, and the clock. A pure test of the derivation cannot see the cutoff
+ * being resolved wrongly, which is the way this gets quietly broken.
+ */
+describe('A-060 — one cancel button, the machine classifies', () => {
+  /** 121 minutes before a 10:00 start: outside the business's 120. */
+  const OUTSIDE = at('2026-06-09T07:59:00-05:00');
+  /** 119 minutes before: inside it. */
+  const INSIDE = at('2026-06-09T08:01:00-05:00');
+
+  const payloadOf = async (appointmentId: string) => {
+    const event = await prisma.appointmentEvent.findFirstOrThrow({
+      where: { appointmentId, type: 'status_changed' },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { ...event, payload: event.payload as Record<string, unknown> };
+  };
+
+  it('writes an ordinary cancellation outside the cutoff', async () => {
+    const appointment = await book();
+    const result = await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      cancellation: 'derive',
+      actor: STAFF,
+      now: OUTSIDE,
+    });
+    expect(result.to).toBe('cancelled');
+  });
+
+  it('writes a late cancellation inside it, whatever `to` said', async () => {
+    const appointment = await book();
+    const result = await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      // The surface always posts `cancelled`; the machine upgrades it. If this
+      // were honoured the whole item would be decorative.
+      to: 'cancelled',
+      cancellation: 'derive',
+      actor: STAFF,
+      now: INSIDE,
+    });
+    expect(result.to).toBe('cancelled_late');
+    const stored = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(stored.status).toBe('cancelled_late');
+  });
+
+  it('uses the SERVICE cutoff, not the business default (D-19)', async () => {
+    await prisma.service.update({ where: { id: serviceId }, data: { cancellationCutoffMinutes: 24 * 60 } });
+    const appointment = await book();
+    // Outside the business's two hours, well inside the service's full day.
+    const result = await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      cancellation: 'derive',
+      actor: STAFF,
+      now: OUTSIDE,
+    });
+    expect(result.to).toBe('cancelled_late');
+  });
+
+  it('never derives a status §7 refuses — she is in the chair', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: INSIDE });
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'in_progress', actor: STAFF, now: TEN_AM });
+
+    // The clock says "inside the cutoff" and §7 permits `cancelled` only. A
+    // walk-out mid-colour must not error, and must not count against her.
+    const result = await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      cancellation: 'derive',
+      actor: STAFF,
+      now: TEN_AM,
+      reason: 'she walked out',
+    });
+    expect(result.to).toBe('cancelled');
+  });
+
+  describe('the escape beside it', () => {
+    it('downgrades a late one and records what it overruled', async () => {
+      const appointment = await book();
+      const result = await transitionAppointment(prisma, {
+        appointmentId: appointment.id,
+        to: 'cancelled',
+        cancellation: 'override',
+        actor: STAFF,
+        now: INSIDE,
+        reason: 'our fault, we moved her twice',
+      });
+      expect(result.to).toBe('cancelled');
+
+      const event = await payloadOf(appointment.id);
+      expect(event.payload.to).toBe('cancelled');
+      // The record is the whole point: without it "we let this one off" is
+      // indistinguishable from the cutoff never having applied.
+      expect(event.payload.overruled).toBe('cancelled_late');
+      expect(event.reason).toBe('our fault, we moved her twice');
+    });
+
+    it('refuses without a reason', async () => {
+      const appointment = await book();
+      await expect(
+        transitionAppointment(prisma, {
+          appointmentId: appointment.id,
+          to: 'cancelled',
+          cancellation: 'override',
+          actor: STAFF,
+          now: INSIDE,
+        }),
+      ).rejects.toMatchObject({ refusal: 'reason-required' });
+      const stored = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(stored.status).toBe('booked');
+    });
+
+    it('does NOT demand a reason when there was nothing to overrule', async () => {
+      // She gave a fortnight's notice. Pressing the escape is a no-op on the
+      // classification, and asking for a reason here would train the desk to
+      // type "." into the box that has to mean something.
+      const appointment = await book();
+      const result = await transitionAppointment(prisma, {
+        appointmentId: appointment.id,
+        to: 'cancelled',
+        cancellation: 'override',
+        actor: STAFF,
+        now: OUTSIDE,
+      });
+      expect(result.to).toBe('cancelled');
+      expect((await payloadOf(appointment.id)).payload.overruled).toBeUndefined();
+    });
+
+    it('leaves nothing on the rolling late-cancel count', async () => {
+      const late = await book();
+      await transitionAppointment(prisma, {
+        appointmentId: late.id,
+        to: 'cancelled',
+        cancellation: 'derive',
+        actor: STAFF,
+        now: INSIDE,
+      });
+      const forgiven = await book({ idempotencyKey: 'forgiven', startAt: at('2026-06-09T13:00:00-05:00') });
+      await transitionAppointment(prisma, {
+        appointmentId: forgiven.id,
+        to: 'cancelled',
+        cancellation: 'override',
+        actor: STAFF,
+        now: at('2026-06-09T12:00:00-05:00'),
+        reason: 'Dana was off sick when she rang',
+      });
+
+      // `reliability.ts` counts by STATUS alone and cannot tell an overruled
+      // cancellation from one that was always on time — which is exactly why
+      // the escape has to write `cancelled` rather than annotate
+      // `cancelled_late`.
+      const counts = await reliabilityFor(prisma, { businessId, clientId, today: DAY });
+      expect(counts.lateCancels).toBe(1);
+    });
+  });
+
+  it('leaves every other transition alone', async () => {
+    const appointment = await book();
+    const result = await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'confirmed',
+      actor: STAFF,
+      now: BEFORE,
+    });
+    expect(result.to).toBe('confirmed');
+    expect((await payloadOf(appointment.id)).payload.overruled).toBeUndefined();
   });
 });

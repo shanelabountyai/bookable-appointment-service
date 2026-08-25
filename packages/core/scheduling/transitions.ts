@@ -269,3 +269,42 @@ function check(clause: Clause, context: TransitionContext): TransitionRefusal | 
 export function isInsideCancellationCutoff(context: TransitionContext): boolean {
   return context.now >= context.startAt - context.cancellationCutoffMinutes * 60_000;
 }
+
+/**
+ * A-060 (APPT-06, D-19) — WHICH KIND OF CANCELLATION IS THIS?
+ *
+ * §7 lets staff write either cancellation status unconditionally, which is
+ * right — the table is about what is PERMITTED. But a permission is not a
+ * default, and until this item the front desk was handed two buttons a
+ * thumb-width apart and no guidance, so `cancelled` vs `cancelled_late` was
+ * an artifact of which one was nearer. That value then lands on the client's
+ * rolling late-cancel count (CLIENT-04) and on the owner's staffing decisions.
+ *
+ * The system already knows the answer: it has the cutoff and it has the clock.
+ * So the desk presses ONE button and this decides, with the SAME arithmetic
+ * the customer's own manage link meets — no second copy of it anywhere.
+ *
+ * THE `canTransition` CHECK IS NOT BELT-AND-BRACES. From `checked_in` and
+ * `in_progress` §7 permits `cancelled` only, and it is right to: a client
+ * standing at the desk or sitting in the chair has not cancelled late, she has
+ * arrived and something else has happened. Deriving `cancelled_late` from the
+ * clock alone would produce a status the table refuses, and the one button
+ * would then fail on exactly the walk-out it is most needed for.
+ */
+export function staffCancellationStatus(
+  from: AppointmentStatus,
+  context: TransitionContext,
+): 'cancelled' | 'cancelled_late' {
+  if (!isInsideCancellationCutoff(context)) return 'cancelled';
+  return canTransition(from, 'cancelled_late', context).allowed ? 'cancelled_late' : 'cancelled';
+}
+
+/** Is a cancellation of ANY kind on the table right now (A-060)? The two
+ *  statuses collapse to one button, so a surface asks this rather than looking
+ *  for either one in `availableTransitions`. */
+export function canCancel(from: AppointmentStatus, context: TransitionContext): boolean {
+  return (
+    canTransition(from, 'cancelled', context).allowed ||
+    canTransition(from, 'cancelled_late', context).allowed
+  );
+}

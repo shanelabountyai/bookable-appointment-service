@@ -1703,3 +1703,23 @@ Three things about the list that came from thinking about the desk rather than t
 Pushing a whole column later has always accepted a negative number, and nothing anywhere said so. It was a real instruction the desk gives out loud, and a feature nobody could find.
 
 **The field now says it**, and the two sharp edges behind it are gone: pulling a column earlier can no longer start a client's appointment before the salon opens — it names her and leaves her where she is, exactly as pushing past closing time already did — and the message she receives now says her appointment has been brought forward instead of telling her the salon is running behind.
+
+## The system knows whether a cancellation was late, so it stops asking the front desk
+
+A salon's late-cancellation count is a number the owner staffs on. It decides who gets the Saturday column and which clients get a quiet word. Until this release the software produced that number by putting two buttons side by side — "Cancel" and "Cancel (late)" — and letting whoever was on the phone at the time pick one.
+
+Nothing about that is a judgement call. The business has a cancellation cutoff, a service can demand more notice than the business default, and the software has a clock. The customer's own manage link had been classifying her cancellations from exactly those three things since the beginning. Only the people at the desk were being asked to guess, in front of a client, on the phone, with somebody waiting.
+
+**There is now one Cancel button, and it says what it is going to do before it is pressed** — "Cancel", or "Cancel — counts as late". The decision is made on the server from the cutoff that actually applies to that visit, so a two-service appointment meets the stricter of its two services' rules rather than the business default. The screen posts an intention, never a status; it is no longer capable of classifying a cancellation, even by accident.
+
+### The exception is a button, not a workaround
+
+Real salons let people off. A system that refuses to model that gets the front desk quietly classifying by hand again within a fortnight, and the number goes back to meaning nothing.
+
+So there is a second button beside the first, and it appears only when the machine's answer was "late": *She gave us proper notice, or this one's on us — don't count it late.* It requires a reason, it records what it overruled, and the owner has a single page listing every one of them for the week — the client, the person who made the call, and what they typed. A week with none shows nothing at all.
+
+That page is the point. An exception nobody can see the size of stops being an exception and becomes the new default.
+
+### And a cancellation the salon caused never lands on the client
+
+When a stylist calls in sick and the salon takes an appointment away, the clock will happily say "inside the cutoff" — because the cutoff exists to price a *client's* late notice, and this client gave none. That cancellation is now recorded as an ordinary one, permanently and by construction, so it can never appear on the rolling count of somebody who did nothing wrong.

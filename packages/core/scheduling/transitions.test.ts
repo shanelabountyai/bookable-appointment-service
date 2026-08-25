@@ -20,6 +20,8 @@ import {
   canTransition,
   isCorrection,
   possibleTransitionsFrom,
+  canCancel,
+  staffCancellationStatus,
 } from './transitions';
 import { APPOINTMENT_STATUSES } from './status';
 import { instant } from './types';
@@ -429,5 +431,71 @@ describe('A-035 — what may be done right now', () => {
     const late = permissive({ now: instant(END + CORRECTION_WINDOW_MS + 1) });
     expect(availableTransitions('completed', permissive())).toEqual(['no_show']);
     expect(availableTransitions('completed', late)).toEqual([]);
+  });
+});
+
+/**
+ * A-060 — ONE CANCEL BUTTON, AND THE MACHINE PICKS.
+ *
+ * The behaviour under test is not "does the arithmetic work" — §7's `S,C-in`
+ * and `S,C-out` cells already pin that. It is that the DERIVATION never
+ * produces a status the table would refuse, which is the failure mode of
+ * deriving from the clock alone: the desk presses one button on the client
+ * who walked out mid-colour, and it errors.
+ */
+describe('A-060 — deriving the cancellation status', () => {
+  // 24 hours' notice needed; she is cancelling 48 hours out.
+  const wellBefore = permissive({ now: instant(START - 48 * 60 * 60_000) });
+  // Same appointment, two hours out.
+  const insideCutoff = permissive({ now: instant(START - 2 * 60 * 60_000) });
+
+  it('is an ordinary cancellation outside the cutoff', () => {
+    expect(staffCancellationStatus('booked', wellBefore)).toBe('cancelled');
+    expect(staffCancellationStatus('confirmed', wellBefore)).toBe('cancelled');
+  });
+
+  it('is a late cancellation inside the cutoff', () => {
+    expect(staffCancellationStatus('booked', insideCutoff)).toBe('cancelled_late');
+    expect(staffCancellationStatus('confirmed', insideCutoff)).toBe('cancelled_late');
+  });
+
+  it('resolves the boundary toward the salon, exactly as the cutoff arithmetic does', () => {
+    const exactly = permissive({ now: instant(START - CUTOFF * 60_000) });
+    expect(staffCancellationStatus('booked', exactly)).toBe('cancelled_late');
+  });
+
+  it('NEVER derives a status §7 refuses — she is at the desk, or in the chair', () => {
+    // Both are inside the cutoff by the clock, and §7 permits `cancelled`
+    // only from either. Deriving `cancelled_late` here would make the one
+    // button fail on the walk-out it is most needed for.
+    expect(staffCancellationStatus('checked_in', insideCutoff)).toBe('cancelled');
+    expect(staffCancellationStatus('in_progress', insideCutoff)).toBe('cancelled');
+
+    for (const from of ['checked_in', 'in_progress'] as const) {
+      const derived = staffCancellationStatus(from, insideCutoff);
+      expect(canTransition(from, derived, insideCutoff).allowed).toBe(true);
+    }
+  });
+
+  it('derives only statuses §7 permits, from every status a cancel is offered from', () => {
+    for (const from of APPOINTMENT_STATUSES) {
+      for (const context of [wellBefore, insideCutoff]) {
+        if (!canCancel(from, context)) continue;
+        const derived = staffCancellationStatus(from, context);
+        expect(canTransition(from, derived, context).allowed).toBe(true);
+      }
+    }
+  });
+
+  it('offers no cancellation at all once it is over', () => {
+    for (const from of ['completed', 'no_show', 'cancelled', 'cancelled_late'] as const) {
+      expect(canCancel(from, insideCutoff)).toBe(false);
+    }
+  });
+
+  it('needs the reason a walk-out needs before it will offer one', () => {
+    const noReason = permissive({ reason: null, now: instant(START + 60_000) });
+    expect(canCancel('in_progress', noReason)).toBe(false);
+    expect(canCancel('in_progress', { ...noReason, reason: 'she walked out' })).toBe(true);
   });
 });

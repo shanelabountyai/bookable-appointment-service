@@ -108,6 +108,14 @@ export async function cancelConflicting(_previous: ImpactState, formData: FormDa
   // her first, so the text does not contradict the person she just spoke to.
   const notify = formData.get('skipNotice') === null;
 
+  // A-060: `cancelled`, HARDCODED, and never `cancellation: 'derive'`.
+  //
+  // The stylist is off sick and the salon is taking the appointment away. The
+  // clock says "inside the cutoff" and the clock is answering a question
+  // nobody asked — the cutoff exists to price a CLIENT'S late notice, and this
+  // client gave none. Deriving here would put a late cancel on the rolling
+  // count (CLIENT-04) of somebody who did nothing, and `reliability.ts` counts
+  // by status alone and could never tell the difference afterwards.
   await transitionAppointment(prisma, {
     appointmentId,
     to: 'cancelled',

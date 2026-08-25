@@ -13,7 +13,7 @@
  * chosen at the surface. The event log's plain-language rendering is a UI
  * concern precisely because it is the part that will be reworded.
  */
-import { patternGapSpans } from '../../core/settings';
+import { patternGapSpans, worstCutoff } from '../../core/settings';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import { resolveStaffNames } from '../auth';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -81,6 +81,17 @@ export interface AppointmentDetail {
   /** A-055 added `serviceId`: the visit panel posts the ordered ids back, and
    *  a name is not an identity — two services can share one. */
   services: { serviceId: string; name: string; priceCents: number; durationMinutes: number }[];
+  /**
+   * A-060 (D-19) — THE CUTOFF THAT ACTUALLY APPLIES TO THIS VISIT.
+   *
+   * Resolved HERE, by the same `worstCutoff` the write path uses, because a
+   * multi-service visit meets the strictest of its services' cutoffs and the
+   * business default is only the floor. The screen labels its one Cancel
+   * button from this number; a screen that used the business default would
+   * promise "on time" and the server would then correctly write
+   * `cancelled_late`, which is the exact disagreement A-060 exists to end.
+   */
+  cancellationCutoffMinutes: number;
   /** SEG-03/D-29 — minutes of this appointment the provider is not needed for,
    *  from its own `segmentPattern` snapshot. Zero for an unsegmented visit. */
   gapMinutes: number;
@@ -155,9 +166,15 @@ export async function loadAppointmentDetail(
       // means the screen can never show a chair the database is not defending.
       resourceHold: { select: { resource: { select: { name: true, resourceType: { select: { name: true } } } } } },
       client: { select: { id: true, name: true, phone: true, notes: true } },
+      business: { select: { cancellationCutoffMinutes: true } },
       lines: {
         orderBy: { ordinal: 'asc' },
-        select: { serviceId: true, priceCents: true, durationMinutes: true, service: { select: { name: true } } },
+        select: {
+          serviceId: true,
+          priceCents: true,
+          durationMinutes: true,
+          service: { select: { name: true, cancellationCutoffMinutes: true } },
+        },
       },
       // APPT-07. Oldest first: a log is a story, and reading it backwards is
       // how you mistake a correction for the thing it corrected.
@@ -207,6 +224,14 @@ export async function loadAppointmentDetail(
     resourceName: appointment.resourceHold?.resource.name ?? null,
     resourceTypeName: appointment.resourceHold?.resource.resourceType.name ?? null,
     primaryServiceId: appointment.lines[0]?.serviceId ?? '',
+    cancellationCutoffMinutes: worstCutoff(
+      appointment.business.cancellationCutoffMinutes,
+      appointment.lines.map((l) => ({
+        id: l.serviceId,
+        name: l.service.name,
+        cancellationCutoffMinutes: l.service.cancellationCutoffMinutes,
+      })),
+    ).minutes,
     gapMinutes: patternGapSpans(appointment.segmentPattern).reduce((sum, gap) => sum + gap.minutes, 0),
     services: appointment.lines.map((line) => ({
       serviceId: line.serviceId,

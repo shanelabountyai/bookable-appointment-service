@@ -12,6 +12,7 @@ import { availableMinutesForDay, utilizationFraction, weekOf } from '../../core/
 import { type CalendarDay, type ZoneId, addDays, calendarDay, fromDate, startOfDay, toDate, wallTime, weekdayOf, zoneId } from '../../core/time';
 import type { AppointmentStatus } from '../../core/scheduling';
 import { findAbsences, resolveDayWindows } from '../availability';
+import { countOverruledCancellations } from './overruled';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -36,7 +37,11 @@ export interface DashboardSummary {
   /** Every appointment scheduled to occur that week, whatever happened to it
    *  since — the gross count "cancels" and "no-shows" are drawn from. */
   bookings: number;
-  cancels: { normal: number; late: number };
+  /** A-060: `overruled` is a subset of `normal` — cancellations the machine
+   *  classified as late and a human deliberately downgraded. Counted here so
+   *  the tile can say it out loud, because an escape nobody can see the size
+   *  of stops being an escape and becomes the new default. */
+  cancels: { normal: number; late: number; overruled: number };
   noShowsByProvider: ProviderCount[];
   utilizationByProvider: ProviderUtilization[];
 }
@@ -107,7 +112,11 @@ export async function dashboardSummary(
     fromDay,
     toDay,
     bookings: byStatus.reduce((total, r) => total + r._count._all, 0),
-    cancels: { normal: countOf('cancelled'), late: countOf('cancelled_late') },
+    cancels: {
+      normal: countOf('cancelled'),
+      late: countOf('cancelled_late'),
+      overruled: await countOverruledCancellations(db, { businessId: args.businessId, fromDay, toDay }),
+    },
     noShowsByProvider: providers
       .map((p) => ({
         providerId: p.id,

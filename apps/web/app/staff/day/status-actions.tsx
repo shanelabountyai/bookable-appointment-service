@@ -89,6 +89,13 @@ export const STATUS_ACTION_LABELS = {
   in_progress: 'Start',
   completed: 'Finish',
   no_show: 'No-show',
+  // A-060: THESE TWO ARE NO LONGER RENDERED ANYWHERE, and putting either back
+  // on a button row is the defect this map used to cause. The chip has never
+  // offered cancelling (A-035), and the detail panel takes both out of its
+  // list and draws ONE button whose status the server derives from the cutoff.
+  // They stay because the map is `satisfies Record<AppointmentStatus, string>`
+  // — total over the enum, so a ninth status is a compile error — and because
+  // a `word()` lookup for either is still correct.
   cancelled: 'Cancel',
   cancelled_late: 'Cancel (late)',
 } satisfies Record<AppointmentStatus, string>;

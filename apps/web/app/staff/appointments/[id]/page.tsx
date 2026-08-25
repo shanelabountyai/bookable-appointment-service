@@ -8,10 +8,11 @@ import {
   type AppointmentStatus,
   SLOT_FREEING_STATUSES,
   availableTransitions,
+  canCancel,
   canChangeServices,
   canReschedule,
+  staffCancellationStatus,
 } from '@bookable/core/scheduling';
-import { worstCutoff } from '@bookable/core/settings';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
@@ -65,7 +66,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
     now: fromDate(now),
     startAt: fromDate(detail.startAt),
     endAt: fromDate(detail.endAt),
-    cancellationCutoffMinutes: worstCutoff(business.cancellationCutoffMinutes, []).minutes,
+    // A-060: the visit's OWN cutoff (D-19), resolved in the read model by the
+    // same `worstCutoff` the write path uses. It was the business default with
+    // no services passed until this item, which was harmless while both cancel
+    // edges were unconditional for staff and is not once the button is labelled
+    // from it.
+    cancellationCutoffMinutes: detail.cancellationCutoffMinutes,
   };
   // A-033. Asked of the SAME function the write path asks (APPT-05, D-6), so
   // the panel is absent exactly when `rescheduleAppointment` would refuse —
@@ -80,6 +86,16 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   // reason were given?" — right here, where there is a reason box; the chip
   // asks it without one.
   const available = availableTransitions(status, { ...context, reason: 'placeholder' });
+
+  // A-060 (APPT-06). The two cancellations come off the button row and come
+  // back as ONE, because the desk was being asked to classify under pressure
+  // and the answer lands on the client's rolling late-cancel count. The
+  // machine has the cutoff and the clock; it decides, and the button says
+  // which way it went before anybody presses it.
+  const cancelAs = canCancel(status, { ...context, reason: 'placeholder' })
+    ? staffCancellationStatus(status, { ...context, reason: 'placeholder' })
+    : null;
+  const moves = available.filter((to) => !(SLOT_FREEING_STATUSES as readonly string[]).includes(to));
 
   const events = detail.events.map((event) => toReadableEvent(event, zone));
 
@@ -309,7 +325,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         </section>
       ) : null}
 
-      <StatusControls appointmentId={detail.id} status={status} available={available} />
+      <StatusControls appointmentId={detail.id} status={status} available={moves} cancelAs={cancelAs} />
 
       <VisitNote appointmentId={detail.id} notes={detail.notes ?? ''} />
 
