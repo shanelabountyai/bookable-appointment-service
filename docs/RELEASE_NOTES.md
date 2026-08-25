@@ -1637,3 +1637,19 @@ Two details worth stating because they are the kind of thing that goes wrong qui
 **A no-show still counts as that stylist's time.** She was there; the hour was hers; the client did not turn up. Not counting it would send the next booking to her on the grounds that her day looks empty, which is balancing against a fiction.
 
 Nothing about how free time is calculated changed. This asks the existing engine the same question once per stylist and merges the answers — there is no second opinion about whether a time is available, which is the only way two answers can ever disagree.
+
+## "End this series here"
+
+A client with a standing appointment rings on a Saturday to stop it. Until now the front desk had to open each remaining booking in turn, make a cancellation judgement on each, type a reason on each and send a message on each — six taps' worth of work for something the client said once.
+
+**Setting up six appointments was one action. Undoing them was six.** That asymmetry does not just cost time; it changes behaviour. The desk cancels two, means to come back to it, and gets busy. Four two-o'clock Tuesdays stay held for somebody who is never coming — and eventually land on that client's record as four no-shows that were the salon's fault. A product whose undo costs six times its create teaches people not to use the create.
+
+So it is one action now: **end it at this appointment, and everything after it goes.** The ones she has already had are untouched. Ones she had already cancelled herself are left exactly as they are — no second cancellation, no second text about the same thing.
+
+**It shows you what goes before it does anything.** The list is every remaining date, and beside each one whether it falls inside the cancellation window — because that varies date by date, and it is what the desk has to be able to say out loud while the client is still on the phone. That per-date variation was the original reason for thinking this action could not exist. It turns out to be the reason it needs a preview.
+
+**One reason, typed once**, lands on every appointment's history and in every client message. The "I have already rung her" box is there for the desk that made the call first — and it starts unticked, so silence is always a deliberate choice, never a default.
+
+**One thing it will not do, and says so.** If one of those appointments is happening right now — she is in the chair — it stays, and the screen names it. Cancelling a visit in progress is a different act with a different conversation attached, and it would otherwise send a cancellation text to a client sitting in front of the person who sent it.
+
+**Nothing else about a cancellation changed.** Each one goes through the same single cancellation path everything else in the product uses, so the record kept, the message sent, and the freeing of the slot back onto the board are identical to doing them one at a time. The standing-appointment link survives on every cancelled booking, because "she had a standing Tuesday and ended it in April" is exactly the sort of thing someone asks about six months later.

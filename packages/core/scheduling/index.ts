@@ -25,6 +25,7 @@ export {
   canReschedule,
   canTransition,
   isCorrection,
+  isInsideCancellationCutoff,
   availableTransitions,
   possibleTransitionsFrom,
 } from './transitions';
@@ -35,11 +36,13 @@ export {
   MISSED_STATUSES,
   REMINDER_ELIGIBLE_STATUSES,
   SELF_SERVE_BLOCKING_STATUSES,
+  SERIES_CANCELLABLE_STATUSES,
   SERVICE_EDITABLE_STATUSES,
   SLOT_FREEING_STATUSES,
   TERMINAL_STATUSES,
   activeStatusSqlList,
   canChangeServices,
+  canEndSeriesAt,
   occupiesTime,
   slotFreeingSqlList,
 } from './status';

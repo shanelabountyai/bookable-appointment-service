@@ -237,9 +237,9 @@ function check(clause: Clause, context: TransitionContext): TransitionRefusal | 
     case 'after-start':
       return context.now >= context.startAt ? null : 'before-appointment-start';
     case 'outside-cutoff':
-      return insideCutoff(context) ? 'inside-cancellation-cutoff' : null;
+      return isInsideCancellationCutoff(context) ? 'inside-cancellation-cutoff' : null;
     case 'inside-cutoff':
-      return insideCutoff(context) ? null : 'outside-cancellation-cutoff';
+      return isInsideCancellationCutoff(context) ? null : 'outside-cancellation-cutoff';
     case 'within-correction-window':
       return context.now - context.endAt <= CORRECTION_WINDOW_MS ? null : 'correction-window-closed';
     case undefined:
@@ -258,7 +258,14 @@ function check(clause: Clause, context: TransitionContext): TransitionRefusal | 
  * resolved toward the salon, deliberately and only once: the customer at the
  * boundary is told it counts as late, which is recoverable by a phone call,
  * whereas the reverse silently loses the salon a chargeable slot.
+ *
+ * EXPORTED for A-057, which has to decide `cancelled` vs `cancelled_late` for
+ * several occurrences at once and show that answer in a preview BEFORE the
+ * write. Every other caller reaches it through a precondition above; a bulk
+ * action cannot, because §7 lets staff write either status unconditionally —
+ * so the choice is the caller's, and it must be made with this arithmetic
+ * rather than a second copy of it.
  */
-function insideCutoff(context: TransitionContext): boolean {
+export function isInsideCancellationCutoff(context: TransitionContext): boolean {
   return context.now >= context.startAt - context.cancellationCutoffMinutes * 60_000;
 }

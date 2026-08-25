@@ -547,6 +547,57 @@ test.describe('standing appointments (A-049)', () => {
   });
 
   /**
+   * A-057 (D-39) — THE UNDO THAT COSTS ONE ACTION, NOT THREE.
+   *
+   * The structural finding the operator review made: creating three
+   * appointments is one action, and while undoing them was three the desk
+   * would stop using the create. So this walks the whole thing from a cold
+   * start — book the standing appointment, ring up on the second one, end it
+   * there — and asserts the week she already had is STILL IN THE BOOK.
+   */
+  test('ends the series from one occurrence, and leaves the earlier one alone', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Book with Dana' }).click();
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+    await page.getByRole('button', { name: /^\d\d:\d\d$/ }).first().click();
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByLabel('How many appointments?').fill('3');
+    await page.getByLabel('Every how many weeks?').fill('1');
+    await page.getByRole('button', { name: 'Book 3 appointments' }).click();
+    await expect(page.getByText('Booked all 3.')).toBeVisible();
+
+    await page.getByRole('link', { name: 'booked' }).nth(1).click();
+    // Scoped to the panel: the move panel on the same screen has its own
+    // "Why?" box, and this action's one is not that one.
+    const ending = page.locator('details').filter({ hasText: 'End this series here' });
+    // The <details> summary carries the name, as with A-018's push.
+    await page.getByText('End this series here').click();
+    await ending.getByRole('button', { name: 'Show me what goes' }).click();
+
+    // TWO, not three: "here" is this occurrence and the one after it, and the
+    // week she has already had is not on the list at all.
+    await expect(ending.getByRole('button', { name: 'Cancel 2 appointments' })).toBeVisible();
+
+    await ending.getByLabel('Why?').fill('She is moving away');
+    await ending.getByRole('button', { name: 'Cancel 2 appointments' }).click();
+    await expect(ending.getByText(/Cancelled 2 appointments/)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+      expect(rows[0]!.status).toBe('booked');
+      expect(rows.slice(1).every((r) => r.status.startsWith('cancelled'))).toBe(true);
+      // The link survives as provenance (D-34): "she had a standing Tuesday
+      // and ended it" is the fact the desk needs six months later.
+      expect(rows.every((r) => r.seriesId !== null)).toBe(true);
+      // One typed reason, one message per cancelled occurrence (D-32).
+      expect(await prisma.notificationOutbox.count({ where: { template: 'appointment.cancelled' } })).toBe(2);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
    * The behaviour the whole item turns on: creation is PARTIAL (D-34), so a
    * week somebody else already has is NAMED rather than silently dropped. A
    * summary that showed only successes is the silent skip this product exists

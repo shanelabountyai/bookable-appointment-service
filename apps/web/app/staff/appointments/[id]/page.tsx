@@ -19,6 +19,7 @@ import { freedSlotHref } from '@/lib/waitlist/freed-link';
 import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
 import { flagSentence } from '@/components/client-flag';
 import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
+import { EndSeriesPanel } from './end-series-panel';
 import { MovePanel } from './move-panel';
 import { VisitPanel } from './visit-panel';
 import { StatusControls } from './status-controls';
@@ -204,6 +205,11 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
               </li>
             ))}
           </ul>
+          {/* A-057 (D-39). HERE, under the list it acts on, because the desk is
+              looking at that list while the client is on the phone — and the
+              action's own preview is the same rows again with the cutoff
+              answer on each. D-35 had this as six taps through those links. */}
+          <EndSeriesPanel appointmentId={detail.id} />
         </section>
       ) : null}
 

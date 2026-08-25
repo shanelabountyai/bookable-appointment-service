@@ -114,3 +114,28 @@ export const activeStatusSqlList = (): string =>
 
 export const slotFreeingSqlList = (): string =>
   SLOT_FREEING_STATUSES.map((s) => `'${s}'`).join(', ');
+
+/**
+ * A-057 (D-39) — whose occurrences "End this series here" may cancel in bulk.
+ *
+ * A POSITIVE ALLOW-LIST again, and narrower than `SERVICE_EDITABLE_STATUSES`
+ * on purpose. `checked_in` and `in_progress` are IN that list and OUT of this
+ * one, because the two actions mean opposite things about the same client:
+ *
+ *   change it → she is in the chair, so of course
+ *   end the series → she is in the chair, so NOT this one
+ *
+ * Cancelling an in-progress visit is a walk-out — a single deliberate act with
+ * its own required reason (§7) — and folding it into a bulk action would text
+ * a cancellation to a client who is sitting in front of the person who sent
+ * it. The terminal four are out because they already happened or are already
+ * cancelled: D-39's "there is no third reading for anybody to mean".
+ *
+ * Left-out occurrences are still LISTED by the preview with the reason. This
+ * list decides what the action touches, never what the desk gets to see.
+ */
+export const SERIES_CANCELLABLE_STATUSES = ['booked', 'confirmed'] as const;
+
+/** May this occurrence be cancelled as part of ending its series (A-057)? */
+export const canEndSeriesAt = (status: AppointmentStatus): boolean =>
+  (SERIES_CANCELLABLE_STATUSES as readonly string[]).includes(status);

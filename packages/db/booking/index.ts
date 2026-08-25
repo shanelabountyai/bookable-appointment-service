@@ -12,3 +12,12 @@ export {
   createSeries,
   listSeriesOccurrences,
 } from './series';
+export {
+  type EndSeriesInput,
+  type EndSeriesPlan,
+  type EndSeriesProblem,
+  type EndSeriesResult,
+  type EndSeriesRow,
+  endSeriesHere,
+  previewEndSeries,
+} from './end-series';
