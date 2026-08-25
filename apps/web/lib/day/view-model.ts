@@ -59,12 +59,45 @@ export interface GridItem {
   label: string;
 }
 
+/**
+ * A-059 (APPT-03) — one client the desk still has to ring, formatted.
+ *
+ * Every time here was formatted server-side in the SALON's zone, like every
+ * other time that reaches the browser in this project. The `tel:` href is the
+ * raw number: a phone dialler is not a display surface.
+ */
+export interface CallRow {
+  appointmentId: string;
+  clientName: string;
+  /** Null for a walk-in with no record, and for a client with no number on
+   *  file — which is a fact the desk needs, not a row to hide. */
+  phone: string | null;
+  /** The time on her confirmation. Unchanged by the delta (D-22), and shown
+   *  because it is the time she is currently planning her morning around. */
+  scheduled: string;
+  /** Scheduled + the delta: when she is really likely to be seen. */
+  projected: string;
+  href: string;
+  /** CLIENT-03's pinned note and CLIENT-04's flag, the same two the chip
+   *  carries — the desk decides how to open the call from these. */
+  note?: string;
+  missed?: string;
+  /** "Told at 14:12 by Sam", or absent. */
+  told?: string;
+  /** She was told about a materially different number and is owed a second
+   *  call. */
+  stale?: boolean;
+}
+
 export interface GridColumn {
   providerId: string;
   providerName: string;
   closed: boolean;
   /** D-22, for the column header's "Dana +38". */
   runningLateMinutes: number | null;
+  /** A-059. Who is still on their way and has to be RUNG — empty unless a
+   *  delta is set. Nothing on this list has been sent to anybody. */
+  calls: CallRow[];
   /** APPT-04's "from here": the first appointment still ahead of `now`, as an
    *  INSTANT. Null when there is nothing left in the column to push. */
   pushFrom: string | null;
@@ -119,6 +152,9 @@ export function toGridModel(
   /** CLIENT-04 flags by client id, already worded by the caller. Optional so
    *  the model stays testable without a database. */
   missedByClient: ReadonlyMap<string, string> = new Map(),
+  /** A-037's names by staff id, so "told by" is a person rather than "the
+   *  front desk" — which is four people. */
+  staffNames: ReadonlyMap<string, string> = new Map(),
 ): GridModel {
   const zone = view.timezone as ZoneId;
   const from = fromDate(view.from);
@@ -148,6 +184,7 @@ export function toGridModel(
         now,
         missedByClient,
         view.cancellationCutoffMinutes,
+        staffNames,
       ),
     ),
     room: view.room.map((type) => toRoom(type, { minutesFrom, clock, range, shift }, total)),
@@ -213,6 +250,7 @@ function toColumn(
   now: Date,
   missedByClient: ReadonlyMap<string, string>,
   cutoffMinutes: number,
+  staffNames: ReadonlyMap<string, string>,
 ): GridColumn {
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
@@ -313,6 +351,31 @@ function toColumn(
     providerName: column.providerName,
     closed: column.closed,
     runningLateMinutes: column.runningLateMinutes,
+    calls: column.lateCalls.map((call) => {
+      const who = call.clientName ?? 'Walk-in';
+      return {
+        appointmentId: call.appointmentId,
+        clientName: who,
+        phone: call.clientPhone,
+        scheduled: f.clock(call.scheduled),
+        projected: f.clock(call.projected),
+        href: `/staff/appointments/${call.appointmentId}`,
+        ...(call.note ? { note: call.note } : {}),
+        ...(call.clientId && missedByClient.get(call.clientId)
+          ? { missed: missedByClient.get(call.clientId)! }
+          : {}),
+        ...(call.told
+          ? {
+              told: `Told at ${f.clock(call.told.createdAt)}${
+                call.told.actorRef && staffNames.get(call.told.actorRef)
+                  ? ` by ${staffNames.get(call.told.actorRef)}`
+                  : ''
+              }`,
+            }
+          : {}),
+        ...(call.stale ? { stale: true as const } : {}),
+      };
+    }),
     // "From here" means the next appointment, not an arbitrary clock time:
     // pushing starts at the first client who has not sat down yet.
     pushFrom:

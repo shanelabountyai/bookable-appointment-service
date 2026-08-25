@@ -1721,3 +1721,38 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 - **My checkbox label contained the word "needs", and `getByLabel` matches by SUBSTRING.** `room.spec.ts` clears a service's chair requirement with `getByLabel('Needs')`, and "Untick for anything that **needs** a consultation" made that locator resolve to two elements. Fixed in the LABEL, not the test: a test hardened to work around ambiguous label text leaves the ambiguity in the product, where a screen reader meets it.
 
 **Left behind:** the composed total on the picker uses catalogue durations and prices, not the chosen stylist's overrides (SVC-02) — those are not known until she has picked one, and the engine applies them for real when it computes the times. Worth revisiting only if a salon's overrides get large enough that the estimate misleads.
+
+## A-059 — running late tells nobody, so the desk keeps the list on a Post-it
+
+**Commit:** `PENDING`
+
+**The defect, verified before starting.** `setRunningLate` upserts a row and notifies no one. Everything downstream of the delta works — the engine gets its `running-late` BusyInterval, the header shows `+40 min`, the chips get `→ likely 14:30` — and every client already on her way arrives at the time on her confirmation. The honest alternative is `pushColumn`, which D-26 says will move what it can and name the rest, so on a packed day it half-moves. The desk therefore rings people, and the record of who it had got to lived on a sticky note: **the shadow calendar A-018 was built to end, grown back one layer down.**
+
+**The list is DERIVED, and that is why it cannot drift.** `lateCallList` is a pure function over the appointments `loadDayView` already loaded for the column — no second query, no second busy set. A ring-list assembled from its own query would eventually disagree with the column drawn beside it about who is coming, and the disagreement would surface as a client nobody rang.
+
+**Its filter is `STILL_ON_THEIR_WAY_STATUSES`, the third positive allow-list in `status.ts` and deliberately not a reuse of the second.** It has the same two members as `REMINDER_ELIGIBLE_STATUSES` today and means something else: a reminder goes out the night before, this is a call made in the next two hours, and the day one of them gains a member the other must be able to refuse it. `checked_in` is OUT and is the whole point — she is in the waiting area, she can see the salon is late, and ringing her is the salon announcing it does not know who is in its own building. Without the constant, a ninth status would land on this list by not being terminal and nothing would fail.
+
+**"Cleared when the delta clears" is a foreign key, not a job.** `RunningLateTold` cascades off `ProviderRunningLate`, so `clearRunningLate`'s existing `deleteMany` takes the ticks with it. Nothing was added to the clear path, there is no cleanup to forget, and no second write path could leave this morning's calls sitting under this afternoon's claim. The unique on `(runningLateId, appointmentId)` makes two people at the desk ticking the same row an upsert rather than a list that reads "told, told".
+
+**`minutesToldAbout` is the column that stops the tick lying.** A mark that only recorded *that* she was told would keep claiming it after the delta moved from twenty to fifty — the desk would read a ticked row as handled when the client is expecting something that is no longer true. The row stores the number she was actually given, the list flags a drift of a slot interval or more as worth ringing again, and ringing her re-stamps it. A five-minute revision is not flagged: ringing a client back to shave five minutes off an estimate is the salon fussing.
+
+**Nothing is sent, and the screen is worded so nobody could read it otherwise.** No outbox row, no template, and a test asserting the outbox count does not move. D-14 still has no driver, and A-044 established that "queued" beside a client's name is read by staff as "no need to call her" — which is the exact inversion this list exists to prevent. The visible words are "Told her", past tense, about a phone call a person made, under a sentence saying in as many words that nobody has been messaged.
+
+**A toggle, not a one-way tick.** The desk is a shared screen; a mis-tap otherwise marks a client as told until somebody clears the whole delta, and the second person cannot tell a mis-tap from a call. Untick is a `deleteMany` on the same row.
+
+**The count is of who is LEFT.** "Still to ring: 3 of 7", not "4 done" — the desk's question is how many more calls, and a heading that counted the finished ones would climb as the work got done.
+
+**The fold-in: the negative push was a hidden feature with two sharp edges.** `pushColumn` has only ever refused zero, so "she's caught up, pull it back twenty" always worked and nothing said so. Both edges were real:
+
+- **The only bound checked was the closing time a pull-forward moves AWAY from.** A `-180` would have seated a client at 07:00 in a salon that opens at nine, and **no constraint would have refused it** — nothing in this schema knows a working window. `before-opening` is the exact mirror of `past-closing`, named rather than refused for D-26's reason: the others still come forward.
+- **The client was told she was "running behind"** when she was being asked to arrive earlier. The template is now chosen by the sign, and the payload key went from `minutesLate` to `minutesShifted` — `minutesLate: -20` is a payload the next reader has to decode.
+
+The field's `inputMode` went from `numeric` to `text` in the same change: on a phone that keypad has no minus key, so the one instruction the field newly admits would have been untypeable on the device the desk actually holds.
+
+**Tests:** 18 database tests and 4 e2e. The ones that matter pin the shape rather than the existence: the checked-in client is absent from the list *and named as the reason* in the test title; the horizon is exclusive at exactly three hours; the outbox count does not move when a row is ticked; clearing the delta empties the tick table; the stale flag fires at fifty-after-twenty and does not at twenty-five-after-twenty; and a `-60` push names the one that would open before the salon does while moving the one that fits.
+
+**The e2e for the ring-round seeds against the REAL clock, alone among the specs in that file.** The list is "who is coming in the next three hours" measured from a `now` the page reads for itself, and there is no injection point. The appointment therefore goes an hour out from the actual moment the test runs, with a whole-day `DateOverride` opening Dana on whichever day that lands on — including across midnight, since the day is taken from the label of the target instant rather than assumed to be today. The rejected alternative was `test.skip` when the salon happens to be shut, which produces a test that runs on a laptop at 2pm and never once in CI.
+
+**D-41 records both halves**, including the revisit trigger: when a real channel lands (D-14) a running-late notice becomes an ordinary outbox template and the tick becomes "rung her as well" rather than the only record.
+
+**Left behind:** the ring-round is on the grid only, not on `?provider=` (the stylist's own phone view has never carried `ColumnControls`, and the calls are the desk's errand, not hers). The horizon is a constant rather than a setting — nobody has asked for a second value, and a knob here would be a settings row that never moves.

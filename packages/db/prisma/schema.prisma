@@ -163,6 +163,7 @@ model Business {
   waitlist      WaitlistEntry[]
   manageTokens  ManageToken[]
   runningLate   ProviderRunningLate[]
+  lateCalls     RunningLateTold[]
 }
 
 /// D-9. One shared owner credential in v1; multi-user staff auth and roles are
@@ -530,7 +531,7 @@ model AdHocBlock {
 /// by anonymizing in place — AppointmentEvent is append-only with Restrict FKs,
 /// so there is otherwise no deletion path through this schema at all.
 model Client {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   businessId   String
   name         String?
   /// Normalized E.164 at write time.
@@ -754,6 +755,7 @@ model Appointment {
   notifications NotificationOutbox[]
   blocks        AppointmentBlock[]
   resourceHold  AppointmentResourceHold?
+  lateCalls     RunningLateTold[]
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -1039,13 +1041,61 @@ model ProviderRunningLate {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  /// A-059. Who the desk has already rung about this delta. Cascades with the
+  /// row, which is what "cleared when the delta clears" is made of — no job,
+  /// no second write path, and no way for a stale tick to outlive its claim.
+  told     RunningLateTold[]
 
   /// One per provider per day. Clearing it DELETES the row: absent means "on
   /// time", which is the state that needs no explanation.
   @@unique([providerId, day])
   @@index([businessId, day])
+}
+
+/// A-059 (APPT-03) — "I've already rung her."
+///
+/// Setting a delta tells nobody: the grid goes amber, the engine stops selling
+/// the next forty minutes, and every client on her way still arrives at the
+/// time on her confirmation. The desk therefore rings them, and until this
+/// existed it kept the list of who it had got to on a Post-it — the shadow
+/// calendar A-018 was built to end, reappearing one layer down.
+///
+/// NOT A MESSAGE, and deliberately not `NotificationOutbox`. Nothing is sent
+/// by ticking this. It is the record of a HUMAN phone call, and putting it in
+/// the outbox would make it render through `deliveryWord()` as "queued" —
+/// A-044's exact failure, in reverse: a screen implying the system had it in
+/// hand when a person did.
+model RunningLateTold {
+  id            String @id @default(cuid())
+  businessId    String
+  runningLateId String
+  appointmentId String
+
+  /// The delta AT THE MOMENT somebody rang. Kept so the tick cannot outlive
+  /// what it claims: she was told "about twenty", and if Dana is now fifty
+  /// behind the desk needs to see that the call it remembers is out of date.
+  minutesToldAbout Int
+
+  /// D-9. Same shape as every other claim in this schema — at 6pm the question
+  /// is who said so, and "the front desk" is four people.
+  toldByActor Actor
+  actorRef    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  business    Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// CASCADE is the feature. Clearing the delta deletes the marks, so "back on
+  /// time" cannot leave yesterday's ticks sitting under tomorrow's claim.
+  runningLate ProviderRunningLate @relation(fields: [runningLateId], references: [id], onDelete: Cascade)
+  appointment Appointment         @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  /// One tick per client per delta. The unique is what makes two people at the
+  /// desk ticking the same row at the same moment an upsert rather than a
+  /// double entry.
+  @@unique([runningLateId, appointmentId])
+  @@index([businessId, appointmentId])
 }
 
 // ─────────────────────────── infrastructure ───────────────────────────

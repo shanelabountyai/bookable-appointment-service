@@ -18,9 +18,16 @@
  * nothing else silently gains the same latitude.
  *
  * WHAT IT REFUSES: a shift that would push an appointment past the provider's
- * closing time, or onto somebody else's. "Refuses silently-lossy shifts"
- * (APPT-04) means the preview names them and the push does not happen — a
- * column that half-moved is worse than one that did not.
+ * closing time, or before she opens, or onto somebody else's. "Refuses
+ * silently-lossy shifts" (APPT-04) means the preview names them and the push
+ * does not happen — a column that half-moved is worse than one that did not.
+ *
+ * THE MINUTES MAY BE NEGATIVE (A-059). "She's caught up, pull it back twenty"
+ * is an instruction the desk gives, and this function has always accepted it —
+ * only zero was ever refused. It was a hidden feature: nothing on the screen
+ * said so, the only bound checked was the closing time it moves AWAY from, and
+ * the message the client got said "running behind". All three are fixed here
+ * and in the control that drives it.
  */
 import type { Actor } from '../../core/auth';
 import { ACTIVE_STATUSES, resolveWindow, wallTime } from '../../core/scheduling';
@@ -44,7 +51,7 @@ export interface PushCandidate {
    * go — but it is NAMED, which is the whole difference between a partial
    * push and a silently-lossy one.
    */
-  problem?: 'past-closing' | 'blocked-by-one-that-stays' | 'no-chair-free';
+  problem?: 'past-closing' | 'before-opening' | 'blocked-by-one-that-stays' | 'no-chair-free';
   /**
    * A-034. The chair it will hold AT THE DESTINATION — the same chair when it
    * is still free (the ordinary case), a different one when somebody who is
@@ -135,6 +142,16 @@ export async function previewPush(
     ),
   );
   const lastClose = windows.reduce((latest, w) => (w.span.end > latest ? w.span.end : latest), 0 as number);
+  // A-059. The mirror of `lastClose`, and it exists for the same reason: a
+  // NEGATIVE push ("she's caught up, pull it back twenty") is a real
+  // instruction the field has always accepted, and without this the only bound
+  // on it was the closing time it was moving away from. A -180 would seat a
+  // client at 07:00 in a salon that opens at nine, and no constraint would
+  // refuse it — nothing in this schema knows a working window.
+  const firstOpen = windows.reduce(
+    (earliest, w) => (earliest === 0 || w.span.start < earliest ? w.span.start : earliest),
+    0 as number,
+  );
 
   const shift = args.minutes * MIN;
 
@@ -170,7 +187,11 @@ export async function previewPush(
     // client attached — so this one stays put and is named.
     ...(lastClose > 0 && fromDate(appointment.endAt) + shift + appointment.bufferAfterMinutes * MIN > lastClose
       ? { problem: 'past-closing' as const }
-      : {}),
+      : firstOpen > 0 && fromDate(appointment.startAt) + shift < firstOpen
+        ? // Only reachable on a pull-forward, and named rather than refused for
+          // D-26's reason: the three that CAN come forward still should.
+          { problem: 'before-opening' as const }
+        : {}),
   }));
 
   /**
@@ -482,17 +503,25 @@ export async function pushColumn(
       await enqueueNotification(tx, {
         businessId: args.businessId,
         // Keyed on the DESTINATION instant, so a second push is a second
-        // message and a retry of the same one is not (P1-7's shape).
+        // message and a retry of the same one is not (P1-7's shape). The
+        // prefix is unchanged across the sign: a push and its immediate
+        // undo land on different instants anyway, and two prefixes would let
+        // "push 20, pull 20, push 20" send the same message twice.
         dedupeKey: `running-late:${appointment.id}:${fromDate(startAt)}`,
         appointmentId: appointment.id,
         channel: appointment.client?.email ? 'email' : 'sms',
-        template: 'appointment.running_late',
+        // A-059. "Running behind" is a lie on a pull-forward, and it is the
+        // wording the client reads. The sign of the push decides which of the
+        // two things actually happened to her.
+        template: args.minutes > 0 ? 'appointment.running_late' : 'appointment.moved_earlier',
         recipient: appointment.client?.email ?? appointment.client?.phone ?? null,
         payload: {
           appointmentId: appointment.id,
           startAt: startAt.toISOString(),
           previousStartAt: appointment.startAt.toISOString(),
-          minutesLate: args.minutes,
+          // Signed, and named for what it is rather than for the common case:
+          // "minutesLate: -20" is a payload the next reader has to decode.
+          minutesShifted: args.minutes,
         },
       });
       notified += 1;

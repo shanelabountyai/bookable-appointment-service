@@ -8,7 +8,9 @@ import {
   confirmColumnPush,
   previewColumnPush,
   setColumnRunningLate,
+  toggleToldAbout,
 } from '@/lib/day/actions';
+import type { CallRow } from '@/lib/day/view-model';
 
 const initial: DayActionState = {};
 const field = 'w-16 rounded-md border border-zinc-400 bg-transparent px-2 py-1 text-sm dark:border-zinc-600';
@@ -23,18 +25,26 @@ const small = 'rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium d
  *
  * They look different on purpose. Anything that made them feel like the same
  * button would eventually make one do the other's job.
+ *
+ * A-059 adds the third thing, which is the CONSEQUENCE of the first: a delta
+ * tells nobody, so the people on their way have to be rung, and the list of
+ * who has been got to was living on a Post-it.
  */
 export function ColumnControls({
   providerId,
   providerName,
   day,
   runningLateMinutes,
+  calls,
   pushFrom,
 }: {
   providerId: string;
   providerName: string;
   day: string;
   runningLateMinutes: number | null;
+  /** A-059. Who is still on their way inside the next few hours. Empty unless
+   *  a delta is set. */
+  calls: CallRow[];
   /** The instant "from here" means: the first appointment still to come. Null
    *  when there is nothing left to push. */
   pushFrom: string | null;
@@ -84,6 +94,10 @@ export function ColumnControls({
         </p>
       ) : null}
 
+      {runningLateMinutes && calls.length > 0 ? (
+        <RingRound providerId={providerId} providerName={providerName} day={day} calls={calls} />
+      ) : null}
+
       {pushFrom ? (
         <details className="rounded-md border border-zinc-300 p-2 dark:border-zinc-700">
           <summary className="cursor-pointer font-medium">Push the column</summary>
@@ -94,11 +108,15 @@ export function ColumnControls({
                     which makes the two controls sound the same read aloud. */}
                 Push by
               </label>
+              {/* A-059: NOT `inputMode="numeric"`. On a phone that keypad has
+                  no minus key, so the one instruction this field newly admits
+                  would be untypeable on the device the desk actually holds. */}
               <input
                 id={`push-${providerId}`}
                 value={minutes}
                 onChange={(event) => setMinutes(event.target.value)}
-                inputMode="numeric"
+                inputMode="text"
+                aria-describedby={`push-hint-${providerId}`}
                 className={field}
               />
               <button
@@ -114,6 +132,13 @@ export function ColumnControls({
               </button>
             </div>
 
+            {/* A-059. The negative was always accepted and nothing said so —
+                a hidden feature is a feature nobody has. "She's caught up,
+                pull it back 20" is an instruction the desk gives out loud. */}
+            <p id={`push-hint-${providerId}`} className="text-zinc-600 dark:text-zinc-400">
+              Minus to pull the column earlier — <code>-20</code> when she has caught up.
+            </p>
+
             {previewing ? <p className="text-zinc-600 dark:text-zinc-400">Checking…</p> : null}
 
             {preview ? (
@@ -126,6 +151,7 @@ export function ColumnControls({
                           moves, because a column that half-moved is worse
                           than one that did not. */}
                       {row.problem === 'past-closing' ? ' — stays: would run past closing' : ''}
+                      {row.problem === 'before-opening' ? ' — stays: would start before she opens' : ''}
                       {row.problem === 'blocked-by-one-that-stays' ? ' — stays: blocked by one that stays' : ''}
                       {row.problem === 'no-chair-free' ? ' — stays: no chair free at the new time' : ''}
                     </li>
@@ -169,5 +195,122 @@ export function ColumnControls({
         </details>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A-059 (APPT-03) — THE RING-ROUND.
+ *
+ * The half of "running late" that was missing. Setting a delta makes the grid
+ * amber and stops the website selling the next forty minutes; it tells not one
+ * of the four people already on their way, who each arrive at the time on
+ * their confirmation. So somebody rings them, and the record of who had been
+ * got to was a Post-it — the shadow calendar, one layer down from the one
+ * A-018 removed.
+ *
+ * NOTHING HERE SENDS ANYTHING, and the wording is written so nobody could read
+ * it as if it did. There is no driver (D-14), and A-044 established that a
+ * screen saying "queued" beside a client's name is read by staff as "no need
+ * to call her" — so this says "Told her", in the past tense, about a phone
+ * call a person made.
+ *
+ * Open by default rather than behind a `<details>`, unlike the push: the push
+ * is an action somebody goes looking for, and this is a list that has to be
+ * seen without being sought.
+ */
+function RingRound({
+  providerId,
+  providerName,
+  day,
+  calls,
+}: {
+  providerId: string;
+  providerName: string;
+  day: string;
+  calls: CallRow[];
+}) {
+  const [state, toggle, saving] = useActionState(toggleToldAbout, initial);
+  const left = calls.filter((c) => !c.told).length;
+
+  return (
+    <section
+      aria-label={`Still to ring for ${providerName}`}
+      className="rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/40"
+    >
+      <h3 className="font-semibold">
+        {/* The count is of who is LEFT, not of the list: the desk's question is
+            "how many more calls", and a heading that counted the rung ones
+            would go up as the work got done. */}
+        Still to ring: {left} of {calls.length}
+      </h3>
+      <p className="text-zinc-600 dark:text-zinc-400">
+        Nobody has been messaged. Setting the delta changes no times and sends nothing.
+      </p>
+
+      <ul className="mt-2 flex flex-col gap-2">
+        {calls.map((call) => (
+          <li key={call.appointmentId} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            {/* Scheduled STRUCK THROUGH and the projected time beside it, both
+                present: her confirmation still says the first one, and the
+                desk opens the call with "you're booked for two". */}
+            <span className="font-mono line-through opacity-60">{call.scheduled}</span>
+            <span className="font-mono font-semibold">→ {call.projected}</span>
+            <a href={call.href} className="font-medium underline underline-offset-4">
+              {call.clientName}
+            </a>
+
+            {call.phone ? (
+              <a href={`tel:${call.phone}`} className="underline underline-offset-4">
+                {call.phone}
+              </a>
+            ) : (
+              // Said out loud rather than left blank: "no number" is the fact
+              // that decides she cannot be rung at all, and a gap where a
+              // number should be reads as a rendering bug.
+              <span className="text-zinc-600 dark:text-zinc-400">no number on file</span>
+            )}
+
+            <form action={toggle} className="ml-auto">
+              <input type="hidden" name="providerId" value={providerId} />
+              <input type="hidden" name="day" value={day} />
+              <input type="hidden" name="appointmentId" value={call.appointmentId} />
+              <input type="hidden" name="told" value={call.told ? '1' : '0'} />
+              <button
+                type="submit"
+                disabled={saving}
+                className={`${small} ${call.told ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900' : ''}`}
+              >
+                {/* The accessible name names the ACTION and the client, and
+                    stops there: who rang her and when is one line down, and a
+                    button that repeated it made a screen reader say it twice
+                    per row. */}
+                <span aria-hidden="true">{call.told ? '✓ Told her' : 'Told her'}</span>
+                <span className="sr-only">
+                  {call.told ? `Undo told for ${call.clientName}` : `Mark ${call.clientName} as told`}
+                </span>
+              </button>
+            </form>
+
+            {call.told ? <span className="w-full text-zinc-600 dark:text-zinc-400">{call.told}</span> : null}
+            {/* The tick stays — she HAS been spoken to — but what she was told
+                is no longer what is happening, and only the desk can decide
+                whether that is worth a second call. */}
+            {call.stale ? (
+              <span className="w-full font-medium text-amber-900 dark:text-amber-200">
+                ⚑ Told about a different delay — worth ringing again.
+              </span>
+            ) : null}
+            {call.note ? <span className="w-full font-medium text-amber-900 dark:text-amber-200">⚑ {call.note}</span> : null}
+            {call.missed ? <span className="w-full font-medium text-amber-900 dark:text-amber-200">⚑ {call.missed}</span> : null}
+          </li>
+        ))}
+      </ul>
+
+      {state.message && !state.ok ? (
+        <p aria-live="polite" className="mt-2 font-medium text-amber-900 dark:text-amber-200">
+          {state.message}
+        </p>
+      ) : null}
+    </section>
   );
 }

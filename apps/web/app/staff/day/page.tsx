@@ -3,6 +3,7 @@ import { prisma } from '@bookable/db';
 import { loadDayView } from '@bookable/db/day';
 import { listOpenedSlots } from '@bookable/db/appointments';
 import { clientReliability } from '@bookable/db/clients';
+import { resolveStaffNames } from '@bookable/db/auth';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
@@ -61,7 +62,14 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
     }),
   );
 
-  const model = toGridModel(view, now, readableDay(day), missedByClient);
+  // A-059. "Told at 14:12 by Sam", not "by the front desk" — A-037's point,
+  // and the reason the tick is worth anything to the second person at the desk.
+  const staffNames = await resolveStaffNames(
+    prisma,
+    view.columns.flatMap((c) => c.lateCalls.map((call) => call.told?.actorRef).filter((ref) => ref != null)),
+  );
+
+  const model = toGridModel(view, now, readableDay(day), missedByClient, staffNames);
   const providerId = typeof providerParam === 'string' ? providerParam : null;
   const column = providerId ? model.columns.find((c) => c.providerId === providerId) : null;
 

@@ -1679,3 +1679,27 @@ Two details that decide whether this is a good feature or an annoying one:
 **"Desk only" is not "retired."** A retired service disappears from everywhere; a desk-only one is on the price list and sold every week. They are kept as separate things, so marking a service desk-only never quietly removes it from anywhere the salon still needs it.
 
 **A client who already has one of these appointments can still move it herself.** She booked it properly, through the desk, with the consultation done — the restriction is on *starting* one of these, never on keeping one. The obvious way to build this would have blocked her, and she would have had to ring the salon to move an appointment she could previously move from her phone.
+
+## Running late now tells the desk who to ring
+
+Marking a stylist forty minutes behind did a lot: the board turned amber, the projected times appeared down her column, and the website stopped selling the next forty minutes while a client sat in the waiting area.
+
+**It told nobody.** The four people already on their way to that column were still arriving at the time printed on their confirmations. So somebody at the desk rang them — and kept the list of who they had got to on a Post-it beside the keyboard. That Post-it is the shadow calendar this whole product exists to remove, and it had grown back one layer down.
+
+**Setting the delay now produces the list itself.** Who is still on her way in the next three hours, the time on her confirmation, the time she is actually likely to be seen, her number as a link that dials it, and the same allergy note and missed-appointments flag that sit on her chip in the book. Every person on it can be ticked *told her*, with a name and a time against the tick, so the second person at the desk does not re-ring the first six.
+
+**It sends nothing, and the screen says so in as many words.** There is no text going out here — the calls are made by a person. A button that quietly queued a message would be worse than no button at all, because the tick beside a client's name would then mean "the system has this" when what it meant was "nobody has spoken to her."
+
+Three things about the list that came from thinking about the desk rather than the data:
+
+**Nobody in the building is on it.** A client sitting in the waiting area can see the salon is running late. Ringing her to say so is the salon announcing it does not know who is in it.
+
+**The count is of who is left**, not of the list. The question at the desk is "how many more calls", and a heading that counted the finished ones would climb as the work got done.
+
+**A tick can go stale, and says so.** She was told "about twenty" and the stylist is now fifty behind. The tick stays — somebody did ring her — but the row is flagged as worth a second call, because what she was told is no longer what is happening.
+
+### "She's caught up, pull it back twenty"
+
+Pushing a whole column later has always accepted a negative number, and nothing anywhere said so. It was a real instruction the desk gives out loud, and a feature nobody could find.
+
+**The field now says it**, and the two sharp edges behind it are gone: pulling a column earlier can no longer start a client's appointment before the salon opens — it names her and leaves her where she is, exactly as pushing past closing time already did — and the message she receives now says her appointment has been brought forward instead of telling her the salon is running behind.

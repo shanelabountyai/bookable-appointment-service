@@ -14,7 +14,14 @@ import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
 import { previewPush, pushColumn } from './push-column';
-import { clearRunningLate, findRunningLate, setRunningLate } from './running-late';
+import {
+  clearRunningLate,
+  findRunningLate,
+  markToldAbout,
+  setRunningLate,
+  unmarkToldAbout,
+} from './running-late';
+import { loadDayView } from './day-view';
 
 const prisma = new PrismaClient();
 const STAMP = { createdByActor: 'staff' as const, actorRef: 'staff-1' };
@@ -332,5 +339,308 @@ describe('APPT-04 — pushing the column', () => {
 
   it('refuses a zero-minute push rather than writing a no-op event', async () => {
     await expect(push(0)).rejects.toBeInstanceOf(RangeError);
+  });
+});
+
+/**
+ * A-059 (APPT-03) — THE RING-ROUND THE DELTA IMPLIES.
+ *
+ * The delta tells nobody. Every one of these tests is about the list a human
+ * then has to work down, and about the mark that stops the second person at
+ * the desk ringing the first six again.
+ */
+describe('A-059 — who still has to be rung', () => {
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR });
+
+  const callsAt = async (nowIso: string) => {
+    const view = await loadDayView(prisma, { businessId, day: DAY, now: at(nowIso) });
+    return view.columns.find((c) => c.providerId === danaId)!.lateCalls;
+  };
+
+  it('is empty while the column is on time — a list with no claim behind it is noise', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    expect(await callsAt('2026-06-09T13:00:00-05:00')).toEqual([]);
+  });
+
+  /** The whole item: the client is on her way to a time that is no longer
+   *  true, and the projected start is what the desk says on the phone. */
+  it('projects the delta onto the scheduled time without moving anything', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await setLate(30);
+
+    const [call] = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(hhmm(call!.scheduled)).toBe('14:00');
+    expect(hhmm(call!.projected)).toBe('14:30');
+    expect(call!.clientName).toBe('Ada Chen');
+    expect(call!.clientPhone).toBe('5125550101');
+
+    // D-22 unchanged: the confirmation she is holding still says 14:00.
+    const row = await prisma.appointment.findFirstOrThrow();
+    expect(row.startWallTime.trim()).toBe('14:00');
+  });
+
+  /**
+   * THE FILTER THAT MATTERS. Ringing a client who is sitting in the waiting
+   * area to tell her the salon is running late is the salon announcing it does
+   * not know who is in it — and she is the one person who can already see it.
+   */
+  it('leaves out everybody who is already in the building', async () => {
+    const arriving = await book('2026-06-09T14:00:00-05:00');
+    const here = await book('2026-06-09T15:00:00-05:00');
+    await prisma.appointment.update({ where: { id: here.id }, data: { status: 'checked_in' } });
+    await setLate(30);
+
+    const calls = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(calls.map((c) => c.appointmentId)).toEqual([arriving.id]);
+  });
+
+  it('leaves out the cancelled, who have nothing to be told', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    const gone = await book('2026-06-09T15:00:00-05:00');
+    await prisma.appointment.update({ where: { id: gone.id }, data: { status: 'cancelled' } });
+    await setLate(30);
+
+    expect((await callsAt('2026-06-09T13:00:00-05:00')).map((c) => hhmm(c.scheduled))).toEqual(['14:00']);
+  });
+
+  /** Three hours, not the rest of the day: by five o'clock the delta has been
+   *  worked off or the column has been pushed, and a list of forty is a list
+   *  of none. */
+  it('stops at the horizon, and starts at now', async () => {
+    await book('2026-06-09T10:00:00-05:00'); // already gone by
+    await book('2026-06-09T14:00:00-05:00'); // inside
+    await book('2026-06-09T16:00:00-05:00'); // exactly three hours out, so outside
+    await setLate(30);
+
+    expect((await callsAt('2026-06-09T13:00:00-05:00')).map((c) => hhmm(c.scheduled))).toEqual(['14:00']);
+  });
+
+  it('is ordered by the time they will arrive, because that is the order they get rung', async () => {
+    await book('2026-06-09T15:00:00-05:00');
+    await book('2026-06-09T13:00:00-05:00');
+    await book('2026-06-09T14:00:00-05:00');
+    await setLate(20);
+
+    expect((await callsAt('2026-06-09T12:30:00-05:00')).map((c) => hhmm(c.scheduled))).toEqual([
+      '13:00',
+      '14:00',
+      '15:00',
+    ]);
+  });
+});
+
+describe('A-059 — "I have already rung her"', () => {
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR });
+  const mark = (appointmentId: string) =>
+    markToldAbout(prisma, { businessId, providerId: danaId, day: DAY, appointmentId, actor: ACTOR });
+  const callsAt = async (nowIso: string) => {
+    const view = await loadDayView(prisma, { businessId, day: DAY, now: at(nowIso) });
+    return view.columns.find((c) => c.providerId === danaId)!.lateCalls;
+  };
+
+  it('stamps who made the call and what they told her', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+
+    const told = await mark(booked.id);
+    expect(told?.toldByActor).toBe('staff');
+    expect(told?.actorRef).toBe('staff-1');
+    // The NUMBER she was given, not the number now — this is what makes the
+    // mark auditable rather than merely present.
+    expect(told?.minutesToldAbout).toBe(40);
+
+    const [call] = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(call!.told?.minutesToldAbout).toBe(40);
+    expect(call!.stale).toBe(false);
+  });
+
+  /** SENDS NOTHING, and that is the decision. A queued message beside a
+   *  client's name is read by staff as "no need to call her" (A-044). */
+  it('queues no message and writes no outbox row', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    const before = await prisma.notificationOutbox.count();
+    await setLate(40);
+    await mark(booked.id);
+    expect(await prisma.notificationOutbox.count()).toBe(before);
+  });
+
+  /** Two people at the desk, one client, the same second. */
+  it('is one mark per client per delta however many times it is tapped', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+    await mark(booked.id);
+    await mark(booked.id);
+    expect(await prisma.runningLateTold.count()).toBe(1);
+  });
+
+  it('unticks, because a shared screen gets mis-tapped', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+    await mark(booked.id);
+    await unmarkToldAbout(prisma, { businessId, providerId: danaId, day: DAY, appointmentId: booked.id });
+
+    const [call] = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(call!.told).toBeNull();
+  });
+
+  /**
+   * THE CASCADE IS THE FEATURE. "Cleared when the delta clears" is a foreign
+   * key, not a cleanup job — so "back on time" cannot leave this morning's
+   * ticks sitting under this afternoon's claim.
+   */
+  it('is deleted with the delta, so a new claim starts with nobody told', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+    await mark(booked.id);
+    expect(await prisma.runningLateTold.count()).toBe(1);
+
+    await clearRunningLate(prisma, { providerId: danaId, day: DAY });
+    expect(await prisma.runningLateTold.count()).toBe(0);
+
+    await setLate(25);
+    const [call] = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(call!.told).toBeNull();
+  });
+
+  /**
+   * She was told "about twenty" and Dana is now fifty behind. The tick stays —
+   * somebody did ring her — but a screen that showed it plainly would be
+   * telling the desk that a client who was promised twenty knows about fifty.
+   */
+  it('marks the call stale when the delta has moved on from what she was told', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    await setLate(20);
+    await mark(booked.id);
+
+    await setLate(50);
+    const [call] = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(call!.told?.minutesToldAbout).toBe(20);
+    expect(call!.stale).toBe(true);
+
+    // Ringing her back re-stamps it: the useful fact is the most recent call.
+    await mark(booked.id);
+    const [again] = await callsAt('2026-06-09T13:00:00-05:00');
+    expect(again!.told?.minutesToldAbout).toBe(50);
+    expect(again!.stale).toBe(false);
+  });
+
+  /** A drift smaller than one slot interval is the salon fussing, not news. */
+  it('does not call a five-minute revision stale', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    await setLate(20);
+    await mark(booked.id);
+    await setLate(25);
+
+    expect((await callsAt('2026-06-09T13:00:00-05:00'))[0]!.stale).toBe(false);
+  });
+
+  it('refuses to mark against a column that is back on time', async () => {
+    const booked = await book('2026-06-09T14:00:00-05:00');
+    expect(await mark(booked.id)).toBeNull();
+    expect(await prisma.runningLateTold.count()).toBe(0);
+  });
+});
+
+/**
+ * A-059's fold-in: the push has always accepted a NEGATIVE delta and nothing
+ * ever said so. "She's caught up, pull it back twenty" is an instruction the
+ * desk gives out loud, and it was a hidden feature with two sharp edges.
+ */
+describe('A-059 — pulling the column earlier', () => {
+  it('moves the column back, and the whole column moves', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await book('2026-06-09T15:00:00-05:00');
+
+    const result = await pushColumn(prisma, {
+      businessId,
+      providerId: danaId,
+      day: DAY,
+      fromAt: at('2026-06-09T14:00:00-05:00'),
+      minutes: -20,
+      actor: ACTOR,
+    });
+
+    expect(result.moved).toBe(2);
+    const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+    expect(rows.map((r) => r.startWallTime.trim())).toEqual(['13:40', '14:40']);
+  });
+
+  /**
+   * THE EDGE THE POSITIVE CASE NEVER HAD. The only bound checked was the
+   * closing time a pull-forward moves AWAY from, so nothing stopped a -180
+   * seating a client at 07:00 in a salon that opens at nine — and no database
+   * constraint would have refused it, because nothing in the schema knows a
+   * working window.
+   */
+  it('leaves behind the one that would start before she opens, and names it', async () => {
+    await book('2026-06-09T09:30:00-05:00');
+    await book('2026-06-09T14:00:00-05:00');
+
+    const preview = await previewPush(prisma, {
+      businessId,
+      providerId: danaId,
+      day: DAY,
+      fromAt: at('2026-06-09T09:30:00-05:00'),
+      minutes: -60,
+    });
+
+    // NAMED, not refused outright (D-26): the 14:00 still comes forward.
+    expect(preview.candidates.map((c) => [hhmm(c.from), c.problem])).toEqual([
+      ['09:30', 'before-opening'],
+      ['14:00', undefined],
+    ]);
+    expect(preview.canPush).toBe(true);
+
+    const result = await pushColumn(prisma, {
+      businessId,
+      providerId: danaId,
+      day: DAY,
+      fromAt: at('2026-06-09T09:30:00-05:00'),
+      minutes: -60,
+      actor: ACTOR,
+    });
+    expect(result.moved).toBe(1);
+    const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+    expect(rows.map((r) => r.startWallTime.trim())).toEqual(['09:30', '13:00']);
+  });
+
+  /**
+   * "Running behind" on a message telling her to come in twenty minutes
+   * EARLIER is the product lying to the client about what just happened to
+   * her — and it is the sentence she reads.
+   */
+  it('sends a brought-forward message, not a running-behind one', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await pushColumn(prisma, {
+      businessId,
+      providerId: danaId,
+      day: DAY,
+      fromAt: at('2026-06-09T14:00:00-05:00'),
+      minutes: -20,
+      actor: ACTOR,
+    });
+
+    const message = await prisma.notificationOutbox.findFirstOrThrow({
+      where: { template: { startsWith: 'appointment.moved' } },
+    });
+    expect(message.template).toBe('appointment.moved_earlier');
+    expect((message.payload as { minutesShifted: number }).minutesShifted).toBe(-20);
+    expect(await prisma.notificationOutbox.count({ where: { template: 'appointment.running_late' } })).toBe(0);
+  });
+
+  it('still refuses zero, which is the one number that means nothing', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await expect(
+      pushColumn(prisma, {
+        businessId,
+        providerId: danaId,
+        day: DAY,
+        fromAt: at('2026-06-09T14:00:00-05:00'),
+        minutes: 0,
+        actor: ACTOR,
+      }),
+    ).rejects.toThrow(RangeError);
   });
 });

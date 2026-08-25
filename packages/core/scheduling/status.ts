@@ -139,3 +139,28 @@ export const SERIES_CANCELLABLE_STATUSES = ['booked', 'confirmed'] as const;
 /** May this occurrence be cancelled as part of ending its series (A-057)? */
 export const canEndSeriesAt = (status: AppointmentStatus): boolean =>
   (SERIES_CANCELLABLE_STATUSES as readonly string[]).includes(status);
+
+/**
+ * A-059 (APPT-03) — who is still ON THEIR WAY, and so still worth ringing.
+ *
+ * A POSITIVE ALLOW-LIST, and the third one in this file for the third time the
+ * same trap was avoidable: a ninth status would otherwise land in the ring-list
+ * by not being terminal, and the desk would ring a client who is sitting in
+ * the waiting area.
+ *
+ * `checked_in` is OUT and that is the whole point: she is in the building, so
+ * "we are running forty behind" is said to her face, and a phone call about it
+ * is the salon looking like it does not know who is in its own waiting room.
+ * `in_progress` is out because she is in the chair, and the terminal four are
+ * out because there is nothing left to tell her.
+ *
+ * The same two members as `REMINDER_ELIGIBLE_STATUSES` today, deliberately not
+ * the same constant: a reminder goes out the night before and this is a call
+ * made in the next two hours, so the day one of them gains a member the other
+ * must be able to refuse it.
+ */
+export const STILL_ON_THEIR_WAY_STATUSES = ['booked', 'confirmed'] as const;
+
+/** Is this client still on her way, and so still worth a call (A-059)? */
+export const isStillOnTheirWay = (status: AppointmentStatus): boolean =>
+  (STILL_ON_THEIR_WAY_STATUSES as readonly string[]).includes(status);

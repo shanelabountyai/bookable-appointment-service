@@ -11,7 +11,15 @@
  */
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
-import { type PushPreview, clearRunningLate, previewPush, pushColumn, setRunningLate } from '@bookable/db/day';
+import {
+  type PushPreview,
+  clearRunningLate,
+  markToldAbout,
+  previewPush,
+  pushColumn,
+  setRunningLate,
+  unmarkToldAbout,
+} from '@bookable/db/day';
 import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
@@ -48,6 +56,43 @@ export async function clearColumnRunningLate(_previous: DayActionState, formData
   });
   revalidatePath('/staff/day');
   return { ok: true, message: 'Back on time.' };
+}
+
+/**
+ * A-059 — "I've rung her", ticked and untickable.
+ *
+ * SENDS NOTHING. The whole point of the list this sits on is that setting a
+ * delta notifies nobody, so the calls are made by a person; a button here that
+ * queued a message would put "queued" beside a client's name, which A-044
+ * established staff read as "no need to call her".
+ *
+ * A TOGGLE, because the desk is a shared screen and a mis-tap otherwise leaves
+ * a client marked as told until somebody clears the whole delta — and the
+ * second person at the desk cannot tell a mis-tap from a call.
+ */
+export async function toggleToldAbout(_previous: DayActionState, formData: FormData): Promise<DayActionState> {
+  const staff = await requireStaff();
+  const args = {
+    businessId: staff.businessId,
+    providerId: String(formData.get('providerId') ?? ''),
+    day: String(formData.get('day') ?? ''),
+    appointmentId: String(formData.get('appointmentId') ?? ''),
+  };
+
+  if (formData.get('told') === '1') {
+    await unmarkToldAbout(prisma, args);
+    revalidatePath('/staff/day');
+    return { ok: true, message: 'Not told yet.' };
+  }
+
+  const mark = await markToldAbout(prisma, { ...args, actor: staffActor(staff.id) });
+  revalidatePath('/staff/day');
+  // Null means the delta went away between the page render and the tap —
+  // somebody else marked the column back on time, and the list this row is on
+  // no longer exists.
+  return mark
+    ? { ok: true, message: 'Marked as told.' }
+    : { ok: false, message: 'That column is back on time — nothing left to tell her about.' };
 }
 
 export interface PreviewShape {
@@ -136,6 +181,8 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
  */
 const PROBLEMS: Record<string, string> = {
   'past-closing': 'would run past closing',
+  // A-059's mirror, reachable only on a pull-forward.
+  'before-opening': 'would start before she opens',
   'blocked-by-one-that-stays': 'blocked by one that stayed',
   'no-chair-free': 'no chair free at the new time',
 };

@@ -39,10 +39,12 @@ export {
   SERIES_CANCELLABLE_STATUSES,
   SERVICE_EDITABLE_STATUSES,
   SLOT_FREEING_STATUSES,
+  STILL_ON_THEIR_WAY_STATUSES,
   TERMINAL_STATUSES,
   activeStatusSqlList,
   canChangeServices,
   canEndSeriesAt,
+  isStillOnTheirWay,
   occupiesTime,
   slotFreeingSqlList,
 } from './status';

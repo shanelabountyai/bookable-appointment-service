@@ -24,7 +24,7 @@ import { type Span, resolveWindow, subtractSpans, wallTime } from '../../core/sc
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
 import { type DayRoom, loadRoom } from './room';
-import { findRunningLate } from './running-late';
+import { type LateCallRow, type RunningLate, findRunningLate, lateCallList } from './running-late';
 import { findBusyAppointments } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -75,6 +75,13 @@ export interface DayColumn {
   /** D-22. How far behind she is running right now, if anybody has said so.
    *  Null is "on time", which is the state that needs no explanation. */
   runningLateMinutes: number | null;
+  /**
+   * A-059 (APPT-03). Who is still on their way inside the next few hours, and
+   * therefore has to be RUNG — the list the desk was keeping on a Post-it,
+   * which is the shadow calendar one layer down. Empty when the column is on
+   * time. Nothing on it has been sent to anybody.
+   */
+  lateCalls: LateCallRow[];
   /** No hours at all today — a closed day, not an empty one. The distinction
    *  is what stops the grid inviting a booking into a day off. */
   closed: boolean;
@@ -138,7 +145,7 @@ export async function loadDayView(
   // One read for the whole day rather than one per column: the delta table is
   // keyed by (provider, day), so the day's rows are a single indexed lookup.
   const late = await findRunningLate(db, { businessId: args.businessId, day: args.day });
-  const lateByProvider = new Map(late.map((row) => [row.providerId, row.minutes]));
+  const lateByProvider = new Map(late.map((row) => [row.providerId, row]));
 
   const columns = await Promise.all(
     providers.map((provider) =>
@@ -150,7 +157,7 @@ export async function loadDayView(
         weekday,
         from,
         to,
-        runningLateMinutes: lateByProvider.get(provider.id) ?? null,
+        late: lateByProvider.get(provider.id) ?? null,
       }),
     ),
   );
@@ -190,7 +197,7 @@ async function loadColumn(
     from: Date;
     to: Date;
     now: Date;
-    runningLateMinutes: number | null;
+    late: RunningLate | null;
   },
 ): Promise<DayColumn> {
   const [resolved, busy, absences, rows] = await Promise.all([
@@ -302,7 +309,13 @@ async function loadColumn(
   return {
     providerId: args.provider.id,
     providerName: args.provider.displayName,
-    runningLateMinutes: args.runningLateMinutes,
+    runningLateMinutes: args.late?.minutes ?? null,
+    // A-059. Derived from the appointments this column already loaded — no
+    // second query, and the same busy set the grid draws, so the ring-list and
+    // the column can never disagree about who is coming.
+    lateCalls: args.late
+      ? lateCallList({ appointments, minutes: args.late.minutes, now: args.now, told: args.late.told })
+      : [],
     closed: resolved.closed,
     windows: windowSpans.map(toDateSpan),
     breaks: breakSpans.map(toDateSpan),

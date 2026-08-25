@@ -15,9 +15,15 @@ export {
   pushColumn,
 } from './push-column';
 export {
+  CALL_AHEAD_MINUTES,
+  type LateCallRow,
   type RunningLate,
+  type ToldMark,
   clearRunningLate,
   findRunningLate,
+  lateCallList,
+  markToldAbout,
   runningLateInterval,
   setRunningLate,
+  unmarkToldAbout,
 } from './running-late';

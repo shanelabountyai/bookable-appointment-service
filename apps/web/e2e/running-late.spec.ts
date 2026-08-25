@@ -227,3 +227,190 @@ test.describe('pushing the column (A-018)', () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * A-059 (APPT-03) — THE RING-ROUND.
+ *
+ * The half A-018 left out: the delta makes the grid amber and stops the website
+ * selling the next forty minutes, and tells not one of the people already on
+ * their way. So the desk rings them, and kept the list of who it had got to on
+ * a Post-it — the shadow calendar, one layer down from the one A-018 removed.
+ *
+ * THESE SEED AGAINST THE REAL CLOCK, unlike everything above, and have to: the
+ * list is "who is coming in the next three hours", measured from a `now` the
+ * page reads for itself. So the appointment goes an hour out from the actual
+ * moment the test runs, and a whole-day DATE OVERRIDE opens Dana on whatever
+ * day that lands on. Skipping when the salon happens to be shut would make
+ * this a test that runs on a developer's laptop at 2pm and never in CI.
+ */
+test.describe('the ring-round (A-059)', () => {
+  /** An appointment an hour from now, with Dana opened all day on whichever
+   *  day that is. Returns the wall-clock label the grid will render. */
+  async function seedAnHourFromNow(): Promise<string> {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+
+      // Whole minutes: the schema CHECK-constrains it, because half-open
+      // back-to-back booking depends on the ends matching exactly.
+      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000) * 60_000 + 60 * 60_000));
+      const label = toLabel(fromDate(startAt), zoneId(ZONE));
+      DAY = label.day;
+
+      // Dana, open all day, on whatever day an hour from now falls on — so
+      // this runs at 3pm and at 3am with the same result.
+      const override = await prisma.dateOverride.create({
+        data: { businessId: business.id, providerId: dana.id, day: DAY, isClosed: false },
+      });
+      await prisma.dateOverrideWindow.create({
+        data: { businessId: business.id, dateOverrideId: override.id, open: '00:00', close: '23:59' },
+      });
+
+      const client = await prisma.client.create({
+        data: { businessId: business.id, name: 'Client 1', phone: '5125550100' },
+      });
+      const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
+      await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          clientId: client.id,
+          startAt,
+          endAt,
+          blockedStart: startAt,
+          blockedEnd: endAt,
+          startDay: DAY,
+          startWallTime: label.time,
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          },
+        },
+      });
+      return label.time;
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  test('lists who is still on her way, with the projected time and a number to ring', async ({ page }) => {
+    const time = await seedAnHourFromNow();
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    const dana = page.getByRole('region', { name: /Dana/ });
+    await dana.getByLabel('Behind by').fill('30');
+    await dana.getByRole('button', { name: 'Set' }).click();
+
+    const list = page.getByRole('region', { name: 'Still to ring for Dana' });
+    await expect(list).toBeVisible();
+    await expect(list.getByRole('heading', { name: 'Still to ring: 1 of 1' })).toBeVisible();
+
+    // BOTH times. Her confirmation says the first one and the desk opens the
+    // call with it; the second is what is really going to happen.
+    await expect(list.getByText(time, { exact: true })).toBeVisible();
+    const projected = toLabel(instant(fromDate(at(time)) + 30 * 60_000), zoneId(ZONE)).time;
+    await expect(list.getByText(`→ ${projected}`)).toBeVisible();
+
+    // TEL, not a number to read off a screen and re-key at a busy desk.
+    await expect(list.getByRole('link', { name: '5125550100' })).toHaveAttribute('href', 'tel:5125550100');
+
+    /**
+     * A-044's line, held: NOTHING was sent. A screen saying "queued" beside a
+     * client's name is read by staff as "no need to call her", which is the
+     * precise opposite of what this list exists to make happen.
+     */
+    await expect(list.getByText(/Nobody has been messaged/)).toBeVisible();
+    const prisma = new PrismaClient();
+    try {
+      expect(await prisma.notificationOutbox.count()).toBe(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /** The Post-it, replaced: the second person at the desk must not re-ring the
+   *  first six, and "back on time" must not leave this morning's ticks sitting
+   *  under this afternoon's claim. */
+  test('remembers who has been rung, and forgets it when the delta clears', async ({ page }) => {
+    await seedAnHourFromNow();
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    const dana = page.getByRole('region', { name: /Dana/ });
+    await dana.getByLabel('Behind by').fill('30');
+    await dana.getByRole('button', { name: 'Set' }).click();
+
+    const list = page.getByRole('region', { name: 'Still to ring for Dana' });
+    await list.getByRole('button', { name: 'Mark Client 1 as told' }).click();
+
+    await expect(list.getByRole('heading', { name: 'Still to ring: 0 of 1' })).toBeVisible();
+    // A-037: stamped with a person, not "the front desk" — which is four people.
+    await expect(list.getByText(/Told at \d\d:\d\d by /)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const row = await prisma.runningLateTold.findFirstOrThrow();
+      // The number she was actually given, not whatever the delta becomes.
+      expect(row.minutesToldAbout).toBe(30);
+      expect(row.toldByActor).toBe('staff');
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.getByRole('button', { name: 'Back on time' }).click();
+    await expect(list).toHaveCount(0);
+
+    const after = new PrismaClient();
+    try {
+      // The cascade, from the browser: no cleanup job, no second write path.
+      expect(await after.runningLateTold.count()).toBe(0);
+    } finally {
+      await after.$disconnect();
+    }
+  });
+
+  test('has no accessibility violations with a ring-round on screen', async ({ page }) => {
+    await seedAnHourFromNow();
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    const dana = page.getByRole('region', { name: /Dana/ });
+    await dana.getByLabel('Behind by').fill('30');
+    await dana.getByRole('button', { name: 'Set' }).click();
+    await expect(page.getByRole('region', { name: 'Still to ring for Dana' })).toBeVisible();
+
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(results.violations).toEqual([]);
+  });
+});
+
+/** A-059's fold-in. The field always took a minus and nothing said so. */
+test.describe('pulling the column earlier (A-059)', () => {
+  test('says the minus is allowed, and pulls the column back when it is used', async ({ page }) => {
+    await seedAppointments(['14:00', '15:00']);
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const dana = page.getByRole('region', { name: /Dana/ });
+    await dana.getByText('Push the column').click();
+    await expect(dana.getByText(/Minus to pull the column earlier/)).toBeVisible();
+
+    await dana.getByLabel('Push by').fill('-20');
+    await dana.getByRole('button', { name: 'Preview' }).click();
+    await expect(dana.getByText(/14:00 → 13:40/)).toBeVisible();
+
+    await dana.getByLabel('Why?').fill('Dana has caught up');
+    await dana.getByRole('button', { name: /^Move 2 and tell them$/ }).click();
+    await expect(dana.getByText(/Moved 2 appointments\./)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const rows = await prisma.appointment.findMany({ orderBy: { startAt: 'asc' } });
+      expect(rows.map((r) => r.startWallTime.trim())).toEqual(['13:40', '14:40']);
+      // She is not "running behind" — she is being asked to come in earlier,
+      // and that is the sentence the client reads.
+      expect(await prisma.notificationOutbox.count({ where: { template: 'appointment.moved_earlier' } })).toBe(2);
+      expect(await prisma.notificationOutbox.count({ where: { template: 'appointment.running_late' } })).toBe(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+});

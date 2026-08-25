@@ -224,6 +224,11 @@ export const TEMPLATE_WORDS: Record<string, string> = {
   'appointment.confirmed': 'Booking confirmation',
   'appointment.rescheduled': 'New time',
   'appointment.running_late': 'Running behind',
+  // A-059. A pull-forward is the same action with the opposite sign, and it is
+  // a different sentence to the client — "Running behind" on a message telling
+  // her to come in twenty minutes EARLIER is the screen lying about what she
+  // was sent.
+  'appointment.moved_earlier': 'Brought forward',
   'appointment.reminder': 'Reminder',
   'appointment.services_changed': 'What she is having changed',
   'appointment.provider_changed': 'New stylist',

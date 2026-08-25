@@ -96,6 +96,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           providerName={column.providerName}
           day={model.day}
           runningLateMinutes={column.runningLateMinutes}
+          calls={column.calls}
           pushFrom={column.pushFrom}
         />
       )}
