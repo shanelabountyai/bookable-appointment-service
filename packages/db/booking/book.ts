@@ -35,7 +35,7 @@ import { enqueueNotification } from '../notifications';
 import { buildSlotQuery } from '../scheduling';
 import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { BookingRejected, NoResourceFree, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
+import { BookingRejected, NoResourceFree, NotBookableOnline, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
 import { findFreeResource, requiredResourceTypeId, resourceTypeName } from './resources';
 
 const MIN = 60_000;
@@ -127,6 +127,31 @@ export async function bookAppointment(
     // The whole-minute CHECK would refuse this anyway; failing here names the
     // field instead of surfacing a constraint violation.
     throw new BookingRejected('startAt', 'A booking must start on a whole minute.');
+  }
+
+  // A-058 (BOOK-01). WHO MAY START THIS, asked before anything is locked or
+  // computed, because it is not a scheduling question — no time, provider or
+  // day changes the answer.
+  //
+  // THIS IS THE BOUNDARY, and it is deliberately not in `buildSlotQuery`. The
+  // tempting placement is there, where `audience: 'public'` already caps the
+  // horizon and withholds `explain`, and it would be wrong: the MANAGE LINK
+  // reschedules an existing appointment as `audience: 'public'` too, so a
+  // colour correction already consulted for would become unmovable by the
+  // client who booked it properly through the desk. The flag governs starting
+  // a visit, not keeping one.
+  //
+  // Public-only. Staff sell these every week; that is the entire point of the
+  // flag existing rather than the service being deactivated (SVC-03).
+  if (audience === 'public') {
+    const offline = await prisma.service.findFirst({
+      where: { businessId: input.businessId, id: { in: [...input.serviceIds] }, bookableOnline: false },
+      // The first one by the order they are LISTED in, so the message names
+      // the same service the catalogue showed her the note on.
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+      select: { name: true },
+    });
+    if (offline) throw new NotBookableOnline(offline.name);
   }
 
   // Idempotency BEFORE the transaction: a retry of a request that already

@@ -38,6 +38,9 @@ const lastOption = (page: Page) => page.locator('fieldset ul > li > button').las
 async function bookAndTakeTheLink(page: Page, { far = false }: { far?: boolean } = {}): Promise<string> {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+  // A-058 made the service step multi-select, so choosing is no longer the
+  // same thing as advancing.
+  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('group')).toContainText('Who would you like to see?');
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
   // WAIT FOR EACH STEP BEFORE CLICKING THE NEXT ONE — the same two assertions

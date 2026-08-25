@@ -291,6 +291,9 @@ test.describe('the staff bypass (D-27)', () => {
 async function bookAsCustomer(page: Page, who: { name: string; phone: string }) {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+  // A-058 made the service step multi-select, so choosing is no longer the
+  // same thing as advancing.
+  await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
   const firstOption = () => page.locator('fieldset ul > li > button').first();
 

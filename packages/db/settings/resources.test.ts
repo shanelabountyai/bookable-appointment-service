@@ -32,6 +32,7 @@ const svc = (over: Partial<Parameters<typeof createService>[2]> = {}) => ({
   priceCents: 5500,
   cancellationCutoffMinutes: null,
   requiredResourceTypeId: null,
+  bookableOnline: true,
   ...over,
 });
 

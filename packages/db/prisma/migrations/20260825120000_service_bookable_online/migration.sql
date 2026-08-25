@@ -1,0 +1,17 @@
+-- A-058 — some services must never be sold to a stranger from a phone.
+--
+-- `Service` had no way to say "the desk may book this, self-serve may not", so
+-- a first-time client could self-book a colour correction or a full-head
+-- bleach with no consultation and no patch test — four hours of a Saturday
+-- committed by someone nobody has met.
+--
+-- NOT `active`. An inactive service is retired and appears nowhere; this one is
+-- fully sellable and staff book it every week. The distinction is who may
+-- start it, which is why this is its own column and not a third value in a
+-- status the busy set, the day view and the catalogue all read.
+--
+-- DEFAULT TRUE is what makes this additive: every existing row keeps its
+-- current behaviour and the flag is opt-OUT, so a salon that never touches it
+-- notices nothing. NOT NULL for the same reason — "unknown" would be a third
+-- state that every reader would have to decide about.
+ALTER TABLE "Service" ADD COLUMN "bookableOnline" BOOLEAN NOT NULL DEFAULT true;

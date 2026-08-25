@@ -17,6 +17,7 @@ interface ServiceCardProps {
     bufferAfterMinutes: number;
     priceCents: number;
     active: boolean;
+    bookableOnline: boolean;
     cancellationCutoffMinutes: number | null;
     requiredResourceTypeId: string | null;
   };
@@ -42,6 +43,14 @@ export function ServiceCard({ service, providers, resourceTypes, qualifications,
           {!service.active && (
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
               Deactivated
+            </span>
+          )}
+          {/* A-058. On the card, not only inside the Edit fold: "why is nobody
+              booking this online" is answered by a badge and not by opening
+              nine services one at a time. */}
+          {!service.bookableOnline && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              Desk only
             </span>
           )}
         </div>

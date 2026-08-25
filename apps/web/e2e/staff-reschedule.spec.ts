@@ -53,6 +53,9 @@ async function signIn(page: Page) {
 async function bookAsCustomer(page: Page): Promise<{ appointmentId: string; manageUrl: string; startAt: Date }> {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+  // A-058 made the service step multi-select, so choosing is no longer the
+  // same thing as advancing.
+  await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
   // SCOPED TO EACH STEP'S OWN FIELDSET, by its legend. A bare
   // `fieldset ul > li > button` matches the day list and the time list alike,

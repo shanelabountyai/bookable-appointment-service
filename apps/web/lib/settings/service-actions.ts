@@ -46,6 +46,13 @@ function serviceInputFrom(formData: FormData) {
     // distinction is the whole point of the regression test: a cleared
     // requirement must book into a full room.
     requiredResourceTypeId: toNullableString(formData.get('requiredResourceTypeId')),
+    // A-058. An unchecked checkbox sends NOTHING, so absent must mean the
+    // value the box shows when unticked — "not bookable online". Reading it as
+    // the default (true) instead would make the box impossible to untick,
+    // which is the ordinary HTML checkbox trap and the reason a hidden
+    // companion field is NOT used here: absent is unambiguous once the
+    // question is phrased so that absent is a real answer.
+    bookableOnline: formData.get('bookableOnline') !== null,
   };
 }
 

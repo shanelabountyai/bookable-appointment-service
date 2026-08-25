@@ -27,9 +27,27 @@ interface Service {
   name: string;
   durationMinutes: number;
   priceCents: number;
+  /** A-058. False = the desk books it, she cannot. Shown anyway, with the one
+   *  thing she can act on — a salon that hides balayage has told her it does
+   *  not do balayage. */
+  bookableOnline: boolean;
 }
 
 const STEP_ORDER: Step[] = ['service', 'who', 'day', 'time', 'details'];
+
+/**
+ * A-058 (VISIT-01, D-23) — the composed visit, not a list of lines.
+ *
+ * Catalogue values, deliberately: a stylist's own duration and price overrides
+ * (SVC-02) are not known until she has picked one, and the engine applies them
+ * for real when it computes the times. What this is for is the honest answer
+ * to "how long am I here and what does it cost", which two hours in one row
+ * and forty-five minutes in another does not give.
+ */
+const compose = (chosen: Service[]) => ({
+  durationMinutes: chosen.reduce((sum, s) => sum + s.durationMinutes, 0),
+  priceCents: chosen.reduce((sum, s) => sum + s.priceCents, 0),
+});
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const duration = (minutes: number) =>
@@ -55,7 +73,11 @@ const ANYONE = 'any';
  */
 export function BookingFlow({ services }: { services: Service[] }) {
   const [step, setStep] = useState<Step>('service');
-  const [service, setService] = useState<Service | null>(null);
+  /** IN TAP ORDER (VISIT-01): "cut then colour" is a different appointment
+   *  from "colour then cut", because the buffers come from the ends. Selection
+   *  order is the visit order — the same rule and the same shape the staff
+   *  panel has used since A-039. */
+  const [chosen, setChosen] = useState<Service[]>([]);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [provider, setProvider] = useState<{ id: string; name: string } | null>(null);
   const [openDays, setOpenDays] = useState<OpenDay[]>([]);
@@ -77,7 +99,25 @@ export function BookingFlow({ services }: { services: Service[] }) {
         ? 'No appointments available that day. Please choose another day.'
         : `${times.length} appointment ${times.length === 1 ? 'time' : 'times'} available on ${day?.label ?? ''}.`;
 
+  /** ORDER MATTERS (VISIT-01): tapping adds to the end, so selection order is
+   *  the visit order. Re-tapping removes. Changing the visit invalidates
+   *  everything chosen after it — a stylist qualified for a cut may not be
+   *  qualified for the colour just added, and the times were computed for a
+   *  different length — so the flow drops back to the top of that chain rather
+   *  than carrying a stale answer forward. */
+  function toggle(s: Service) {
+    setChosen(chosen.some((c) => c.id === s.id) ? chosen.filter((c) => c.id !== s.id) : [...chosen, s]);
+    setProvider(null);
+    setDay(null);
+    setTime(null);
+    setResult(null);
+  }
+
   const stepIndex = STEP_ORDER.indexOf(step);
+  const ids = chosen.map((c) => c.id);
+  const visit = compose(chosen);
+  /** What she is booking, in one line, everywhere it has to be restated. */
+  const visitName = chosen.map((c) => c.name).join(' + ');
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,33 +133,85 @@ export function BookingFlow({ services }: { services: Service[] }) {
         {announcement}
       </p>
 
+      {/* A-058 — MULTI-SELECT ON THE SAME SCREEN, not a sixth step. Half the
+          Saturday book is a cut AND a colour (D-23), and BOOK-01 caps the flow
+          at five screens; a "would you like to add anything?" step would have
+          bought one feature with a screen every single-service client has to
+          tap past. */}
       {step === 'service' && (
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-2 text-lg font-semibold">What would you like booked?</legend>
-          {services.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`${card} ${service?.id === s.id ? selected : ''}`}
-              onClick={() => {
-                setService(s);
-                startTransition(async () => {
-                  const list = await listProvidersFor(s.id);
-                  setProviders(list);
-                  setStep('who');
-                });
-              }}
-            >
-              <span className="font-medium">{s.name}</span>
-              <span className="block text-sm text-zinc-500">
-                {duration(s.durationMinutes)} · {money(s.priceCents)}
-              </span>
-            </button>
-          ))}
+          <p className="-mt-2 text-sm text-zinc-500">Pick as many as you like — we&apos;ll book them together.</p>
+          {services.map((s) => {
+            const index = ids.indexOf(s.id);
+            // A-058. Desk-only: present, and saying what to do. Rendered as
+            // static markup rather than a disabled button, because a disabled
+            // control is skipped by a screen reader's tab order and the note
+            // beside it is the entire message.
+            if (!s.bookableOnline) {
+              return (
+                <div
+                  key={s.id}
+                  className="rounded-md border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700"
+                >
+                  <span className="font-medium text-zinc-500">{s.name}</span>
+                  <span className="block text-sm text-zinc-500">
+                    {duration(s.durationMinutes)} · {money(s.priceCents)}
+                  </span>
+                  <span className="mt-1 block text-sm text-zinc-600 dark:text-zinc-400">
+                    Give us a call for this one — it needs a quick chat first.
+                  </span>
+                </div>
+              );
+            }
+            return (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={index >= 0}
+                className={`${card} ${index >= 0 ? selected : ''}`}
+                onClick={() => toggle(s)}
+              >
+                <span className="font-medium">
+                  {/* The number appears only once there are two, so an
+                      ordinary single-service booking is not made to look like
+                      a list. */}
+                  {index >= 0 && chosen.length > 1 && <span className="mr-1 text-zinc-500">{index + 1}.</span>}
+                  {s.name}
+                </span>
+                <span className="block text-sm text-zinc-500">
+                  {duration(s.durationMinutes)} · {money(s.priceCents)}
+                </span>
+              </button>
+            );
+          })}
+
+          {chosen.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={pending}
+                className={primary}
+                onClick={() =>
+                  startTransition(async () => {
+                    setProviders(await listProvidersFor(ids));
+                    setStep('who');
+                  })
+                }
+              >
+                Continue
+              </button>
+              {/* The COMPOSED visit (VISIT-01), not a line per service: what
+                  she needs to know is how long she is here and what it costs. */}
+              <p className="text-sm text-zinc-500">
+                {visitName} · {duration(visit.durationMinutes)} · {money(visit.priceCents)}
+              </p>
+            </div>
+          )}
         </fieldset>
       )}
 
-      {step === 'who' && service && (
+      {step === 'who' && chosen.length > 0 && (
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-2 text-lg font-semibold">Who would you like to see?</legend>
           {/* A-056 (SVC-02) — FIRST, and that position is the point. A client
@@ -133,7 +225,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
             onClick={() => {
               setProvider({ id: ANYONE, name: 'No preference' });
               startTransition(async () => {
-                setOpenDays(await listAnyProviderDays(service.id));
+                setOpenDays(await listAnyProviderDays(ids));
                 setStep('day');
               });
             }}
@@ -149,7 +241,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
               onClick={() => {
                 setProvider(p);
                 startTransition(async () => {
-                  setOpenDays(await listDaysWithOpenings(service.id, p.id));
+                  setOpenDays(await listDaysWithOpenings(ids, p.id));
                   setStep('day');
                 });
               }}
@@ -161,7 +253,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
         </fieldset>
       )}
 
-      {step === 'day' && service && provider && (
+      {step === 'day' && chosen.length > 0 && provider && (
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-2 text-lg font-semibold">Which day suits you?</legend>
           {openDays.length === 0 ? (
@@ -178,8 +270,8 @@ export function BookingFlow({ services }: { services: Service[] }) {
                       startTransition(async () => {
                         setTimes(
                     provider.id === ANYONE
-                      ? await listAnyProviderTimes(service.id, d.day)
-                      : await listTimesOn(service.id, provider.id, d.day),
+                      ? await listAnyProviderTimes(ids, d.day)
+                      : await listTimesOn(ids, provider.id, d.day),
                   );
                         setStep('time');
                       });
@@ -195,7 +287,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
         </fieldset>
       )}
 
-      {step === 'time' && service && provider && day && (
+      {step === 'time' && chosen.length > 0 && provider && day && (
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-2 text-lg font-semibold">What time on {day.label}?</legend>
           {times.length === 0 ? (
@@ -227,7 +319,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
         </fieldset>
       )}
 
-      {step === 'details' && service && provider && day && time && (
+      {step === 'details' && chosen.length > 0 && provider && day && time && (
         <form
           className="flex flex-col gap-4"
           onSubmit={(event) => {
@@ -235,7 +327,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
             const data = new FormData(event.currentTarget);
             startTransition(async () => {
               const outcome = await confirmAppointment({
-                serviceId: service.id,
+                serviceIds: ids,
                 // On the "no preference" path the stylist comes from the TIME
                 // she picked — SVC-02 chose it when the list was built, so what
                 // she was shown is what she gets.
@@ -257,11 +349,12 @@ export function BookingFlow({ services }: { services: Service[] }) {
           }}
         >
           <h2 className="text-lg font-semibold">
-            {service.name} with {provider.name}
+            {visitName} with {provider.name}
           </h2>
           <p className="text-zinc-500">
             {day.label} at {time.label}
-            {time.qualifier ? ` ${time.qualifier}` : ''}
+            {time.qualifier ? ` ${time.qualifier}` : ''} · {duration(visit.durationMinutes)} ·{' '}
+            {money(visit.priceCents)}
           </p>
 
           <Field label="Your name" name="name" required error={result?.fieldErrors?.name} autoComplete="name" />
@@ -283,11 +376,11 @@ export function BookingFlow({ services }: { services: Service[] }) {
         </form>
       )}
 
-      {step === 'done' && service && provider && day && time && (
+      {step === 'done' && chosen.length > 0 && provider && day && time && (
         <div className="flex flex-col gap-3">
           <h2 className="text-xl font-semibold">Your appointment is confirmed</h2>
           <p className="text-zinc-600 dark:text-zinc-400">
-            {service.name} with {provider.name}, {day.label} at {time.label}
+            {visitName} with {provider.name}, {day.label} at {time.label}
             {time.qualifier ? ` ${time.qualifier}` : ''}.
           </p>
           <p className="text-sm text-zinc-500">

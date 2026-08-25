@@ -1653,3 +1653,29 @@ So it is one action now: **end it at this appointment, and everything after it g
 **One thing it will not do, and says so.** If one of those appointments is happening right now — she is in the chair — it stays, and the screen names it. Cancelling a visit in progress is a different act with a different conversation attached, and it would otherwise send a cancellation text to a client sitting in front of the person who sent it.
 
 **Nothing else about a cancellation changed.** Each one goes through the same single cancellation path everything else in the product uses, so the record kept, the message sent, and the freeing of the slot back onto the board are identical to doing them one at a time. The standing-appointment link survives on every cancelled booking, because "she had a standing Tuesday and ended it in April" is exactly the sort of thing someone asks about six months later.
+
+## Booking a visit, not a service — and not selling what needs a conversation first
+
+Half the Saturday book in a salon is a cut *and* a colour. The online booking form could only take one of them.
+
+So a client booked "Colour", two hours, and arrived wanting a cut as well. Those extra forty-five minutes then had to come out of a column that was already full — which means either the next client waits, or the stylist does, or somebody at the desk quietly moves three appointments. **The client did nothing wrong; the form asked her the wrong question.**
+
+**She now picks everything she wants on the same screen**, and sees the visit as one thing: how long she will be in the chair and what it costs in total, not a line each to add up herself. It stays one appointment — one confirmation, one link to change or cancel it, one row in the book — which is what it always was in the salon's head.
+
+The order she taps them in matters and is kept. A cut before a colour is a different appointment from a colour before a cut, because the preparation and tidy-up time sit at the ends of the visit rather than around each service.
+
+**Nothing was added to the number of screens.** It is still service → who → day → time → details. A "would you like to add anything?" step would have bought this one feature at the cost of a screen every single-service client has to tap past.
+
+### Some things should not be bookable at two in the morning by someone we have never met
+
+A colour correction, a full-head bleach: three or four hours of a chair, and a result that depends entirely on what is already on the client's hair. Every salon wants that work — after a conversation, and usually after a patch test. Until now the form would sell it to anyone.
+
+**Any service can now be marked "desk only."** The front desk books it exactly as before; the online form will not.
+
+**It still appears on the online list**, greyed, saying *give us a call for this one — it needs a quick chat first*. Hiding it would have been the easier build and the wrong outcome: a salon that offers balayage and shows a list without it has told the client it does not do balayage, and she books it somewhere that does. The point is to start the phone call, not to end it.
+
+Two details that decide whether this is a good feature or an annoying one:
+
+**"Desk only" is not "retired."** A retired service disappears from everywhere; a desk-only one is on the price list and sold every week. They are kept as separate things, so marking a service desk-only never quietly removes it from anywhere the salon still needs it.
+
+**A client who already has one of these appointments can still move it herself.** She booked it properly, through the desk, with the consultation done — the restriction is on *starting* one of these, never on keeping one. The obvious way to build this would have blocked her, and she would have had to ring the salon to move an appointment she could previously move from her phone.

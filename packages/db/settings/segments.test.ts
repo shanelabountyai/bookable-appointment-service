@@ -28,6 +28,7 @@ const svc = (over: Record<string, unknown> = {}) => ({
   priceCents: 14000,
   cancellationCutoffMinutes: null,
   requiredResourceTypeId: null,
+  bookableOnline: true,
   ...over,
 });
 

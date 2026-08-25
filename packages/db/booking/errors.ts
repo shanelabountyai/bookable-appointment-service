@@ -99,3 +99,27 @@ export class NoResourceFree extends Error {
     this.resourceTypeName = resourceTypeName;
   }
 }
+
+/**
+ * A-058 (BOOK-01) — this service is not sold online (`bookableOnline = false`).
+ *
+ * Its own error rather than a `SlotNotOffered`, because it is not a fact about
+ * the TIME: every time is refused identically, so offering alternatives would
+ * be a list of doors that are all locked. The customer's next step is a phone
+ * call, which is the same shape as `SelfServeBlocked` and deliberately worded
+ * differently — one is about her record and must stay vague (spec §1.3), this
+ * one is about the SERVICE and can be said plainly, because "this one needs a
+ * consultation first" tells an anonymous visitor nothing about anybody.
+ *
+ * Carries the name so the screen can say which of a multi-service visit was
+ * the problem: refusing a cut-and-colour-correction without naming the half
+ * that caused it leaves her removing services at random.
+ */
+export class NotBookableOnline extends Error {
+  readonly serviceName: string;
+  constructor(serviceName: string) {
+    super(`${serviceName} cannot be booked online.`);
+    this.name = 'NotBookableOnline';
+    this.serviceName = serviceName;
+  }
+}

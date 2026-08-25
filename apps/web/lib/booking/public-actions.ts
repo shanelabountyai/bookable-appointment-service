@@ -18,12 +18,14 @@ import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
 import {
   NoResourceFree,
+  NotBookableOnline,
   SelfServeBlocked,
   SlotNotOffered,
   SlotTaken,
   anyProviderDays,
   anyProviderTimes,
   bookAppointment,
+  providersForVisit,
 } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
@@ -61,25 +63,57 @@ async function theBusiness() {
  *  each day costs a slot computation. Past the end they call the salon. */
 const DAYS_AHEAD = 28;
 
+/**
+ * The public catalogue.
+ *
+ * Desk-only services (A-058) are RETURNED, not filtered out. A salon that
+ * offers balayage and shows a client a list without it has told her it does
+ * not do balayage, and she books it somewhere that does. The flow renders them
+ * unselectable with the one thing she can act on — call us — which is the same
+ * shape as every other refusal on this surface (D-10).
+ */
 export async function listServices() {
   return prisma.service.findMany({
     where: { active: true },
     orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
-    select: { id: true, name: true, durationMinutes: true, priceCents: true },
+    select: { id: true, name: true, durationMinutes: true, priceCents: true, bookableOnline: true },
   });
 }
 
-/** Providers qualified for this service. "Anyone available" is offered as a
- *  separate choice by the UI, not as a row here. */
-export async function listProvidersFor(serviceId: string) {
-  const links = await prisma.serviceProvider.findMany({
-    where: { serviceId, provider: { active: true } },
-    include: { provider: true },
-  });
-  return links
-    .map((l) => ({ id: l.provider.id, name: l.provider.displayName, order: l.provider.displayOrder }))
-    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
-    .map(({ id, name }) => ({ id, name }));
+/**
+ * A-058. True when any service in this visit is desk-only.
+ *
+ * Guards the four LIST functions below, so a hand-made request cannot
+ * enumerate a desk-only service's availability after the catalogue has
+ * declined to offer it. It is defence in depth and says so: the decision that
+ * actually matters is `bookAppointment`'s, which refuses the write.
+ *
+ * Deliberately here and NOT inside `buildSlotQuery` — the manage link
+ * reschedules an existing appointment as `audience: 'public'`, and a colour
+ * correction booked properly through the desk must stay movable by the client
+ * who has it. The flag governs starting a visit, not keeping one.
+ */
+async function anyDeskOnly(serviceIds: readonly string[]): Promise<boolean> {
+  if (serviceIds.length === 0) return true;
+  return (
+    (await prisma.service.count({ where: { id: { in: [...serviceIds] }, bookableOnline: false } })) > 0
+  );
+}
+
+/**
+ * Providers qualified for the WHOLE visit (VISIT-01). "Anyone available" is
+ * offered as a separate choice by the UI, not as a row here.
+ *
+ * A-058 made this plural and therefore made it all-or-nothing: a stylist who
+ * cuts but does not colour must not appear for a cut-and-colour, and half a
+ * cut-and-colour with the wrong person is not a partial success. That rule
+ * already existed as `providersForVisit` (A-056), so this calls it rather than
+ * growing a second copy — the local `serviceProvider` query it replaced would
+ * have had to learn the same counting and would have been the fork.
+ */
+export async function listProvidersFor(serviceIds: string[]) {
+  const providers = await providersForVisit(prisma, { businessId: await businessId(), serviceIds });
+  return providers.map((p) => ({ id: p.id, name: p.displayName }));
 }
 
 export interface OpenDay {
@@ -104,7 +138,8 @@ export interface OpenDay {
  * their own today would be shown a day the salon has not reached yet. The
  * business's own calendar is the only one that decides (spec §1.3).
  */
-export async function listDaysWithOpenings(serviceId: string, providerId: string): Promise<OpenDay[]> {
+export async function listDaysWithOpenings(serviceIds: string[], providerId: string): Promise<OpenDay[]> {
+  if (await anyDeskOnly(serviceIds)) return [];
   const business = await theBusiness();
   const now = new Date();
   // A-054: the `fromDay` argument went with `resolvePrefill`. It existed only
@@ -116,7 +151,7 @@ export async function listDaysWithOpenings(serviceId: string, providerId: string
   const days = await daysWithAvailability(prisma, {
     businessId: business.id,
     providerId,
-    serviceIds: [serviceId],
+    serviceIds,
     now,
     audience: 'public',
     fromDay: start,
@@ -126,11 +161,12 @@ export async function listDaysWithOpenings(serviceId: string, providerId: string
 }
 
 
-export async function listTimesOn(serviceId: string, providerId: string, day: string): Promise<OfferedTime[]> {
+export async function listTimesOn(serviceIds: string[], providerId: string, day: string): Promise<OfferedTime[]> {
+  if (await anyDeskOnly(serviceIds)) return [];
   const { slots } = await computeDaySlots(prisma, {
     businessId: await businessId(),
     providerId,
-    serviceIds: [serviceId],
+    serviceIds,
     day,
     now: new Date(),
     audience: 'public',
@@ -153,14 +189,15 @@ export async function listTimesOn(serviceId: string, providerId: string, day: st
  * or Priya picked the top name or left. That is the operator's account of the
  * utilization gap A-024's dashboard reports and cannot explain.
  */
-export async function listAnyProviderDays(serviceId: string): Promise<OpenDay[]> {
+export async function listAnyProviderDays(serviceIds: string[]): Promise<OpenDay[]> {
+  if (await anyDeskOnly(serviceIds)) return [];
   const business = await theBusiness();
   const now = new Date();
   const start = toLabel(fromDate(now), zoneId(business.timezone)).day as CalendarDay;
 
   const days = await anyProviderDays(prisma, {
     businessId: business.id,
-    serviceIds: [serviceId],
+    serviceIds,
     fromDay: start,
     toDay: addDays(start, DAYS_AHEAD),
     now,
@@ -171,11 +208,12 @@ export async function listAnyProviderDays(serviceId: string): Promise<OpenDay[]>
 
 /** A-056 — every time anyone could take it that day, one row per time, each
  *  carrying the stylist SVC-02 assigned it to. */
-export async function listAnyProviderTimes(serviceId: string, day: string): Promise<OfferedTime[]> {
+export async function listAnyProviderTimes(serviceIds: string[], day: string): Promise<OfferedTime[]> {
+  if (await anyDeskOnly(serviceIds)) return [];
   const business = await theBusiness();
   const offered = await anyProviderTimes(prisma, {
     businessId: business.id,
-    serviceIds: [serviceId],
+    serviceIds,
     day,
     now: new Date(),
     audience: 'public',
@@ -209,7 +247,15 @@ export interface ConfirmResult {
  * her notes and her no-show count.
  */
 export async function confirmAppointment(input: {
-  serviceId: string;
+  /**
+   * The services in this visit, IN ORDER (VISIT-01, D-23).
+   *
+   * A-058 made this plural. Half the Saturday book is a cut AND a colour, and
+   * a flow that could only take one meant she booked "Colour" at two hours,
+   * arrived wanting a cut too, and 45 minutes had to come out of a column that
+   * was already full. Order matters because the buffers come from the ends.
+   */
+  serviceIds: string[];
   providerId: string;
   at: string;
   /**
@@ -264,7 +310,7 @@ export async function confirmAppointment(input: {
     await bookAppointment(prisma, {
       businessId: business,
       providerId: input.providerId,
-      serviceIds: [input.serviceId],
+      serviceIds: input.serviceIds,
       clientId: client.id,
       startAt,
       now: new Date(),
@@ -272,7 +318,10 @@ export async function confirmAppointment(input: {
       // the cancellation cutoff apply to them and not to the front desk.
       actor: systemActor,
       audience: 'public',
-      idempotencyKey: `public:${input.providerId}:${startAt.toISOString()}:${client.id}`,
+      // The SERVICES are part of what makes this request the same request:
+      // without them a retry that changed the visit would silently return the
+      // first appointment and report success on a booking that was never made.
+      idempotencyKey: `public:${input.providerId}:${input.serviceIds.join('+')}:${startAt.toISOString()}:${client.id}`,
     });
   } catch (error) {
     // CLIENT-04's block. The wording says the ONE thing she can act on and
@@ -281,6 +330,17 @@ export async function confirmAppointment(input: {
     // the client herself deserves to hear it from a person rather than from a
     // form (D-10, spec §1.3). No alternatives are offered — every other time
     // would be refused identically, and a list of them reads as a bug.
+    // A-058. Reachable only from a hand-made request — the catalogue marks
+    // these unselectable and the list functions return nothing for them — and
+    // it is the boundary that decides, so it answers properly rather than
+    // crashing. NAMES the service, because a refused cut-and-balayage without
+    // it leaves her removing services at random to find the one at fault.
+    if (error instanceof NotBookableOnline) {
+      return {
+        ok: false,
+        message: `${error.serviceName} needs a quick chat first — please call the salon and we'll book it in.`,
+      };
+    }
     if (error instanceof SelfServeBlocked) {
       return {
         ok: false,
@@ -295,7 +355,7 @@ export async function confirmAppointment(input: {
     // caught it the error escaped the action entirely and she saw a crash on
     // a time the page had just offered her.
     if (error instanceof SlotTaken || error instanceof SlotNotOffered || error instanceof NoResourceFree) {
-      const alternatives = await listTimesOn(input.serviceId, input.providerId, input.day).catch(() => []);
+      const alternatives = await listTimesOn(input.serviceIds, input.providerId, input.day).catch(() => []);
       return {
         ok: false,
         message: 'Sorry — that time has just been taken. Here are the other times still free.',

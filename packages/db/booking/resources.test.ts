@@ -286,6 +286,7 @@ describe('A-046 — the room is data the operator owns', () => {
       cancellationCutoffMinutes: null,
       // The blow-dry-at-the-basin answer: this occupies no chair.
       requiredResourceTypeId: null,
+  bookableOnline: true,
     });
 
     const third = await book({ providerId: providerIds[2]! });

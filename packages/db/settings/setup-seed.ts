@@ -57,6 +57,18 @@ const SERVICES = [
     bufferBefore: 10,
     bufferAfter: 25,
     priceCents: 21000,
+    // A-058 (BOOK-01). The one service in this catalogue a salon would never
+    // let a stranger self-book: three hours, a chair, and a colour result that
+    // depends on what is already on her hair. The desk books it every week —
+    // it is not deactivated, it is DESK-ONLY, and the whole point of the flag
+    // is that those are different things.
+    //
+    // Flagged on an EXISTING service rather than added as a ninth: the density
+    // seed picks services from the qualification rows in a fixed order with a
+    // seeded PRNG, so a new row shifts every pick and drifts A-024's frozen
+    // utilization constant. A boolean on a row that already exists changes
+    // nothing the seed reads (it books with `audience: 'staff'`).
+    bookableOnline: false,
     // Two gaps, so nothing downstream can get away with assuming one.
     segments: [
       { durationMinutes: 60, isGap: false },
@@ -150,6 +162,11 @@ export async function seedSetup(
             bufferAfterMinutes: s.bufferAfter,
             priceCents: s.priceCents,
             active: true,
+            // In the update branch as well as the create one, or the second
+            // seedSetup run leaves a column the first one set and the A-045
+            // idempotence diff — which compares every column, not row counts —
+            // fails on exactly the kind of drift it was written to catch.
+            bookableOnline: 'bookableOnline' in s ? s.bookableOnline : true,
           },
         })
       : await prisma.service.create({
@@ -160,6 +177,7 @@ export async function seedSetup(
             bufferBeforeMinutes: s.bufferBefore,
             bufferAfterMinutes: s.bufferAfter,
             priceCents: s.priceCents,
+            bookableOnline: 'bookableOnline' in s ? s.bookableOnline : true,
             displayOrder: serviceIds.length,
           },
         });

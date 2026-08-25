@@ -27,9 +27,12 @@ test.beforeEach(async () => {
 /** The first option in whichever list is on screen. */
 const firstOption = (page: Page) => page.locator('fieldset ul > li > button').first();
 
+/** A-058 made the service step MULTI-select, so choosing is no longer the same
+ *  thing as advancing — tap what you want, then Continue. */
 async function chooseServiceAndProvider(page: Page) {
   await page.goto('/book');
   await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Dana', exact: true }).click();
   await expect(page.getByRole('group')).toContainText('Which day suits you?');
 }
@@ -124,6 +127,10 @@ test.describe('customer booking flow (A-010)', () => {
 
     await scan('service');
     await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+    // A-058: the chosen-services summary and Continue appear in place, so the
+    // service screen is scanned again in its selected state.
+    await scan('service (chosen)');
+    await page.getByRole('button', { name: 'Continue' }).click();
     await scan('who');
     await page.getByRole('button', { name: 'Dana', exact: true }).click();
     await scan('day');
@@ -162,6 +169,7 @@ test.describe('booking with no preference (A-056)', () => {
   test('books end to end without ever choosing a stylist', async ({ page }) => {
     await page.goto('/book');
     await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
 
     await expect(page.getByRole('group')).toContainText('Who would you like to see?');
     // FIRST in the list, and that position is the point.
@@ -184,6 +192,87 @@ test.describe('booking with no preference (A-056)', () => {
       const appointment = await prisma.appointment.findFirstOrThrow({ include: { provider: true } });
       expect(appointment.provider.displayName.length).toBeGreaterThan(0);
       expect(appointment.status).toBe('booked');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+});
+
+/**
+ * A-058 — the public flow books a VISIT, and refuses to sell what needs a
+ * consultation first (BOOK-01, D-23).
+ *
+ * The defect had two halves and both were verified before the work started:
+ * `booking-flow.tsx` held one `service` and posted one `serviceId`, while
+ * D-23's own text says half the Saturday book is cut-and-colour — so she
+ * booked "Colour" alone at two hours, arrived wanting a cut too, and 45
+ * minutes had to come out of a column that was already full. And `Service`
+ * had no bookable-online flag at all, so a first-time client could self-book
+ * a full-head bleach with no consultation and no patch test.
+ */
+test.describe('a whole visit, and only what may be sold online (A-058)', () => {
+  test('books two services as ONE appointment, in the order she tapped them', async ({ page }) => {
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+    await page.getByRole('button', { name: /^Blow-dry 30 min/ }).click();
+
+    // The COMPOSED visit, which is the number she is agreeing to: 45 + 30, and
+    // $55.00 + $40.00. A line each would leave her adding it up herself.
+    await expect(page.getByText('Cut + Blow-dry · 1 hr 15 min · $95.00')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Dana', exact: true }).click();
+    await firstOption(page).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await firstOption(page).click();
+
+    await page.getByLabel('Your name').fill('Ada Chen');
+    await page.getByLabel('Phone').fill('(512) 555-0101');
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      // ONE appointment with TWO lines — not two appointments, which is what
+      // the workaround this replaces produced and what leaves her holding two
+      // chairs and two manage links for one visit.
+      expect(await prisma.appointment.count()).toBe(1);
+      const appointment = await prisma.appointment.findFirstOrThrow({
+        include: { lines: { orderBy: { ordinal: 'asc' }, include: { service: true } } },
+      });
+      expect(appointment.lines.map((l) => l.service.name)).toEqual(['Cut', 'Blow-dry']);
+      // Tap order IS visit order (VISIT-01): the buffers come from the ends,
+      // so "cut then blow-dry" is a different appointment from the reverse.
+      expect(appointment.lines.map((l) => l.ordinal)).toEqual([0, 1]);
+      // 75 minutes of body, and the envelope is what the constraint ranges
+      // over — proof the two lines composed rather than the second replacing
+      // the first.
+      expect((appointment.endAt.getTime() - appointment.startAt.getTime()) / 60_000).toBe(75);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('shows the desk-only service and says to call, rather than hiding it', async ({ page }) => {
+    await page.goto('/book');
+
+    // Balayage is seeded desk-only (three hours, a chair, and a result that
+    // depends on what is already on her hair). PRESENT: a salon that hides it
+    // has told her it does not do balayage, and she books it somewhere else.
+    await expect(page.getByText('Balayage')).toBeVisible();
+    await expect(page.getByText(/Give us a call for this one/)).toBeVisible();
+    // Not a button at all — a disabled control is skipped by a screen
+    // reader's tab order, and the note beside it is the whole message.
+    await expect(page.getByRole('button', { name: /Balayage/ })).toHaveCount(0);
+
+    // ACTIVE, not deactivated — the desk sells it every week, and that
+    // distinction is the entire reason this is its own column and not a third
+    // value in `active` (SVC-03).
+    const prisma = new PrismaClient();
+    try {
+      const balayage = await prisma.service.findFirstOrThrow({ where: { name: 'Balayage' } });
+      expect(balayage.active).toBe(true);
+      expect(balayage.bookableOnline).toBe(false);
     } finally {
       await prisma.$disconnect();
     }

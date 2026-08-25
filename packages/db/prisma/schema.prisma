@@ -242,6 +242,16 @@ model Service {
   priceCents                Int
   active                    Boolean @default(true)
   displayOrder              Int     @default(0)
+  /// A-058 (BOOK-01). False = the front desk may book it, self-serve may not.
+  /// A colour correction or a full-head bleach needs a consultation and a patch
+  /// test before anyone commits a chair to it, and a first-time client can
+  /// otherwise book four hours of it at 9am on a Saturday from her phone.
+  ///
+  /// DEFAULT TRUE, so every existing service keeps behaving exactly as it did
+  /// and the flag is opt-OUT. Distinct from `active`: an inactive service is
+  /// retired and appears nowhere; this one is fully sellable, just not by the
+  /// client herself, and the public catalogue says so rather than hiding it.
+  bookableOnline            Boolean @default(true)
   /// D-19 + D-11 resolver: `service.cutoff ?? business.cutoff`. Nullable means
   /// "inherit", which is distinct from "zero".
   cancellationCutoffMinutes Int?

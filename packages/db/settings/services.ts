@@ -37,6 +37,7 @@ export interface ServiceRow {
   displayOrder: number;
   cancellationCutoffMinutes: number | null;
   requiredResourceTypeId: string | null;
+  bookableOnline: boolean;
 }
 
 const select = {
@@ -50,6 +51,7 @@ const select = {
   displayOrder: true,
   cancellationCutoffMinutes: true,
   requiredResourceTypeId: true,
+  bookableOnline: true,
 } as const;
 
 export async function listServices(db: Db, businessId: string, includeInactive = true): Promise<ServiceRow[]> {
@@ -70,6 +72,14 @@ export interface SaveServiceInput extends ServiceInput {
    * be refused on the authority of a value nobody could edit.
    */
   requiredResourceTypeId: string | null;
+  /**
+   * A-058 (BOOK-01). False = the desk may book it, self-serve may not.
+   *
+   * No validator: a boolean has no invalid value, and there is nothing to
+   * couple it to. It is the one field on this form that changes who may act
+   * rather than what the appointment is.
+   */
+  bookableOnline: boolean;
 }
 
 /**
@@ -121,6 +131,7 @@ export async function createService(db: Db, businessId: string, input: SaveServi
       priceCents: input.priceCents,
       cancellationCutoffMinutes: input.cancellationCutoffMinutes,
       requiredResourceTypeId: input.requiredResourceTypeId,
+      bookableOnline: input.bookableOnline,
       displayOrder: (maxOrder ?? -1) + 1,
     },
     select,
@@ -145,6 +156,7 @@ export async function updateService(
       priceCents: input.priceCents,
       cancellationCutoffMinutes: input.cancellationCutoffMinutes,
       requiredResourceTypeId: input.requiredResourceTypeId,
+      bookableOnline: input.bookableOnline,
     },
     select,
   });

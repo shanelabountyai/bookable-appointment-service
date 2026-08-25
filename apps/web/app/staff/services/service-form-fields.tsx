@@ -17,6 +17,7 @@ export function ServiceFormFields({
     priceCents: number;
     cancellationCutoffMinutes: number | null;
     requiredResourceTypeId: string | null;
+    bookableOnline: boolean;
   };
   /** A-046 (RES-01). Empty for a business with no resource types defined, and
    *  the selector is then absent rather than an empty dropdown asking a
@@ -145,6 +146,30 @@ export function ServiceFormFields({
           )}
         </div>
       )}
+
+      {/* A-058 (BOOK-01). The checkbox is phrased POSITIVELY — ticked is the
+          permissive state — so that an unchecked box, which submits nothing at
+          all, is the restrictive answer. A form field whose absence means
+          "allow" is one HTML quirk away from opening a service back up.
+
+          Defaults to ticked on the add form: a new service is ordinary, and
+          the salon opts a service OUT of self-serve deliberately. */}
+      <div className="col-span-2 flex items-start gap-2">
+        <input
+          id={id('bookableOnline')}
+          name="bookableOnline"
+          type="checkbox"
+          defaultChecked={defaults?.bookableOnline ?? true}
+          className="mt-1"
+        />
+        <label htmlFor={id('bookableOnline')} className="text-sm">
+          <span className="font-medium">Clients can book this online</span>
+          <span className="block text-zinc-600 dark:text-zinc-400">
+            Untick anything that requires a consultation or a patch test first. The desk can still book it, and it
+            stays on the online list with a note asking the client to call.
+          </span>
+        </label>
+      </div>
 
       <div className="col-span-2 flex flex-col gap-1.5">
         <label htmlFor={id('cancellationCutoffMinutes')} className="text-sm font-medium">
