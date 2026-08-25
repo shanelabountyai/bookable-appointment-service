@@ -16,7 +16,15 @@
 import { type CalendarDay, addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { readableDay } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
-import { NoResourceFree, SelfServeBlocked, SlotNotOffered, SlotTaken, bookAppointment } from '@bookable/db/booking';
+import {
+  NoResourceFree,
+  SelfServeBlocked,
+  SlotNotOffered,
+  SlotTaken,
+  anyProviderDays,
+  anyProviderTimes,
+  bookAppointment,
+} from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
 import { isPlausiblePhone, normalizePhone } from '@bookable/core/clients';
@@ -30,6 +38,11 @@ export interface OfferedTime {
    *  reached the browser it would format them in the VISITOR's timezone,
    *  which is the whole of spec §3.D. */
   label: string;
+  /** A-056: set only on the "no preference" path — WHO this time would be
+   *  with, decided by SVC-02 when the list was built. The flow posts it back,
+   *  so what she was shown is what she gets. */
+  providerId?: string;
+  providerName?: string;
   /** Shown only when the same wall-clock label occurs twice that day, so the
    *  two are distinguishable on the fall-back day (FB-5). */
   qualifier?: string;
@@ -129,6 +142,51 @@ export async function listTimesOn(serviceId: string, providerId: string, day: st
     // FB-5: two 01:30s an hour apart must be told apart by the customer, or
     // the page shows the same time twice and looks broken.
     ...(slot.labelIsAmbiguous ? { qualifier: slot.label.abbreviation } : {}),
+  }));
+}
+
+/**
+ * A-056 (SVC-02) — the days ANY qualified stylist could take this on.
+ *
+ * The public flow made "Who would you like to see?" a mandatory step with no
+ * *no preference* option, so a first-time client who has never heard of Dana
+ * or Priya picked the top name or left. That is the operator's account of the
+ * utilization gap A-024's dashboard reports and cannot explain.
+ */
+export async function listAnyProviderDays(serviceId: string): Promise<OpenDay[]> {
+  const business = await theBusiness();
+  const now = new Date();
+  const start = toLabel(fromDate(now), zoneId(business.timezone)).day as CalendarDay;
+
+  const days = await anyProviderDays(prisma, {
+    businessId: business.id,
+    serviceIds: [serviceId],
+    fromDay: start,
+    toDay: addDays(start, DAYS_AHEAD),
+    now,
+    audience: 'public',
+  });
+  return days.map((day) => ({ day, label: readableDay(day) }));
+}
+
+/** A-056 — every time anyone could take it that day, one row per time, each
+ *  carrying the stylist SVC-02 assigned it to. */
+export async function listAnyProviderTimes(serviceId: string, day: string): Promise<OfferedTime[]> {
+  const business = await theBusiness();
+  const offered = await anyProviderTimes(prisma, {
+    businessId: business.id,
+    serviceIds: [serviceId],
+    day,
+    now: new Date(),
+    audience: 'public',
+  });
+
+  const zone = zoneId(business.timezone);
+  return offered.map((time) => ({
+    at: time.at.toISOString(),
+    label: toLabel(fromDate(time.at), zone).time,
+    providerId: time.providerId,
+    providerName: time.providerName,
   }));
 }
 

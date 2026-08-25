@@ -149,3 +149,43 @@ test.describe('customer booking flow (A-010)', () => {
     await expect(page.getByRole('button', { name: 'Confirm appointment' })).toBeVisible();
   });
 });
+
+/**
+ * A-056 (SVC-02) — "No preference" on the customer's own flow.
+ *
+ * The step used to be mandatory with no such option, so a first-time client
+ * who has never heard of Dana or Priya either picked the top name or left.
+ * The operator's account of the utilization gap A-024 reports and cannot
+ * explain: the senior is solid and the junior is at 40%.
+ */
+test.describe('booking with no preference (A-056)', () => {
+  test('books end to end without ever choosing a stylist', async ({ page }) => {
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+
+    await expect(page.getByRole('group')).toContainText('Who would you like to see?');
+    // FIRST in the list, and that position is the point.
+    await page.getByRole('button', { name: /No preference/ }).click();
+
+    await expect(page.getByRole('group')).toContainText('Which day suits you?');
+    await firstOption(page).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await firstOption(page).click();
+
+    await page.getByLabel('Your name').fill('Ada Chen');
+    await page.getByLabel('Phone').fill('(512) 555-0101');
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      // A real appointment with a real stylist — SVC-02 chose her, and the
+      // client never had to.
+      const appointment = await prisma.appointment.findFirstOrThrow({ include: { provider: true } });
+      expect(appointment.provider.displayName.length).toBeGreaterThan(0);
+      expect(appointment.status).toBe('booked');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+});

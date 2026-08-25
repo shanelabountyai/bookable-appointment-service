@@ -21,6 +21,8 @@ import {
   type SkipReason,
   SlotNotOffered,
   SlotTaken,
+  type AnyProviderTime,
+  anyProviderTimes,
   bookAppointment,
   clientAlreadyBookedAround,
   createSeries,
@@ -368,6 +370,58 @@ export async function staffSlotsFor(providerId: string, serviceIds: string[], da
   return candidates
     .sort((a, b) => a.start - b.start)
     .map(({ start, label, reasons }) => ({ at: toDate(start).toISOString(), label, reasons }));
+}
+
+export interface AnyoneChoice {
+  /** The INSTANT (D-4), echoed back verbatim by the panel. */
+  at: string;
+  label: string;
+  /** WHO she would get — decided by SVC-02 here, and booked as an ordinary
+   *  booking of that provider. What the desk reads is what it books. */
+  providerId: string;
+  providerName: string;
+  /** How many stylists are free then. "3 free" is slack the desk can offer
+   *  around; "1" is a time it should sell now. */
+  freeCount: number;
+}
+
+/**
+ * A-056 — "anything Thursday? I don't mind who" (SVC-02).
+ *
+ * THE CALL THE DESK COULD NOT ANSWER. `staffSlotsFor` needs a provider before
+ * it will say anything, so one day was four passes and two days were eight —
+ * and a desk that has to do that says "let me ring you back", which is a
+ * booking lost. Every time here still comes from the engine, once per
+ * qualified stylist; this only merges them and applies SVC-02's assignment.
+ */
+export async function anyoneTimesFor(serviceIds: string[], day: string): Promise<AnyoneChoice[]> {
+  const staff = await requireStaff();
+  if (serviceIds.length === 0) return [];
+
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+  const zone = zoneId(business.timezone);
+
+  const offered: AnyProviderTime[] = await anyProviderTimes(prisma, {
+    businessId: staff.businessId,
+    serviceIds,
+    day,
+    now: new Date(),
+    // Staff: no horizon, no lead time (D-21, D-25).
+    audience: 'staff',
+  });
+
+  return offered.map((time) => ({
+    at: time.at.toISOString(),
+    // Formatted in the SALON's zone, server-side — the browser would use the
+    // visitor's.
+    label: toLabel(fromDate(time.at), zone).time,
+    providerId: time.providerId,
+    providerName: time.providerName,
+    freeCount: time.freeCount,
+  }));
 }
 
 export interface ComposedTime {

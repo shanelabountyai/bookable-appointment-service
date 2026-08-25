@@ -8,7 +8,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { addDays, calendarDay, fromDate, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
+import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 /**
@@ -622,5 +622,105 @@ test.describe('standing appointments (A-049)', () => {
     } finally {
       await prisma2.$disconnect();
     }
+  });
+});
+
+/**
+ * A-056 — "ANYTHING THURSDAY? I DON'T MIND WHO." (SVC-02)
+ *
+ * The acceptance criterion is the operator's own, in desk terms: from a cold
+ * start, answer "anything that day, anyone" on ONE screen and book it. Before
+ * this the panel would not offer a time without a stylist, so one day was one
+ * pass per column and the desk said "let me ring you back".
+ */
+test.describe('booking with anyone (A-056)', () => {
+  test('answers the whole day in one screen, and books it', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Anyone', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Book with anyone' })).toBeVisible();
+
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    // One row per TIME, each naming who she would get — four stylists free at
+    // two is one offer to the client, not four.
+    const withSomeone = page.getByRole('button', { name: /^\d\d:\d\d with / });
+    await expect(withSomeone.first()).toBeVisible();
+    const label = (await withSomeone.first().textContent())!;
+    await withSomeone.first().click();
+
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow({ include: { provider: true } });
+      // Booked with the stylist the row NAMED — what the desk read is what it
+      // booked, never a second assignment on submit.
+      expect(label).toContain(appointment.provider.displayName);
+      expect(appointment.isOverride).toBe(false);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * SVC-02's load balancing, end to end: the whole reason the rule exists
+   * rather than "pick anyone free". Fill one stylist's morning and the offer
+   * moves off her.
+   */
+  test('offers the stylist with the lighter day', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let danaName = '';
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      danaName = dana.displayName;
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      // Three hours on Dana's day and nothing on anybody else's.
+      for (const time of ['09:00', '10:00', '11:00']) {
+        const startAt = at(time);
+        const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
+        await prisma.appointment.create({
+          data: {
+            businessId: business.id,
+            providerId: dana.id,
+            startAt,
+            endAt,
+            blockedStart: startAt,
+            blockedEnd: endAt,
+            startDay: DAY,
+            startWallTime: time,
+            lines: {
+              create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+            },
+          },
+        });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/book?provider=any&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    const afternoon = page.getByRole('button', { name: /^1[4-6]:\d\d with / });
+    await expect(afternoon.first()).toBeVisible();
+    // Dana has three hours on the book; somebody else has none.
+    expect((await afternoon.first().textContent())!).not.toContain(danaName);
+  });
+
+  test('says so plainly when nobody can take it that day', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      // Nobody works Sunday in the seeded roster.
+      await prisma.weeklyWindow.deleteMany({});
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/book?provider=any&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+    await expect(page.getByText(/Nobody can take that on/)).toBeVisible();
   });
 });

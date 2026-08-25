@@ -1615,3 +1615,25 @@ Three details are worth calling out, because they are where this kind of feature
 **The system re-checks that the longer visit still fits, and says so in the salon's own words.** A visit that would now run into the next client, past closing, through the stylist's lunch, or out of chairs comes back with the actual reason — "during her break" — and the same "do it anyway, and say why" door the booking screen has. Shortening a visit is never re-checked, because giving time back cannot make an appointment less bookable. Time released this way goes straight back on the board as bookable.
 
 **Also fixed:** a bug introduced by the previous release's own housekeeping. A tidy-up to the test tooling had quietly widened a database lock, so resetting the test database could deadlock against the tests that deliberately run bookings at the same instant — the exact tests that exist to prove two people cannot book the same slot. It was invisible until it wasn't: it passed everything on the way in, and then failed twenty-eight ways at once. Reverted, with an explanation left behind so the same tidy-up is not attempted again.
+
+## "Anything Thursday? I don't mind who"
+
+That is the most common call a salon takes, and until now this system could not answer it.
+
+The booking screen would not show you any times until you had picked a stylist. So "anything Thursday?" meant checking Dana, then Priya, then Marcus, then Tess — four passes for one day, sixteen if the client offers two days. Nobody does that with someone waiting on the phone. They say "let me ring you back", and a good share of those never get rung back.
+
+The customer-facing side had the mirror image of the problem: choosing a stylist was a required step with no way past it. A first-time client who has never heard of any of these people either picks whichever name is at the top or gives up. That is not a small thing — it is a plausible explanation for something the owner's dashboard has been reporting without being able to explain, which is the senior stylist booked solid while the newest is at 40%.
+
+**Both now have a "doesn't matter who" answer.** One screen, the whole day, every stylist who can actually do the work, merged into a single list in time order — with the name of the person you would get on each row, because that is the next question.
+
+**One row per time, not one per stylist per time.** If four people are free at two o'clock, that is one offer to the client — "two o'clock" — not four identical-looking rows. The row does quietly say how many are free, which the front desk reads as slack: three free at two is a time you can offer around, one free is a time to sell now.
+
+**Who you get is not arbitrary.** The system assigns the stylist with the fewest minutes booked that day, and settles ties in a fixed order. That is deliberate load-balancing: picking the first qualified name every time is exactly how one person's column fills while another's stays empty. It has been in the product specification from the beginning and had simply never been built.
+
+Two details worth stating because they are the kind of thing that goes wrong quietly:
+
+**The name shown is the name you get.** The stylist is chosen when the list is drawn, and that choice travels with the row you tap. The alternative — deciding again at the moment of booking — would let the desk read "two o'clock with Dana", tap it, and book Priya because someone else booked in the intervening seconds. If the named stylist genuinely is taken in that window, the booking is refused the same way any other lost race is refused, and the desk picks again.
+
+**A no-show still counts as that stylist's time.** She was there; the hour was hers; the client did not turn up. Not counting it would send the next booking to her on the grounds that her day looks empty, which is balancing against a fiction.
+
+Nothing about how free time is calculated changed. This asks the existing engine the same question once per stylist and merges the answers — there is no second opinion about whether a time is available, which is the only way two answers can ever disagree.

@@ -107,6 +107,16 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         >
           Walk-in
         </Link>
+        {/* A-056 (SVC-02) — "anything Thursday? I don't mind who", which is
+            the most common call the salon takes and had no door at all: the
+            booking panel would not offer times without a stylist, so one day
+            meant one pass per column. */}
+        <Link
+          href={`/staff/book?provider=any&day=${day}`}
+          className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
+        >
+          Anyone
+        </Link>
         {/* AVAIL-05. One tap from the day, because the morning somebody calls
             in sick is the morning this has to be findable. */}
         <Link href={`/staff/conflicts?day=${day}`} className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">

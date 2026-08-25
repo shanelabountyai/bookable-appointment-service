@@ -6,6 +6,8 @@ import {
   type OfferedTime,
   type OpenDay,
   confirmAppointment,
+  listAnyProviderDays,
+  listAnyProviderTimes,
   listDaysWithOpenings,
   listProvidersFor,
   listTimesOn,
@@ -37,6 +39,10 @@ const card = 'rounded-md border border-zinc-300 px-4 py-3 text-left hover:bg-zin
 const selected = 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-zinc-900';
 const primary =
   'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900';
+
+/** A-056 — the sentinel for "no preference". Never a provider id: the real
+ *  stylist arrives on the TIME she picks, chosen by SVC-02. */
+const ANYONE = 'any';
 
 /**
  * A-054 removed `Prefill` and the `/book?service=&provider=` contract behind
@@ -116,6 +122,25 @@ export function BookingFlow({ services }: { services: Service[] }) {
       {step === 'who' && service && (
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-2 text-lg font-semibold">Who would you like to see?</legend>
+          {/* A-056 (SVC-02) — FIRST, and that position is the point. A client
+              who has never been here has no opinion about Dana or Priya, and a
+              forced choice is answered by picking the top name or leaving.
+              Offering it first is what stops the senior's column absorbing
+              every new client while the junior sits at 40%. */}
+          <button
+            type="button"
+            className={`${card} ${provider?.id === ANYONE ? selected : ''}`}
+            onClick={() => {
+              setProvider({ id: ANYONE, name: 'No preference' });
+              startTransition(async () => {
+                setOpenDays(await listAnyProviderDays(service.id));
+                setStep('day');
+              });
+            }}
+          >
+            <span className="font-medium">No preference</span>
+            <span className="block text-sm text-zinc-500">Whoever is free — we&apos;ll match you up</span>
+          </button>
           {providers.map((p) => (
             <button
               key={p.id}
@@ -151,7 +176,11 @@ export function BookingFlow({ services }: { services: Service[] }) {
                     onClick={() => {
                       setDay(d);
                       startTransition(async () => {
-                        setTimes(await listTimesOn(service.id, provider.id, d.day));
+                        setTimes(
+                    provider.id === ANYONE
+                      ? await listAnyProviderTimes(service.id, d.day)
+                      : await listTimesOn(service.id, provider.id, d.day),
+                  );
                         setStep('time');
                       });
                     }}
@@ -207,7 +236,10 @@ export function BookingFlow({ services }: { services: Service[] }) {
             startTransition(async () => {
               const outcome = await confirmAppointment({
                 serviceId: service.id,
-                providerId: provider.id,
+                // On the "no preference" path the stylist comes from the TIME
+                // she picked — SVC-02 chose it when the list was built, so what
+                // she was shown is what she gets.
+                providerId: time.providerId ?? provider.id,
                 at: time.at,
                 day: day.day,
                 name: String(data.get('name') ?? ''),

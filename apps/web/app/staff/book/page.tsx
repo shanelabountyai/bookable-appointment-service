@@ -35,7 +35,11 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
   const today = toLabel(fromDate(new Date()), zone).day;
 
   const walkIn = params.walkin === '1';
-  const providerId = typeof params.provider === 'string' ? params.provider : null;
+  // A-056 (SVC-02) — "anything Thursday? I don't mind who." `provider=any` is
+  // a MODE, not a provider id: no stylist is chosen up front and the engine
+  // answers for all of them at once.
+  const anyone = params.provider === 'any';
+  const providerId = !anyone && typeof params.provider === 'string' ? params.provider : null;
   const atIso = typeof params.at === 'string' ? params.at : null;
   const day = safeDay(typeof params.day === 'string' ? params.day : undefined, today);
 
@@ -61,6 +65,9 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
     // conditional: `...(x ? {...} : {})` widens the object and TypeScript stops
     // checking the keys inside it, which is exactly how a misnamed relation
     // reached the browser as a 500 instead of a compile error.
+    // In "anyone" mode the catalogue is unfiltered on purpose: a service only
+    // one stylist does is still bookable, and `anyProviderTimes` answers with
+    // her alone rather than this list hiding it.
     prisma.service.findMany({
       where: providerId
         ? { businessId: staff.businessId, active: true, serviceProviders: { some: { providerId } } }
@@ -95,7 +102,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           ← {readableDay(day)}
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {walkIn ? 'Walk-in' : `Book ${provider ? `with ${provider.displayName}` : ''}`}
+          {walkIn ? 'Walk-in' : anyone ? 'Book with anyone' : `Book ${provider ? `with ${provider.displayName}` : ''}`}
         </h1>
         {slotLabel ? <p className="mt-1 text-zinc-600 dark:text-zinc-400">{slotLabel}</p> : null}
         {droppedServices > 0 ? (
@@ -106,7 +113,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
         ) : null}
       </div>
 
-      {!walkIn && !provider ? (
+      {!walkIn && !anyone && !provider ? (
         <p className="text-zinc-500">
           That stylist is not on today. <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
         </p>
@@ -119,6 +126,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           provider={provider}
           at={atIso}
           walkIn={walkIn}
+          anyone={anyone}
           initialServiceIds={prefillServiceIds}
           initialClient={prefillClient}
           initialSlots={initialSlots}

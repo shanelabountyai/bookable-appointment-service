@@ -14,6 +14,7 @@
  * sell. Neither is worth it to save the client four minutes in the chair.
  */
 import { fromDate, toDate } from '../../core/time';
+import { providersForVisit } from '../qualification';
 import { computeDaySlots } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -37,28 +38,21 @@ export async function walkInOptions(
   db: Db,
   args: { businessId: string; serviceIds: readonly string[]; day: string; now: Date },
 ): Promise<WalkInOption[]> {
-  const qualified = await db.serviceProvider.findMany({
-    where: {
-      businessId: args.businessId,
-      serviceId: { in: [...args.serviceIds] },
-      provider: { active: true },
-    },
-    select: { providerId: true, provider: { select: { displayName: true, displayOrder: true } } },
-  });
-
   // A multi-service visit needs ONE provider qualified for ALL of it
   // (VISIT-01: same provider, in order) — not one who happens to do the first.
-  const counts = new Map<string, number>();
-  for (const row of qualified) counts.set(row.providerId, (counts.get(row.providerId) ?? 0) + 1);
-  const providers = [...new Map(qualified.map((q) => [q.providerId, q])).values()].filter(
-    (q) => counts.get(q.providerId) === new Set(args.serviceIds).size,
-  );
+  // A-056 extracted that counting into `providersForVisit`, because its own
+  // "anyone" search needed the identical rule and a second copy is how the two
+  // come to disagree about a half-qualified stylist.
+  const providers = await providersForVisit(db, {
+    businessId: args.businessId,
+    serviceIds: args.serviceIds,
+  });
 
   const options = await Promise.all(
-    providers.map(async (row) => {
+    providers.map(async (provider) => {
       const { slots } = await computeDaySlots(db, {
         businessId: args.businessId,
-        providerId: row.providerId,
+        providerId: provider.id,
         serviceIds: args.serviceIds,
         day: args.day,
         now: args.now,
@@ -70,9 +64,9 @@ export async function walkInOptions(
       const soonest = slots.find((slot) => slot.start >= fromDate(args.now));
       return soonest
         ? {
-            providerId: row.providerId,
-            providerName: row.provider.displayName,
-            displayOrder: row.provider.displayOrder,
+            providerId: provider.id,
+            providerName: provider.displayName,
+            displayOrder: provider.displayOrder,
             startAt: toDate(soonest.start),
           }
         : null;

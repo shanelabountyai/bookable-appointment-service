@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useActionState, useRef, useState, useTransition } from 'react';
 import {
+  type AnyoneChoice,
   type ClientChoice,
   type ComposedTime,
   type GridTime,
   type StaffBookingState,
   type WalkInChoice,
+  anyoneTimesFor,
   bookAsStaff,
   createClientForBooking,
   findClientsForBooking,
@@ -15,6 +17,7 @@ import {
   instantForTime,
   staffSlotsFor,
 } from '@/lib/booking/staff-actions';
+import { readableDay } from '@/lib/customer-format';
 import { readableReason } from '@/lib/scheduling-words';
 
 const initial: StaffBookingState = {};
@@ -46,6 +49,7 @@ export function BookingPanel({
   provider,
   at,
   walkIn,
+  anyone = false,
   initialServiceIds = [],
   initialClient = null,
   initialSlots = [],
@@ -55,6 +59,9 @@ export function BookingPanel({
   provider: { id: string; displayName: string } | null;
   at: string | null;
   walkIn: boolean;
+  /** A-056 — "anything Thursday, I don't mind who". No provider is chosen up
+   *  front; the engine answers for every qualified stylist at once. */
+  anyone?: boolean;
   /** A-040's rebook, resolved on the server: every service the last visit
    *  had, in ITS order (VISIT-01), already filtered to what this provider can
    *  still do. */
@@ -71,6 +78,8 @@ export function BookingPanel({
   const [day, setDay] = useState(initialDay);
   const [chosen, setChosen] = useState<string[]>(initialServiceIds);
   const [options, setOptions] = useState<WalkInChoice[]>([]);
+  // A-056: one row per TIME, each naming who she would get.
+  const [anyoneTimes, setAnyoneTimes] = useState<AnyoneChoice[]>([]);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
   const [loadingOptions, startLoadingOptions] = useTransition();
   const [slots, setSlots] = useState<GridTime[]>(initialSlots);
@@ -99,6 +108,8 @@ export function BookingPanel({
   const [searching, startSearching] = useTransition();
   const [creating, startCreating] = useTransition();
 
+  // In "anyone" mode the provider comes from the row the desk tapped — SVC-02
+  // decided it when the list was built, so what they read is what they book.
   const providerId = pick?.providerId ?? provider?.id ?? '';
   // A gap link is a STARTING POINT, not a bookable instant: gaps begin where
   // the previous appointment's buffer ends, which is rarely on the salon's
@@ -137,11 +148,22 @@ export function BookingPanel({
     setTyped([]);
     setTypedError(null);
     if (nextServices.length === 0) return;
+    setAnyoneTimes([]);
     if (walkIn) {
       startLoadingOptions(async () => {
         const found = await findWalkInOptions(nextServices, nextDay);
         if (request !== latestRequest.current) return;
         setOptions(found);
+      });
+      return;
+    }
+    if (anyone) {
+      startLoadingOptions(async () => {
+        const found = await anyoneTimesFor(nextServices, nextDay);
+        // The same staleness guard A-054 added to the provider path: a slow
+        // answer for the day the desk has left must not select a time on it.
+        if (request !== latestRequest.current) return;
+        setAnyoneTimes(found);
       });
       return;
     }
@@ -287,7 +309,58 @@ export function BookingPanel({
         </ul>
       </fieldset>
 
-      {!walkIn ? (
+      {/* A-056 — "anything Thursday? I don't mind who" (SVC-02). One row per
+          TIME, naming the stylist she would get: four stylists free at two is
+          one offer to the client, not four, and the name is the next question
+          she asks. The whole day in one screen, where it used to be one pass
+          per stylist. */}
+      {anyone ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+            What time? (anyone)
+          </legend>
+          {chosen.length === 0 ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
+          ) : loadingOptions ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p>
+          ) : anyoneTimes.length === 0 ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Nobody can take that on {readableDay(day)}. Try another day.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {anyoneTimes.map((time) => {
+                const selected = pick?.at === time.at && pick?.providerId === time.providerId;
+                return (
+                  <li key={time.at}>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setPick({ providerId: time.providerId, at: time.at, label: time.label })}
+                      className={`rounded-md border px-3 py-2 text-left text-sm ${
+                        selected
+                          ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800'
+                          : 'border-zinc-400 dark:border-zinc-600'
+                      }`}
+                    >
+                      {time.label}
+                      {/* A real text node, not a margin: `ml-2` is invisible to
+                          an accessible name, and without it the button is
+                          called "14:00with Dana". */}
+                      <span className="ml-2 text-zinc-600 dark:text-zinc-400"> with {time.providerName}</span>
+                      {time.freeCount > 1 ? (
+                        <span className="ml-2 text-xs text-zinc-500"> ({time.freeCount} free)</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </fieldset>
+      ) : null}
+
+      {!walkIn && !anyone ? (
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
             What time?

@@ -1642,3 +1642,27 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 - **My own new e2e picked a combination that genuinely does not fit** — the seeded salon breaks 12:00–13:00 and Cut + Colour from 10:00 runs to 12:45. The engine was right and the test was wrong. Fixed the fixture and kept the refusal as its own test, which now exercises BOOK-05's override on this path end to end.
 
 **Left behind:** the panel shows a *would-be* total from today's catalogue while the appointment's own lines remain the record — correct, and worth a second look if a service is ever re-priced mid-visit. And there is no customer equivalent, deliberately: "add a colour to the appointment I already have" is a conversation, not a form.
+
+## A-056 — "anything Thursday? I don't mind who"
+
+**Commit:** `TBD`
+
+**SVC-02 was specified in the master PRD and never built.** Verified by grep before starting: the only hits for the rule were the waitlist's *preference* field, a tiebreak comment in `providers.ts`, and a UI label. Neither booking path implemented it.
+
+**What it cost, in the operator's terms.** `/staff/book` would not ask for times without a `?provider=`, so one day was four passes and "Thursday or Friday" was sixteen — the desk stops doing it and says "let me ring you back", which is a booking lost. On the public side, "Who would you like to see?" was mandatory with no *no preference* option: a first-time client who has never heard of Dana or Priya picks the top name or leaves. That is the operator's account of the utilization gap A-024's dashboard reports and cannot explain — the senior solid, the junior at 40%.
+
+**`anyProviderTimes` merges; it does not decide.** Every time comes from `computeDaySlots`, once per qualified stylist, exactly as the walk-in search already does — there is no second engine and no second answer to "is this time free". Per provider on purpose, because SVC-02 says the search computes per provider: a junior's longer cut is a different length and therefore a different set of start times.
+
+**One row per TIME, not one per provider-time.** Four stylists free at two o'clock is one offer to the client, not four; a list that repeats every time four times is a list the desk scrolls past. The row names who she would get, because that is the next question and it is asked about half the time — and it carries `freeCount`, so "3 free at 2" reads as slack and "1" reads as sell-it-now.
+
+**The assignment is made at LIST time and the row carries it.** Deciding again on submit would let the desk read "two o'clock with Dana" and book Priya, because another booking landed in between. What you see is what you book; if that stylist is taken in the meantime the exclusion constraint refuses it exactly as it refuses any other lost race (D-2). **No new write path** — this produces a `providerId` and the ordinary `bookAppointment` does the rest.
+
+**SVC-02's rule, verbatim and deterministic:** fewest booked minutes on that business date, ties by `displayOrder`. The PRD says it is deterministic "so an acceptance test can assert it", and now one does. `startDay` rather than an instant range (P1-6) — the 23:30 appointment that runs past midnight belongs to the day the stylist worked it. ACTIVE statuses, so **a no-show still counts against the stylist who stood there** (D-7): balancing the next booking onto her because a client failed to turn up would be balancing on fiction.
+
+**Reuse rather than a second copy.** `walkInOptions` had counted "qualified for all of it" inline; that is now `providersForVisit` in `qualification.ts`, used by both. A second copy is exactly the fork `qualifiedForVisit` was written to prevent, and this was the caller that would have created it.
+
+**The public "No preference" is placed FIRST, and the position is the point.** A client with no opinion should not have to form one to get past the step.
+
+**Tests:** 13 database tests (one row per time; `freeCount` falling as stylists fill; a time surviving until the LAST qualified stylist is taken; VISIT-01's all-or-nothing on a cut+colour only one person can do; the lightest day winning; the `displayOrder` tiebreak; determinism across repeated calls; a no-show counting and a cancellation not; the days list surviving one stylist's day being full) and 4 e2e — including the operator's own acceptance criterion, *from a cold start answer "anything that day, anyone" on one screen and book it*, asserting the appointment landed with the stylist the row NAMED.
+
+**Left behind:** the public flow still books one service (A-058 covers that), so "no preference" is single-service for now — the staff panel already handles a multi-service visit through the same function.
