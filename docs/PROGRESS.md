@@ -1617,7 +1617,7 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 
 ## A-055 — an appointment can become a different appointment
 
-**Commit:** `TBD`
+**Commit:** `122cc7b`
 
 **The operator review's number one, and its sentence is the specification:** *"the one thing a booked appointment cannot do in this system is become a different appointment."* Verified before building — nothing writes `AppointmentServiceLine` outside the booking path.
 
