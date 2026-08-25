@@ -1759,7 +1759,7 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 
 ## A-060 — the desk decides `cancelled` vs `cancelled_late` under pressure, and the owner staffs on the result
 
-**Commit:** `PENDING`
+**Commit:** `b2a55ab`
 
 **The defect, verified before starting.** `STATUS_ACTION_LABELS` offered "Cancel" and "Cancel (late)" side by side, §7 permits staff either from `booked`/`confirmed` at any time, and nothing on the screen said which was right. So the number on A-024's Cancellations tile, and the `lateCancels` column on every client surface, was **an artifact of which button was nearer the thumb**. The system already had the answer: `isInsideCancellationCutoff` has existed since A-012 and the customer's own manage link has been using it to classify her cancellations all along. Only staff were being asked to guess.
 
