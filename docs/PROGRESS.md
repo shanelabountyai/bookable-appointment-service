@@ -1645,7 +1645,7 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 
 ## A-056 — "anything Thursday? I don't mind who"
 
-**Commit:** `TBD`
+**Commit:** `dc57c17`
 
 **SVC-02 was specified in the master PRD and never built.** Verified by grep before starting: the only hits for the rule were the waitlist's *preference* field, a tiebreak comment in `providers.ts`, and a UI label. Neither booking path implemented it.
 
