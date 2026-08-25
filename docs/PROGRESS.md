@@ -1693,7 +1693,7 @@ Walked: her confirmation link worked, the reminder run revoked it, the reminder 
 
 ## A-058 — a whole visit, and only what may be sold online
 
-**Commit:** _pending_
+**Commit:** `d897f3c`
 
 **Two defects, one item, both verified before starting.** `booking-flow.tsx` held a single `service` and posted a single `serviceId`, while D-23's own text says half the Saturday book is cut-and-colour — so she booked "Colour" alone at two hours, arrived wanting a cut too, and 45 minutes had to come out of a column that was already full. And `Service` had no bookable-online flag at all (zero hits in `schema.prisma`), so a first-time client could self-book a colour correction or a full-head bleach with no consultation and no patch test.
 
