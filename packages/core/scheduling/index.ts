@@ -35,9 +35,11 @@ export {
   MISSED_STATUSES,
   REMINDER_ELIGIBLE_STATUSES,
   SELF_SERVE_BLOCKING_STATUSES,
+  SERVICE_EDITABLE_STATUSES,
   SLOT_FREEING_STATUSES,
   TERMINAL_STATUSES,
   activeStatusSqlList,
+  canChangeServices,
   occupiesTime,
   slotFreeingSqlList,
 } from './status';

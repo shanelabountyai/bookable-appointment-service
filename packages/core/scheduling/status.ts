@@ -80,6 +80,28 @@ export const REMINDER_ELIGIBLE_STATUSES = ['booked', 'confirmed'] as const;
  *  alternative is SQL surgery). */
 export const TERMINAL_STATUSES = ['completed', 'no_show', 'cancelled', 'cancelled_late'] as const;
 
+/**
+ * A-055 (VISIT-01) — whose SERVICES may still be changed.
+ *
+ * A POSITIVE ALLOW-LIST, and deliberately NOT `canReschedule`'s list, which is
+ * the whole point of the item. Rescheduling refuses `in_progress` because an
+ * appointment already in the chair cannot be moved to Thursday — and "she is
+ * in the chair and wants her roots doing too" is the exact scenario A-055
+ * exists for. The two questions look alike and have opposite answers:
+ *
+ *   move it   → not once she has sat down
+ *   change it → most often once she has sat down
+ *
+ * `checked_in` and `in_progress` are therefore IN. Everything terminal is out:
+ * re-selling a completed visit is a refund or a new appointment, not an edit,
+ * and adding a service to a no-show is a data-entry error with a price on it.
+ */
+export const SERVICE_EDITABLE_STATUSES = ['booked', 'confirmed', 'checked_in', 'in_progress'] as const;
+
+/** Can this appointment's service lines still be changed (A-055)? */
+export const canChangeServices = (status: AppointmentStatus): boolean =>
+  (SERVICE_EDITABLE_STATUSES as readonly string[]).includes(status);
+
 /** Does this status still occupy its time in the busy set? (D-7) */
 export const occupiesTime = (status: AppointmentStatus): boolean =>
   (ACTIVE_STATUSES as readonly string[]).includes(status);

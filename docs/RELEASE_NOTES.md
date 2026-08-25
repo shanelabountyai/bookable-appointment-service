@@ -1589,3 +1589,29 @@ The result: change the day while the previous day's times are still loading, and
 Answers to superseded questions are now discarded. An empty list for half a second is recoverable; a time silently selected on the wrong day is not.
 
 **Also in this release:** a comment in the test tooling claimed that forgetting to list a new database table would fail loudly. It measured false — the cleanup silently handles unlisted tables — and a comment that describes a safety net which does not exist is worse than no comment, so it now says what actually happens. And an old public booking link format, replaced a while back by the front-desk version and emitted by nothing since, was deleted along with the code that supported it.
+
+## "And can you do my roots while I'm here?"
+
+Until this release, the answer was no — or rather, the answer was one of three bad workarounds.
+
+A client is booked for a cut. She sits down, and asks for something else as well. That is not an edge case; it is a Tuesday. And a booked appointment in this system could be moved, cancelled, confirmed or marked a no-show, but it could not become a *different appointment*. The list of what she was having was written once, at booking, and nothing could change it afterwards.
+
+So the front desk had three options and every one of them was wrong:
+
+**Cancel and rebook.** This records a late cancellation against a client who did nothing wrong — it lands on her record, on the owner's dashboard, and on the number used to decide whether to start taking deposits. It also sends her a cancellation message while she is sitting in the chair.
+
+**Book a second appointment right after the first.** The system refuses this, correctly: each service carries padding before and after it, and back-to-back appointments for the same person collide in that padding. This was written down as a known case years of decisions ago and deliberately forbidden.
+
+**Force it through as an override.** Overrides exist for genuine judgement calls — staying late, squeezing someone in. Using one for an ordinary add-on is how a warning marker becomes wallpaper.
+
+**Now the appointment simply changes.** Add a service, take one off, or reorder them, on the appointment's own screen. It stays the same appointment throughout — same booking, same history, same link in the client's email. Nothing is cancelled and nobody is told anything false.
+
+Three details are worth calling out, because they are where this kind of feature usually goes wrong.
+
+**It works while she is in the chair.** Moving an appointment to Thursday is refused once a client has arrived — obviously. Changing what she is having is the opposite: that is *exactly* when you do it. Two questions that look identical and have opposite answers, and the software now knows the difference.
+
+**A price already agreed never changes.** If she booked a cut in January and adds a colour in August, the cut still costs January's price. The colour costs today's. Prices rise; what someone was quoted does not.
+
+**The system re-checks that the longer visit still fits, and says so in the salon's own words.** A visit that would now run into the next client, past closing, through the stylist's lunch, or out of chairs comes back with the actual reason — "during her break" — and the same "do it anyway, and say why" door the booking screen has. Shortening a visit is never re-checked, because giving time back cannot make an appointment less bookable. Time released this way goes straight back on the board as bookable.
+
+**Also fixed:** a bug introduced by the previous release's own housekeeping. A tidy-up to the test tooling had quietly widened a database lock, so resetting the test database could deadlock against the tests that deliberately run bookings at the same instant — the exact tests that exist to prove two people cannot book the same slot. It was invisible until it wasn't: it passed everything on the way in, and then failed twenty-eight ways at once. Reverted, with an explanation left behind so the same tidy-up is not attempted again.

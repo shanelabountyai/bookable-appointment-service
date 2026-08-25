@@ -287,3 +287,165 @@ test.describe('the appointment detail panel (A-027)', () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * A-055 — "AND CAN YOU DO MY ROOTS WHILE I'M HERE."
+ *
+ * The operator review at the Phase 5 close called this the biggest hole in the
+ * product. The e2e's job is the half the database tests cannot see: that the
+ * desk can actually reach it, from the screen it would be standing on, on an
+ * appointment whose client is already in the chair.
+ */
+test.describe('changing what she is having (A-055)', () => {
+  const detail = async (page: Page, id: string) => {
+    await page.goto(`/staff/appointments/${id}`);
+    await expect(page.getByRole('heading', { name: 'What she is having' })).toBeVisible();
+  };
+
+  /** The move panel below carries its own "Why? (optional)", so anything
+   *  ambiguous is scoped to this section rather than to the page. */
+  const panel = (page: Page) => page.locator('section').filter({ hasText: 'What she is having' });
+
+  test('adds a service at the chair, and cancels nothing', async ({ page }) => {
+    const appointment = await bookOne();
+    await detail(page, appointment.id);
+
+    // The visit today.
+    await expect(page.getByRole('button', { name: /^Cut\d/ })).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: /Blow-dry/ }).click();
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      // ONE row throughout — the assertion that would fail for a
+      // cancel-and-rebook, which is the only thing the desk could do before.
+      expect(await prisma.appointment.count()).toBe(1);
+      const row = await prisma.appointment.findUniqueOrThrow({
+        where: { id: appointment.id },
+        include: { lines: { orderBy: { ordinal: 'asc' }, include: { service: true } } },
+      });
+      expect(row.status).toBe('booked');
+      expect(row.lines.map((l) => l.service.name)).toEqual(['Cut', 'Blow-dry']);
+      expect(row.endAt.getTime()).toBeGreaterThan(appointment.endAt.getTime());
+
+      // And nothing anywhere told her she was cancelled.
+      expect(
+        await prisma.notificationOutbox.count({ where: { template: 'appointment.cancelled' } }),
+      ).toBe(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /** The scenario the item exists for: she is IN THE CHAIR. A reschedule
+   *  refuses this state, and changing the visit must not. */
+  test('works while she is in the chair, where a move is refused', async ({ page }) => {
+    const appointment = await bookOne();
+    const prisma = new PrismaClient();
+    try {
+      await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'in_progress' } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await detail(page, appointment.id);
+    // The move panel is gone — `canReschedule` refuses an appointment in the
+    // chair — and this one is not.
+    await expect(page.getByRole('heading', { name: 'Move this appointment' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: /Blow-dry/ }).click();
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
+  });
+
+  test('takes a service off and says how much time came back', async ({ page }) => {
+    const appointment = await bookOne();
+    await detail(page, appointment.id);
+
+    // Add, then take it off again through the same control.
+    await page.getByRole('button', { name: /Blow-dry/ }).click();
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
+
+    await page.reload();
+    await page.getByRole('button', { name: /Blow-dry/ }).click();
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await expect(page.getByText(/took off Blow-dry/)).toBeVisible();
+    await expect(page.getByText(/minutes back on the book/)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const row = await prisma.appointment.findUniqueOrThrow({
+        where: { id: appointment.id },
+        include: { lines: true },
+      });
+      expect(row.lines).toHaveLength(1);
+      expect(row.endAt.getTime()).toBe(appointment.endAt.getTime());
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /** APPT-07: the change is in the history, in words, on the same appointment
+   *  — which is the whole reason it is not a cancel-and-rebook. */
+  test('says what changed in the appointment history', async ({ page }) => {
+    const appointment = await bookOne();
+    await detail(page, appointment.id);
+    await page.getByRole('button', { name: /Blow-dry/ }).click();
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByText(/added Blow-dry\. Now ends/)).toBeVisible();
+    // The booking is still the first thing that happened to it.
+    await expect(page.getByText(/^Booked by/)).toBeVisible();
+  });
+
+  /**
+   * THE REFUSAL IS A STEP, NOT A DEAD END (D-8) — and this one is real rather
+   * than contrived: the seeded salon breaks 12:00–13:00, so Cut + Colour from
+   * 10:00 runs to 12:45 and straight through it. Found by writing the spec
+   * above with Colour and watching the engine correctly say no.
+   */
+  test('refuses a visit that would run through her break, and offers the override', async ({ page }) => {
+    const appointment = await bookOne();
+    await detail(page, appointment.id);
+
+    await page.getByRole('button', { name: /Colour/ }).click();
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+
+    await expect(page.getByText('That would not fit.')).toBeVisible();
+    // The engine's OWN word for it, in the salon's vocabulary.
+    await expect(page.getByText('during her break.')).toBeVisible();
+
+    // BOOK-05: the desk decides to work through lunch, knowingly and on the
+    // record.
+    await panel(page).getByLabel('Do it anyway').check();
+    await panel(page).getByLabel('Why?', { exact: true }).fill('She is only in today, Dana agreed');
+    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await expect(page.getByText(/Added Colour/)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const row = await prisma.appointment.findUniqueOrThrow({
+        where: { id: appointment.id },
+        include: { lines: true },
+      });
+      expect(row.lines).toHaveLength(2);
+      // Still not a cancellation, even through the override door.
+      expect(row.status).toBe('booked');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    const appointment = await bookOne();
+    await detail(page, appointment.id);
+
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(results.violations).toEqual([]);
+  });
+});

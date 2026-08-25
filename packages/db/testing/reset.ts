@@ -35,22 +35,32 @@ import type { PrismaClient } from '../generated/client/index.js';
  * list since A-049) was gone after it — silently, which is the opposite of
  * loudly.
  *
- * So the list is not a safety net; it is an INVENTORY, and its value is that
- * a reader can see what a reset touches. Keep it complete when a table is
- * added — nothing will tell you if you forget.
+ * So the list is not a safety net; it is an INVENTORY of what a reset is
+ * ASKED to clear — not of everything it reaches. CASCADE reaches more, and
+ * naming a table has a cost: see the note inside the list. A new table only
+ * needs adding here when nothing already listed leads to it.
  */
 const TABLES = [
   'AppointmentEvent',
   'AppointmentServiceLine',
   'NotificationOutbox',
   'ManageToken',
-  // These three were absent until demo checkpoint 4 found the comment above
-  // was wrong: CASCADE had been clearing them all along, which is correct
-  // behaviour and was accidental documentation.
-  'AppointmentResourceHold',
-  'AppointmentBlock',
   'Appointment',
-  'AppointmentSeries',
+  // DELIBERATELY NOT LISTED, and this is the interesting part:
+  // `AppointmentBlock`, `AppointmentResourceHold` and `AppointmentSeries`.
+  //
+  // Demo checkpoint 4 added them "to complete the inventory" and it was a
+  // behaviour change, not documentation: TRUNCATE takes an ACCESS EXCLUSIVE
+  // lock on every table it NAMES, so listing them widened the lock set. The
+  // first two are written by TRIGGERS inside a booking transaction, which
+  // already holds a ROW EXCLUSIVE lock on `Appointment` — so a reset racing a
+  // booking deadlocked (40P01), each waiting for the other's table. It
+  // reproduced as 28 failures across four files and, being timing-dependent,
+  // it passed the gate that shipped it.
+  //
+  // CASCADE reaches all three anyway, which is what checkpoint 4 measured in
+  // the first place. Naming them buys nothing and costs a deadlock against
+  // exactly the concurrent transactions `races.test.ts` exists to create.
   'WaitlistEntry',
   'Client',
   'WindowBreak',

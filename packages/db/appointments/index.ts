@@ -17,6 +17,13 @@ export {
   rescheduleOptions,
 } from './reschedule';
 export {
+  type ChangeVisitServicesInput,
+  type ChangedVisit,
+  VisitAlreadyChanged,
+  VisitNotEditable,
+  changeVisitServices,
+} from './change-services';
+export {
   type IssueManageTokenInput,
   type IssuedManageToken,
   type ManageGrant,

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { PrismaClient } from '@bookable/db';
 import { createWeeklyWindow } from '@bookable/db/availability';
-import { calendarDay, fromDate, instant, instantFromIso, toDate, toLabel, weekdayOf, zoneId } from '@bookable/core/time';
+import { addDays, calendarDay, fromDate, instant, instantFromIso, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 /** Through the one conversion module, like every other spec (D-3/D-4). */
@@ -236,8 +236,20 @@ test.describe('availability (A-007)', () => {
     try {
       const business = await prisma.business.findFirstOrThrow();
       const zone = zoneId(business.timezone);
-      // Three weeks out, on the minute — every stored instant has to.
-      const startAt = toDate(instant(Math.floor(Date.now() / 60_000) * 60_000 + 21 * 24 * 60 * 60_000));
+      // Three weeks out, AT MIDDAY — never at whatever time-of-day the suite
+      // happens to run.
+      //
+      // This used to be `Date.now() + 21 days`, which pinned the appointment
+      // to the current wall-clock time. Run it after ~23:14 and a 45-minute
+      // booking runs past the 23:59 window close this test adds, so the test
+      // stranded its own fixture and failed — reproduced at 23:31 by A-055's
+      // sweep. "Every test supplies a frozen time; a test that reads the clock
+      // is wrong even when it passes" (CLAUDE.md) applies to the FIXTURE as
+      // much as to the engine.
+      const targetDay = addDays(calendarDay(toLabel(fromDate(new Date()), zone).day), 21);
+      const resolved = resolve(targetDay, wallTime('12:00'), zone);
+      if (resolved.kind !== 'unique') throw new Error(`12:00 is not unique on ${targetDay}`);
+      const startAt = toDate(resolved.at);
       const label = toLabel(fromDate(startAt), zone);
       day = label.day;
       weekday = weekdayOf(calendarDay(label.day));

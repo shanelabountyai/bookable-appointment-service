@@ -8,6 +8,7 @@ import {
   type AppointmentStatus,
   SLOT_FREEING_STATUSES,
   availableTransitions,
+  canChangeServices,
   canReschedule,
 } from '@bookable/core/scheduling';
 import { worstCutoff } from '@bookable/core/settings';
@@ -19,6 +20,7 @@ import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointment
 import { flagSentence } from '@/components/client-flag';
 import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
 import { MovePanel } from './move-panel';
+import { VisitPanel } from './visit-panel';
 import { StatusControls } from './status-controls';
 import { VisitNote } from './visit-note';
 
@@ -91,6 +93,32 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
       })
     : null;
   const flag = reliability ? flagSentence(reliability) : null;
+
+  // A-055 — what she could be having instead, asked of the SAME
+  // qualification rule the write path enforces, so the panel cannot offer a
+  // service the server then refuses.
+  const editable = canChangeServices(status);
+  const serviceChoices = editable
+    ? (
+        await prisma.serviceProvider.findMany({
+          where: { providerId: detail.providerId, service: { active: true } },
+          select: {
+            serviceId: true,
+            durationOverrideMinutes: true,
+            priceOverrideCents: true,
+            service: { select: { name: true, durationMinutes: true, priceCents: true, displayOrder: true } },
+          },
+        })
+      )
+        .map((row) => ({
+          id: row.serviceId,
+          name: row.service.name,
+          durationMinutes: row.durationOverrideMinutes ?? row.service.durationMinutes,
+          priceCents: row.priceOverrideCents ?? row.service.priceCents,
+          displayOrder: row.service.displayOrder,
+        }))
+        .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name))
+    : [];
 
   // A-049 — the rest of her standing appointment. Read HERE rather than
   // linked to a screen of its own: "which one is this and where are the
@@ -237,6 +265,28 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         >
           Who wants this slot?
         </Link>
+      ) : null}
+
+      {/* A-055. ABOVE the move panel on purpose: "she wants her roots doing
+          too" is asked far more often than "can we push this to Thursday",
+          and it is asked while she is sitting there. Present for a visit that
+          is checked in or in progress, which is exactly when a move is not. */}
+      {editable && serviceChoices.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+            What she is having
+          </h2>
+          <VisitPanel
+            appointmentId={detail.id}
+            services={serviceChoices.map(({ id, name, durationMinutes, priceCents }) => ({
+              id,
+              name,
+              durationMinutes,
+              priceCents,
+            }))}
+            current={detail.services.map((s) => s.serviceId)}
+          />
+        </section>
       ) : null}
 
       {movable ? (

@@ -11,8 +11,9 @@ import 'server-only';
  *
  * TOTAL OVER EVERY TYPE THE CODEBASE WRITES, and typed so it stays that way:
  * `booked`, `override_booked`, `status_changed`, `status_corrected`,
- * `rescheduled`, `provider_changed`, `column_pushed`, `conflict_acknowledged`.
- * A ninth event type is a compile error here rather than a raw enum on screen
+ * `rescheduled`, `provider_changed`, `services_changed`, `column_pushed`,
+ * `conflict_acknowledged`, `hours_changed_underneath`.
+ * A further event type is a compile error here rather than a raw enum on screen
  * — the same reflex as the status colour map, and the same reason: this is a
  * list that reads the log, and lists that read the log go stale silently.
  */
@@ -27,6 +28,7 @@ export const EVENT_TYPES = [
   'status_corrected',
   'rescheduled',
   'provider_changed',
+  'services_changed',
   'column_pushed',
   'conflict_acknowledged',
   'hours_changed_underneath',
@@ -96,6 +98,16 @@ export function toReadableEvent(event: AppointmentEventRow, zone: ZoneId): Reada
   };
 }
 
+/** Payload arrays arrive as JSON, so they are `unknown` until proven
+ *  otherwise — a log that throws on a malformed payload takes the whole
+ *  screen with it. */
+const asNames = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+
+/** "a cut", "a cut and a colour", "a cut, a colour and a blow-dry". */
+const list = (names: string[]): string =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
 function sentenceFor(type: EventType, payload: Record<string, unknown>, who: string, zone: ZoneId): string {
   switch (type) {
     case 'booked':
@@ -112,6 +124,19 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
       return `Moved from ${clock(payload.from, zone)} to ${clock(payload.to, zone)} by ${who}.`;
     case 'provider_changed':
       return `Handed to another stylist by ${who}.`;
+    // A-055. The sentence names WHAT changed rather than the new total: "what
+    // did she have done?" is answered by the lines, and what the log is for is
+    // the change nobody can otherwise see afterwards.
+    case 'services_changed': {
+      const added = asNames(payload.added);
+      const removed = asNames(payload.removed);
+      const parts = [
+        added.length > 0 ? `added ${list(added)}` : '',
+        removed.length > 0 ? `dropped ${list(removed)}` : '',
+      ].filter(Boolean);
+      const ends = `Now ends ${clock(payload.toEndAt, zone)}`;
+      return `${who === 'the front desk' ? 'The front desk' : who} ${parts.join(' and ')}. ${ends}.`;
+    }
     case 'column_pushed':
       return `Pushed ${String(payload.minutes ?? '')} minutes later by ${who}, with the day running behind.`;
     case 'conflict_acknowledged':
@@ -200,6 +225,7 @@ export const TEMPLATE_WORDS: Record<string, string> = {
   'appointment.rescheduled': 'New time',
   'appointment.running_late': 'Running behind',
   'appointment.reminder': 'Reminder',
+  'appointment.services_changed': 'What she is having changed',
   'appointment.provider_changed': 'New stylist',
   'appointment.cancelled': 'Cancellation',
 };

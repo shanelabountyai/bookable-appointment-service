@@ -78,7 +78,9 @@ export interface AppointmentDetail {
    */
   resourceName: string | null;
   resourceTypeName: string | null;
-  services: { name: string; priceCents: number; durationMinutes: number }[];
+  /** A-055 added `serviceId`: the visit panel posts the ordered ids back, and
+   *  a name is not an identity — two services can share one. */
+  services: { serviceId: string; name: string; priceCents: number; durationMinutes: number }[];
   /** SEG-03/D-29 — minutes of this appointment the provider is not needed for,
    *  from its own `segmentPattern` snapshot. Zero for an unsegmented visit. */
   gapMinutes: number;
@@ -207,6 +209,7 @@ export async function loadAppointmentDetail(
     primaryServiceId: appointment.lines[0]?.serviceId ?? '',
     gapMinutes: patternGapSpans(appointment.segmentPattern).reduce((sum, gap) => sum + gap.minutes, 0),
     services: appointment.lines.map((line) => ({
+      serviceId: line.serviceId,
       name: line.service.name,
       priceCents: line.priceCents,
       durationMinutes: line.durationMinutes,
