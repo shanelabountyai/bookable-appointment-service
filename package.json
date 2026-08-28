@@ -2,6 +2,7 @@
   "name": "bookable",
   "version": "0.0.1",
   "private": true,
+  "engines": { "node": ">=24" },
   "description": "Appointment scheduling for a service business — Claude Code learning build #3. Start with docs/START-HERE.md.",
   "workspaces": [
     "apps/*",
