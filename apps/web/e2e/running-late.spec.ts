@@ -261,12 +261,22 @@ test.describe('the ring-round (A-059)', () => {
 
       // Dana, open all day, on whatever day an hour from now falls on — so
       // this runs at 3pm and at 3am with the same result.
-      const override = await prisma.dateOverride.create({
-        data: { businessId: business.id, providerId: dana.id, day: DAY, isClosed: false },
-      });
-      await prisma.dateOverrideWindow.create({
-        data: { businessId: business.id, dateOverrideId: override.id, open: '00:00', close: '23:59' },
-      });
+      //
+      // BOTH levels: `resolveAvailableWindows` intersects the business
+      // pattern with the provider pattern, and returns closed if EITHER has
+      // no windows (packages/core/availability/windows.ts). The seeded
+      // business only has weekly hours Tue-Sat — a provider-only override
+      // left the whole column reading closed on Sunday and Monday, which is
+      // exactly the day-of-week this test's own comment claims not to care
+      // about.
+      for (const providerId of [null, dana.id]) {
+        const override = await prisma.dateOverride.create({
+          data: { businessId: business.id, providerId, day: DAY, isClosed: false },
+        });
+        await prisma.dateOverrideWindow.create({
+          data: { businessId: business.id, dateOverrideId: override.id, open: '00:00', close: '23:59' },
+        });
+      }
 
       const client = await prisma.client.create({
         data: { businessId: business.id, name: 'Client 1', phone: '5125550100' },
