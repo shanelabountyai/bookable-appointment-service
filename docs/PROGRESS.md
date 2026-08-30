@@ -1784,7 +1784,7 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 
 ## A-061 — the call-down list forgets who has already been rung
 
-**Commit:** `PENDING`
+**Commit:** `a83e38b`
 
 **The defect, verified before starting.** The call-down list (A-021) is derived and right to be — "needs a call" is nothing but "not confirmed yet", so confirming makes the row vanish on its own with no clearing code anywhere. But eighteen unconfirmed for tomorrow, the desk gets through nine, three no-answers, a walk-in arrives — and at 4pm the list looks exactly as it did at 2pm, because nothing about "we tried, she didn't pick up" is derivable from anything. The next person starts at the top and rings six people twice, which reads to the client as a salon that does not know what it is doing.
 
