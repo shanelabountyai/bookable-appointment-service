@@ -1723,3 +1723,11 @@ That page is the point. An exception nobody can see the size of stops being an e
 ### And a cancellation the salon caused never lands on the client
 
 When a stylist calls in sick and the salon takes an appointment away, the clock will happily say "inside the cutoff" — because the cutoff exists to price a *client's* late notice, and this client gave none. That cancellation is now recorded as an ordinary one, permanently and by construction, so it can never appear on the rolling count of somebody who did nothing wrong.
+
+## The call-down list now remembers who has already been rung
+
+The call-down list — everybody booked tomorrow who hasn't confirmed — has always been correct at any single moment: derived fresh from the appointments, never a stored flag that could drift. But "correct at any moment" and "useful over an afternoon" turned out to be different things. Eighteen unconfirmed at 2pm, the desk gets through nine, three no-answers, a walk-in arrives — and at 4pm the list looks exactly as it did at 2pm, because nothing about a phone call is derivable from the booking itself. The next person starts at the top and rings six people twice.
+
+**Two buttons per row now record what happened: "No answer" or "Left a message."** The tick is stamped with who made the call and when, survives a reload, and never disturbs the list's own time order — a tried row stays where its appointment time puts it. It clears itself the moment the client confirms or the appointment moves to another day, because both of those already take the row off the list for reasons that have nothing to do with the call. Nothing is sent when a row is ticked; the words on screen say a person made a phone call, because a screen that could be misread as "handled, no need to call her" would be worse than no screen at all.
+
+A mis-tap is reversible by the same hand that made it — the desk is a shared screen, and a wrong tap otherwise silently skips a client until somebody else happens to notice.

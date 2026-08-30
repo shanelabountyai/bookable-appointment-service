@@ -1781,3 +1781,23 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 **Tests:** 7 core, 9 database against the real cutoff rows, 4 report, 4 e2e. The ones that matter: the SERVICE cutoff (not the business default) drives the derivation; a client in the chair inside the cutoff derives `cancelled` and does not error; the escape without a reason refuses and leaves the row `booked`; an overruled cancellation leaves the rolling late-cancel count at one when two were cancelled; and the e2e asserts the old "Cancel (late)" button is gone by exact name, because "the pair is removed" is the behaviour.
 
 **Left behind:** no way to un-overrule. §7 gives a cancellation no outgoing edges and the event log is append-only by trigger, so "that one was wrong" is a conversation, not a button that rewrites what happened. The day chip is untouched — it has never offered cancelling (A-035 left it off deliberately: a mis-tap on a phone would end an appointment with no record of why), so this item had exactly one surface to change.
+
+## A-061 — the call-down list forgets who has already been rung
+
+**Commit:** `PENDING`
+
+**The defect, verified before starting.** The call-down list (A-021) is derived and right to be — "needs a call" is nothing but "not confirmed yet", so confirming makes the row vanish on its own with no clearing code anywhere. But eighteen unconfirmed for tomorrow, the desk gets through nine, three no-answers, a walk-in arrives — and at 4pm the list looks exactly as it did at 2pm, because nothing about "we tried, she didn't pick up" is derivable from anything. The next person starts at the top and rings six people twice, which reads to the client as a salon that does not know what it is doing.
+
+**`CallDownAttempt` is the one exception to A-021's rule, not a reversal of it.** "Needs a call" stays derived. "We ALREADY rang her" is stored, because it is the one fact this schema has no other way to produce — no status moves, no message is sent, the appointment is byte-identical before and after. `@@unique([appointmentId, forDay])` makes a second call at the same appointment RE-STAMP rather than append: the useful fact is the most recent outcome, and a history belongs in the append-only event log, not here.
+
+**Scoped to the day it was about, which is what makes "cleared when she confirms or the day rolls" need no clearing code at all.** `forDay` is matched against the day being listed, not just the appointment id — so a confirmed appointment is off the list by A-021's own logic, and an appointment RESCHEDULED to another day (D-6: same row, same id) no longer matches `forDay`, so a fortnight-old "no answer" can never resurface against next week's booking. Two outcomes, not a boolean: "no answer" is still on the list to try again, "left a message" is the ball in her court — collapsing them would make a tried row unactionable, which is the state the Post-it existed to escape.
+
+**Nothing is sent, and a test pins it.** `notificationOutbox.count()` does not move when a row is ticked — A-044's rule holds: "queued" beside a client's name reads as "no need to call her," the exact inversion of what this list is for.
+
+**A toggle, not a one-way tick.** The desk is a shared screen; a mis-tap otherwise marks a client as told until somebody else notices, and a second person cannot tell a mis-tap from a real call. "Not rung" is a plain delete on the same unique row.
+
+**Found and fixed on the way: the test's own reschedule bypassed `endAt`.** `does NOT follow a reschedule to another day` moved `startDay`/`startAt` with a raw `prisma.appointment.update()` and left the old (earlier) `endAt` in place — `appointment_end_after_start` rejects that unconditionally, not intermittently, so the test could never have passed against this schema. Fixed by moving `endAt` the same distance, matching the 1-hour visit `seed()` books.
+
+**Tests:** 18 database tests against the real constraint and the real list, plus the existing A-021 suite unchanged (attempt is `null` until somebody rings). The ones that matter: a second call re-stamps rather than appending (`callDownAttempt.count()` stays 1); the tried row does not move in the list (D-37(b) is right and this must not disturb it); confirming or rescheduling clears the row with no code written to do it; and staff can undo a mis-tap.
+
+**Left behind:** no history of attempts, by design — the append-only event log is where "she was called three times" would live if a screen ever asked for it, and nothing has yet.

@@ -5,7 +5,14 @@ export {
   loadAppointmentDetail,
   setAppointmentNotes,
 } from './detail';
-export { type UnconfirmedAppointment, listUnconfirmedTomorrow } from './call-down';
+export {
+  type CallAttempt,
+  type CallAttemptOutcome,
+  type UnconfirmedAppointment,
+  clearCallAttempt,
+  listUnconfirmedTomorrow,
+  recordCallAttempt,
+} from './call-down';
 export { FREED_LOOKBACK_DAYS, type OpenedSlot, listOpenedSlots } from './opened';
 export {
   AppointmentAlreadyMoved,

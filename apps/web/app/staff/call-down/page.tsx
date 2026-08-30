@@ -7,6 +7,7 @@ import { clientReliability } from '@bookable/db/clients';
 import { flagSentence } from '@/components/client-flag';
 import { listCallDown } from '@/lib/appointments/call-down-actions';
 import { ConfirmButton } from './confirm-button';
+import { ATTEMPT_WORDS, AttemptButtons } from './attempt-buttons';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,12 @@ export const dynamic = 'force-dynamic';
  *
  * `tomorrow` is always the SALON's tomorrow, computed from the business's
  * timezone the same way every other staff screen does — never the browser's.
+ *
+ * A-061 puts "we already rang her" on the row. The list STAYS IN TIME ORDER
+ * (D-37(b), settled by A-051 and not reopened here): a tried row greys, it
+ * does not sink. Sinking would silently reorder the list the desk is working
+ * down with the diary open beside it, which is the surprise A-051 rejected —
+ * and it would move rows under the cursor of the person pressing the buttons.
  */
 export default async function CallDownPage() {
   const staff = await requireStaff();
@@ -52,7 +59,16 @@ export default async function CallDownPage() {
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Call-down: {readableDay(tomorrow)}</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           Booked but not yet confirmed. Nothing here has been touched — a no-show tomorrow is still nobody&apos;s default.
+          Marking a call sends nothing; it records that a person picked up the phone.
         </p>
+        {/* Of who is LEFT, not of who is done. The desk's question at 4pm is
+            how many more calls, and a number that climbed as the work got done
+            would answer a question nobody asked. */}
+        {unconfirmed.length > 0 ? (
+          <p className="mt-1 text-sm font-medium">
+            Still to ring: {unconfirmed.filter((a) => a.attempt === null).length} of {unconfirmed.length}
+          </p>
+        ) : null}
       </div>
 
       {unconfirmed.length === 0 ? (
@@ -62,7 +78,15 @@ export default async function CallDownPage() {
           {unconfirmed.map((appointment) => (
             <li
               key={appointment.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700"
+              className={[
+                'flex flex-wrap items-center justify-between gap-3 rounded-md border p-4',
+                // Greyed, never removed and never moved: she is still
+                // unconfirmed, and a row that vanished on "no answer" would
+                // lose the client the desk most needs to try again.
+                appointment.attempt
+                  ? 'border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500'
+                  : 'border-zinc-300 dark:border-zinc-700',
+              ].join(' ')}
             >
               <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
                 <span className="font-medium">
@@ -87,8 +111,19 @@ export default async function CallDownPage() {
                     ⚑ {flagSentence(flags.get(appointment.clientId)!)}
                   </span>
                 ) : null}
+                {/* WHO rang and WHEN, not just that somebody did — at 4pm the
+                    useful question is whether the call was an hour ago or this
+                    morning, and "the front desk" is four people (D-9). */}
+                {appointment.attempt ? (
+                  <span className="w-full font-medium">
+                    {ATTEMPT_WORDS[appointment.attempt.outcome]}
+                    {appointment.attempt.triedByName ? ` — ${appointment.attempt.triedByName}` : ''}, at{' '}
+                    {toLabel(fromDate(appointment.attempt.triedAt), zone).time}
+                  </span>
+                ) : null}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <AttemptButtons appointmentId={appointment.id} attempt={appointment.attempt} />
                 <ConfirmButton appointmentId={appointment.id} />
                 <Link
                   href={`/staff/appointments/${appointment.id}`}

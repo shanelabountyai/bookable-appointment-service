@@ -69,6 +69,16 @@ enum Actor {
 /// A 4-chair salon has an owner and it has stylists; a permissions matrix is
 /// a product nobody here asked for and a screen nobody would maintain.
 /// `owner` is the only role that can see the money and hand out credentials.
+/// A-061 — what happened when the desk rang her. TWO outcomes, not a boolean,
+/// because they mean opposite things about what to do next: "no answer" is
+/// still on the list to try again, "left a message" is the ball in her court.
+/// Collapsing them would make a tried row unactionable, which is the state the
+/// Post-it existed to escape.
+enum CallAttemptOutcome {
+  no_answer
+  left_message
+}
+
 enum StaffRole {
   owner
   staff
@@ -164,6 +174,7 @@ model Business {
   manageTokens  ManageToken[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
+  callAttempts  CallDownAttempt[]
 }
 
 /// D-9. One shared owner credential in v1; multi-user staff auth and roles are
@@ -756,6 +767,7 @@ model Appointment {
   blocks        AppointmentBlock[]
   resourceHold  AppointmentResourceHold?
   lateCalls     RunningLateTold[]
+  callAttempts  CallDownAttempt[]
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -1096,6 +1108,52 @@ model RunningLateTold {
   /// double entry.
   @@unique([runningLateId, appointmentId])
   @@index([businessId, appointmentId])
+}
+
+/// A-061 (APPT-02) — "WE ALREADY RANG HER."
+///
+/// The call-down list is derived and right to be (A-021): nothing stores
+/// "needs a call", because confirming makes the row disappear on its own. But
+/// "we tried and she did not pick up" is derivable from NOTHING — no status
+/// changes, no message is sent, the appointment is identical afterwards. It is
+/// the exception that proves operator R-7's rule rather than breaking it, and
+/// without it the desk gets through nine of eighteen and the list at 4pm looks
+/// exactly as it did at 2pm.
+///
+/// SCOPED TO THE DAY IT WAS ABOUT (`forDay`), which is what makes "cleared when
+/// the appointment confirms or the day rolls" need no clearing code at all: a
+/// confirmed appointment is not on the list, and an appointment RESCHEDULED to
+/// another day (D-6 keeps the same row) no longer matches, so a fortnight-old
+/// "no answer" cannot resurface against next week's booking.
+model CallDownAttempt {
+  id            String @id @default(cuid())
+  businessId    String
+  appointmentId String
+
+  /// The appointment's `startDay` at the moment of the call — the salon's
+  /// calendar label, CHAR(10) like every other calendar day here. Never
+  /// `@db.Date`.
+  forDay String @db.Char(10)
+
+  outcome CallAttemptOutcome
+
+  /// D-9, again. At 4pm "who rang her?" has to have an answer, and "the front
+  /// desk" is four people.
+  triedByActor Actor
+  actorRef     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  /// ONE ROW PER APPOINTMENT PER DAY, so a second call RE-STAMPS rather than
+  /// appending: the useful fact is the most recent attempt and its outcome,
+  /// and a history of them is what the appointment's event log is for. It is
+  /// also what makes two people at the desk pressing the same button in the
+  /// same second an upsert rather than a list that reads "tried, tried".
+  @@unique([appointmentId, forDay])
+  @@index([businessId, forDay])
 }
 
 // ─────────────────────────── infrastructure ───────────────────────────
