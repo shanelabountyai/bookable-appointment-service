@@ -1828,7 +1828,7 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 
 ## A-063 — the chair follows the client
 
-**Commit:** `PENDING`
+**Commit:** `c05623b`
 
 **Proved before it was fixed, which was the row's own first instruction.** The fixture books the seeded catalogue's real services — Cut (buffers 0/10) at 13:00 with Dana, Colour (10/20) at 13:45 with Priya, one client — and it went red exactly as the reviewer predicted: two chairs held over 13:45–13:55, and with two other clients in the four-chair room, `findFreeResource` returned `null` for a third. Three clients, a full room, on the authority of a chair with nobody in it. Not a hand-built fixture — the salon ships those buffers.
 
