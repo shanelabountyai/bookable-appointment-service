@@ -1731,3 +1731,17 @@ The call-down list — everybody booked tomorrow who hasn't confirmed — has al
 **Two buttons per row now record what happened: "No answer" or "Left a message."** The tick is stamped with who made the call and when, survives a reload, and never disturbs the list's own time order — a tried row stays where its appointment time puts it. It clears itself the moment the client confirms or the appointment moves to another day, because both of those already take the row off the list for reasons that have nothing to do with the call. Nothing is sent when a row is ticked; the words on screen say a person made a phone call, because a screen that could be misread as "handled, no need to call her" would be worse than no screen at all.
 
 A mis-tap is reversible by the same hand that made it — the desk is a shared screen, and a wrong tap otherwise silently skips a client until somebody else happens to notice.
+
+## The day goes on paper, because the terminal does not come to the backwash
+
+Every salon prints the day at 8:45 and pins it at each station. If the software cannot produce that sheet, the desk prints a screenshot or writes the day out by hand — and the paper book is back, quietly collecting the walk-ins the system will never see. When the broadband goes down mid-Saturday, the sheet already pinned at the station is the difference between a normal day and closing early.
+
+**One tap from the day view now prints one page per stylist**: time, duration, client, phone, services, and the same allergy notes and reliability flags the on-screen chip carries. The right-hand third of every row is deliberately blank and ruled — that is where the walk-in, the colour formula and "back at 3" get written. A sheet with no room to write on is a sheet that gets a Post-it stuck to it.
+
+The date is printed in full on every page, year included. Yesterday's sheet in the bin looks identical to today's, and a stylist working from the wrong one is worse off than one working from none.
+
+### The interesting part is what it is *not*
+
+There is no new route, no PDF library and no second database query. The printed sheet is the same day the screen already loaded, rendered for paper instead of for pixels — because the grid itself cannot be printed at all. Its columns are absolutely positioned, which is what lets four stylists share one vertical scale, and a page break through an absolute layout drops rows without saying so. A sheet missing the 2pm client is worse than no sheet.
+
+Cancelled appointments stay on the screen and stay off the paper — the sheet is who is *coming* — and that question is answered by the same shared definition of "still occupies its slot" that the database constraint and the availability engine use, rather than by a list copied into the print code where it could rot.

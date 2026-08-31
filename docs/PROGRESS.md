@@ -1801,3 +1801,27 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 **Tests:** 18 database tests against the real constraint and the real list, plus the existing A-021 suite unchanged (attempt is `null` until somebody rings). The ones that matter: a second call re-stamps rather than appending (`callDownAttempt.count()` stays 1); the tried row does not move in the list (D-37(b) is right and this must not disturb it); confirming or rescheduling clears the row with no code written to do it; and staff can undo a mis-tap.
 
 **Left behind:** no history of attempts, by design — the append-only event log is where "she was called three times" would live if a screen ever asked for it, and nothing has yet.
+
+## A-062 — a printable day sheet
+
+**Commit:** `PENDING`
+
+**Why it is not a nicety.** Every salon the reviewer has run prints the day at 8:45 and pins it at each station. The terminal does not come to the backwash; the moment the desk prints a screenshot or writes the day out by hand, the paper book is back and it starts collecting the walk-ins the software then never sees. And when the broadband goes down mid-Saturday, the sheet already pinned at the station is the difference between a normal day and closing early.
+
+**No new route, no PDF library, no second query** — `?sheet=1` on `/staff/day`, rendering the SAME `GridModel` the grid renders, in the shape paper needs. `?provider=` carries through the "Print sheet" link, so a stylist prints her own page from the view she was already on.
+
+**The sheet REPLACES the grid; it does not hide beside it — and that was a defect caught by the gate, not a preference.** The first shape of this was `hidden print:block`: a print-only second copy of the day, always in the DOM. It broke three A-016 specs the moment it landed, with `getByText('Ada Chen') resolved to 2 elements`. `display:none` hides a node from the eye and from the accessibility tree but **not from the DOM**, so a second rendering of the same data is a second match for every text locator on the page — the three that failed, and every future one. Rendering one or the other removes the duplication rather than teaching each spec to work around it, and it is better on screen besides: the desk reads what is about to come out of the printer before spending the paper on it.
+
+**The grid could not simply be restyled for print.** Its chips are absolutely positioned — that is what lets four columns share one vertical scale — and a page break through an absolute layout drops rows silently. A sheet that is missing the 2pm client is worse than no sheet. So the sheet is a table: one row per item, `break-inside-avoid` so a row cannot be split across a page, `break-after-page` per stylist so one column is one page.
+
+**What is on the row, and the one column deliberately left empty.** Time, duration in physical minutes, client, services and phone on one line, then CLIENT-03's pinned note and CLIENT-04's flag with the same ⚑ they carry on the chip — an allergy is a safety surface wherever the day is being read. The last column is empty, bordered and 4rem tall: the walk-in, the colour formula and "back at 3" get written there. A sheet with no room to write on is a sheet that gets a Post-it stuck to it, and the Post-it is what this row exists to prevent.
+
+**The date is on every page, in full, including the year.** `Tuesday 9 June · 2026-06-09`. Yesterday's sheet in the bin looks exactly like today's, and a stylist working from the wrong one is worse than working from none. D-22's running-late delta is on the header too, stamped as *at print* — the sheet is printed at 8:45 and read all day, so it says what was true when it came off the printer rather than pretending to be live.
+
+**The cancelled filter asks `occupiesTime`, not a local list.** The sheet is who is COMING, so a cancellation belongs on the screen ("she cancelled" is what the desk needs) and not on the paper. That question is answered by the same reader the busy-set query and the constraint predicate derive from, so a ninth status cannot drift onto the sheet — or quietly vanish from it — without the one module knowing. This is the structural half of the `VERIFIED` lesson, applied to a surface rather than to a query.
+
+**One CSS trap worth naming.** `globals.css` sets `--foreground` from `prefers-color-scheme: dark`. A laptop in dark mode would have printed #ededed text — invisible, because browsers do not print the background it was legible against. The print block pins black on white and sets a 12mm `@page` margin.
+
+**Tests:** 6 e2e, all through the real page. The ones that matter: the sheet is one tap from the day and carries phone, services and duration; the grid is REPLACED, so no locator on this page resolves to two elements (the defect above, pinned); a cancelled appointment is on the screen and not on the paper; `?provider=` prints one stylist and the full view prints all of them; and the screen's controls disappear under `emulateMedia({ media: 'print' })`, because a printed "Walk-in" button is ink.
+
+**Left behind:** no Print button — `window.print()` would make this a client component to duplicate a native browser gesture the desk already knows. No free-gap rows on the sheet: the scribble column is where a walk-in gets written, and printing "45 min free" twice a page only costs rows. Both are one small edit if the desk asks.

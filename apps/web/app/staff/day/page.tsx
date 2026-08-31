@@ -11,6 +11,7 @@ import { toGridModel } from '@/lib/day/view-model';
 import { flagSentence } from '@/components/client-flag';
 import { DateJump } from '@/components/date-jump';
 import { DayGrid } from './day-grid';
+import { DaySheet } from './day-sheet';
 import { ProviderDay } from './provider-day';
 import { RoomStrip } from './room-strip';
 
@@ -29,7 +30,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function DayPage({ searchParams }: PageProps<'/staff/day'>) {
   const staff = await requireStaff();
-  const { day: dayParam, provider: providerParam } = await searchParams;
+  const { day: dayParam, provider: providerParam, sheet: sheetParam } = await searchParams;
 
   const business = await prisma.business.findUniqueOrThrow({
     where: { id: staff.businessId },
@@ -72,37 +73,46 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
   const model = toGridModel(view, now, readableDay(day), missedByClient, staffNames);
   const providerId = typeof providerParam === 'string' ? providerParam : null;
   const column = providerId ? model.columns.find((c) => c.providerId === providerId) : null;
+  // A-062. The sheet REPLACES the grid rather than sitting beside it hidden:
+  // a second copy of the day in the DOM is a second copy every text locator
+  // has to know about, for a rendering only a printer ever sees. It is also
+  // better on screen — the desk reads what is about to come out of the
+  // printer before spending the paper on it.
+  const asSheet = sheetParam === '1';
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
-            ← Staff
-          </Link>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{model.dayLabel}</h1>
-          {day === today ? null : <p className="text-sm text-zinc-500">Not today.</p>}
-        </div>
+      {/* Every control on the page is screen-only: a printed "Walk-in" button
+          is ink, and the sheet carries its own heading. */}
+      <div className="flex flex-col gap-6 print:hidden">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <div>
+            <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
+              ← Staff
+            </Link>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">{model.dayLabel}</h1>
+            {day === today ? null : <p className="text-sm text-zinc-500">Not today.</p>}
+          </div>
 
-        <nav aria-label="Day" className="flex items-center gap-3 text-sm">
-          <Link href={link(addDays(calendarDay(day), -1), providerId)} className="underline underline-offset-4">
-            ← Previous
-          </Link>
-          <Link href={link(today, providerId)} className="underline underline-offset-4">
-            Today
-          </Link>
-          <Link href={link(addDays(calendarDay(day), 1), providerId)} className="underline underline-offset-4">
-            Next →
-          </Link>
-          {/* A-039: "same again in six weeks" is one gesture, not forty-two
-              taps of Next. */}
-          <DateJump
-            basePath="/staff/day"
-            day={day}
-            extraParams={providerId ? { provider: providerId } : undefined}
-            label="Jump to a day"
-          />
-        </nav>
+          <nav aria-label="Day" className="flex items-center gap-3 text-sm">
+            <Link href={link(addDays(calendarDay(day), -1), providerId)} className="underline underline-offset-4">
+              ← Previous
+            </Link>
+            <Link href={link(today, providerId)} className="underline underline-offset-4">
+              Today
+            </Link>
+            <Link href={link(addDays(calendarDay(day), 1), providerId)} className="underline underline-offset-4">
+              Next →
+            </Link>
+            {/* A-039: "same again in six weeks" is one gesture, not forty-two
+                taps of Next. */}
+            <DateJump
+              basePath="/staff/day"
+              day={day}
+              extraParams={providerId ? { provider: providerId } : undefined}
+              label="Jump to a day"
+            />
+          </nav>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -135,6 +145,15 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         <Link href="/staff/call-down" className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
           Call-down
         </Link>
+        {/* A-062. The 8:45 errand: one column per page, pinned at each
+            station, and the thing that still works when the broadband does
+            not. `?provider=` carries through, so a stylist prints her own. */}
+        <Link
+          href={sheetLink(day, providerId)}
+          className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
+        >
+          Print sheet
+        </Link>
         {/* A-043 (WAIT-02). A cancellation that arrives on a Saturday for next
             Thursday shows on the grid only on Thursday, which the desk has no
             reason to open. The count is the whole point of the tab: a door
@@ -166,19 +185,28 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
           </Link>
         ))}
       </nav>
+      </div>
 
-      {model.columns.length === 0 ? (
-        <p className="text-zinc-500">No providers yet. Add one in Providers.</p>
-      ) : column ? (
-        <ProviderDay column={column} />
+      {asSheet ? (
+        /* `?provider=` prints that one stylist; otherwise the whole salon,
+           one column per page. */
+        <DaySheet model={model} columns={column ? [column] : model.columns} />
       ) : (
-        <DayGrid model={model} />
-      )}
+        <div className="flex flex-col gap-6">
+          {model.columns.length === 0 ? (
+            <p className="text-zinc-500">No providers yet. Add one in Providers.</p>
+          ) : column ? (
+            <ProviderDay column={column} />
+          ) : (
+            <DayGrid model={model} />
+          )}
 
-      {/* A-046. Below the columns and on both views, because the room is
-          shared: a stylist reading her own day on her phone is refused by the
-          same four chairs as the desk is. */}
-      <RoomStrip model={model} />
+          {/* A-046. Below the columns and on both views, because the room is
+              shared: a stylist reading her own day on her phone is refused by
+              the same four chairs as the desk is. */}
+          <RoomStrip model={model} />
+        </div>
+      )}
     </main>
   );
 }
@@ -187,6 +215,11 @@ function link(day: string, providerId: string | null): string {
   const params = new URLSearchParams({ day });
   if (providerId) params.set('provider', providerId);
   return `/staff/day?${params}`;
+}
+
+/** A-062's door, carrying whatever the desk was already looking at. */
+function sheetLink(day: string, providerId: string | null): string {
+  return `${link(day, providerId)}&sheet=1`;
 }
 
 /** A hand-edited `?day=` is ordinary input, not an error worth a 500. */

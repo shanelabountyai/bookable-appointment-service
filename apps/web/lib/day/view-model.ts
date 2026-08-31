@@ -28,6 +28,10 @@ export interface GridItem {
   minutes: number;
   /** "10:00–11:00" in the salon's zone. */
   time: string;
+  /** A-062. The BODY's length in PHYSICAL minutes — what the stylist has the
+   *  chair for, not the envelope `minutes` the chip is drawn from. Appointments
+   *  only. */
+  durationMinutes?: number;
   title: string;
   detail?: string;
   /** CLIENT-03's pinned note, surfaced on the chip because an allergy is a
@@ -297,6 +301,7 @@ function toColumn(
         top: f.minutesFrom(appointment.occupiesStart),
         minutes: (appointment.occupiesEnd.getTime() - appointment.occupiesStart.getTime()) / MIN,
         time: f.range(appointment.startAt, appointment.endAt),
+        durationMinutes: (appointment.endAt.getTime() - appointment.startAt.getTime()) / MIN,
         title: who,
         detail: [services, appointment.clientPhone].filter(Boolean).join(' · '),
         pinnedNote: appointment.clientNotes ?? undefined,

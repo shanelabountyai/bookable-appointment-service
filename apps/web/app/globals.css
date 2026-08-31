@@ -24,3 +24,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * A-062. The sheet comes off a laser printer, and `prefers-color-scheme: dark`
+ * would otherwise hand it #ededed text — which prints as nothing at all,
+ * because browsers do not print the background it was legible against.
+ */
+@media print {
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
