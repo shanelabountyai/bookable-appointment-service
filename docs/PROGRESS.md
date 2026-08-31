@@ -1804,7 +1804,7 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 
 ## A-062 — a printable day sheet
 
-**Commit:** `PENDING`
+**Commit:** `8d05914`
 
 **Why it is not a nicety.** Every salon the reviewer has run prints the day at 8:45 and pins it at each station. The terminal does not come to the backwash; the moment the desk prints a screenshot or writes the day out by hand, the paper book is back and it starts collecting the walk-ins the software then never sees. And when the broadband goes down mid-Saturday, the sheet already pinned at the station is the difference between a normal day and closing early.
 
