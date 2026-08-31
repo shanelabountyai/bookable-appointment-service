@@ -860,8 +860,18 @@ model AppointmentResourceHold {
   appointmentId String            @unique
   resourceId    String
   status        AppointmentStatus
+  /// A-063 — the client, or `appt:<id>` when there is none. Two overlapping
+  /// ENVELOPES are admissible only for the same holder: one person walking
+  /// from her cut to her colour has one body and needs one chair, and the
+  /// buffers between the two visits must not hold a second.
+  holderKey     String
   blockedStart  DateTime          @db.Timestamptz(3)
   blockedEnd    DateTime          @db.Timestamptz(3)
+  /// A-063 — the body inside the envelope. Two BODIES never share a chair,
+  /// whoever the holder is: D-17's mother and daughter are one client record
+  /// and two people, and they need two chairs.
+  bodyStart     DateTime          @db.Timestamptz(3)
+  bodyEnd       DateTime          @db.Timestamptz(3)
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)

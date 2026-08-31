@@ -443,8 +443,15 @@ export async function pushColumn(
     // shifting the pair puts the first on top of the second mid-transaction.
     // That was reaching the desk as a raw `23P01` in the middle of a push the
     // preview had just promised.
+    // A-063 split the resource invariant in two — envelopes may overlap for one
+    // holder, bodies never overlap for anyone — and BOTH halves need deferring
+    // for the same reason. Naming constraints one at a time is the same trap as
+    // a status enum being "one edit": the body constraint went in immediate and
+    // a legitimate push started failing as a raw 23P01 the preview had promised
+    // would work. If a third is ever added, it belongs on this list too.
     await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_block_no_overlap" DEFERRED');
     await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_resource_no_overlap" DEFERRED');
+    await tx.$executeRawUnsafe('SET CONSTRAINTS "appointment_resource_body_no_overlap" DEFERRED');
 
     const business = await tx.business.findUniqueOrThrow({
       where: { id: args.businessId },

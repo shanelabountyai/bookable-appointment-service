@@ -196,9 +196,16 @@ describe('the constraint is the enforcer, not the chooser (D-2, D-30)', () => {
     });
     const message = await prisma
       .$executeRawUnsafe(
+        // A-063 — a DIFFERENT holder and an EMPTY body, so the envelope
+        // constraint this test names is unambiguously the one that refuses.
+        // Same holder would be admissible; an overlapping body would be
+        // refused by the other constraint and the assertion below would pass
+        // for the wrong reason.
         `INSERT INTO "AppointmentResourceHold"
-           ("id","businessId","appointmentId","resourceId","status","blockedStart","blockedEnd")
-         VALUES ('sneaky',$1,$2,$3,'booked',$4::timestamptz,$5::timestamptz)`,
+           ("id","businessId","appointmentId","resourceId","status","holderKey",
+            "blockedStart","blockedEnd","bodyStart","bodyEnd")
+         VALUES ('sneaky',$1,$2,$3,'booked','somebody-else',
+                 $4::timestamptz,$5::timestamptz,$5::timestamptz,$5::timestamptz)`,
         businessId,
         other.id,
         firstRow.resourceId,

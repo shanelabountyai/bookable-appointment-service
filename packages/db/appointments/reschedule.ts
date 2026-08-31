@@ -171,6 +171,8 @@ export async function rescheduleAppointment(
               resourceId: appointment.resourceId,
               start: toDate(instant(fromDate(input.startAt) - appointment.bufferBeforeMinutes * MIN)),
               end: toDate(instant(fromDate(endAt) + appointment.bufferAfterMinutes * MIN)),
+              // A-063 — she may land back beside her own other visit.
+              holder: { key: appointment.clientId, bodyStart: input.startAt, bodyEnd: endAt },
             })
           : null;
         if (appointment.resourceId && !resourceId) {
@@ -316,6 +318,8 @@ async function loadAppointment(db: Prisma.TransactionClient | PrismaClient, id: 
       resourceId: true,
       bufferBeforeMinutes: true,
       bufferAfterMinutes: true,
+      // A-063 — which chair is admissible depends on WHOSE it is.
+      clientId: true,
       client: { select: { email: true, phone: true } },
       business: { select: { timezone: true, cancellationCutoffMinutes: true } },
       lines: {

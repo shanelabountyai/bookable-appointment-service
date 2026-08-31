@@ -1745,3 +1745,24 @@ The date is printed in full on every page, year included. Yesterday's sheet in t
 There is no new route, no PDF library and no second database query. The printed sheet is the same day the screen already loaded, rendered for paper instead of for pixels — because the grid itself cannot be printed at all. Its columns are absolutely positioned, which is what lets four stylists share one vertical scale, and a page break through an absolute layout drops rows without saying so. A sheet missing the 2pm client is worse than no sheet.
 
 Cancelled appointments stay on the screen and stay off the paper — the sheet is who is *coming* — and that question is answered by the same shared definition of "still occupies its slot" that the database constraint and the availability engine use, rather than by a list copied into the print code where it could rot.
+
+## One client can no longer fill the room on her own
+
+"Cut with Dana, then colour with Priya" is two appointments, and it should be: two stylists never collide, so the booking is simply accepted twice and the desk gets what it asked for. But a chair is held for the whole visit *including its buffers* — the ten minutes of clearing up after the cut, the ten of setting up before the colour — and those two windows overlap. For twenty minutes, one woman held two of the salon's four chairs. The room then reported itself full and turned away a real client on the strength of a chair with nobody sitting in it.
+
+Nothing in the booking rules could have caught this. Two appointments under one phone number are deliberately allowed — a mother booking for herself and her daughter is the reason — so there is no client-level check to fail, and both stylists really were free. The mistake was in the furniture accounting, and only there.
+
+**The chair now follows the client.** When one person's two visits run back to back, the buffers between them share the chair she never got out of.
+
+### The interesting part is the constraint that had to be *added* to allow it
+
+The obvious fix — let two appointments overlap if they belong to the same client — quietly recreates the same bug in the mirror. A mother and daughter are one client record and two people, in two chairs, at the same time. Permitting them to share would under-count the room by exactly one, and the next client would be seated in somebody's lap.
+
+So the single rule the database enforced became the two rules it always meant:
+
+- **Buffers may overlap, but only for one person.** Two clients still cannot share a chair for a second.
+- **Bodies never overlap, for anyone.** This one is new, applies to everybody, and is the reason the first can safely be relaxed at all.
+
+Both are enforced by the database itself rather than by a check in the booking code, so a bug in the code that chooses chairs surfaces as a refused booking instead of as two clients sent to the same seat. The chair-chooser asks the same two questions in the same shape — a chooser that is more permissive than the database hands the front desk a chair that is then rejected at the last moment, which reads as the software being broken.
+
+One more detail worth the sentence: a walk-in nobody has keyed in yet counts as her own holder, not as "no client". Otherwise every anonymous appointment in the building would have been treated as the same person, and they could all have shared one chair.

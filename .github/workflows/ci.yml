@@ -110,6 +110,13 @@ jobs:
             IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_resource_hold') THEN
               RAISE EXCEPTION 'appointment_resource_hold trigger is missing';
             END IF;
+            -- A-063: the envelope constraint above was RELAXED to let one
+            -- client's two visits share her chair across their buffers. This is
+            -- the constraint that keeps that from meaning two people may share
+            -- one — lose it and the relaxation becomes the bug it fixed.
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='appointment_resource_body_no_overlap') THEN
+              RAISE EXCEPTION 'appointment_resource_body_no_overlap constraint is missing';
+            END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='appointment_event_no_update_delete') THEN
               RAISE EXCEPTION 'AppointmentEvent append-only trigger is missing';
             END IF;

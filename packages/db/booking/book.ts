@@ -378,6 +378,11 @@ async function writeAppointment(
       resourceTypeId,
       start: blockedStart,
       end: blockedEnd,
+      // A-063 — the chair follows the client. "Cut with Dana, then colour with
+      // Priya" is two appointments (two providers never collide), and their
+      // buffers overlap: without this she holds two of four chairs for twenty
+      // minutes and the room refuses a real client on the strength of it.
+      holder: { key: input.clientId ?? null, bodyStart: input.startAt, bodyEnd: endAt },
     });
     if (!resourceId) throw new NoResourceFree(await resourceTypeName(tx, input.serviceIds));
   }

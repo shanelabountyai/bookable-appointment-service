@@ -143,6 +143,8 @@ export async function changeVisitServices(
             startAt: true,
             endAt: true,
             resourceId: true,
+            // A-063 — which chair is admissible depends on WHOSE it is.
+            clientId: true,
             isOverride: true,
             bufferBeforeMinutes: true,
             bufferAfterMinutes: true,
@@ -244,7 +246,13 @@ export async function changeVisitServices(
         // separated.
         const blockedStart = toDate(instant(fromDate(appointment.startAt) - visit.bufferBeforeMinutes * MIN));
         const blockedEnd = toDate(instant(fromDate(endAt) + visit.bufferAfterMinutes * MIN));
-        const resourceId = await chairFor(tx, appointment, serviceIds, blockedStart, blockedEnd);
+        const resourceId = await chairFor(tx, appointment, serviceIds, blockedStart, blockedEnd, {
+          // A-063 — the body is what a longer visit actually grows; the
+          // envelope grows with it, and only the buffers may share.
+          key: appointment.clientId,
+          bodyStart: appointment.startAt,
+          bodyEnd: endAt,
+        });
 
         const written = await tx.appointment.updateMany({
           // CONDITIONAL ON THE END WE DECIDED AGAINST — two desks adding two
@@ -455,6 +463,7 @@ async function chairFor(
   serviceIds: string[],
   start: Date,
   end: Date,
+  holder: { key: string | null; bodyStart: Date; bodyEnd: Date },
 ): Promise<string | null> {
   // An override holds no chair, by the same reasoning as D-8's zero-width
   // range: the room must never be what refuses staff a knowing decision.
@@ -470,12 +479,13 @@ async function chairFor(
       resourceId: appointment.resourceId,
       start,
       end,
+      holder,
     });
     if (!kept) throw new NoResourceFree(await resourceTypeName(tx, serviceIds));
     return kept;
   }
 
-  const found = await findFreeResource(tx, { businessId: appointment.businessId, resourceTypeId, start, end });
+  const found = await findFreeResource(tx, { businessId: appointment.businessId, resourceTypeId, start, end, holder });
   if (!found) throw new NoResourceFree(await resourceTypeName(tx, serviceIds));
   return found;
 }
