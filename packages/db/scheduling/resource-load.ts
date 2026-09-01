@@ -33,9 +33,23 @@ export interface Span {
   end: Instant;
 }
 
+/** A hold, with the chair it is on — because after A-063 two holds can be one
+ *  chair, and the room's capacity question is about CHAIRS. */
+export interface ChairHold extends Span {
+  resourceId: string;
+}
+
 /**
- * The spans in which at least `capacity` of the holds overlap — i.e. the room
- * is full and the next client cannot be seated.
+ * The spans in which every chair is taken — i.e. the room is full and the next
+ * client cannot be seated.
+ *
+ * COUNTS CHAIRS, NOT HOLDS, and that distinction is the whole of checkpoint 5's
+ * third finding. A-063 made one client's two appointments share a single chair
+ * through the buffers between them, so from that moment "how many holds
+ * overlap" and "how many chairs are occupied" stopped being the same number.
+ * Counting holds declared a four-chair room full with three chairs in use and
+ * refused a real client — which is the exact harm A-063's row set out to
+ * remove, still alive on the surface that decides whether a time is OFFERED.
  *
  * Half-open `[start, end)` on both sides, like everything else in this project:
  * a hold ending at 11:00 frees its chair for one starting at 11:00, so the end
@@ -47,27 +61,35 @@ export interface Span {
  * "never full", it is ALWAYS full, and the caller handles that case explicitly
  * because it needs the query window to express it.
  */
-export function fullSpans(holds: readonly Span[], capacity: number): Span[] {
+export function fullSpans(holds: readonly ChairHold[], capacity: number): Span[] {
   if (capacity <= 0) return [];
 
-  const events: { t: number; delta: number }[] = [];
+  const events: { t: number; delta: number; resourceId: string }[] = [];
   for (const h of holds) {
     // A zero-width hold occupies nothing. Overrides hold no chair at all
     // (D-30), so this should not arise — but a hold that did slip through
     // would otherwise open and close a full span at the same instant.
     if (h.end <= h.start) continue;
-    events.push({ t: h.start, delta: 1 }, { t: h.end, delta: -1 });
+    events.push({ t: h.start, delta: 1, resourceId: h.resourceId }, { t: h.end, delta: -1, resourceId: h.resourceId });
   }
   // `delta` ascending breaks the tie so -1 lands before +1.
   events.sort((a, b) => a.t - b.t || a.delta - b.delta);
 
   const spans: Span[] = [];
-  let concurrent = 0;
+  // Holds open per chair. A chair counts ONCE however many of one client's
+  // holds are sitting on it; `occupied` is how many chairs have at least one.
+  const perChair = new Map<string, number>();
+  let occupied = 0;
   let openedAt: number | null = null;
   for (const e of events) {
-    concurrent += e.delta;
-    if (openedAt === null && concurrent >= capacity) openedAt = e.t;
-    else if (openedAt !== null && concurrent < capacity) {
+    const before = perChair.get(e.resourceId) ?? 0;
+    const after = before + e.delta;
+    perChair.set(e.resourceId, after);
+    if (before === 0 && after > 0) occupied += 1;
+    else if (before > 0 && after === 0) occupied -= 1;
+
+    if (openedAt === null && occupied >= capacity) openedAt = e.t;
+    else if (openedAt !== null && occupied < capacity) {
       spans.push({ start: instant(openedAt), end: instant(e.t) });
       openedAt = null;
     }
@@ -124,11 +146,15 @@ export async function findRoomFullIntervals(
       blockedEnd: { gt: args.windowStart },
       ...(args.excludeAppointmentId ? { appointmentId: { not: args.excludeAppointmentId } } : {}),
     },
-    select: { blockedStart: true, blockedEnd: true },
+    select: { blockedStart: true, blockedEnd: true, resourceId: true },
   });
 
   return fullSpans(
-    holds.map((h) => ({ start: fromDate(h.blockedStart), end: fromDate(h.blockedEnd) })),
+    holds.map((h) => ({
+      start: fromDate(h.blockedStart),
+      end: fromDate(h.blockedEnd),
+      resourceId: h.resourceId,
+    })),
     capacity,
   );
 }

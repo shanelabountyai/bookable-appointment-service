@@ -171,6 +171,22 @@ export interface EndSeriesInput extends PlanArgs {
   reason: string;
   /** D-32: unticked means tell her. `false` = "I've already rung them". */
   notify?: boolean;
+  /**
+   * A-060's escape, reached for the whole action at once (checkpoint 5).
+   *
+   * "End this series here" is the one cancellation the SALON usually causes —
+   * the stylist is leaving, the standing 2pm is going — and it is also how the
+   * product moves a standing appointment ("end here, rebook from here"). Both
+   * of those stamped `cancelled_late` on a client who did nothing, on her
+   * record for twelve months, because the classification was derived from the
+   * clock alone and there was no way to say otherwise.
+   *
+   * `true` writes `cancelled` for every occurrence and records the overruled
+   * classification on the ones that were genuinely inside the window, exactly
+   * as the single-appointment escape does. The reason is already required for
+   * this action, so it satisfies `override`'s own demand for one.
+   */
+  onUs?: boolean;
 }
 
 export async function endSeriesHere(prisma: PrismaClient, input: EndSeriesInput): Promise<EndSeriesResult | null> {
@@ -183,10 +199,17 @@ export async function endSeriesHere(prisma: PrismaClient, input: EndSeriesInput)
     try {
       await transitionAppointment(prisma, {
         appointmentId: row.appointmentId,
-        // The cutoff answer from the plan, so the status written is the one
-        // the desk was shown. §7 lets staff write either unconditionally, so
-        // nothing downstream re-decides this.
-        to: row.insideCutoff ? 'cancelled_late' : 'cancelled',
+        // A-060 owns the classification, for the same reason it took it off
+        // the single cancel button: the cutoff is resolved from real rows in
+        // `transitionAppointment`, and a second copy of the arithmetic here
+        // could disagree with it. `to` is read only by `override`.
+        //
+        // This file used to decide it from `row.insideCutoff` and say so in a
+        // comment — "§7 lets staff write either unconditionally, so nothing
+        // downstream re-decides this". That was true when A-057 shipped and
+        // A-060 is the item that stopped it being true.
+        to: 'cancelled',
+        cancellation: input.onUs ? 'override' : 'derive',
         actor: input.actor,
         now: input.now,
         reason: input.reason,

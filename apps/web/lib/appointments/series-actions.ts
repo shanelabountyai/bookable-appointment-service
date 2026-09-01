@@ -66,11 +66,17 @@ export async function endSeries(_previous: SeriesEndState, formData: FormData): 
   // first, so the texts do not contradict the person she just spoke to.
   const notify = formData.get('skipNotice') === null;
 
+  // A-060's escape, for the whole action (checkpoint 5). Ticked means the
+  // salon caused this — the stylist is leaving, or the standing slot is
+  // moving — and none of it counts against her.
+  const onUs = formData.get('onUs') !== null;
+
   const result = await endSeriesHere(prisma, {
     businessId: staff.businessId,
     appointmentId,
     reason,
     notify,
+    onUs,
     actor: staffActor(staff.id),
     now: new Date(),
   });
@@ -87,7 +93,11 @@ export async function endSeries(_previous: SeriesEndState, formData: FormData): 
     .filter((row) => row.problem)
     .map((row) => `${readableInstant(row.startAt, timezone)} (${PROBLEMS[row.problem!] ?? 'left as it was'})`)
     .join(', ');
-  const late = result.rows.filter((row) => !row.problem && row.insideCutoff).length;
+  // Only when the desk did NOT take responsibility: with `onUs` every
+  // occurrence lands `cancelled`, and reporting "3 inside the cancellation
+  // window" after choosing "this one's on us" describes the opposite of what
+  // was written.
+  const late = onUs ? 0 : result.rows.filter((row) => !row.problem && row.insideCutoff).length;
 
   if (result.ended === 0) {
     return { ok: false, message: `Nothing was cancelled${left ? `: ${left}` : ''}.` };

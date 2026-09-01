@@ -97,6 +97,37 @@ describe('A-063 — the chair follows the client', () => {
     expect(new Set(held.map((h) => h.resourceId)).size).toBe(1);
   });
 
+  /**
+   * CHECKPOINT 5, FINDING 3. The test below this one asks `findFreeResource`
+   * — the CHOOSER — and passed throughout. It could not see that the room's
+   * AVAILABILITY model still counted holds rather than chairs, so the client
+   * was never offered the time to be chosen for. The chooser is asked at
+   * submit; this is asked before anything reaches the screen.
+   */
+  it('still OFFERS the room a shared chair leaves free', async () => {
+    // Two chairs, so the room binds without needing eight clients.
+    const spare = await prisma.resource.findMany({
+      where: { businessId, active: true },
+      orderBy: { name: 'asc' },
+      skip: 2,
+    });
+    await prisma.resource.updateMany({ where: { id: { in: spare.map((r) => r.id) } }, data: { active: false } });
+
+    const nadia = await client('Nadia Okafor');
+    await book('Dana', 'Cut', '2026-06-13T13:00:00-05:00', nadia.id);
+    await book('Priya', 'Colour', '2026-06-13T13:45:00-05:00', nadia.id);
+
+    // One chair of the two is hers; the other is empty. Marcus is free and so
+    // is a chair, so Ben is bookable — and was refused before this was fixed,
+    // because her two holds counted as two chairs.
+    const held = await holdsOver('2026-06-13T13:45:00-05:00', '2026-06-13T13:55:00-05:00');
+    expect(new Set(held.map((h) => h.resourceId)).size).toBe(1);
+
+    const ben = await client('Ben Rios');
+    const booked = await book('Marcus', 'Cut', '2026-06-13T13:45:00-05:00', ben.id);
+    expect(booked.id).toBeTruthy();
+  });
+
   it('does not let one client fill the room and refuse a real one', async () => {
     const nadia = await client('Nadia Okafor');
     await book('Dana', 'Cut', '2026-06-13T13:00:00-05:00', nadia.id);

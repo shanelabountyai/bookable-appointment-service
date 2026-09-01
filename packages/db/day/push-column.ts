@@ -117,6 +117,9 @@ export async function previewPush(
       resourceId: true,
       blockedStart: true,
       blockedEnd: true,
+      // A-063 (checkpoint 5). The holder, so the planner can ask the two
+      // questions the database asks rather than the one it used to.
+      clientId: true,
       client: { select: { name: true } },
     },
   });
@@ -175,6 +178,21 @@ export async function previewPush(
     start: fromDate(row.appointment.blockedStart) + shift,
     end: fromDate(row.appointment.blockedEnd) + shift,
   });
+
+  /** The BODY — her actually in the chair, buffers excluded. A-063 split the
+   *  one chair invariant into two, and the planner has to ask both: envelopes
+   *  may overlap for one holder, bodies never overlap for anyone. */
+  const bodyBefore = (row: Row) => ({
+    start: fromDate(row.appointment.startAt),
+    end: fromDate(row.appointment.endAt),
+  });
+  const bodyAfter = (row: Row) => ({
+    start: fromDate(row.appointment.startAt) + shift,
+    end: fromDate(row.appointment.endAt) + shift,
+  });
+  /** `COALESCE(clientId, 'appt:' || id)` — the same expression the hold-writing
+   *  trigger uses. A nullable key would make every unnamed walk-in one holder. */
+  const holderOf = (row: Row) => row.appointment.clientId ?? `appt:${row.appointment.id}`;
 
   const rows: Row[] = appointments.map((appointment) => ({
     appointment,
@@ -238,6 +256,9 @@ export async function previewPush(
       staying: row.problem !== undefined,
       before: holdBefore(row),
       after: holdAfter(row),
+      holderKey: holderOf(row),
+      bodyBefore: bodyBefore(row),
+      bodyAfter: bodyAfter(row),
     }));
 
   let chairs = new Map<string, string>();
@@ -295,8 +316,10 @@ interface RoomState {
    *  chair is "the first free one". */
   byType: Map<string, string[]>;
   /** Holds belonging to appointments that are not part of this push at all:
-   *  the other stylists' clients, whose chairs are simply not available. */
-  others: (Span & { resourceId: string })[];
+   *  the other stylists' clients, whose chairs are simply not available —
+   *  except to the SAME holder, which is what A-063 made true of the database
+   *  and checkpoint 5 found the planner still did not know. */
+  others: (Span & { resourceId: string; holderKey: string; body: Span })[];
 }
 
 /** The room, as one read, for the whole push (A-034). */
@@ -320,7 +343,14 @@ async function loadRoom(
         blockedEnd: { gt: toDate(instant(args.windowStart)) },
         appointmentId: { notIn: args.excludeAppointmentIds },
       },
-      select: { resourceId: true, blockedStart: true, blockedEnd: true },
+      select: {
+        resourceId: true,
+        blockedStart: true,
+        blockedEnd: true,
+        holderKey: true,
+        bodyStart: true,
+        bodyEnd: true,
+      },
     }),
   ]);
 
@@ -336,6 +366,8 @@ async function loadRoom(
       resourceId: h.resourceId,
       start: fromDate(h.blockedStart),
       end: fromDate(h.blockedEnd),
+      holderKey: h.holderKey,
+      body: { start: fromDate(h.bodyStart), end: fromDate(h.bodyEnd) },
     })),
   };
 }
@@ -359,20 +391,55 @@ async function loadRoom(
  * than as a wrong answer. Upgrade to a matching if a real salon ever hits it.
  */
 function planChairs(
-  rows: { id: string; resourceId: string | null; staying: boolean; before: Span; after: Span }[],
+  rows: {
+    id: string;
+    resourceId: string | null;
+    staying: boolean;
+    before: Span;
+    after: Span;
+    holderKey: string;
+    bodyBefore: Span;
+    bodyAfter: Span;
+  }[],
   room: RoomState,
 ): { chairs: Map<string, string> } | { blocked: string } {
-  const busy = new Map<string, Span[]>();
-  const occupy = (resourceId: string, span: Span) =>
-    busy.set(resourceId, [...(busy.get(resourceId) ?? []), span]);
+  interface Held extends Span {
+    holderKey: string;
+    body: Span;
+  }
+  const busy = new Map<string, Held[]>();
+  const occupy = (resourceId: string, held: Held) =>
+    busy.set(resourceId, [...(busy.get(resourceId) ?? []), held]);
+
   // Half-open on both sides, like every other range in this project: a hold
   // ending at 15:00 frees its chair for one starting at 15:00.
-  const free = (resourceId: string, span: Span) =>
-    !(busy.get(resourceId) ?? []).some((held) => span.start < held.end && held.start < span.end);
+  const overlaps = (a: Span, b: Span) => a.start < b.end && b.start < a.end;
+
+  /**
+   * THE TWO QUESTIONS THE DATABASE ASKS, ASKED IN THE SAME SHAPE (A-063).
+   *
+   * This used to be one question — "does anything overlap?" — which is the
+   * planner A-063 left behind as "strictly stricter than the database, a
+   * seating cosmetic". Checkpoint 5 proved it is not cosmetic: a client whose
+   * cut and colour share one chair was counted as needing two, and on a full
+   * Saturday the push reported `no-chair-free` and left her behind for a chair
+   * she was sitting in. A planner stricter than the constraint does not fail
+   * safe, it refuses a move the salon needs most when it is busiest.
+   *
+   * - Envelopes may overlap only for the SAME holder (`holderKey WITH <>`).
+   * - Bodies never overlap, whoever the holder is — the stronger of the two.
+   */
+  const free = (resourceId: string, envelope: Span, body: Span, holderKey: string) =>
+    !(busy.get(resourceId) ?? []).some(
+      (held) =>
+        overlaps(envelope, held) && (held.holderKey !== holderKey || overlaps(body, held.body)),
+    );
 
   for (const hold of room.others) occupy(hold.resourceId, hold);
   for (const row of rows) {
-    if (row.staying && row.resourceId) occupy(row.resourceId, row.before);
+    if (row.staying && row.resourceId) {
+      occupy(row.resourceId, { ...row.before, holderKey: row.holderKey, body: row.bodyBefore });
+    }
   }
 
   const chairs = new Map<string, string>();
@@ -384,11 +451,11 @@ function planChairs(
     // Her own chair first — but only if it is still assignable, so a chair
     // retired since she was booked is not carried forward by the preference.
     const options = assignable.includes(row.resourceId) ? [row.resourceId, ...assignable] : assignable;
-    const chair = options.find((id) => free(id, row.after));
+    const chair = options.find((id) => free(id, row.after, row.bodyAfter, row.holderKey));
     if (!chair) return { blocked: row.id };
 
     chairs.set(row.id, chair);
-    occupy(chair, row.after);
+    occupy(chair, { ...row.after, holderKey: row.holderKey, body: row.bodyAfter });
   }
   return { chairs };
 }

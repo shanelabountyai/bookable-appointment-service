@@ -71,6 +71,16 @@ export function EndSeriesPanel({ appointmentId }: { appointmentId: string }) {
                   className="rounded-md border border-zinc-400 bg-transparent px-2 py-1 dark:border-zinc-600"
                 />
               </label>
+              {/* A-060's escape, for the whole action (checkpoint 5). Ending a
+                  standing booking is usually the SALON's doing — the stylist
+                  is leaving, or the 2pm is moving — and the clock cannot tell
+                  that from a client who rang an hour before. Ticking it writes
+                  an ordinary cancellation for every occurrence and records what
+                  was overruled, so none of it lands on her record. */}
+              <label className="flex items-center gap-2">
+                <input type="checkbox" name="onUs" />
+                This one is on us — do not count it against her
+              </label>
               {/* D-32: UNTICKED means she is told. The box exists for the desk
                   that rang her first — it is never the default. */}
               <label className="flex items-center gap-2">

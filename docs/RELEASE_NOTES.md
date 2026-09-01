@@ -1788,3 +1788,35 @@ The home page doubles as the readiness check the test runner uses to decide the 
 The fix is not a workaround for the test runner. It is the behaviour the product should have had anyway: **a brand-new installation with nothing in it now answers with a sentence explaining it is not set up yet**, rather than a stack trace served to whoever arrives first. A test now truncates the database and asserts the front door still answers, so this cannot come back.
 
 The salon's address, phone and email became real fields on the business rather than placeholders in the page — rendered only when they are filled in, so an unconfigured site shows no address instead of the words `[YOUR ADDRESS]`, and the phone link dials the number rather than the punctuation around it.
+
+## A scheduled walk through the product, and what it found
+
+Every time a phase of work closes, the whole product gets walked end to end before anything new is scoped — not the feature just built, but the *seams between* features. Five of these walks have now happened. All five found something, and every one of those things was inside work already marked finished and passing its own tests.
+
+This walk found three, and they turned out to be one mistake wearing three faces.
+
+### One change, three places that never heard about it
+
+The previous phase taught the salon's booking rules that a woman having a cut and then a colour occupies **one** chair, not two — the twenty minutes of clearing up after the cut and setting up before the colour are the same twenty minutes, with the same person sitting in the same seat. The database was taught this. The code that assigns chairs was taught this. Every path that *writes* an appointment was taught this, carefully.
+
+Three places that *predict* what the room looks like were not.
+
+The most serious of them decides whether a time is offered to a client at all. It counted appointments-holding-chairs rather than chairs-being-held, so a room with a chair standing genuinely empty announced itself full and quietly stopped selling the slot. Which is, word for word, the problem the previous phase set out to fix — solved where a booking is written, still running where a booking is offered. Its own tests could not catch it, because they asked "could she be seated?" and the thing that was broken was "is she ever shown the time?"
+
+The second refused to move a running-late stylist's afternoon — the entire column, stuck — because one client appeared to need two chairs and the room had run out. On a quiet day, invisible. On the Saturday the feature exists for, it fails.
+
+**The lesson has been written into the project's own rules**: changing what the database permits means finding everything that *predicts* the answer, not just everything that writes it. A prediction that is stricter than the real rule does not fail safely — it refuses work the business needs, and it does so most reliably when the business is busiest.
+
+### The client who was marked unreliable for asking to move her appointment
+
+Separately, and less subtly.
+
+A standing appointment — the same chair, the same stylist, every four weeks — can be ended in one action. Ending it is also the supported way to *move* one: end the series here, rebook it from there.
+
+Cancellations get classified automatically as ordinary or late, and late ones sit on a client's record for a year where the front desk reads them. That classification was derived purely from the clock, which is right when a client rings an hour before. It is wrong when the salon is the one calling it off — the stylist is leaving, or the standing 2pm is being moved — and there was no way to say so.
+
+So a client who rang to shift her standing appointment by half an hour was recorded as cancelling late, and wore it for twelve months.
+
+The single-appointment version of this had already been fixed, with a deliberate escape for the desk: *she gave us proper notice*, or *this one's on us*. The bulk version was written first and never learned about it. It now uses the same machinery and offers the same escape — and, as before, still records what was overruled and by whom, because writing an honest status is not the same as writing no evidence.
+
+Worth being precise about the size of it: one appointment per series, not all of them, and it never blocked anyone from booking online. It simply told the front desk something untrue about a client, for a year.

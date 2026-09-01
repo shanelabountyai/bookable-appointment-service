@@ -31,54 +31,69 @@ const NOW = at('2026-06-09T08:00:00-05:00');
  *  wall clock, which is why the numbers below are bare offsets. */
 const t = (ms: number) => instant(ms);
 
+/** A hold, on a named chair. Every existing case below puts each hold on its
+ *  OWN chair, which is what "count the holds" used to mean — so they read the
+ *  same and still say which chair, which is the distinction A-063 introduced
+ *  and checkpoint 5 found this function had never learned. */
+const h = (start: number, end: number, resourceId: string) => ({
+  start: t(start),
+  end: t(end),
+  resourceId,
+});
+
 describe('fullSpans — the cardinality question, collapsed into intervals', () => {
   it('is empty while a chair remains', () => {
-    expect(fullSpans([{ start: t(0), end: t(100) }], 2)).toEqual([]);
+    expect(fullSpans([h(0, 100, 'c1')], 2)).toEqual([]);
   });
 
   it('opens when the last chair goes and closes when one comes back', () => {
-    expect(
-      fullSpans(
-        [
-          { start: t(0), end: t(100) },
-          { start: t(40), end: t(60) },
-        ],
-        2,
-      ),
-    ).toEqual([{ start: t(40), end: t(60) }]);
+    expect(fullSpans([h(0, 100, 'c1'), h(40, 60, 'c2')], 2)).toEqual([{ start: t(40), end: t(60) }]);
   });
 
   it('does NOT stack a hold ending at t with one starting at t — half-open, or the salon loses a seating', () => {
     // With '[]' semantics these two would read as two concurrent holds at
     // t=50 and the room would look full for an instant every hour.
-    expect(
-      fullSpans(
-        [
-          { start: t(0), end: t(50) },
-          { start: t(50), end: t(100) },
-        ],
-        1,
-      ),
-    ).toEqual([
+    expect(fullSpans([h(0, 50, 'c1'), h(50, 100, 'c2')], 1)).toEqual([
       { start: t(0), end: t(50) },
       { start: t(50), end: t(100) },
     ]);
   });
 
   it('merges a run of overlapping holds into one full span rather than one per hold', () => {
-    expect(
-      fullSpans(
-        [
-          { start: t(0), end: t(60) },
-          { start: t(30), end: t(90) },
-        ],
-        1,
-      ),
-    ).toEqual([{ start: t(0), end: t(90) }]);
+    expect(fullSpans([h(0, 60, 'c1'), h(30, 90, 'c2')], 1)).toEqual([{ start: t(0), end: t(90) }]);
   });
 
   it('reports nothing for a capacity of zero — that case is the caller’s, and means ALWAYS full', () => {
     expect(fullSpans([], 0)).toEqual([]);
+  });
+
+  /**
+   * CHECKPOINT 5, FINDING 3 — the sharpest of the three, and the one that
+   * reached a client.
+   *
+   * A-063 made one woman's cut and colour share ONE chair through the buffers
+   * between them. From that moment "how many holds overlap" and "how many
+   * chairs are taken" stopped being the same number, and this function was
+   * still counting holds. So the room declared itself full with a chair
+   * standing empty and the booking flow stopped OFFERING the time — which is
+   * word for word the harm A-063's row set out to remove, surviving on the one
+   * surface that decides whether a client is ever shown the slot.
+   *
+   * A-063's own tests could not see it: they asked `findFreeResource` (the
+   * chooser) and the constraint. Nothing asked the thing that decides what is
+   * on the screen.
+   */
+  it('counts CHAIRS, not holds — one client on one chair does not fill a two-chair room', () => {
+    // Her cut and her colour, overlapping buffers, the same chair.
+    expect(fullSpans([h(0, 60, 'c1'), h(50, 120, 'c1')], 2)).toEqual([]);
+  });
+
+  it('a shared chair still fills a ONE-chair room, because it is genuinely taken', () => {
+    expect(fullSpans([h(0, 60, 'c1'), h(50, 120, 'c1')], 1)).toEqual([{ start: t(0), end: t(120) }]);
+  });
+
+  it('two clients on two chairs fill a two-chair room exactly as before', () => {
+    expect(fullSpans([h(0, 60, 'c1'), h(50, 120, 'c2')], 2)).toEqual([{ start: t(50), end: t(60) }]);
   });
 });
 

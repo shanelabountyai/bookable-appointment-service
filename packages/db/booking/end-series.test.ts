@@ -260,6 +260,82 @@ describe('the preview, which is the whole reason D-35 thought this was impossibl
     ]);
   });
 
+  /**
+   * CHECKPOINT 5, FINDING 1 — the seam between this item and A-060.
+   *
+   * A-057 shipped before A-060 and classified from the clock alone, with a
+   * comment saying "§7 lets staff write either unconditionally, so nothing
+   * downstream re-decides this". A-060 is the item that stopped that being
+   * true: it made one cancel button derive the status AND gave the desk an
+   * escape for the cancellations the SALON causes, precisely so those never
+   * land on an innocent client's rolling count.
+   *
+   * Ending a standing booking is the cancellation the salon causes most often
+   * — the stylist is leaving — and it is also how this product MOVES a
+   * standing appointment ("end here, rebook from here"). Both stamped a late
+   * cancellation on a client who did nothing, for twelve months.
+   */
+  it('does not count a salon-caused series end against the client', async () => {
+    const created = await sixTuesdays();
+    const occurrences = await prisma.appointment.findMany({
+      where: { seriesId: created.seriesId },
+      orderBy: { startAt: 'asc' },
+      select: { id: true },
+    });
+    const ringing = at('2026-04-27T15:00:00-05:00');
+
+    const result = await endSeriesHere(prisma, {
+      businessId,
+      appointmentId: occurrences[2]!.id,
+      reason: 'Dana is leaving us — we are ending the standing Tuesday',
+      onUs: true,
+      actor: ACTOR,
+      now: ringing,
+    });
+    expect(result?.ended).toBe(4);
+
+    // The one inside the window would have been `cancelled_late` and is not.
+    expect(await statuses(created.seriesId)).toEqual([
+      'booked',
+      'booked',
+      'cancelled',
+      'cancelled',
+      'cancelled',
+      'cancelled',
+    ]);
+
+    // ...and the overrule is RECORDED, so A-060's drill-down can still ask how
+    // many were overruled and by whom. Writing an honest status is not the
+    // same as writing no evidence.
+    const events = await prisma.appointmentEvent.findMany({
+      where: { appointmentId: occurrences[2]!.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    const overruled = events.filter((e) => (e.payload as { overruled?: string })?.overruled);
+    expect(overruled).toHaveLength(1);
+    expect((overruled[0]!.payload as { overruled?: string }).overruled).toBe('cancelled_late');
+  });
+
+  it('still counts an ordinary series end against her, escape untouched', async () => {
+    const created = await sixTuesdays();
+    const occurrences = await prisma.appointment.findMany({
+      where: { seriesId: created.seriesId },
+      orderBy: { startAt: 'asc' },
+      select: { id: true },
+    });
+
+    // Deliberately NOT passing `onUs`: she rang an hour before, and that is a
+    // late cancellation. The escape must not have quietly become the default.
+    await endSeriesHere(prisma, {
+      businessId,
+      appointmentId: occurrences[2]!.id,
+      reason: 'She is moving away',
+      actor: ACTOR,
+      now: at('2026-04-27T15:00:00-05:00'),
+    });
+    expect((await statuses(created.seriesId))[2]).toBe('cancelled_late');
+  });
+
   it('NAMES the occurrence it will not cancel rather than silently skipping it', async () => {
     const created = await sixTuesdays();
     const occurrences = await prisma.appointment.findMany({

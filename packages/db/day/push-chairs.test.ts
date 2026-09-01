@@ -110,6 +110,94 @@ const push = (minutes: number, fromIso = '2026-06-09T14:00:00-05:00') =>
 const chairOf = async (id: string) =>
   (await prisma.appointment.findUniqueOrThrow({ where: { id }, select: { resourceId: true } })).resourceId;
 
+/**
+ * CHECKPOINT 5, FINDING 2 — the seam between this planner and A-063.
+ *
+ * A-063 taught the DATABASE that one client's two appointments may share a
+ * chair through the buffers between them, and split the one chair invariant
+ * into two: envelopes may overlap for the same holder, bodies never overlap
+ * for anyone. It left this planner behind, recorded as "strictly stricter than
+ * the database, a seating cosmetic — nothing refuses".
+ *
+ * It refuses. A planner that counts one woman as needing two chairs reports
+ * `no-chair-free` on a full Saturday and leaves her behind — for a chair she
+ * is sitting in — which is exactly when a running-late column most needs to
+ * move. Stricter than the constraint does not fail safe here.
+ *
+ * Strangers are not re-tested: the constraint itself refuses them and A-063's
+ * own database tests pin that. What these pin is the planner agreeing with the
+ * constraint in BOTH directions — sharing where it is allowed, and refusing on
+ * the body axis where the relaxation does not reach.
+ */
+describe('checkpoint 5 — the push and the shared chair', () => {
+  /** Nadia's cut and colour: overlapping buffers, a clear gap between bodies.
+   *  Buffers are deliberately UNEQUAL (30 after the cut, 15 before the colour)
+   *  — equal ones hide whose-buffer bugs. */
+  const nadiasTwoVisits = async () => {
+    const chairType = await prisma.resourceType.findFirstOrThrow({ where: { businessId } });
+    const colour = await prisma.service.create({
+      data: {
+        businessId,
+        name: 'Colour',
+        durationMinutes: 60,
+        priceCents: 12000,
+        bufferBeforeMinutes: 15,
+        requiredResourceTypeId: chairType.id,
+      },
+    });
+    await prisma.serviceProvider.create({ data: { businessId, serviceId: colour.id, providerId: priyaId } });
+    await prisma.service.update({ where: { id: cutId }, data: { bufferAfterMinutes: 30 } });
+    const nadia = await prisma.client.create({ data: { businessId, name: 'Nadia Okafor' } });
+
+    // Cut    14:00-15:00, envelope 14:00-15:30.
+    const cut = await bookAppointment(prisma, {
+      businessId, providerId: danaId, serviceIds: [cutId], clientId: nadia.id,
+      startAt: at('2026-06-09T14:00:00-05:00'), now: NOW, actor: ACTOR, audience: 'staff',
+    });
+    // Colour 15:30-16:30, envelope 15:15-16:30 — the buffers overlap by 15
+    // minutes, the bodies do not touch. A-063 seats both in one chair.
+    const colour2 = await bookAppointment(prisma, {
+      businessId, providerId: priyaId, serviceIds: [colour.id], clientId: nadia.id,
+      startAt: at('2026-06-09T15:30:00-05:00'), now: NOW, actor: ACTOR, audience: 'staff',
+    });
+    expect(await chairOf(cut.id)).toBe(await chairOf(colour2.id));
+
+    // The OTHER chair is genuinely taken, so her own is the only answer left.
+    await book(marcusId, '2026-06-09T15:00:00-05:00');
+    return { cut, colour: colour2 };
+  };
+
+  it('moves a client whose own colour is holding the chair she needs', async () => {
+    const { cut, colour } = await nadiasTwoVisits();
+
+    const preview = await previewPush(prisma, {
+      businessId, providerId: danaId, day: DAY,
+      fromAt: at('2026-06-09T14:00:00-05:00'), minutes: 5,
+    });
+    expect(preview.candidates.map((c) => c.problem)).toEqual([undefined]);
+    expect(preview.canPush).toBe(true);
+
+    const result = await push(5);
+    expect(result.moved).toBe(1);
+    expect(result.leftBehind).toEqual([]);
+    // She keeps the chair she is in — sharing is a preference, not a shuffle.
+    expect(await chairOf(cut.id)).toBe(await chairOf(colour.id));
+  });
+
+  it('still refuses when the shift would put her own two bodies in one chair', async () => {
+    await nadiasTwoVisits();
+
+    // +40 drags the cut's BODY (14:40-15:40) across the colour's (15:30-16:30).
+    // The relaxation is on the envelope only: she cannot be in two chairs, and
+    // she cannot be in one chair twice either.
+    const preview = await previewPush(prisma, {
+      businessId, providerId: danaId, day: DAY,
+      fromAt: at('2026-06-09T14:00:00-05:00'), minutes: 40,
+    });
+    expect(preview.candidates[0]!.problem).toBe('no-chair-free');
+  });
+});
+
 describe('A-034 — the collision is reachable', () => {
   /**
    * THE FIXTURE THE BACKLOG ROW ASKED FOR FIRST. Nothing exotic: one stylist,
