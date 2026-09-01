@@ -1853,7 +1853,7 @@ The field's `inputMode` went from `numeric` to `text` in the same change: on a p
 
 ## A-064 — a front door that cannot disagree with the diary
 
-**Commit:** `PENDING`
+**Commit:** `0143792`
 
 **The product had no `/`.** Every route into this system was one you already had to know: `/book`, `/staff`, a manage token in an email. `/` was the scaffold's placeholder heading. So the first thing a client would meet was nothing, and the first thing an interviewer would meet was a booking form with no context around it.
 
