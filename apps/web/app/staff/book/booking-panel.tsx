@@ -11,12 +11,12 @@ import {
   type WalkInChoice,
   anyoneTimesFor,
   bookAsStaff,
-  createClientForBooking,
   findClientsForBooking,
   findWalkInOptions,
   instantForTime,
   staffSlotsFor,
 } from '@/lib/booking/staff-actions';
+import { ClientPicker } from '@/components/client-picker';
 import { readableDay } from '@/lib/customer-format';
 import { readableReason } from '@/lib/scheduling-words';
 
@@ -102,11 +102,7 @@ export function BookingPanel({
   const [repeatCount, setRepeatCount] = useState(1);
   const [repeatEvery, setRepeatEvery] = useState(4);
 
-  const [query, setQuery] = useState('');
-  const [candidates, setCandidates] = useState<ClientChoice[]>([]);
   const [client, setClient] = useState<ClientChoice | null>(initialClient);
-  const [searching, startSearching] = useTransition();
-  const [creating, startCreating] = useTransition();
 
   // In "anyone" mode the provider comes from the row the desk tapped — SVC-02
   // decided it when the list was built, so what they read is what they book.
@@ -212,13 +208,6 @@ export function BookingPanel({
   function changeDay(nextDay: string) {
     setDay(nextDay);
     loadFor(nextDay, chosen);
-  }
-
-  function search(text: string) {
-    setQuery(text);
-    startSearching(async () => {
-      setCandidates(text.trim().length < 2 ? [] : await findClientsForBooking(text, startAt, chosen));
-    });
   }
 
   if (state.ok) {
@@ -559,87 +548,13 @@ export function BookingPanel({
           Who is she?
         </legend>
 
-        {client ? (
-          <p className="text-sm">
-            <span className="font-medium">{client.name ?? 'No name'}</span>{' '}
-            <span className="text-zinc-600 dark:text-zinc-400">{client.phone ?? ''}</span>{' '}
-            <button type="button" onClick={() => setClient(null)} className="underline underline-offset-4">
-              change
-            </button>
-            {/* Still showing AFTER she is chosen: a flag that disappears at
-                the moment of the decision is a flag nobody acts on. */}
-            {client.missed ? (
-              <span className="mt-1 block text-amber-800 dark:text-amber-300">⚑ {client.missed}</span>
-            ) : null}
-          </p>
-        ) : (
-          <>
-            <label htmlFor="client-search" className="sr-only">
-              Find a client by name or phone number
-            </label>
-            <input
-              id="client-search"
-              value={query}
-              onChange={(event) => search(event.target.value)}
-              placeholder="Name or phone number"
-              className={field}
-            />
-
-            {searching ? <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p> : null}
-
-            {candidates.length > 0 ? (
-              <ul className="flex flex-col gap-1">
-                {candidates.map((candidate) => (
-                  <li key={candidate.id}>
-                    <button
-                      type="button"
-                      onClick={() => setClient(candidate)}
-                      className="w-full rounded-md border border-zinc-400 px-3 py-2 text-left text-sm dark:border-zinc-600"
-                    >
-                      <span className="font-medium">{candidate.name ?? 'No name'}</span>{' '}
-                      <span className="text-zinc-600 dark:text-zinc-400">{candidate.phone ?? ''}</span>
-                      {/* D-17: a NOTE, never a refusal. One number can be a
-                          household, and one person may hold two appointments. */}
-                      {candidate.alreadyBooked ? (
-                        <span className="block text-amber-800 dark:text-amber-300">⚠ {candidate.alreadyBooked}</span>
-                      ) : null}
-                      {/* CLIENT-04/D-27: the same shape — a flag, not a gate.
-                          The website refuses her; the front desk does not. */}
-                      {candidate.missed ? (
-                        <span className="block text-amber-800 dark:text-amber-300">⚑ {candidate.missed}</span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={creating || query.trim().length < 2}
-                onClick={() =>
-                  startCreating(async () => {
-                    const made = await createClientForBooking(query, query);
-                    if (made) setClient(made);
-                  })
-                }
-                className={secondary}
-              >
-                New client “{query.trim() || '…'}”
-              </button>
-              {/* BOOK-04: "walk-in, no name". Identity attaches later — a real
-                  appointment with a null client, not a placeholder record. */}
-              <button
-                type="button"
-                onClick={() => setClient({ id: '', name: 'Walk-in, no name', phone: null })}
-                className={secondary}
-              >
-                No name
-              </button>
-            </div>
-          </>
-        )}
+        {/* A-068 lifted this into `components/client-picker.tsx`: the
+            appointment detail needs the same control to attach or correct a
+            client after the fact, and two pickers would be two answers to
+            D-17's household case and CLIENT-04's flag. The SEARCH is bound
+            here, because the note this one wants is about the slot being
+            chosen. */}
+        <ClientPicker value={client} onChange={setClient} search={(text: string) => findClientsForBooking(text, startAt, chosen)} />
       </fieldset>
 
       {state.message && !state.ok ? (

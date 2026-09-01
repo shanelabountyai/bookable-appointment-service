@@ -23,6 +23,7 @@ import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
 import { EndSeriesPanel } from './end-series-panel';
 import { MovePanel } from './move-panel';
 import { VisitPanel } from './visit-panel';
+import { WhoWasThis } from './who-was-this';
 import { StatusControls } from './status-controls';
 import { VisitNote } from './visit-note';
 
@@ -310,6 +311,27 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
           />
         </section>
       ) : null}
+
+      {/* A-068. ABOVE the move panel and offered from EVERY status, terminal
+          ones included: "she was a no-show and it turns out she is Mrs Kerr"
+          is a real correction, and taking a `cancelled_late` off a client who
+          was never involved is the only way to undo the harm the old
+          cancel-and-rebook workaround caused. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+          Who was this?
+        </h2>
+        <WhoWasThis
+          appointmentId={detail.id}
+          startAtIso={detail.startAt.toISOString()}
+          serviceIds={detail.services.map((s) => s.serviceId)}
+          current={
+            detail.clientId
+              ? { id: detail.clientId, name: detail.clientName, phone: detail.clientPhone }
+              : null
+          }
+        />
+      </section>
 
       {movable ? (
         <section className="flex flex-col gap-3">

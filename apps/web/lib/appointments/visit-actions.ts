@@ -18,7 +18,14 @@
  */
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
-import { VisitAlreadyChanged, VisitNotEditable, changeVisitServices } from '@bookable/db/appointments';
+import {
+  ClientAlreadyChanged,
+  ClientNotAttachable,
+  VisitAlreadyChanged,
+  VisitNotEditable,
+  changeVisitServices,
+  setAppointmentClient,
+} from '@bookable/db/appointments';
 import { BookingRejected, NoResourceFree, SlotNotOffered, SlotTaken } from '@bookable/db/booking';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
@@ -119,4 +126,73 @@ export async function readableRefusal(reasons: string[]): Promise<string> {
   return reasons.length > 0
     ? `${reasons.map(readableReason).join('; ')}.`
     : 'That time is outside her working hours.';
+}
+
+/**
+ * A-068 — WHO WAS THIS? (BOOK-04, CLIENT-01, D-17.)
+ *
+ * The same file as the service change because it is the same kind of action: a
+ * correction to a live appointment made at the desk, staff-only, with no
+ * customer equivalent and no message to anybody. `schema.prisma` has promised
+ * this door since the beginning — the client column is nullable so a walk-in
+ * can be booked as nothing but a time, "identity attached later" — and until
+ * now the only writer of `clientId` after creation was the client merge.
+ */
+export interface ClientState {
+  ok?: boolean;
+  message?: string;
+}
+
+export async function setAppointmentClientAction(
+  _previous: ClientState,
+  formData: FormData,
+): Promise<ClientState> {
+  const staff = await requireStaff();
+  const appointmentId = String(formData.get('appointmentId') ?? '');
+  // The detach button carries its own field. An empty `clientId` means the
+  // picker holds nobody yet, which is not the same sentence as "this wasn't
+  // her" — and the panel's submit is disabled in that state precisely so the
+  // two cannot be confused.
+  const clientId = formData.get('detach') ? null : String(formData.get('clientId') ?? '').trim() || null;
+  const reason = String(formData.get('reason') ?? '');
+
+  try {
+    const changed = await setAppointmentClient(prisma, {
+      businessId: staff.businessId,
+      appointmentId,
+      clientId,
+      actor: staffActor(staff.id),
+      reason: reason || null,
+    });
+
+    revalidatePath(`/staff/appointments/${appointmentId}`);
+    revalidatePath('/staff/day');
+    // A-067's list carries the client's NAME and the tel: link the desk rings
+    // — naming a cancelled walk-in is exactly what turns one of those rows
+    // from a dead end into a phone call. "A state change is never one edit."
+    revalidatePath('/staff/opened');
+    // Her record is what the correction was FOR: the twelve-month count, the
+    // history, and — on a detach — the count this takes back off somebody.
+    for (const id of [changed.from?.id, changed.to?.id]) {
+      if (id) revalidatePath(`/staff/clients/${id}`);
+    }
+
+    const name = (who: { name: string | null } | null) => who?.name ?? 'a client with no name';
+    if (changed.kind === 'attached') return { ok: true, message: `Recorded as ${name(changed.to)}.` };
+    if (changed.kind === 'detached') return { ok: true, message: `Taken off ${name(changed.from)}.` };
+    return { ok: true, message: `Moved from ${name(changed.from)} to ${name(changed.to)}.` };
+  } catch (error) {
+    if (error instanceof ClientNotAttachable) return { ok: false, message: error.message };
+    if (error instanceof ClientAlreadyChanged) return { ok: false, message: error.message };
+    // A-063's chair, and the one arm of this that a human has to act on:
+    // taking her off a visit splits a chair she was legally sharing with her
+    // own next appointment, and there is no second one free.
+    if (error instanceof NoResourceFree) {
+      return {
+        ok: false,
+        message: `${error.message} She is sharing a chair with her own other appointment, and taking this one off her record would need two. Move one of them first.`,
+      };
+    }
+    throw error;
+  }
 }

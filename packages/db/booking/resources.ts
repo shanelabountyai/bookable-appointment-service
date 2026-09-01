@@ -208,6 +208,54 @@ export async function chairForMove(
 }
 
 /**
+ * A-068 — the chair a GIVEN holder is already sitting in over this envelope.
+ *
+ * The same question `findFreeResource` asks itself when nothing is preferred,
+ * exposed because attaching a client is the one write in the product where the
+ * answer differs from "the chair this appointment is already in". A walk-in
+ * booked as nothing but a time holds `appt:<id>` and is therefore a stranger
+ * to her own next visit, so the room put them in two chairs; naming her
+ * collapses them onto one, which is A-063's rule — *she keeps the one she is
+ * sitting in* — read from the client's side rather than the appointment's.
+ *
+ * `null` when she holds none, and the caller then keeps what it had.
+ */
+export async function chairHeldByHolder(
+  db: Db,
+  args: {
+    businessId: string;
+    appointmentId: string;
+    /** The chair this appointment currently holds — read for its TYPE. */
+    resourceId: string;
+    holderKey: string;
+    start: Date;
+    end: Date;
+    bodyStart: Date;
+    bodyEnd: Date;
+  },
+): Promise<string | null> {
+  const current = await db.resource.findUnique({
+    where: { id: args.resourceId },
+    select: { resourceTypeId: true },
+  });
+  if (!current) return null;
+
+  return chairAlreadyHeldBy(
+    db,
+    {
+      businessId: args.businessId,
+      resourceTypeId: current.resourceTypeId,
+      start: args.start,
+      end: args.end,
+      excludeAppointmentId: args.appointmentId,
+    },
+    args.holderKey,
+    args.bodyStart,
+    args.bodyEnd,
+  );
+}
+
+/**
  * The type's name, for the sentence a human reads ("Every chair is taken for
  * that time"). Only ever called on the refusal path, so the extra read costs
  * nothing on the path that matters.

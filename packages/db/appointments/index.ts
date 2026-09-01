@@ -31,6 +31,13 @@ export {
   changeVisitServices,
 } from './change-services';
 export {
+  type AppointmentClientChanged,
+  ClientAlreadyChanged,
+  ClientNotAttachable,
+  type SetAppointmentClientInput,
+  setAppointmentClient,
+} from './attach-client';
+export {
   type IssueManageTokenInput,
   type IssuedManageToken,
   type ManageGrant,

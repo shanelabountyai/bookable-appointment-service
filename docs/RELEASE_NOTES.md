@@ -1876,3 +1876,41 @@ Every candidate then goes through the same single test: *is that span still empt
 **It reports the real gap, buffers and all.** A colour carries twenty minutes of clean-down behind it; a cut carries fifteen. Drop the colour from a two-hour visit and what actually comes free is ninety-five minutes, not the ninety the service was worth. Under-reporting there is not a rounding error — it is the difference between a slot that fits the next client and one that does not.
 
 **One gap is one phone call.** A move that also changes stylist writes two entries in the history, in one transaction, describing one event. Read naively, that reports two openings — and the second one is the chair the appointment is now sitting in. The first attempt at telling them apart matched the two records by their shared timestamp, which is exactly the kind of inference that works in testing and fails in production. The two records now say outright which one is half of a larger move.
+
+## The wrong Sarah Jones
+
+A salon of three hundred clients will have two Sarah Joneses. That is not a data-quality problem to be designed away — it is a fact, and this product has always said so: it deliberately refuses to treat one phone number as one person, because a mother and daughter share a number and a household shares a landline.
+
+So the front desk picks a Sarah Jones from a list of two, and sometimes picks the wrong one. It is usually discovered at check-in, when the woman standing there is not the woman on the screen.
+
+Until now there was exactly one way to fix that: cancel the appointment and book it again under the right name. And a cancellation made an hour before the appointment is, correctly, a *late* cancellation — which lands on the client's record and stays there for twelve months, visible to the front desk every time she is booked, and capable of blocking her from booking online at all.
+
+**A client who did nothing wrong wore a late cancellation for a year because somebody clicked the wrong row.**
+
+That is the exact harm two earlier pieces of work exist to prevent. It was arriving through the one door nobody had closed.
+
+### The other half of it
+
+The same door was shut on a second, more mundane loss. This product lets the desk book a walk-in as nothing but a time — no name, no phone number — because taking a phone number from somebody standing at the counter is how walk-ins end up written on paper instead. That is right, and the database has said so since the very first migration: the client column is nullable, with a comment promising that identity would be *attached later*.
+
+Nothing ever attached it. She rebooks at the till, and her visit is orphaned permanently: on nobody's record, in nobody's history, counting toward nobody's reliability, and reachable by no reminder.
+
+### What it took
+
+The write itself is small — one row, one field, one transaction. Attaching, correcting and detaching are the same write with different arguments, and they leave one entry in the appointment's history naming both sides, because "who moved a no-show onto my client's record?" is a question that has to be answerable six weeks later.
+
+The interesting part is the chair.
+
+Earlier work made the room's seating follow the *client* rather than the appointment: your cut and your colour, back to back with different stylists, are one person who needs one chair, and the fifteen minutes where one service's clean-down overlaps the next one's set-up must not book two of the salon's four chairs to one body. The database enforces that by keying each seat on who is sitting in it.
+
+A walk-in has nobody sitting in her. She is keyed on the appointment itself — which means she is a *stranger to her own next visit*, and the room correctly seats them separately.
+
+Naming her makes them the same person. A version of this that only wrote the name would have left one woman holding two of the four chairs, which is precisely the defect the seating rule was built to prevent, arriving through the new door. So the correction re-picks the chair, and it prefers the one her *other* visit is in rather than the one this visit happens to be in — the seating rule read from the client's side.
+
+It works in the other direction too, and that direction can fail honestly: taking a visit off her record splits a chair the two were legally sharing, and if there is no second chair free the correction is refused with a sentence explaining why, rather than a database error nobody could interpret.
+
+### Two small decisions worth stating
+
+**It is allowed on finished appointments.** "She was a no-show, and it turns out she was Mrs Kerr" is a real correction, and attaching it genuinely does move a no-show onto Mrs Kerr's twelve-month record — which is the entire reason to want it. The mirror matters more: taking a wrongly-attributed late cancellation *off* somebody is the only way to undo the harm at the top of this note, and a rule that forbade editing finished appointments would have closed the door the work exists to open.
+
+**A merged-away client record is refused, not followed.** When two duplicate records have been merged, the survivor is a *different person* from the one the desk just clicked. Quietly redirecting would be the software deciding which Sarah Jones this was — the one question a human is standing there to answer.

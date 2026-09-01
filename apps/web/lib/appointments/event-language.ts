@@ -11,8 +11,8 @@ import 'server-only';
  *
  * TOTAL OVER EVERY TYPE THE CODEBASE WRITES, and typed so it stays that way:
  * `booked`, `override_booked`, `status_changed`, `status_corrected`,
- * `rescheduled`, `provider_changed`, `services_changed`, `column_pushed`,
- * `conflict_acknowledged`, `hours_changed_underneath`.
+ * `rescheduled`, `provider_changed`, `services_changed`, `client_changed`,
+ * `column_pushed`, `conflict_acknowledged`, `hours_changed_underneath`.
  * A further event type is a compile error here rather than a raw enum on screen
  * — the same reflex as the status colour map, and the same reason: this is a
  * list that reads the log, and lists that read the log go stale silently.
@@ -29,6 +29,7 @@ export const EVENT_TYPES = [
   'rescheduled',
   'provider_changed',
   'services_changed',
+  'client_changed',
   'column_pushed',
   'conflict_acknowledged',
   'hours_changed_underneath',
@@ -136,6 +137,17 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
       ].filter(Boolean);
       const ends = `Now ends ${clock(payload.toEndAt, zone)}`;
       return `${who === 'the front desk' ? 'The front desk' : who} ${parts.join(' and ')}. ${ends}.`;
+    }
+    // A-068. ONE event type, three sentences — attach, change and detach are
+    // one write, and the log has to say which of the three it was and who it
+    // named on each side. "Moved off Sarah Jones" is the sentence that settles
+    // "why is there a no-show on my client's record".
+    case 'client_changed': {
+      const from = typeof payload.fromClientName === 'string' ? payload.fromClientName : null;
+      const to = typeof payload.toClientName === 'string' ? payload.toClientName : null;
+      if (payload.fromClientId == null) return `Recorded as ${to ?? 'a client with no name'} by ${who}.`;
+      if (payload.toClientId == null) return `Taken off ${from ?? "the client's record"} by ${who}.`;
+      return `Moved from ${from ?? 'a client with no name'} to ${to ?? 'a client with no name'} by ${who}.`;
     }
     case 'column_pushed':
       return `Pushed ${String(payload.minutes ?? '')} minutes later by ${who}, with the day running behind.`;

@@ -70,6 +70,38 @@ async function bookOne(options: { override?: boolean; clientNotes?: string } = {
   }
 }
 
+/**
+ * A-068. BOOK-04's walk-in: a real appointment with NO client record, which is
+ * exactly what the desk types in while she is standing at the counter.
+ *
+ * Ada's RECORD is created here and left unattached, because that is the
+ * scenario — she has been in before, she rebooks at the till, and the desk has
+ * to find her from the appointment rather than from a booking form.
+ */
+async function bookWalkIn() {
+  const prisma = new PrismaClient();
+  try {
+    const business = await prisma.business.findFirstOrThrow();
+    const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+    const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+    await prisma.client.create({
+      data: { businessId: business.id, name: 'Ada Chen', phone: '5125550101', email: 'ada@example.test' },
+    });
+    return await bookAppointment(prisma, {
+      businessId: business.id,
+      providerId: dana.id,
+      serviceIds: [service.id],
+      clientId: null,
+      startAt: at('14:00'),
+      now: toDate(instant(fromDate(at('14:00')) - 3 * 60 * 60_000)),
+      actor: staffActor('staff-1'),
+      audience: 'staff',
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   const prisma = new PrismaClient();
   try {
@@ -544,5 +576,68 @@ test.describe('cancelling is one button (A-060)', () => {
     await expect(page.getByRole('link', { name: 'Ada Chen' })).toBeVisible();
     await expect(page.getByText('we moved her twice already')).toBeVisible();
     expect(await statusOf(appointment.id)).toBe('cancelled');
+  });
+});
+
+/**
+ * A-068 — WHO WAS THIS? (BOOK-04, CLIENT-01, D-17.)
+ *
+ * The walk-in typed in as nothing but a time rebooks at the till, and her
+ * visit was orphaned forever: on no client record, counting toward no
+ * reliability, reachable by no reminder. The only writer of `clientId` after
+ * creation was the client merge — and the schema has promised this door since
+ * the first migration.
+ */
+test.describe('who was this? (A-068)', () => {
+  test('names a walk-in from the appointment, using the booking screen\'s own picker', async ({ page }) => {
+    const appointment = await bookWalkIn();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    await expect(page.getByRole('heading', { name: 'Walk-in, no name' })).toBeVisible();
+    await expect(page.getByText('Nobody — this was booked as a walk-in with no record.')).toBeVisible();
+
+    await page.getByLabel('Find a client by name or phone number').fill('Ada');
+    await page.getByRole('button', { name: /Ada Chen/ }).click();
+    await page.getByLabel('Why (optional)').fill('Rebooked at the till');
+    await page.getByRole('button', { name: 'Attach this client' }).click();
+
+    await expect(page.getByText('Recorded as Ada Chen.')).toBeVisible();
+    // The page SAYS it, not just the row — the heading is the whole point of
+    // attaching, and so is the log line that settles it six weeks later.
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Ada Chen' })).toBeVisible();
+    await expect(page.getByText('Recorded as Ada Chen by Front desk.')).toBeVisible();
+    await expect(page.getByText('Rebooked at the till')).toBeVisible();
+  });
+
+  /** Case (b), and the reason this is a correctness item: the workaround was
+   *  cancel-and-rebook, which since A-060 derives `cancelled_late` on a client
+   *  who did nothing wrong. */
+  test('takes a visit off the wrong client without cancelling anything', async ({ page }) => {
+    const appointment = await bookOne();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    await page.getByRole('button', { name: /take it off the record/ }).click();
+
+    await expect(page.getByText('Taken off Ada Chen.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Walk-in, no name' })).toBeVisible();
+    await expect(page.getByText('Taken off Ada Chen by Front desk.')).toBeVisible();
+    // The whole point: no cancellation of any kind was written.
+    const prisma = new PrismaClient();
+    try {
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(row.status).toBe('booked');
+      expect(row.clientId).toBeNull();
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    const appointment = await bookWalkIn();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(results.violations).toEqual([]);
   });
 });
