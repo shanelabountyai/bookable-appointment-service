@@ -1840,3 +1840,39 @@ The interesting engineering is not the subtraction. It is the two situations whe
 **A column pulled forward.** The desk can also push in the other direction: *she has caught up, pull it back twenty*. Run the same subtraction and a salon that got ahead of itself is recorded as twenty minutes further behind. Guessing the opposite — that pulling forward means she is fully caught up — would be the software deciding something a person deliberately did not say.
 
 In both cases the number stays put, and the screen says so in words rather than leaving it to be noticed. That is the actual rule: a running-late figure is a claim a named person made about their own day, and software may work it off arithmetically when it has genuinely done so, but it may not invent one and it may not quietly withdraw one.
+
+## The ninety minutes nobody could see
+
+A client is booked for a cut and a full head of colour — two hours of a Saturday afternoon, the most valuable block the salon sells. She sits down and says she only wants her roots doing.
+
+The system handles that well. The visit shortens on the spot: same booking, same client, no cancellation, no late-cancellation mark against her name, no automated message telling her something has gone wrong. That was built deliberately and it was the right shape.
+
+Ninety minutes of a Saturday afternoon then vanished.
+
+Not from the calendar — the calendar was correct, and anybody looking at that particular Saturday would have seen the gap. It vanished from *"What's opened up"*, the screen whose entire job is to find sellable time and put a phone number next to it. There was a client on the waitlist who wanted exactly that service, on exactly that day, two screens away. Nobody was ever going to connect them, because the screen was looking for cancellations and this was not one.
+
+The same hole swallowed two other things: an appointment moved to another day, and an appointment handed to a different stylist. Both leave a hole behind. Neither is a cancellation.
+
+### Why it happened, and why it is the interesting part
+
+The feature that shortens a visit had been signed off with a note saying the freed time would reach that screen *"for free, because it derives"*. That was a reasonable-sounding claim and it was false. The screen does derive — it computes its answer fresh on every read and stores nothing, which is why it never needs cleaning up. But it derived from the wrong question. It asked *what has been cancelled?*, and a shortened visit is still, correctly, a booking.
+
+This is the second time in two weeks the same shape has turned up in this codebase: a new way for the state of the day to change, shipped without telling the screens that model the day. It is now a written rule in the project — *a state change is never one edit* — and this item is the rule's first application.
+
+### How it was fixed
+
+The screen now has two sources and still one list.
+
+The status column answers *who gave the whole thing back*. The event log answers *what stopped being occupied* — and it can answer, because a shortened visit, a move and a hand-over each record both sides of what they changed. That was done for the history panel, so the front desk could read back what happened to a booking. It turns out to be the only surviving record of the time that was let go, because the booking itself has already moved on.
+
+Every candidate then goes through the same single test: *is that span still empty?* That one filter is what keeps the whole thing self-maintaining. Lengthen the visit again, move it back, hand it back, or simply sell the gap, and the row disappears on the next read. Four ways for time to open up and not one of them needed code to clean up after itself.
+
+### The details that decide whether it is any use
+
+**It says what freed it, in the salon's words.** *"Mrs Hall dropped her Colour."* *"Moved to Thursday at 14:00."* *"Went to Priya."* This matters because the follow-up is a different phone call every time — *"shall we find you another time?"* is what you say about a cancellation and completely wrong for the other three, and it was the only thing the screen could say before.
+
+**It rings the right person about the right service.** The waitlist is matched on one service. When a client drops her colour, the person to ring is somebody who wants a colour — not somebody who wants the cut she kept. That meant recording which service was dropped, not just that the visit got shorter.
+
+**It reports the real gap, buffers and all.** A colour carries twenty minutes of clean-down behind it; a cut carries fifteen. Drop the colour from a two-hour visit and what actually comes free is ninety-five minutes, not the ninety the service was worth. Under-reporting there is not a rounding error — it is the difference between a slot that fits the next client and one that does not.
+
+**One gap is one phone call.** A move that also changes stylist writes two entries in the history, in one transaction, describing one event. Read naively, that reports two openings — and the second one is the chair the appointment is now sitting in. The first attempt at telling them apart matched the two records by their shared timestamp, which is exactly the kind of inference that works in testing and fails in production. The two records now say outright which one is half of a larger move.

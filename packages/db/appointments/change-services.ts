@@ -296,9 +296,8 @@ export async function changeVisitServices(
         const before = appointment.lines.map((l) => l.serviceId);
         const after = lines.map((l) => l.serviceId);
         const added = difference(after, before).map((id) => names.get(id) ?? id);
-        const removed = difference(before, after).map(
-          (id) => appointment.lines.find((l) => l.serviceId === id)?.service.name ?? id,
-        );
+        const removedIds = difference(before, after);
+        const removed = removedIds.map((id) => appointment.lines.find((l) => l.serviceId === id)?.service.name ?? id);
 
         await tx.appointmentEvent.create({
           data: {
@@ -311,7 +310,19 @@ export async function changeVisitServices(
             payload: {
               added,
               removed,
+              // A-067. The names are what the log reads back; the IDS are what
+              // "who else wants a colour on Saturday?" needs — `matchFreedSlot`
+              // filters the waitlist on one `serviceId`, and the service she
+              // DROPPED is the one to ring about, not the one she kept.
+              removedServiceIds: removedIds,
               fromEndAt: previousEndAt.toISOString(),
+              // A-067. The BLOCKED end, not just the body's: what a shortened
+              // visit actually let go of runs to the end of the buffer it used
+              // to carry, and that tail is genuinely sellable. Recorded here
+              // because the row no longer holds it a millisecond after the
+              // trigger recomputes — the same reason D-31 puts both sides of a
+              // reschedule in the payload.
+              fromBlockedEnd: toDate(instant(fromDate(previousEndAt) + appointment.bufferAfterMinutes * MIN)).toISOString(),
               toEndAt: endAt.toISOString(),
               durationMinutes: visit.durationMinutes,
               totalPriceCents: visit.totalPriceCents,

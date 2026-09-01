@@ -235,6 +235,13 @@ export async function rescheduleAppointment(
               payload: {
                 fromProviderId: appointment.providerId,
                 toProviderId,
+                // A-067. This half is not its own vacated span — the
+                // `rescheduled` row beside it already reports the range the
+                // move left behind, on the chair it left. Said in the payload
+                // rather than inferred from a shared `createdAt`, because a
+                // reader that has to guess which two rows were one action is a
+                // reader that will eventually guess wrong.
+                viaReschedule: true,
               } satisfies Prisma.InputJsonValue,
             },
           });
@@ -258,7 +265,12 @@ export async function rescheduleAppointment(
               toEndAt: endAt.toISOString(),
               audience,
               offered: offered !== undefined,
-              ...(toProviderId !== appointment.providerId ? { toProviderId } : {}),
+              // BOTH sides of the stylist axis when it moved (D-31): the row
+              // now points at the destination, so the chair she LEFT — the one
+              // that just came free — exists nowhere else (A-067).
+              ...(toProviderId !== appointment.providerId
+                ? { toProviderId, fromProviderId: appointment.providerId }
+                : {}),
             } satisfies Prisma.InputJsonValue,
           },
         });

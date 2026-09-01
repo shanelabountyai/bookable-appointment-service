@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
-import { listOpenedSlots } from '@bookable/db/appointments';
+import { type OpenedSlot, listOpenedSlots } from '@bookable/db/appointments';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
@@ -15,6 +15,13 @@ export const dynamic = 'force-dynamic';
  * "who wants this slot?" required already knowing WHICH appointment was
  * cancelled — the one thing the desk does not know when the cancellation came
  * in through a manage link on a Saturday.
+ *
+ * A-067 — and a cancellation was never the only thing that frees time. A visit
+ * shortened at the chair, a move off the day and a hand-over to another stylist
+ * all leave a sellable span behind, and until now none of them reached this
+ * screen. Each row says WHAT freed it in the desk's own words, because the
+ * follow-up call is a different call: "shall we find you another time?" is not
+ * what you say about the ninety minutes Mrs Hall just gave back.
  *
  * Derived on every read, nothing stored (operator R-7), and ordered by how
  * soon the time expires: a Thursday 2pm dies on Thursday at 2.
@@ -36,7 +43,8 @@ export default async function OpenedPage() {
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">What&apos;s opened up</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Recently cancelled, still in the future, and nobody has taken it yet. Soonest to expire first.
+          Recently freed — cancelled, shortened, moved or handed over — still in the future, and nobody has taken
+          it yet. Soonest to expire first.
         </p>
       </div>
 
@@ -48,7 +56,7 @@ export default async function OpenedPage() {
         <ul className="flex flex-col gap-3">
           {slots.map((slot) => (
             <li
-              key={slot.appointmentId}
+              key={slot.key}
               className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700"
             >
               <div className="flex flex-col gap-1 text-sm">
@@ -59,11 +67,12 @@ export default async function OpenedPage() {
                   {slot.serviceNames.join(' + ')} · {slot.providerName}
                 </span>
                 <span className="text-zinc-600 dark:text-zinc-400">
-                  {/* Who gave it back. On the row for the same reason AVAIL-05's
-                      conflicts and A-021's call-down put it there — "shall we
-                      find you another time?" is the other half of this errand. */}
-                  {slot.status === 'cancelled_late' ? 'Cancelled late by' : 'Cancelled by'}{' '}
-                  {slot.clientName ?? 'a walk-in with no name'}
+                  {/* Who gave it back, and HOW. On the row for the same reason
+                      AVAIL-05's conflicts and A-021's call-down put it there —
+                      "shall we find you another time?" is the other half of
+                      this errand, and it is the wrong sentence for three of the
+                      four ways a span gets here (A-067). */}
+                  {freedWords(slot, business.timezone)}
                   {slot.clientPhone ? (
                     <>
                       {' · '}
@@ -102,3 +111,34 @@ export default async function OpenedPage() {
     </main>
   );
 }
+
+/**
+ * A-067. What freed it, in the desk's words — one sentence per kind, because
+ * the phone call differs: you offer a cancelled client another time, you offer
+ * a dropped colour to the waitlist, and a hand-over is nobody's call at all.
+ *
+ * The wording lives here rather than in the query for the same reason
+ * `event-language.ts` does: `packages/db` returns the structure, the web layer
+ * turns it into English.
+ */
+function freedWords(slot: OpenedSlot, zone: string): string {
+  const who = slot.clientName ?? 'a walk-in with no name';
+  switch (slot.freedBy.kind) {
+    case 'cancelled':
+      return `${slot.status === 'cancelled_late' ? 'Cancelled late by' : 'Cancelled by'} ${who}`;
+    case 'shortened': {
+      const dropped = slot.freedBy.droppedServiceNames;
+      // "Mrs Hall dropped her colour" — and if the visit only got shorter
+      // without losing a line, say that instead of naming nothing.
+      return dropped.length > 0 ? `${who} dropped her ${listWords(dropped)}` : `${who}'s visit was shortened`;
+    }
+    case 'rescheduled':
+      return `${who} moved to ${readableInstant(slot.freedBy.movedToStartAt, zone)}`;
+    case 'reassigned':
+      return `${who} went to ${slot.freedBy.movedToProviderName}`;
+  }
+}
+
+/** "colour", "colour and blow-dry", "colour, cut and blow-dry". */
+const listWords = (names: string[]): string =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
