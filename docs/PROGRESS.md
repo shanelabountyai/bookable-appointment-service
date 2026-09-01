@@ -1964,7 +1964,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-069 — a no-show's time was dead supply and no screen offered it back
 
-**Commit:** `TBD`
+**Commit:** `d63094e`
 
 **The defect.** A 10:00 colour, ninety minutes. At 10:20 the desk gives up and marks her a no-show, and that time stays blocked for another seventy minutes. A walk-in at 10:25 could only be booked into it through a BOOK-05 override with a typed reason — **a false override marker on a slot that is genuinely empty**, which is the fastest way to train the desk to dismiss the marker D-8 rests on. It was not on `/staff/opened` either, because nothing had freed it: `status.ts:38` makes `SLOT_FREEING_STATUSES` cancelled-only and `no_show` is in `ACTIVE_STATUSES`, therefore in the constraint predicate and in the busy set.
 
