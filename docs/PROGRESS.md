@@ -1986,7 +1986,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-070 — the per-visit note was written on one screen and read on no other
 
-**Commit:** `TBD`
+**Commit:** `9a3826f`
 
 **An oversight rather than a decision, and the grep proves it.** `day-view.ts:295` has selected and returned `notes` alongside `clientNotes` since A-016; `view-model.ts:307` mapped only `clientNotes → pinnedNote` and **dropped `notes` on the floor**. So "Patch test done 12/4", "6.3 + 20 vol, 35 min" and "Bring the reference photo" were typed into the appointment's own note field on the detail panel and read by nobody: not on the day chip, not on the stylist's own list, and not on the printed day sheet, which carried only the pinned CLIENT note. A-062's blank scribble column was therefore the salon writing the colour formula on paper and binning it at six — and the patch-test line, which is a safety surface, lived in the one place nobody looks.
 
