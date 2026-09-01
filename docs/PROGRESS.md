@@ -1879,7 +1879,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-065 — demo checkpoint 5, the walk at the Phase 6 boundary
 
-**Commit:** `PENDING`
+**Commit:** `e9da779`
 
 **Full transcript and the scenes walked: `docs/reviews/13-demo-checkpoint-5.md`.**
 
