@@ -91,6 +91,15 @@ const PROVIDERS = [
   { displayName: 'Tess', displayOrder: 3 },
 ] as const;
 
+/** Demo contact details for the sample salon — the public site reads these
+ *  columns and renders nothing for the ones left blank. */
+const DEMO_CONTACT = {
+  addressLine: '1420 N Milwaukee Ave',
+  addressCity: 'Chicago, IL 60622',
+  phone: '(312) 555-0184',
+  email: 'hello@shear-genius.test',
+} as const;
+
 export interface SetupSeedResult {
   businessId: string;
   providerIds: string[];
@@ -105,11 +114,28 @@ export async function seedSetup(
     throw new Error('seedSetup refuses to run with NODE_ENV=production.');
   }
 
+  const existing = await prisma.business.findFirst();
   const business =
-    (await prisma.business.findFirst()) ??
+    existing ??
     (await prisma.business.create({
-      data: { name: opts.businessName ?? 'Shear Genius', timezone: opts.timezone ?? 'America/Chicago' },
+      data: {
+        name: opts.businessName ?? 'Shear Genius',
+        timezone: opts.timezone ?? 'America/Chicago',
+        ...DEMO_CONTACT,
+      },
     }));
+
+  // CREATE-only was not enough, and a failing e2e said so. `seedStaffUser`
+  // makes the Business row before this function is ever called, so in the e2e
+  // fixture the branch above never runs and the sample salon shipped with no
+  // address at all. Fill the blanks instead of assuming we made the row.
+  //
+  // Only where blank, which is what keeps both properties: a re-seed cannot
+  // revert details an owner has edited, and running twice with no reset leaves
+  // every column identical (A-045).
+  if (existing && !existing.addressLine && !existing.phone && !existing.email) {
+    await prisma.business.update({ where: { id: existing.id }, data: DEMO_CONTACT });
+  }
 
   const providerIds: string[] = [];
   for (const p of PROVIDERS) {

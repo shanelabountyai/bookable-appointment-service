@@ -10,6 +10,26 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* The public site's display face. `font-serif` is the marketing pages' only
+     typographic lever — everything else there is the body face, set on the
+     site layout's wrapper so the staff screens keep Geist. */
+  --font-serif: var(--font-display), "Iowan Old Style", Georgia, serif;
+
+  /* The salon's accent, in two weights, because one hex cannot do both jobs.
+     `clay` is the GRAPHIC accent — the logo's second strand, a chip's stripe,
+     a rule — where 3:1 is the bar. Text needs 4.5:1 and #b26b47 reaches only
+     3.6:1 on the bone ground, which axe caught on every marketing page at
+     once; `clay-ink` is the same hue darkened until it passes on BOTH grounds
+     (5.4:1 on #f5f0e8, 5.9:1 on #fbf9f5). Named here rather than fixed at each
+     call site so a third page cannot reintroduce the failing value. */
+  --color-clay: #b26b47;
+  /* The quiet text colour, same story as `clay`: #7a6f63 clears 4.5:1 on the
+     paper ground and misses it on the bone one (4.3:1), so half the pages
+     passed axe and half did not. One token, darkened until it passes on the
+     DARKER ground, is the only version that cannot regress. */
+  --color-muted-ink: #6e6357;
+  --color-clay-ink: #8e5236;
+  --color-clay-ink-hover: #6f3e28;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -134,6 +134,17 @@ model Business {
   /// neither survives a DST transition.
   timezone String
 
+  /// How to reach a human, for the public site's footer and /visit. NULLABLE
+  /// and rendered only when set: a salon that has not filled these in shows
+  /// nothing, never a "[YOUR PHONE]" placeholder or a `tel:` link that dials
+  /// it. They live here rather than in the page for the same reason the price
+  /// list does — a brochure that hardcodes the address is wrong the day the
+  /// salon moves, and nobody edits a marketing page to fix a phone number.
+  addressLine String?
+  addressCity String?
+  phone       String?
+  email       String?
+
   // Policies (D-11, D-19, D-21).
   slotIntervalMinutes       Int @default(15)
   minimumLeadMinutes        Int @default(120)

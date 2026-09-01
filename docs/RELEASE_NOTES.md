@@ -1766,3 +1766,25 @@ So the single rule the database enforced became the two rules it always meant:
 Both are enforced by the database itself rather than by a check in the booking code, so a bug in the code that chooses chairs surfaces as a refused booking instead of as two clients sent to the same seat. The chair-chooser asks the same two questions in the same shape — a chooser that is more permissive than the database hands the front desk a chair that is then rejected at the last moment, which reads as the software being broken.
 
 One more detail worth the sentence: a walk-in nobody has keyed in yet counts as her own holder, not as "no client". Otherwise every anonymous appointment in the building would have been treated as the same person, and they could all have shared one chair.
+
+## The salon now has a website, and it cannot contradict the appointment book
+
+Until now every way into this system was one you had to be told: a booking link, a staff login, a token in a confirmation email. There was no front door — which for a business whose clients find it by searching for it is most of the problem.
+
+The interesting constraint was not building the pages. It was refusing to type anything on them.
+
+A salon website is normally the most out-of-date thing a salon owns, because it is the one surface nobody tests. The price list is a picture of what prices were. The stylist page lists someone who left in March. The opening hours say Tuesday when the salon moved to Wednesday two years ago. None of that fails loudly; it just quietly costs bookings and produces clients who arrive on the wrong day holding the wrong number in their head.
+
+**So every figure on these pages is read from the rows the front desk works from.** The price list is the service catalogue. Each stylist's card lists the services she is actually qualified for — which matters, because the booking flow refuses a service a stylist cannot do, and a website that had promised it would have sent the client into a dead end. The opening hours and the days the salon is shut are the same rows the availability engine reads, so the site cannot advertise a Monday the diary refuses to sell. Even the headline — *four chairs, four stylists, and nobody double-booked* — counts the chairs, because that claim is only true by virtue of a database constraint that makes it true.
+
+Services the salon will not take online — a colour correction, anything needing a patch test — appear on the price list with *Call us* instead of a booking button. Hiding them would tell a visitor the salon does not do them at all, and she books that appointment somewhere else.
+
+### The bug the front door introduced, which was worth the trip
+
+Adding a database-backed home page broke the entire end-to-end test suite in a way none of its own tests could see: the suite times out after five minutes without running a single test.
+
+The home page doubles as the readiness check the test runner uses to decide the application has started. That check runs before any test data exists, the page tried to load a salon that was not there yet, and the resulting server error reads identically to *the server never started*.
+
+The fix is not a workaround for the test runner. It is the behaviour the product should have had anyway: **a brand-new installation with nothing in it now answers with a sentence explaining it is not set up yet**, rather than a stack trace served to whoever arrives first. A test now truncates the database and asserts the front door still answers, so this cannot come back.
+
+The salon's address, phone and email became real fields on the business rather than placeholders in the page — rendered only when they are filled in, so an unconfigured site shows no address instead of the words `[YOUR ADDRESS]`, and the phone link dials the number rather than the punctuation around it.
