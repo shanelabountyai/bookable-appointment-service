@@ -1919,7 +1919,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-067 — time freed by anything other than a cancellation never reached "What's opened up"
 
-**Commit:** `TBD`
+**Commit:** `36c1c97`
 
 **The defect, and it is A-055's own row that named it wrongly.** A-055's backlog entry claimed that shortening a visit "frees the tail into `/staff/opened` for free, because it derives". It does derive — and it derived the wrong thing, because the list asked the STATUS COLUMN what had been freed and a shortened visit is still `booked`. Mrs Hall is booked cut + full head, two hours of a Saturday; she sits down and wants the roots only; A-055 does exactly what it should, no cancellation and no notice, and ninety minutes of a Saturday afternoon becomes invisible while the waitlist entry that fits it sits two screens away. The same hole swallowed a reschedule off the day and a cross-provider reassign. `visit-actions.ts:65` even called `revalidatePath('/staff/opened')` after a service change — revalidating a page that structurally could not show it, which is the shape of the whole finding: the *writers* were told, the *reader that models the day* was not. CLAUDE.md's "a state change is never one edit", one item after the rule was written down.
 
