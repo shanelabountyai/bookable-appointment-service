@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { GridColumn } from '@/lib/day/view-model';
+import { QuickNote } from './quick-note';
 import { StatusActions } from './status-actions';
 
 /**
@@ -76,8 +77,20 @@ export function ProviderDay({ column }: { column: GridColumn }) {
           {item.pinnedNote ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</p>
           ) : null}
+          {/* A-070. Quieter than the pinned note and marked differently: one is
+              a safety line about HER, this is about today. */}
+          {item.visitNote ? (
+            <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">✎ {item.visitNote}</p>
+          ) : null}
           {item.missed ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</p>
+          ) : null}
+
+          {/* A-070's whole point: writing it here rather than three taps and a
+              page load away, which is where it lived and therefore did not get
+              written. Only on appointments — a break has nothing to note. */}
+          {item.appointmentId ? (
+            <QuickNote appointmentId={item.appointmentId} notes={item.visitNote ?? ''} />
           ) : null}
         </li>
       ))}

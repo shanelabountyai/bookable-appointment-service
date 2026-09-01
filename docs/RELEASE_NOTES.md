@@ -1968,3 +1968,41 @@ The release instant becomes the end of the blocked range, and this system requir
 The desk's button passes the current time, which always carries seconds. The first version would have reached the database as a raw constraint error.
 
 It was caught by a browser test, because that is the only place in the entire test suite where a real clock gets near this write — every unit test supplies a frozen time, deliberately. The fix rounds down at the single place that writes it, and there is now a test that passes a time with seconds and milliseconds in it on purpose.
+
+## The colour formula that got binned every evening
+
+A colourist writes down what she mixed: *6.3 + 20 vol, 35 minutes*. Six weeks later the same client comes back and the whole point of having written it is that nobody has to guess.
+
+This system had a field for exactly that — a note attached to the appointment, separate from the note attached to the client. The front desk typed into it. And it was displayed on precisely one screen: the appointment's own detail page.
+
+Not on the day view. Not on the stylist's own list. Not on the sheet that gets printed at quarter to nine and pinned at each station.
+
+So the note went in and never came out. What actually happened in the salon is that people wrote the formula in the blank column on the printed sheet — which is a sheet that goes in the bin at six o'clock.
+
+Worse: *"patch test done 12/4"* is the same field. That is a safety record, and it was being kept somewhere nobody looks.
+
+### It was already being loaded
+
+The part worth being honest about is how small the bug was. The query that builds the day view had been fetching this note since the day view was built. The layer that turns that query into something a screen can draw simply did not copy it across — one missing line, no error, no failing test, and a feature that looked finished.
+
+It now appears on the chip in the day grid, on the stylist's list, and on the printed sheet.
+
+### Two notes that must never become one note
+
+There is a note about **her** — allergic to PPD — and a note about **today** — bring the reference photo. They are different fields on purpose, because if you merge them, the allergy line ends up buried under six months of one-off reminders within a month or two.
+
+Keeping them separate in the database is easy. Keeping them distinguishable *on a page* is the actual design problem, and it has to survive three quite different conditions:
+
+- On screen they carry different marks and different weights: the safety line is flagged and coloured, the note about today is quieter.
+- On paper it has to work in greyscale at arm's length, so colour is not available — the safety line is bold with a flag, the visit note is italic with a pencil.
+- Read aloud by a screen reader, one straight after the other, they are prefixed differently so the listener knows which is which.
+
+### The half that is not about display
+
+The note was *editable* on one screen too — three taps and a page load from where anyone actually stands.
+
+The operator's own sentence was the specification: *"if it takes three taps to write '6.3 + 20vol' it goes on the scribble column instead."* That is the real failure. A field nobody can reach in the moment is a field that stays empty, and the sheet-and-bin cycle continues.
+
+So the stylist's own day list now has the note inline: one tap to open, type, save. It uses a plain collapsible element rather than a custom pop-over, which means it takes up one line when closed and is keyboard-operable and screen-reader-friendly without anybody writing that code. And it calls the *same* save routine as the detail page, so there is one thing writing this field rather than two that can drift apart.
+
+One line in that routine turned out to matter more than it looks: it previously refreshed only the appointment's own page. Now that the note is typed *from* the day and read *on* the day, without also refreshing the day the note you just wrote would vanish from the screen you wrote it on. The browser test checks that by typing a note and then looking at the list, rather than by checking the database — which is the difference between testing that it saved and testing that it worked.

@@ -30,7 +30,14 @@ async function signIn(page: Page) {
 
 /** Books straight into the database — the write path has its own suite, and
  *  this spec needs a known column rather than a realistic booking journey. */
-async function seedAppointment(options: { start: string; end: string; status?: string; clientNotes?: string }) {
+async function seedAppointment(options: {
+  start: string;
+  end: string;
+  status?: string;
+  clientNotes?: string;
+  /** A-070 — the note about TODAY, as opposed to the note about her. */
+  visitNote?: string;
+}) {
   const prisma = new PrismaClient();
   try {
     const business = await prisma.business.findFirstOrThrow();
@@ -57,6 +64,7 @@ async function seedAppointment(options: { start: string; end: string; status?: s
         blockedEnd: at(options.end),
         startDay: DAY,
         startWallTime: '10:00',
+        notes: options.visitNote ?? null,
         ...(options.status ? { status: options.status as 'booked' } : {}),
         lines: {
           create: {
@@ -296,3 +304,67 @@ async function danaId(): Promise<string> {
     await prisma.$disconnect();
   }
 }
+
+/**
+ * A-070 — THE NOTE ABOUT TODAY (CLIENT-03).
+ *
+ * "Patch test done 12/4." "6.3 + 20 vol, 35 min." The desk typed these into
+ * the appointment's own note field and the stylist at the backwash could read
+ * them on no screen at all: `day-view.ts` had selected `notes` since A-016 and
+ * the view model dropped it on the floor. The blank scribble column was then
+ * the salon writing the colour formula on paper and binning it at six.
+ */
+test.describe('the note about today (A-070)', () => {
+  test('is on the chip and in its accessible name, apart from the note about her', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T10:45:00-05:00',
+      clientNotes: 'Allergic to PPD.',
+      visitNote: '6.3 + 20 vol, 35 min',
+    });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    // BOTH, and marked differently: ⚑ is the safety line about her, ✎ is
+    // about today. Merging them is what buries an allergy under six months of
+    // one-off reminders.
+    await expect(page.getByText('⚑ Allergic to PPD.')).toBeVisible();
+    await expect(page.getByText('✎ 6.3 + 20 vol, 35 min')).toBeVisible();
+    // Read aloud one after the other they still cannot be confused.
+    await expect(page.getByRole('link', { name: /Ada Chen/ })).toHaveAttribute(
+      'aria-label',
+      /note: Allergic to PPD\..*today: 6\.3 \+ 20 vol, 35 min/,
+    );
+  });
+
+  /** The operator's sentence is the specification: *"if it takes three taps to
+   *  write '6.3 + 20vol' it goes on the scribble column instead"* — and the
+   *  scribble column is binned at six. */
+  test('can be written from the stylist’s own day, without leaving it', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+
+    // A native `<details>`, clicked by its summary — the same shape the desk
+    // switcher's spec uses, and for the same reason: the element's own role
+    // mapping is not something to assert against.
+    await page.locator('summary').filter({ hasText: 'Add a note for this visit' }).click();
+    await page.getByLabel('Note for this visit').fill('6.3 + 20 vol, 35 min');
+    await page.getByRole('button', { name: 'Save' }).click();
+
+    // It appears on the list she typed it into, which is the whole point — the
+    // action revalidates the day rather than only the detail page.
+    await expect(page.getByText('✎ 6.3 + 20 vol, 35 min')).toBeVisible();
+  });
+
+  test('follows onto the printed sheet, which is where the backwash reads it', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T10:45:00-05:00',
+      clientNotes: 'Allergic to PPD.',
+      visitNote: 'Bring the reference photo',
+    });
+    await page.goto(`/staff/day?day=${DAY}&sheet=1`);
+
+    await expect(page.getByText('⚑ Allergic to PPD.')).toBeVisible();
+    await expect(page.getByText('✎ Bring the reference photo')).toBeVisible();
+  });
+});

@@ -37,6 +37,23 @@ export interface GridItem {
   /** CLIENT-03's pinned note, surfaced on the chip because an allergy is a
    *  safety surface rather than a detail. */
   pinnedNote?: string;
+  /**
+   * A-070 (CLIENT-03) — THE NOTE ABOUT TODAY, as opposed to the note about
+   * HER. "Patch test done 12/4." "6.3 + 20 vol, 35 min." "Bring the reference
+   * photo."
+   *
+   * `day-view.ts` has selected and returned it since A-016 and this model
+   * dropped it on the floor, so the desk typed it on one screen and the
+   * stylist at the backwash could read it on none. The printed sheet then
+   * carried only the pinned CLIENT note, which made A-062's blank scribble
+   * column the salon writing the colour formula on paper and binning it at
+   * six — and left the patch-test line, which is a safety surface, in the one
+   * place nobody looks.
+   *
+   * NEVER MERGED with `pinnedNote`. `Appointment.notes` exists precisely
+   * because per-visit notes bury the allergy line.
+   */
+  visitNote?: string;
   /** CLIENT-04's flag, already worded. On the chip for the same reason as the
    *  note: the day grid is where the desk decides who to ring this morning,
    *  and "she has missed the last two" is that decision. */
@@ -309,6 +326,10 @@ function toColumn(
         title: who,
         detail: [services, appointment.clientPhone].filter(Boolean).join(' · '),
         pinnedNote: appointment.clientNotes ?? undefined,
+        // A-070. Selected by `day-view.ts` since A-016 and dropped here until
+        // now — an oversight rather than a decision, which is why it is one
+        // line.
+        visitNote: appointment.notes ?? undefined,
         ...(missed ? { missed } : {}),
         status: appointment.status as AppointmentStatus,
         appointmentId: appointment.id,
@@ -349,6 +370,9 @@ function toColumn(
           appointment.isOverride ? 'booked as an override' : '',
           appointment.releasedAt ? `time given back from ${f.clock(appointment.releasedAt)}` : '',
           appointment.clientNotes ? `note: ${appointment.clientNotes}` : '',
+          // Worded so the two cannot be confused when they are read aloud one
+          // after the other: one is about her, one is about today.
+          appointment.notes ? `today: ${appointment.notes}` : '',
           missed ?? '',
           column.runningLateMinutes && appointment.status === 'booked'
             ? `likely ${f.shift(appointment.startAt, column.runningLateMinutes)}`

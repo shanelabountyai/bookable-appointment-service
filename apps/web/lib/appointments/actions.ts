@@ -125,6 +125,10 @@ export async function saveVisitNote(_previous: DetailState, formData: FormData):
   });
 
   revalidatePath(`/staff/appointments/${appointmentId}`);
+  // A-070. The note is now written from the stylist's own list and READ on the
+  // chip, in her list and on the printed sheet — so the day has to re-render,
+  // or the note she just typed is invisible on the screen she typed it from.
+  revalidatePath('/staff/day');
   return { ok: true, message: 'Note saved.' };
 }
 

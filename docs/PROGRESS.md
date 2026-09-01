@@ -1981,3 +1981,25 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 **Tests:** 12 unit in `release-time.test.ts` plus 3 added to `opened-vacated.test.ts` and 3 e2e. The two that matter most are the ones that must NOT move (the no-show count and utilization, both compared before and after). Then: the cut and its minutes, the per-block truncation, the event carrying both sides with the outbox not moving, **a walk-in booked into the freed time with `isOverride === false`** — which is the whole item — the time she DID occupy still being refused, both correction arms, and the four refusals. On the freed-slot list: the released span appearing with what is LEFT of it rather than what it was when released, disappearing when it runs out, and **not appearing at all until somebody releases it**, which is D-7 asserted from the other side.
 
 **Left behind:** the chip keeps its booked extent, so a released no-show and the walk-in sold into her time draw over each other exactly as a D-8 override and its host already do — legible now, but the grid still has no lane layout. And nothing un-releases: "she has just walked in" after a release is a rebooking, not an undo.
+
+---
+
+## A-070 — the per-visit note was written on one screen and read on no other
+
+**Commit:** `TBD`
+
+**An oversight rather than a decision, and the grep proves it.** `day-view.ts:295` has selected and returned `notes` alongside `clientNotes` since A-016; `view-model.ts:307` mapped only `clientNotes → pinnedNote` and **dropped `notes` on the floor**. So "Patch test done 12/4", "6.3 + 20 vol, 35 min" and "Bring the reference photo" were typed into the appointment's own note field on the detail panel and read by nobody: not on the day chip, not on the stylist's own list, and not on the printed day sheet, which carried only the pinned CLIENT note. A-062's blank scribble column was therefore the salon writing the colour formula on paper and binning it at six — and the patch-test line, which is a safety surface, lived in the one place nobody looks.
+
+**What it built.** The view model carries it; the chip shows it truncated with the whole thing in the accessible name, exactly as `clientNotes` already was; the stylist's list shows it; the printed sheet prints it. Four readers, one line each, because the data had been arriving all along.
+
+**Visually distinct everywhere, which is most of the design work.** `⚑` and amber is the safety line about HER; `✎`, quieter, is about TODAY — on screen, and on paper `⚑` bold against `✎` italic, because the sheet is read at arm's length in greyscale off a laser printer. The accessible name words them apart too (`note: …` against `today: …`), so they cannot be confused when a screen reader says them one after the other. **They are never merged**: `Appointment.notes` exists precisely because per-visit notes bury the allergy line, and a single field would have re-created that within a month.
+
+**The half that is not display.** *"If it takes three taps to write '6.3 + 20vol' it goes on the scribble column instead, which is the failure this closes."* The note was editable on exactly one screen — the detail panel, three taps and a page load away. `QuickNote` puts it on the stylist's own day as a native `<details>`: one line when closed, open-type-save, the SAME server action the detail panel uses so there is one writer of this column and not two. `<details>` rather than a popover for the reason A-037's desk switcher gives — keyboard-operable and screen-reader-announced for free. It is on the LIST rather than the grid chip because a chip is `minutes * 1.5` pixels tall and the seeded fringe trim is ten of them: a textarea does not fit, and this list reflows.
+
+**One line that is easy to miss and would have made the feature useless.** `saveVisitNote` revalidated only `/staff/appointments/[id]`. The note is now written FROM the day and read ON the day, so without `revalidatePath('/staff/day')` the note the stylist just typed would be invisible on the screen she typed it into. The e2e asserts exactly that, by typing and then looking at the list rather than at a database row.
+
+**What it deliberately did not touch.** The scribble column stays: it is where the walk-in and "back at 3" go, and a sheet with no room to write on gets a Post-it stuck to it. The pinned client note is unchanged.
+
+**Tests:** 3 e2e, and no unit tests, deliberately — every one of the four changes is a rendering path, and there is nothing here that a database-level assertion could see. Both notes on one chip with the accessible name proving they are worded apart; writing one from the stylist's own day and finding it on that same list without navigating; and both notes on the printed sheet with their two marks.
+
+**Left behind:** the grid chip still cannot be written into — the geometry does not allow it, and the stylist's list is one tap away. The check-in path does not prompt for a note either; the row offered "the day grid OR the check-in path" and this took the first.

@@ -78,6 +78,14 @@ export function DaySheet({
                       {item.missed ? (
                         <div className='font-semibold'>⚑ {item.missed}</div>
                       ) : null}
+                      {/* A-070. On the paper at last, and VISUALLY DISTINCT
+                          from the pinned note above it — ✎ and italic rather
+                          than ⚑ and bold, because one is about her and one is
+                          about today, and this sheet is read at arm's length
+                          in greyscale. Without it, "patch test done 12/4" and
+                          "6.3 + 20 vol" lived on one screen and reached the
+                          stylist at the backwash on none. */}
+                      {item.visitNote ? <div className='italic'>✎ {item.visitNote}</div> : null}
                     </td>
                     {/* Deliberately empty and deliberately tall: this is where
                         the walk-in, the colour formula and 'back at 3' get
