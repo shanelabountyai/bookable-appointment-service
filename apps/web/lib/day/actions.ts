@@ -99,6 +99,10 @@ export interface PreviewShape {
   minutes: number;
   canPush: boolean;
   rows: { appointmentId: string; clientName: string | null; from: string; to: string; problem?: string }[];
+  /** D-43. What this push would leave the running-late claim at — stated before
+   *  the desk commits, on every arm including the two that leave it standing. */
+  runningLateMinutes: number;
+  runningLateAfter: number;
 }
 
 /** APPT-04's collision preview — what would move, and what cannot. */
@@ -161,7 +165,8 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
       ok: result.leftBehind.length === 0,
       message:
         `Moved ${result.moved} appointment${result.moved === 1 ? '' : 's'}. ${result.notified} client${result.notified === 1 ? '' : 's'} told.` +
-        (stayed ? ` Left where they were: ${stayed}.` : ''),
+        (stayed ? ` Left where they were: ${stayed}.` : '') +
+        deltaWords(result),
     };
   } catch (error) {
     if (error instanceof RangeError) return { ok: false, message: 'Choose how many minutes to push by.' };
@@ -170,6 +175,25 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
 }
 
 // ─────────────────────────── internals ───────────────────────────
+
+/**
+ * D-43 — what the push did to the delta, in the salon's words.
+ *
+ * Said on every arm that has a claim to talk about, INCLUDING the ones that
+ * changed nothing: "still showing 40 min behind" after a partial push is the
+ * whole reason the partial arm is allowed to leave it alone. A message that
+ * only spoke up when the number moved would make the untouched case silent,
+ * which is the defect A-066 exists to remove one layer down.
+ */
+function deltaWords(result: { runningLateMinutes: number; runningLateAfter: number }): string {
+  if (result.runningLateMinutes === 0) return '';
+  if (result.runningLateAfter === result.runningLateMinutes) {
+    return ` Still showing ${result.runningLateMinutes} min behind.`;
+  }
+  return result.runningLateAfter === 0
+    ? ' Now back on time.'
+    : ` Now showing ${result.runningLateAfter} min behind.`;
+}
 
 /**
  * Why a client is staying put, in the salon's words (D-10's staff half).
@@ -194,6 +218,8 @@ async function shapeFor(preview: PushPreview, businessId: string): Promise<Previ
   return {
     minutes: preview.minutes,
     canPush: preview.canPush,
+    runningLateMinutes: preview.runningLateMinutes,
+    runningLateAfter: preview.runningLateAfter,
     rows: preview.candidates.map((candidate) => ({
       appointmentId: candidate.appointmentId,
       clientName: candidate.clientName,

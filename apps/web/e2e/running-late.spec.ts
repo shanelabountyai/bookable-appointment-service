@@ -215,6 +215,41 @@ test.describe('pushing the column (A-018)', () => {
     }
   });
 
+  /**
+   * A-066 / D-43 — THE SEAM BETWEEN THE TWO HALVES OF A-018.
+   *
+   * The desk sets +30 correctly, Dana does not catch up, so they push the column
+   * +30. Before this item the delta was still 30: the chip read "→ likely 15:00"
+   * against a 14:30 it had just been moved to, the ring-round wanted six clients
+   * phoned about a delay already applied to their booked times, and the engine
+   * kept refusing to sell a gap that genuinely existed.
+   *
+   * Asserts what the PAGE SAYS, not that it answered.
+   */
+  test('a clean push works the delta off, so nothing double-counts it', async ({ page }) => {
+    await seedAppointments(['14:00']);
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const dana = page.getByRole('region', { name: /Dana/ });
+    await dana.getByLabel('Behind by').fill('30');
+    await dana.getByRole('button', { name: 'Set' }).click();
+    await expect(page.getByText('→ likely 14:30')).toBeVisible();
+
+    await dana.getByText('Push the column').click();
+    await dana.getByLabel('Push by').fill('30');
+    await dana.getByRole('button', { name: 'Preview' }).click();
+    // Stated BEFORE the desk commits — D-43's preview half.
+    await expect(dana.getByText(/Dana then shows on time/)).toBeVisible();
+
+    await dana.getByRole('button', { name: /^Move 1 and tell them$/ }).click();
+    await expect(dana.getByText(/Now back on time\./)).toBeVisible();
+
+    // The claim is gone, and with it every projection standing on top of a
+    // startAt that has already absorbed it.
+    await expect(dana.getByText('+30 min')).toHaveCount(0);
+    await expect(page.getByText(/→ likely/)).toHaveCount(0);
+  });
+
   test('has no accessibility violations with a column running late', async ({ page }) => {
     await seedAppointments(['14:00']);
     await page.goto(`/staff/day?day=${DAY}`);

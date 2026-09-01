@@ -160,6 +160,23 @@ export function ColumnControls({
 
                 {preview.rows.length === 0 ? <p>Nothing left to move.</p> : null}
 
+                {/* D-43. What this leaves the delta at, BEFORE the desk
+                    commits — and stated just as plainly when it leaves it
+                    standing, because a partial push or a pull-forward not
+                    reducing it is a decision the desk has to see. */}
+                {preview.runningLateMinutes > 0 ? (
+                  <p className={preview.runningLateAfter === preview.runningLateMinutes ? 'text-amber-800 dark:text-amber-300' : ''}>
+                    {preview.runningLateAfter === preview.runningLateMinutes
+                      ? `${providerName} still shows ${preview.runningLateMinutes} min behind — ` +
+                        (preview.minutes < 0
+                          ? 'pulling the column earlier does not change the delta.'
+                          : 'the ones that stay are still late.')
+                      : preview.runningLateAfter === 0
+                        ? `${providerName} then shows on time.`
+                        : `${providerName} then shows ${preview.runningLateAfter} min behind.`}
+                  </p>
+                ) : null}
+
                 <form action={doPush} className="flex flex-col gap-2">
                   <input type="hidden" name="providerId" value={providerId} />
                   <input type="hidden" name="day" value={day} />

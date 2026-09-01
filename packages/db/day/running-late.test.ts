@@ -644,3 +644,157 @@ describe('A-059 — pulling the column earlier', () => {
     ).rejects.toThrow(RangeError);
   });
 });
+
+/**
+ * A-066 / D-43 — THE PUSH WORKS THE DELTA OFF.
+ *
+ * The seam between A-018's two halves, which were built in one item as
+ * deliberately different mechanisms and never introduced to each other. The
+ * defect these cover is not that either half is wrong on its own: it is that a
+ * pushed column left "+40 min" standing, so every projected chip double-counted
+ * a delay already applied to the time it was projecting from, the ring-round
+ * listed clients to phone about it, and the engine kept refusing to sell a gap
+ * that genuinely existed.
+ */
+describe('D-43 — a push and the delta it was called to work off', () => {
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR });
+  const push = (minutes: number, fromIso = '2026-06-09T14:00:00-05:00') =>
+    pushColumn(prisma, { businessId, providerId: danaId, day: DAY, fromAt: at(fromIso), minutes, actor: ACTOR });
+  const deltaNow = async () => (await findRunningLate(prisma, { businessId, day: DAY }))[0]?.minutes ?? 0;
+
+  /**
+   * THE REGRESSION, in the operator's own scene: set +40, push +40, and nothing
+   * anywhere may still be adding forty minutes to a column that has just been
+   * made honest. `runningLateMinutes` is what the day chip's projection and
+   * `lateCallList` are both gated on, so asserting it null is asserting both.
+   */
+  it('a clean push of the full delta leaves the column on time, and nothing projecting', async () => {
+    const appointment = await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+
+    const result = await push(40);
+    expect(result.moved).toBe(1);
+    expect(result.runningLateMinutes).toBe(40);
+    expect(result.runningLateAfter).toBe(0);
+
+    // The claim is GONE, not stored as a zero — "on time" is its absence.
+    expect(await findRunningLate(prisma, { businessId, day: DAY })).toEqual([]);
+
+    const view = await loadDayView(prisma, {
+      businessId,
+      day: DAY,
+      now: at('2026-06-09T12:30:00-05:00'),
+    });
+    const column = view.columns.find((c) => c.providerId === danaId)!;
+    expect(column.runningLateMinutes).toBeNull();
+    expect(column.lateCalls).toEqual([]);
+    // And the chip it would have projected from has actually moved.
+    const moved = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(hhmm(moved.startAt)).toBe('14:40');
+  });
+
+  /** A push of 20 against a delta of 40 works off half the overrun. Clearing
+   *  would be the system deciding the rest of the day is fixed. */
+  it('a smaller push reduces rather than clears', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+
+    expect((await push(20)).runningLateAfter).toBe(20);
+    expect(await deltaNow()).toBe(20);
+  });
+
+  /** Floored at zero, never negative: the row means "behind by", and a stored
+   *  -20 would render as "+-20 min". */
+  it('a push bigger than the delta floors at zero rather than going negative', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await setLate(20);
+
+    expect((await push(60)).runningLateAfter).toBe(0);
+    expect(await findRunningLate(prisma, { businessId, day: DAY })).toEqual([]);
+  });
+
+  /**
+   * THE PARTIAL ARM (D-43, amending nothing about D-26). The cascade propagates
+   * BACKWARDS in time, so "some moved" does not mean "the front of the column
+   * moved" — reducing here would strip the delta from the clients it is most
+   * true of.
+   */
+  it('a partial push changes the delta by nothing, and says so', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    // Dana closes at 17:00, so a 16:00 hour-long cut cannot take a +30.
+    await book('2026-06-09T16:00:00-05:00');
+    await setLate(40);
+
+    const result = await push(30);
+    expect(result.moved).toBe(1);
+    expect(result.leftBehind.map((c) => c.problem)).toEqual(['past-closing']);
+    expect(result.runningLateMinutes).toBe(40);
+    expect(result.runningLateAfter).toBe(40);
+    expect(await deltaNow()).toBe(40);
+  });
+
+  /**
+   * A-059's pull-forward. Reducing by a negative would RAISE a lateness claim
+   * because the salon got ahead; clearing would be guessing "she has caught up
+   * entirely" from a -20 nudge. The delta is somebody's claim (D-22).
+   */
+  it('a pull-forward never touches the delta', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+
+    const result = await push(-20);
+    expect(result.moved).toBe(1);
+    expect(result.runningLateAfter).toBe(40);
+    expect(await deltaNow()).toBe(40);
+  });
+
+  /** A push that could move nothing at all changes nothing at all. */
+  it('leaves the delta alone when nothing could move', async () => {
+    await book('2026-06-09T16:00:00-05:00');
+    await setLate(40);
+
+    const result = await push(30, '2026-06-09T16:00:00-05:00');
+    expect(result.moved).toBe(0);
+    // The REPORTED number too, not only the stored one: the early return when
+    // nothing can move would otherwise let a wrong rule through unnoticed.
+    expect(result.runningLateAfter).toBe(40);
+    expect(await deltaNow()).toBe(40);
+  });
+
+  /**
+   * D-41's marks are never deleted by a reduction — the desk DID make those
+   * calls. They go stale by A-059's existing rule, for free, because staleness
+   * is derived from the delta rather than stored.
+   */
+  it('keeps the "told her" marks through a reduction, and lets them go stale', async () => {
+    const appointment = await book('2026-06-09T15:00:00-05:00');
+    await setLate(40);
+    await markToldAbout(prisma, { businessId, providerId: danaId, day: DAY, appointmentId: appointment.id, actor: ACTOR });
+
+    await push(20);
+
+    const view = await loadDayView(prisma, { businessId, day: DAY, now: at('2026-06-09T14:00:00-05:00') });
+    const call = view.columns.find((c) => c.providerId === danaId)!.lateCalls[0]!;
+    expect(call.told?.minutesToldAbout).toBe(40);
+    // She was told 40; the column now claims 20. The tick stays and is flagged.
+    expect(call.stale).toBe(true);
+  });
+
+  /** The preview states the outcome, from the same function the push runs —
+   *  "moves 1, Dana then shows 0 behind", before anybody commits. */
+  it('the preview says what the delta will be, on both arms', async () => {
+    await book('2026-06-09T14:00:00-05:00');
+    await setLate(40);
+
+    const clean = await previewPush(prisma, { businessId, providerId: danaId, day: DAY, fromAt: at('2026-06-09T14:00:00-05:00'), minutes: 15 });
+    expect(clean.runningLateMinutes).toBe(40);
+    expect(clean.runningLateAfter).toBe(25);
+
+    // The same delta, the same column — and a 16:00 hour-long cut against a
+    // 17:00 close turns any positive push into a partial one.
+    await book('2026-06-09T16:00:00-05:00');
+    const partial = await previewPush(prisma, { businessId, providerId: danaId, day: DAY, fromAt: at('2026-06-09T14:00:00-05:00'), minutes: 30 });
+    expect(partial.runningLateAfter).toBe(40);
+  });
+});

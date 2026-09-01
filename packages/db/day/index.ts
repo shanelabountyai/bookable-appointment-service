@@ -20,6 +20,7 @@ export {
   type RunningLate,
   type ToldMark,
   clearRunningLate,
+  deltaAfterPush,
   findRunningLate,
   lateCallList,
   markToldAbout,

@@ -37,6 +37,7 @@ import { enqueueNotification } from '../notifications';
 import { repointManageTokens } from '../appointments';
 import { SlotTaken } from '../booking';
 import { isSlotTakenError } from '../errors';
+import { deltaAfterPush, setRunningLate } from './running-late';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 const MIN = 60_000;
@@ -74,6 +75,17 @@ export interface PushPreview {
   /** True when at least one appointment can actually move. Not "all of them"
    *  (D-26): the push is partial and says what it left. */
   canPush: boolean;
+  /**
+   * D-43 — the delta as it stands, and as this push would leave it.
+   *
+   * Stated by the PREVIEW and not only by the outcome, because "moves 6, leaves
+   * 2, Dana then shows 0 behind" is the sentence the desk needs before it
+   * commits: on the two arms that leave the delta standing, these are equal and
+   * the screen says so in words. Zero means no claim rather than a stored zero —
+   * `setRunningLate` has always treated it that way.
+   */
+  runningLateMinutes: number;
+  runningLateAfter: number;
 }
 
 /**
@@ -155,6 +167,15 @@ export async function previewPush(
     (earliest, w) => (earliest === 0 || w.span.start < earliest ? w.span.start : earliest),
     0 as number,
   );
+
+  // D-43. Read INSIDE whatever transaction is running — `pushColumn` calls this
+  // function from inside its own, so the number the push acts on is the number
+  // the preview promised, with no window between them.
+  const late = await db.providerRunningLate.findFirst({
+    where: { businessId: args.businessId, providerId: args.providerId, day: args.day },
+    select: { minutes: true },
+  });
+  const runningLateMinutes = late?.minutes ?? 0;
 
   const shift = args.minutes * MIN;
 
@@ -298,6 +319,12 @@ export async function previewPush(
     minutes: args.minutes,
     candidates,
     canPush: candidates.some((c) => c.problem === undefined),
+    runningLateMinutes,
+    runningLateAfter: deltaAfterPush({
+      current: runningLateMinutes,
+      minutes: args.minutes,
+      leftBehind: candidates.filter((c) => c.problem !== undefined).length,
+    }),
   };
 }
 
@@ -466,6 +493,11 @@ export interface PushResult {
   /** D-26: what stayed put, and why. Named rather than silently dropped —
    *  this is the half the desk has to act on next. */
   leftBehind: PushCandidate[];
+  /** D-43. The delta before this push and after it — equal on every arm that
+   *  leaves it standing (a partial push, a pull-forward, nothing to move), so
+   *  the desk is told which happened rather than left to infer it. */
+  runningLateMinutes: number;
+  runningLateAfter: number;
 }
 
 /**
@@ -499,7 +531,8 @@ export async function pushColumn(
     // this feature exists to do (demo checkpoint 2, §9).
     const movable = preview.candidates.filter((c) => c.problem === undefined);
     const leftBehind = preview.candidates.filter((c) => c.problem !== undefined);
-    if (movable.length === 0) return { moved: 0, notified: 0, leftBehind };
+    const delta = { runningLateMinutes: preview.runningLateMinutes, runningLateAfter: preview.runningLateAfter };
+    if (movable.length === 0) return { moved: 0, notified: 0, leftBehind, ...delta };
 
     // THE DEFERRAL, and the only place in this codebase that asks for it.
     // Scoped to this transaction: everywhere else the check stays immediate.
@@ -601,7 +634,33 @@ export async function pushColumn(
       notified += 1;
     }
 
-    return { moved: movable.length, notified, leftBehind };
+    /**
+     * D-43 — THE DELTA THIS PUSH JUST WORKED OFF, IN THE SAME TRANSACTION.
+     *
+     * Not a follow-up write and not the caller's job: a push that moves the
+     * column and leaves "+40 min" standing makes every projected chip
+     * double-count it, keeps the ring-round listing clients to phone about a
+     * delay now baked into their booked times, and keeps the engine refusing to
+     * sell a gap that genuinely exists.
+     *
+     * `setRunningLate` rather than a bare update, because it is already the one
+     * place that knows a delta of zero is a DELETED row rather than a stored
+     * zero — and the actor stamp is honest: the push is what changed the claim.
+     * The `RunningLateTold` marks that survive a reduction go stale by A-059's
+     * existing rule for free; a reduction to zero takes them with the claim they
+     * hang off, exactly as "Back on time" always has (D-41).
+     */
+    if (preview.runningLateAfter !== preview.runningLateMinutes) {
+      await setRunningLate(tx, {
+        businessId: args.businessId,
+        providerId: args.providerId,
+        day: args.day,
+        minutes: preview.runningLateAfter,
+        actor: args.actor,
+      });
+    }
+
+    return { moved: movable.length, notified, leftBehind, ...delta };
   }, { timeout: 15_000 })
     .catch((error: unknown) => {
       // A-034. The preview runs inside this transaction and plans both axes, so

@@ -92,6 +92,39 @@ export async function clearRunningLate(
   await db.providerRunningLate.deleteMany({ where: { providerId: args.providerId, day: args.day } });
 }
 
+/**
+ * D-43 — WHAT A PUSH LEAVES THE DELTA AT.
+ *
+ * A-018 built the delta and the push in one item as deliberately different
+ * mechanisms and never introduced them to each other: the desk sets +40, Dana
+ * does not catch up, they push the column +40 — and the delta is still 40. Every
+ * chip then projects a delay onto a `startAt` that already has it, the
+ * ring-round lists clients to phone about a delay baked into their booked times,
+ * and the engine keeps subtracting forty minutes from a column that is now
+ * honest.
+ *
+ * PURE, and called by BOTH the preview and the push, so the number the desk is
+ * shown before committing cannot disagree with the number it gets. The write
+ * lives inside the push's own transaction — a second write path that "usually"
+ * runs afterwards is how this comes back.
+ *
+ * Three arms, and the two that do nothing are the decision:
+ *  - CLEAN push: reduce by the pushed minutes, floored at zero. Zero deletes the
+ *    row, exactly as "Back on time" does — "on time" is the absence of a claim.
+ *  - PARTIAL push: nothing. The cascade propagates BACKWARDS in time (a stayer
+ *    blocks what would shift ONTO it, which starts earlier), so "some moved"
+ *    does not mean "the front moved" — reducing would strip the delta from
+ *    precisely the clients it is still true of.
+ *  - PULL FORWARD (negative, A-059): nothing. Reducing by a negative would RAISE
+ *    a lateness claim because the salon got ahead; clearing would be guessing
+ *    "she has caught up entirely" from a -10 nudge, and D-22's whole point is
+ *    that the claim is somebody's, with their name on it.
+ */
+export function deltaAfterPush(args: { current: number; minutes: number; leftBehind: number }): number {
+  if (args.minutes <= 0 || args.leftBehind > 0) return args.current;
+  return Math.max(0, args.current - args.minutes);
+}
+
 export async function findRunningLate(
   db: Db,
   args: { businessId: string; day: string },

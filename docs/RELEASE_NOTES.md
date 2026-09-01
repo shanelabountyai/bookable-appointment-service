@@ -1820,3 +1820,23 @@ So a client who rang to shift her standing appointment by half an hour was recor
 The single-appointment version of this had already been fixed, with a deliberate escape for the desk: *she gave us proper notice*, or *this one's on us*. The bulk version was written first and never learned about it. It now uses the same machinery and offers the same escape — and, as before, still records what was overruled and by whom, because writing an honest status is not the same as writing no evidence.
 
 Worth being precise about the size of it: one appointment per series, not all of them, and it never blocked anyone from booking online. It simply told the front desk something untrue about a client, for a year.
+
+## The delay that got counted twice
+
+A stylist runs forty minutes behind. The front desk taps *behind by 40*, which is the right thing to do: the website immediately stops selling the next forty minutes of her column, and the day view marks it. She does not catch up. So at half past twelve the desk pushes her whole afternoon back by forty minutes — every client moved, every client told.
+
+The forty minutes was still on the screen afterwards.
+
+Nothing crashed, and nothing double-booked. What happened is subtler and worse for the people using it: every screen that knew about the delay went on adding it to times that had already absorbed it. A client booked at 3:10, moved to 3:50, showed up on the day view as *likely 4:30*. The list of people to ring about the delay still had six names on it — all of them clients whose booking now said the later time anyway. And the booking engine kept holding back forty minutes of a column that had just been made honest, refusing to sell time the salon genuinely had.
+
+The fix is small. The push now works the delay off in the same database transaction that moves the appointments, and says what it will leave behind before anybody commits: *moves 6, Dana then shows on time*.
+
+### The two cases where it deliberately does nothing
+
+The interesting engineering is not the subtraction. It is the two situations where subtracting would be wrong, and a system that reduced the number in all three would have replaced a visible bug with an invisible one.
+
+**A push that only half-worked.** Some appointments cannot move — one would run past closing, another has no chair free at the new time. When that happens the delay is left exactly where it was. It is tempting to reduce it anyway, since most clients did move. But an appointment that stays put blocks the ones that would have landed on top of it, and those are the ones scheduled *earlier* — so a single stuck appointment in the middle of the afternoon can freeze the next two clients through the door while the rest of the day shifts. Reducing there would erase the delay from precisely the people still waiting for it.
+
+**A column pulled forward.** The desk can also push in the other direction: *she has caught up, pull it back twenty*. Run the same subtraction and a salon that got ahead of itself is recorded as twenty minutes further behind. Guessing the opposite — that pulling forward means she is fully caught up — would be the software deciding something a person deliberately did not say.
+
+In both cases the number stays put, and the screen says so in words rather than leaving it to be noticed. That is the actual rule: a running-late figure is a claim a named person made about their own day, and software may work it off arithmetically when it has genuinely done so, but it may not invent one and it may not quietly withdraw one.
