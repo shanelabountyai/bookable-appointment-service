@@ -31,6 +31,12 @@ export {
   changeVisitServices,
 } from './change-services';
 export {
+  NotReleasable,
+  type ReleaseNoShowTimeInput,
+  type ReleasedTime,
+  releaseNoShowTime,
+} from './release-time';
+export {
   type AppointmentClientChanged,
   ClientAlreadyChanged,
   ClientNotAttachable,

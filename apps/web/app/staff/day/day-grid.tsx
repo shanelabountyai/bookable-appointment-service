@@ -197,6 +197,13 @@ function Item({ item }: { item: GridItem }) {
         <span className="block truncate font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</span>
       ) : null}
       {item.isOverride ? <span className="block text-[10px] uppercase tracking-wide">override</span> : null}
+      {/* A-069. She never came, and the rest of her slot is back on the market
+          — so the bookable gap chip painting over this one is deliberate, not
+          a double-booking. Her chip stays at its BOOKED extent because "who
+          was due at ten?" is what the desk is looking for. */}
+      {item.released ? (
+        <span className="block truncate text-[10px] uppercase tracking-wide">time back from {item.released}</span>
+      ) : null}
     </>
   );
 
@@ -226,7 +233,7 @@ function Item({ item }: { item: GridItem }) {
   // per extra line already claimed. A chip clips what does not fit, and a
   // CLIPPED BUTTON is worse than an absent one — invisible to the eye and
   // still in the tab order.
-  const linesInUse = [item.detail, item.projected, item.pinnedNote, item.missed, item.isOverride].filter(
+  const linesInUse = [item.detail, item.projected, item.pinnedNote, item.missed, item.isOverride, item.released].filter(
     Boolean,
   ).length;
   const roomForAButton = item.minutes >= ONE_LINE_AND_A_BUTTON + linesInUse * MINUTES_PER_LINE;

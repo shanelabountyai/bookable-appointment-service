@@ -13,10 +13,13 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
 import {
   AppointmentMovedFirst,
+  NotReleasable,
   TransitionRefused,
+  releaseNoShowTime,
   setAppointmentNotes,
   transitionAppointment,
 } from '@bookable/db/appointments';
+import { SlotTaken } from '@bookable/db/booking';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
@@ -67,6 +70,48 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
   revalidatePath('/staff/day');
   revalidatePath('/staff/call-down');
   return { ok: true, message: 'Done, and recorded.' };
+}
+
+/**
+ * A-069 / D-44 — GIVING A NO-SHOW'S DEAD TIME BACK (APPT-03, BOOK-05).
+ *
+ * Beside the status controls rather than on a screen of its own, because the
+ * moment the desk marks the no-show is the only moment anybody is thinking
+ * about that slot. A screen away is a screen nobody opens, which is the same
+ * finding A-043 was built on.
+ *
+ * NEVER AUTOMATIC (D-44). The instant is `now` because the desk pressed the
+ * button now — not a rule that releases at N minutes past, which would resell
+ * a slot to a client stuck in traffic eight minutes away.
+ */
+export async function releaseTime(_previous: DetailState, formData: FormData): Promise<DetailState> {
+  const staff = await requireStaff();
+  const appointmentId = String(formData.get('appointmentId') ?? '');
+  const reason = String(formData.get('reason') ?? '');
+
+  try {
+    const released = await releaseNoShowTime(prisma, {
+      businessId: staff.businessId,
+      appointmentId,
+      releasedAt: new Date(),
+      actor: staffActor(staff.id),
+      reason: reason || null,
+    });
+
+    revalidatePath(`/staff/appointments/${appointmentId}`);
+    revalidatePath('/staff/day');
+    // A-067's list is where the freed span gets sold — the waitlist match and
+    // the walk-in door both read it.
+    revalidatePath('/staff/opened');
+
+    return { ok: true, message: `${released.minutes} min back on the market. It is on What's opened up.` };
+  } catch (error) {
+    if (error instanceof NotReleasable) return { ok: false, message: error.message };
+    // Only reachable through the correction path, but the vocabulary is shared
+    // on purpose — one cause, one sentence, wherever it surfaces.
+    if (error instanceof SlotTaken) return { ok: false, message: 'Somebody has already taken that time.' };
+    throw error;
+  }
 }
 
 export async function saveVisitNote(_previous: DetailState, formData: FormData): Promise<DetailState> {

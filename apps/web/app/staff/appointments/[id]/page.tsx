@@ -347,7 +347,13 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         </section>
       ) : null}
 
-      <StatusControls appointmentId={detail.id} status={status} available={moves} cancelAs={cancelAs} />
+      <StatusControls
+        appointmentId={detail.id}
+        status={status}
+        available={moves}
+        cancelAs={cancelAs}
+        release={releaseOffer(detail, business.timezone)}
+      />
 
       <VisitNote appointmentId={detail.id} notes={detail.notes ?? ''} />
 
@@ -421,4 +427,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd className="font-medium">{children}</dd>
     </div>
   );
+}
+
+/**
+ * A-069 / D-44 — what, if anything, there is to give back.
+ *
+ * Decided on the server so the panel has no rule of its own: only a `no_show`
+ * has dead time by definition of the item, only an unreleased one has any
+ * left, and only one whose blocked range has not already run out has anything
+ * worth a walk-in. `releaseNoShowTime` asks the same three questions again
+ * against real rows and never trusts this.
+ */
+function releaseOffer(
+  detail: { status: string; releasedAt: Date | null; blockedEnd: Date },
+  zone: string,
+): { minutes: number } | { releasedLabel: string } | null {
+  if (detail.status !== 'no_show') return null;
+  if (detail.releasedAt) return { releasedLabel: readableInstant(detail.releasedAt, zone) };
+  const minutes = Math.round((fromDate(detail.blockedEnd) - fromDate(new Date())) / 60_000);
+  return minutes > 0 ? { minutes } : null;
 }

@@ -57,6 +57,10 @@ export interface GridItem {
    *  instead of it — the client was booked for 14:00 and her confirmation
    *  still says so. */
   projected?: string;
+  /** A-069 / D-44 — the instant the desk gave this no-show's remaining time
+   *  back. Present only on a released one; the chip keeps its booked extent,
+   *  so this is what explains the bookable gap sitting on top of it. */
+  released?: string;
   href?: string;
   /** The whole chip as one sentence, for a screen reader and for the
    *  accessible name of the link. */
@@ -323,6 +327,10 @@ function toColumn(
           // the detail panel, where the reason they require can be typed.
         }),
         isOverride: appointment.isOverride,
+        // A-069. The gap chip painting over her is the released time, and it
+        // is clickable — this is the sentence that makes that legible instead
+        // of alarming.
+        ...(appointment.releasedAt ? { released: f.clock(appointment.releasedAt) } : {}),
         // Only for what has not started yet: projecting a time onto an
         // appointment already in the chair is noise, and projecting onto a
         // finished one is wrong.
@@ -339,6 +347,7 @@ function toColumn(
           services,
           STATUS_WORDS[appointment.status as AppointmentStatus],
           appointment.isOverride ? 'booked as an override' : '',
+          appointment.releasedAt ? `time given back from ${f.clock(appointment.releasedAt)}` : '',
           appointment.clientNotes ? `note: ${appointment.clientNotes}` : '',
           missed ?? '',
           column.runningLateMinutes && appointment.status === 'booked'

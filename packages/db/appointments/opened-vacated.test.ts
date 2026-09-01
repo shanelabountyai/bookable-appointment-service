@@ -26,6 +26,7 @@ import { createWeeklyWindow } from '../availability';
 import { reassignAppointment } from '../availability/reassign';
 import { bookAppointment } from '../booking';
 import { changeVisitServices } from './change-services';
+import { releaseNoShowTime } from './release-time';
 import { listOpenedSlots } from './opened';
 import { rescheduleAppointment } from './reschedule';
 import { transitionAppointment } from './transition';
@@ -413,5 +414,74 @@ describe('the bounds, on a freed tail', () => {
     // direction. It never names time the visit still holds.
     expect(slots).toHaveLength(1);
     expect(slots[0]).toMatchObject({ freedMinutes: 75, primaryServiceId: cutId });
+  });
+});
+
+/**
+ * A-069 / D-44 — the fourth source. She never came, the desk gave up at 10:20
+ * and put the rest of her slot back on the market, and the list that exists to
+ * sell freed time has to know.
+ *
+ * This is also the block that forces BOUND 1 to be honest. A release always
+ * happens INSIDE the slot it frees, so its span always starts in the past —
+ * a bound on the start would have dropped every one of these, and would also
+ * have been dropping the hour still left of a colour dropped at two o'clock.
+ */
+describe("a no-show's time given back (A-069)", () => {
+  /** Twenty past ten; her cut was 10:00–11:00, envelope 09:55–11:15. */
+  const GAVE_UP = at('2026-06-09T10:20:00-05:00');
+  const LATER = at('2026-06-09T10:25:00-05:00');
+
+  async function releasedNoShow() {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'no_show',
+      now: GAVE_UP,
+      actor: STAFF,
+    });
+    await releaseNoShowTime(prisma, {
+      businessId,
+      appointmentId: appointment.id,
+      releasedAt: GAVE_UP,
+      actor: STAFF,
+    });
+    return appointment;
+  }
+
+  it('offers what is LEFT of the released span, not what it was when released', async () => {
+    const appointment = await releasedNoShow();
+
+    const slots = await listOpenedSlots(prisma, { businessId, now: LATER });
+
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      appointmentId: appointment.id,
+      providerName: 'Dana',
+      status: 'no_show',
+      // 10:25 to 11:15 — the five minutes that have gone since the desk let it
+      // go are not for sale, and the row is recomputed on every read.
+      freedMinutes: 50,
+      freedBy: { kind: 'released' },
+    });
+    expect(slots[0]!.startAt).toEqual(LATER);
+  });
+
+  it('drops off when the released span has run out', async () => {
+    await releasedNoShow();
+
+    expect(await listOpenedSlots(prisma, { businessId, now: at('2026-06-09T11:20:00-05:00') })).toHaveLength(0);
+  });
+
+  it('is not on the list at all until somebody releases it — a no-show occupies its time (D-7)', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'no_show',
+      now: GAVE_UP,
+      actor: STAFF,
+    });
+
+    expect(await listOpenedSlots(prisma, { businessId, now: LATER })).toHaveLength(0);
   });
 });

@@ -1914,3 +1914,57 @@ It works in the other direction too, and that direction can fail honestly: takin
 **It is allowed on finished appointments.** "She was a no-show, and it turns out she was Mrs Kerr" is a real correction, and attaching it genuinely does move a no-show onto Mrs Kerr's twelve-month record — which is the entire reason to want it. The mirror matters more: taking a wrongly-attributed late cancellation *off* somebody is the only way to undo the harm at the top of this note, and a rule that forbade editing finished appointments would have closed the door the work exists to open.
 
 **A merged-away client record is refused, not followed.** When two duplicate records have been merged, the survivor is a *different person* from the one the desk just clicked. Quietly redirecting would be the software deciding which Sarah Jones this was — the one question a human is standing there to answer.
+
+## Seventy minutes nobody was allowed to sell
+
+A client is booked for a colour at ten. Ninety minutes, the salon's most valuable block. At twenty past she has not arrived and is not answering her phone, so the front desk marks her a no-show.
+
+Seventy minutes of a stylist's day then sat blocked, and the software would not let anyone have them.
+
+A walk-in at the door at twenty-five past could be booked into that time — but only through the *override*: the deliberate, reason-required escape hatch that exists for when staff knowingly double-book. So the system asked somebody to type a justification for booking an empty chair, and then permanently marked that appointment as having overruled the rules.
+
+That is worse than an inconvenience. This product leans on the override marker meaning something: it is how the owner can later see what was forced through and why. Making the desk use it several times a week for time that is genuinely, obviously free is how the marker stops being read at all. And the freed time never reached the screen whose entire job is finding sellable slots, because nothing in the system regarded it as freed.
+
+### The decision came before the code
+
+The obvious fix — "make a no-show release its time" — is wrong, and the reason is worth stating.
+
+A no-show *should* keep occupying its slot. That is what makes the stylist's utilization honest (she was standing there, unable to take anybody), what makes the client's twelve-month reliability record honest, and what half a dozen screens already assume. Changing that would have quietly corrupted the two numbers the owner actually runs the business on.
+
+What was missing was never a change to what a no-show *is*. It was a missing **action**.
+
+So the shape got decided and written down first, as its own commit, before a line of implementation existed — because in this codebase the last several defects around the booking constraint all came from picking the shape halfway through the work.
+
+Two shapes were on the table. The one chosen adds a single timestamp: *the moment the desk gave up*. The appointment occupies its chair from ten o'clock to twenty past, and the rest becomes ordinary bookable time.
+
+The deciding argument is not elegance. Utilization is calculated from the scheduled start and end; the no-show count is calculated from the status. A change confined to the *blocked range* cannot reach either of them — so those two numbers come out untouched **because of the shape of the change**, not because someone remembered to exclude them. The tests asserting they did not move are a guard against future regression, not the thing keeping them right today. The rejected alternative would have freed the twenty minutes she genuinely did occupy, and left the fact that she ever held the chair recorded in only one place.
+
+### What it took
+
+One nullable column, and two lines in database triggers that already existed. Everything that decides whether time is bookable — the no-double-booking constraint, the query the booking engine runs, the chair assignment — reads the ranges those triggers write, so all of them followed without being told.
+
+The day view's free-time gaps are calculated the same way, which means the released seventy minutes turned into a clickable "70 min free" block on the salon's day grid with no code written for it at all. That is the walk-in door, and it opened by itself.
+
+### The parts that did not follow by themselves
+
+Two screens model the day independently, and both had to be told — which is a rule this codebase now has in writing, after a run of defects with exactly this shape.
+
+The freed-slot list works from the appointment's status and its history rather than from time ranges, so it needed to learn about the release explicitly.
+
+More interestingly, that list had a bound that was wrong for this and had been slightly wrong all along. It only showed time freed *entirely in the future* — and a release always happens *inside* the slot it frees, so every released slot would have been discarded the moment it was created. Fixing it to bound on when the freed time *ends* also fixed a case shipped a few days earlier: a client who drops a service at two o'clock leaves an hour that is still worth a phone call at half past, and that hour was being thrown away.
+
+And one small thing that is easy to miss: the freed gap paints on top of the no-show's own block on the day grid. Without a marker that reads as a double-booking. Her block now says "time back from 10:20", which is the difference between a screen that looks broken and a screen that explains itself.
+
+### Two refusals
+
+**It is never automatic.** No setting, no rule, no timer. Releasing at "fifteen minutes past" resells a slot to a client who is eight minutes away in traffic. A person decides, and the moment they decide is what gets recorded.
+
+**Nothing is sent to her.** She did not come. Telling her that her appointment has been given to somebody else is not a message any salon sends.
+
+### The one that was found the hard way
+
+The release instant becomes the end of the blocked range, and this system requires every such instant to fall on a whole minute — an old rule, written after a stray millisecond turned two back-to-back appointments into a false conflict.
+
+The desk's button passes the current time, which always carries seconds. The first version would have reached the database as a raw constraint error.
+
+It was caught by a browser test, because that is the only place in the entire test suite where a real clock gets near this write — every unit test supplies a frozen time, deliberately. The fix rounds down at the single place that writes it, and there is now a test that passes a time with seconds and milliseconds in it on purpose.

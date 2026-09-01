@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState } from 'react';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
-import { type DetailState, changeStatus } from '@/lib/appointments/actions';
+import { type DetailState, changeStatus, releaseTime } from '@/lib/appointments/actions';
 import { STATUS_ACTION_LABELS } from '@/app/staff/day/status-actions';
 
 const initial: DetailState = {};
@@ -40,10 +41,14 @@ export function StatusControls({
   status,
   available,
   cancelAs,
+  release,
 }: {
   appointmentId: string;
   status: AppointmentStatus;
   available: AppointmentStatus[];
+  /** A-069 / D-44. `null` when there is nothing to give back — every status
+   *  but `no_show`, and a no-show whose time is over or already released. */
+  release: { minutes: number } | { releasedLabel: string } | null;
   /** What the server WILL write if the one Cancel button is pressed, or null
    *  when no cancellation is on the table at all. Advisory: the write path
    *  derives it again from the same arithmetic and never trusts this. */
@@ -51,16 +56,25 @@ export function StatusControls({
 }) {
   const [state, action, pending] = useActionState(changeStatus, initial);
 
+  // A-069's panel is its OWN form (its own action), so it sits beside this one
+  // rather than inside it — nested forms are invalid, and more to the point a
+  // control that changes no status has no business in the form that does.
+  // Rendered on BOTH branches: a no-show still has APPT-06's correction edge
+  // available, so the dead-end branch below is not the one it lands on.
   if (available.length === 0 && !cancelAs) {
     return (
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Nothing more to do with this one — {status.replace('_', ' ')} is where it ends.
-      </p>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Nothing more to do with this one — {status.replace('_', ' ')} is where it ends.
+        </p>
+        <ReleasePanel appointmentId={appointmentId} release={release} />
+      </div>
     );
   }
 
   return (
-    <form action={action} className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
+    <div className="flex flex-col gap-3">
+      <form action={action} className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
       <input type="hidden" name="appointmentId" value={appointmentId} />
       {/* The status the screen SHOWED. If somebody else moved it meanwhile,
           the write is refused and says who got there first, rather than
@@ -115,6 +129,82 @@ export function StatusControls({
         </button>
       ) : null}
 
+      <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
+        {state.message ?? ''}
+      </p>
+      </form>
+
+      {/* She IS a no-show, correctly and permanently. The seventy minutes she
+          is not using is a different question, and this is where it is asked. */}
+      <ReleasePanel appointmentId={appointmentId} release={release} />
+    </div>
+  );
+}
+
+/**
+ * A-069 / D-44 — "she never came; give the rest of her time back".
+ *
+ * OFFERED AT THE MOMENT THE DESK MARKS THE NO-SHOW, not a screen away: that is
+ * the only moment anybody is thinking about the slot, and a door nobody knows
+ * to walk through is the gap A-043 was built to close.
+ *
+ * ITS OWN FORM, because it is its own action. Putting it in the status form
+ * would make it a fourth thing that decides a status, which is exactly what
+ * A-060 took apart — and this one changes NO status at all. She stays a
+ * no-show, her twelve-month count is untouched, utilization is untouched, and
+ * the only thing that moves is what the salon may sell.
+ */
+function ReleasePanel({
+  appointmentId,
+  release,
+}: {
+  appointmentId: string;
+  release: { minutes: number } | { releasedLabel: string } | null;
+}) {
+  const [state, action, pending] = useActionState(releaseTime, initial);
+
+  if (release === null) return null;
+  if ('releasedLabel' in release) {
+    // The SETTLED state carries the pointer, not the toast. `revalidatePath`
+    // re-renders this panel the moment the action returns, so the success
+    // message from `useActionState` is replaced before anybody reads it —
+    // which is right, and means the sentence worth saying belongs here.
+    // `state.message` below stays as the FAILURE channel, where the server
+    // state has not changed and the message is the only thing that has.
+    return (
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Her remaining time went back on the market at {release.releasedLabel}. It is on{' '}
+        <Link href="/staff/opened" className="underline underline-offset-4">
+          What&apos;s opened up
+        </Link>
+        .
+      </p>
+    );
+  }
+
+  return (
+    <form action={action} className="flex flex-col gap-2 rounded-md border border-dashed border-zinc-400 p-4 dark:border-zinc-600">
+      <input type="hidden" name="appointmentId" value={appointmentId} />
+      <p className="text-sm">
+        <span className="font-medium">She never came, and {release.minutes} minutes of her slot are still blocked.</span>{' '}
+        Give them back and the walk-in at the door can have them — with no override, because the time really is
+        free.
+      </p>
+      {/* NOT "Why (optional)": A-068's client correction is on this same page
+          with a reason box of its own, and two identically-labelled fields are
+          ambiguous to a screen reader long before they are ambiguous to a
+          test. This one is about what happened to HER. */}
+      <label className="flex flex-col gap-1 text-sm">
+        What happened (optional)
+        <input
+          name="reason"
+          placeholder="Rang twice, no answer"
+          className="rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
+        />
+      </label>
+      <button type="submit" disabled={pending} className={`${buttonClass} self-start`}>
+        {pending ? 'Putting it back…' : `Put ${release.minutes} min back on the market`}
+      </button>
       <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
         {state.message ?? ''}
       </p>

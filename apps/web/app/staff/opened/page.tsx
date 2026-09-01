@@ -136,6 +136,10 @@ function freedWords(slot: OpenedSlot, zone: string): string {
       return `${who} moved to ${readableInstant(slot.freedBy.movedToStartAt, zone)}`;
     case 'reassigned':
       return `${who} went to ${slot.freedBy.movedToProviderName}`;
+    // A-069. Never "cancelled by": she did not cancel, she did not come, and
+    // the difference is the whole reason the no-show count exists.
+    case 'released':
+      return `${who} never came — the rest of her time was put back`;
   }
 }
 

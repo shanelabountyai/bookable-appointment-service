@@ -104,6 +104,10 @@ export interface AppointmentDetail {
    *  frees on cancellation, wider than `startAt`/`endAt` alone. */
   blockedStart: Date;
   blockedEnd: Date;
+  /** A-069 / D-44 — when the desk gave up on a no-show and put the rest of
+   *  her time back. `blockedEnd` is already the cut when this is set, so the
+   *  two together say "she was due until 11:30; we sold from 10:20". */
+  releasedAt: Date | null;
   clientId: string | null;
   clientName: string | null;
   clientPhone: string | null;
@@ -146,6 +150,7 @@ export async function loadAppointmentDetail(
       endAt: true,
       blockedStart: true,
       blockedEnd: true,
+      releasedAt: true,
       segmentPattern: true,
       isOverride: true,
       overrideReason: true,
@@ -216,6 +221,7 @@ export async function loadAppointmentDetail(
     endAt: appointment.endAt,
     blockedStart: appointment.blockedStart,
     blockedEnd: appointment.blockedEnd,
+    releasedAt: appointment.releasedAt,
     isOverride: appointment.isOverride,
     overrideReason: appointment.overrideReason,
     notes: appointment.notes,

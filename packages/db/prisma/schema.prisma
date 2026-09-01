@@ -707,6 +707,23 @@ model Appointment {
   /// migration (Prisma has no range type).
   overriddenFromRange Unsupported("tstzrange")?
 
+  /// A-069 / D-44. The moment the desk gave up on a no-show and put the rest
+  /// of her time back on the market. NULL on every appointment that has not
+  /// been released, which is nearly all of them.
+  ///
+  /// It feeds ONLY the blocked range — `blockedEnd := releasedAt` when the
+  /// status is `no_show` — so `status`, `startAt` and `endAt` are untouched and
+  /// D-7 stands: a no-show still OCCUPIES its time for the record, for
+  /// utilization (`dashboard.ts` sums `endAt - startAt`) and for the client's
+  /// twelve-month count (`reliability.ts` counts by status). Those two are
+  /// therefore untouched by construction, not by a filter.
+  ///
+  /// The trigger honours it only while the status IS `no_show`, so a correction
+  /// back to `booked` (APPT-06) restores the full range with no transition path
+  /// having to remember — and is refused by the exclusion constraint if the
+  /// freed time has since been sold, which is the honest answer.
+  releasedAt DateTime? @db.Timestamptz(3)
+
   /// BOOK-03(f). Makes the write path safely retryable.
   idempotencyKey String?
 

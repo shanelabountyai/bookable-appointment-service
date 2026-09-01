@@ -641,3 +641,114 @@ test.describe('who was this? (A-068)', () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * A-069 / D-44 — GIVING A NO-SHOW'S DEAD TIME BACK (APPT-03, BOOK-05).
+ *
+ * 10:00 colour, ninety minutes. At 10:20 the desk marks her a no-show and that
+ * time stays blocked. The walk-in at 10:25 could only be booked into it
+ * through a BOOK-05 override with a typed reason — a false override marker on
+ * a slot that is genuinely empty, which is the fastest way to train the desk
+ * to dismiss the marker D-8 rests on.
+ */
+test.describe("a no-show's time, given back (A-069)", () => {
+  /** Her appointment is in the PAST on the grid's own day, because a no-show
+   *  cannot be marked before it has started. */
+  async function pastNoShow() {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const client = await prisma.client.create({
+        data: { businessId: business.id, name: 'Ada Chen', phone: '5125550101' },
+      });
+      // Floored to the minute: `appointment_instants_whole_minutes` refuses a
+      // stray second, and `new Date()` always has one.
+      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - 40) * 60_000));
+      const appointment = await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          clientId: client.id,
+          status: 'no_show',
+          startAt,
+          endAt: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+          bufferBeforeMinutes: 0,
+          bufferAfterMinutes: 10,
+          blockedStart: startAt,
+          blockedEnd: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+          startDay: toLabel(fromDate(startAt), zoneId(ZONE)).day,
+          startWallTime: toLabel(fromDate(startAt), zoneId(ZONE)).time,
+          lines: {
+            create: {
+              businessId: business.id,
+              serviceId: service.id,
+              ordinal: 0,
+              priceCents: 5500,
+              durationMinutes: 45,
+            },
+          },
+        },
+      });
+      return appointment;
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  test('offers the release beside the no-show, and puts the time on the freed list', async ({ page }) => {
+    const appointment = await pastNoShow();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    // Offered where the desk already is, not a screen away.
+    await expect(page.getByText(/minutes of her slot are still blocked/)).toBeVisible();
+    // Its own label, because A-068's client correction has a reason box on
+    // this same page — two fields called "Why" are ambiguous to a screen
+    // reader long before they are ambiguous to a locator.
+    await page.getByLabel('What happened (optional)').fill('Rang twice, no answer');
+    await page.getByRole('button', { name: /Put \d+ min back on the market/ }).click();
+
+    // The SETTLED state, not the toast: the action revalidates this panel, so
+    // the transient message is replaced before it can be read. Asserting what
+    // the page says once it has stopped moving is the honest version.
+    await expect(page.getByText(/went back on the market at/)).toBeVisible();
+    await page.reload();
+    // The log says WHAT was done and by whom — nothing about her status moved.
+    await expect(page.getByText(/Her remaining time was put back on the market by Front desk/)).toBeVisible();
+    await expect(page.getByText('Rang twice, no answer')).toBeVisible();
+
+    // …and it reaches the one screen whose job is selling it (A-067).
+    await page.goto('/staff/opened');
+    await expect(page.getByText('Ada Chen never came — the rest of her time was put back')).toBeVisible();
+  });
+
+  test('changes no status, so her no-show still counts (D-7)', async ({ page }) => {
+    const appointment = await pastNoShow();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    await page.getByRole('button', { name: /Put \d+ min back on the market/ }).click();
+    await expect(page.getByText(/went back on the market at/)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(row.status).toBe('no_show');
+      expect(row.startAt.getTime()).toBe(row.startAt.getTime());
+      expect(row.releasedAt).not.toBeNull();
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // Offered once. The panel says what was done rather than offering it again.
+    await page.reload();
+    await expect(page.getByText(/went back on the market at/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /back on the market/ })).toHaveCount(0);
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    const appointment = await pastNoShow();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(results.violations).toEqual([]);
+  });
+});

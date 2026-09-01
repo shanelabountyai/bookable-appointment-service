@@ -42,6 +42,12 @@ export interface DayAppointment {
   occupiesEnd: Date;
   status: string;
   isOverride: boolean;
+  /** A-069 / D-44 — the desk gave up on this no-show at this instant and put
+   *  the rest of her slot back on the market. The grid draws her chip at its
+   *  BOOKED extent (she was due until 11:30, and that is what the desk is
+   *  looking for), so without this the freed gap painting over it would read
+   *  as a double-booking rather than as the thing somebody deliberately did. */
+  releasedAt: Date | null;
   overrideReason: string | null;
   serviceNames: string[];
   /** BOOK-04: a walk-in with no record is a real appointment, so every one of
@@ -225,6 +231,7 @@ async function loadColumn(
         endAt: true,
         status: true,
         isOverride: true,
+        releasedAt: true,
         overrideReason: true,
         notes: true,
         client: { select: { id: true, name: true, phone: true, notes: true } },
@@ -286,6 +293,7 @@ async function loadColumn(
         occupiesEnd: span?.end ?? row.endAt,
         status: row.status,
         isOverride: row.isOverride,
+        releasedAt: row.releasedAt,
         overrideReason: row.overrideReason,
         serviceNames: row.lines.map((l) => l.service.name),
         clientId: row.client?.id ?? null,

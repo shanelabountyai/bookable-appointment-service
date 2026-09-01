@@ -12,7 +12,8 @@ import 'server-only';
  * TOTAL OVER EVERY TYPE THE CODEBASE WRITES, and typed so it stays that way:
  * `booked`, `override_booked`, `status_changed`, `status_corrected`,
  * `rescheduled`, `provider_changed`, `services_changed`, `client_changed`,
- * `column_pushed`, `conflict_acknowledged`, `hours_changed_underneath`.
+ * `time_released`, `column_pushed`, `conflict_acknowledged`,
+ * `hours_changed_underneath`.
  * A further event type is a compile error here rather than a raw enum on screen
  * — the same reflex as the status colour map, and the same reason: this is a
  * list that reads the log, and lists that read the log go stale silently.
@@ -30,6 +31,7 @@ export const EVENT_TYPES = [
   'provider_changed',
   'services_changed',
   'client_changed',
+  'time_released',
   'column_pushed',
   'conflict_acknowledged',
   'hours_changed_underneath',
@@ -149,6 +151,11 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
       if (payload.toClientId == null) return `Taken off ${from ?? "the client's record"} by ${who}.`;
       return `Moved from ${from ?? 'a client with no name'} to ${to ?? 'a client with no name'} by ${who}.`;
     }
+    // A-069 (D-44). The sentence names the INSTANT rather than the minutes,
+    // because "we gave up at 10:20" is what somebody is reading this log to
+    // find out — the minutes are arithmetic anybody can redo.
+    case 'time_released':
+      return `Her remaining time was put back on the market by ${who}, from ${clock(payload.releasedAt, zone)}.`;
     case 'column_pushed':
       return `Pushed ${String(payload.minutes ?? '')} minutes later by ${who}, with the day running behind.`;
     case 'conflict_acknowledged':

@@ -22,9 +22,9 @@
  *
  * SO THERE ARE TWO SOURCES, not two lists: the status column answers "who gave
  * the whole thing back", and the EVENT LOG answers "what stopped being
- * occupied" — `services_changed`, `rescheduled` and `provider_changed` all
- * record BOTH sides (D-31), which is what makes the vacated span derivable at
- * all. The log also carries a real timestamp, so those three get an honest
+ * occupied" — `services_changed`, `rescheduled`, `provider_changed` and
+ * (A-069) `time_released` all record BOTH sides (D-31), which is what makes
+ * the vacated span derivable at all. The log also carries a real timestamp, so those three get an honest
  * recency bound rather than the `updatedAt` heuristic the cancellations still
  * stand on.
  *
@@ -58,7 +58,7 @@ const DAY_MS = 86_400_000;
 /** The event types that vacate time without freeing the whole appointment.
  *  Every one of them records both sides in its payload (D-31) — that is the
  *  property this file depends on, not the name. */
-const VACATING_EVENT_TYPES = ['services_changed', 'rescheduled', 'provider_changed'] as const;
+const VACATING_EVENT_TYPES = ['services_changed', 'rescheduled', 'provider_changed', 'time_released'] as const;
 
 /**
  * WHY the span is empty, in enough structure for the web layer to word it —
@@ -73,7 +73,9 @@ export type FreedBy =
   /** D-6 moved the whole visit; this is the range it left behind. */
   | { kind: 'rescheduled'; movedToStartAt: Date }
   /** A-038/A-042 handed it to another stylist; this chair is now empty. */
-  | { kind: 'reassigned'; movedToProviderName: string };
+  | { kind: 'reassigned'; movedToProviderName: string }
+  /** A-069/D-44 — she never came, and the desk gave the rest of it back. */
+  | { kind: 'released' };
 
 export interface OpenedSlot {
   /** Stable per ROW, not per appointment: one visit shortened twice frees two
@@ -315,11 +317,23 @@ async function vacatedCandidates(
     const span = vacatedSpan(event.type, payload, appointment);
     if (span === null) return [];
 
-    // BOUND 1 — still future. A tail that ended at noon cannot be sold at two.
-    if (fromDate(span.start) <= fromDate(args.now)) return [];
     // A change that lengthened the visit, or moved it by nothing, vacated
     // nothing. Half-open everywhere (CLAUDE.md), so zero width is no width.
     if (fromDate(span.end) <= fromDate(span.start)) return [];
+    // BOUND 1 — NOT ENTIRELY PAST. A tail that ended at noon cannot be sold at
+    // two; a tail that ends at three can still be sold at two, for an hour.
+    //
+    // The cancellation source next door bounds on the START (`startAt > now`)
+    // and is right to: a cancellation whose slot has begun is not news. These
+    // spans are different in kind. A-069 releases a no-show's dead time AT the
+    // moment the desk gives up, so its span always starts in the past and a
+    // start-bound would have dropped every one of them; and Mrs Hall dropping
+    // her colour at two o'clock leaves an hour that is still worth a phone
+    // call at half past.
+    if (fromDate(span.end) <= fromDate(args.now)) return [];
+    // …so what is OFFERED is what is left of it. Recomputed on every read,
+    // like everything else here.
+    const start = fromDate(span.start) < fromDate(args.now) ? args.now : span.start;
 
     const provider = providers.get(span.providerId);
     // Nobody can be booked with a provider who has left (A-041).
@@ -334,10 +348,10 @@ async function vacatedCandidates(
         appointmentId: appointment.id,
         providerId: span.providerId,
         providerName: provider.displayName,
-        startAt: span.start,
-        blockedStart: span.start,
+        startAt: start,
+        blockedStart: start,
         blockedEnd: span.end,
-        freedMinutes: minutesBetween(span.start, span.end),
+        freedMinutes: minutesBetween(start, span.end),
         // The service she DROPPED is the one to ring the waitlist about — "who
         // else wants a colour on Saturday afternoon?" `removedServiceIds` is
         // A-067's addition to the payload; events written before it fall back
@@ -399,6 +413,21 @@ async function vacatedCandidates(
           start: toDate(instant(fromDate(from) - before)),
           end: toDate(instant(fromDate(fromEndAt) + after)),
           freedBy: { kind: 'rescheduled', movedToStartAt: to },
+        };
+      }
+      // A-069/D-44. She never came; the desk cut her blocked range at the
+      // moment it gave up. The far end is in the payload because the trigger
+      // has already overwritten `blockedEnd` — the same reason a shortened
+      // visit records `fromBlockedEnd`, and the same fallback if it is absent.
+      case 'time_released': {
+        const releasedAt = asDate(payload.releasedAt);
+        const wasEndingAt = asDate(payload.fromBlockedEnd);
+        if (releasedAt === null || wasEndingAt === null) return null;
+        return {
+          providerId: appointment.providerId,
+          start: releasedAt,
+          end: wasEndingAt,
+          freedBy: { kind: 'released' },
         };
       }
       // A-038/A-042 handed it to another stylist and did not move it, so the
