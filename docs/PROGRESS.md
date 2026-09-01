@@ -1901,7 +1901,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-066 — pushing the column leaves the running-late delta standing
 
-**Commit:** `PENDING`
+**Commit:** `3fd6ee7`
 
 **The seam, not either half.** A-018 built both mechanisms in one item and was right to keep them apart: the DELTA is a claim that moves nothing, the PUSH is the audited action that rewrites `startAt`. What it never did was introduce them. Dana is 40 behind, the desk sets +40 (correct — the site stops selling her 11:15), she does not catch up, so at 12:30 they push the column +40. Every appointment moves and **the delta is still 40**, so everything downstream double-counts a delay that has already been applied to the time it is projecting from: `view-model.ts:329` shifts a `startAt` that `push-column.ts` has just moved, so Mrs Hall's 15:10 chip reads "→ likely 15:50"; `day-view.ts:317` feeds the same unreduced minutes to `lateCallList`, so the ring-round wants six clients phoned about a delay already in their booked times; D-41's "told her about 40 min" marks all still read as handled; and `runningLateInterval` keeps subtracting forty minutes from a column that is now honest, refusing to sell a gap that genuinely exists.
 
