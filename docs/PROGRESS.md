@@ -1944,7 +1944,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-068 — an appointment's client could not be attached or corrected after it was booked
 
-**Commit:** `TBD`
+**Commit:** `e70ab7d`
 
 **Two weekly cases, and the workaround for the second one brands the client.** (a) A walk-in is typed in as nothing but a time — BOOK-04, and right, you do not take a phone number while she is standing at the counter — then rebooks at the till, and her visit is **orphaned forever**: on no client record, counting toward no reliability, reachable by no reminder, and if she comes back with her daughter A-063's `holderKey` reads them as two strangers. (b) The desk picks the wrong Sarah Jones of the two D-17 guarantees will exist, and finds out at check-in; the only correction available was cancel-and-rebook, and **since A-060 that cancel derives `cancelled_late`** — a late cancellation on an innocent client's twelve-month count, for the desk's own typo, which is exactly the harm A-055 and A-060 exist to prevent arriving through the one door nobody had closed. `schema.prisma:653` has promised this door since the first migration (*"NULLABLE — BOOK-04 requires booking with no client record, identity attached later"*) and the only writer of `clientId` after creation was the client merge.
 
