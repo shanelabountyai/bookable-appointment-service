@@ -18,6 +18,7 @@ export {
 export { type ComposedVisit, InvalidVisit, type VisitLine, composeVisit, isSingleService } from './visit';
 export {
   CORRECTION_WINDOW_MS,
+  VISIT_MEASUREMENT_GRACE_MS,
   type RescheduleDecision,
   type TransitionContext,
   type TransitionDecision,
@@ -26,6 +27,7 @@ export {
   canTransition,
   isCorrection,
   isInsideCancellationCutoff,
+  isVisitMeasurable,
   staffCancellationStatus,
   canCancel,
   availableTransitions,

@@ -201,18 +201,24 @@ describe('closing one out (D-46)', () => {
     expect(row.endedAt).toBeNull();
   });
 
-  /** …and the ordinary tap at the till still stamps, because she WAS seen. */
+  /** …and the ordinary tap at the till still stamps, because she WAS seen —
+   *  AND because the tap happens while she is still standing there. A-080
+   *  (D-47): a row still on `in_progress` when this list is read at six is on
+   *  the list precisely because nobody tapped at the time, so the `now` that
+   *  closes it is no longer a measurement either. `endedAt` is stamped from
+   *  the till, not from the list. */
   it('still stamps the finish when she was in the chair', async () => {
     const appointment = await visit({ startAt: at('2026-06-13T10:00:00-05:00'), status: 'in_progress' });
+    const atTheTill = toDate(instant(fromDate(appointment.endAt) + 10 * 60_000));
 
     await transitionAppointment(prisma, {
       appointmentId: appointment.id,
       to: 'completed',
-      now: NOW,
+      now: atTheTill,
       actor: STAFF,
     });
 
-    expect((await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).endedAt).toEqual(NOW);
+    expect((await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).endedAt).toEqual(atTheTill);
   });
 
   /** `after-start`, for the same reason `no_show` carries it: an appointment

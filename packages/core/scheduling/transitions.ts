@@ -28,6 +28,39 @@ import { TERMINAL_STATUSES, type AppointmentStatus } from './status';
  *  days is seven days. */
 export const CORRECTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * A-080 (D-47) — HOW LONG `now` IS STILL A MEASUREMENT OF THE VISIT.
+ *
+ * The actual timestamps (D-7) are measurements, not bookkeeping: `checkedInAt`
+ * is when she walked in, `endedAt` is when she got up. The write path stamps
+ * them from `now`, and `now` is only those things while the visit is still
+ * plausibly happening — after that it is when somebody got round to tapping
+ * the button, which is a different fact wearing the same column.
+ *
+ * D-46 said this once, about one edge: a `completed` reached from `booked`
+ * leaves both NULL, "because a missing timestamp is honest and a
+ * Monday-morning one is a lie in the audit trail". It is a rule about the
+ * CLOCK, not about that edge — `/staff/unfinished` closes `checked_in` rows
+ * days later through the edge D-46 did not touch, and the day grid will check
+ * one in on Monday for a Saturday that has been and gone.
+ *
+ * Two hours past the SCHEDULED end, and a duration rather than "the same day"
+ * for the reason above it: a colour that overruns its ninety-minute slot by an
+ * hour is exactly the measurement the owner wants (it is how she learns what
+ * her colourist's colours really take), and a 10:00 visit closed out at the
+ * till at six is exactly the one she must not be told took eight hours. A
+ * physical span also survives a DST transition and a booking that runs past
+ * midnight, both of which a calendar-day comparison gets wrong.
+ */
+export const VISIT_MEASUREMENT_GRACE_MS = 2 * 60 * 60 * 1000;
+
+/** Is `now` close enough to the visit for a timestamp taken from it to be a
+ *  measurement rather than a note about when somebody tapped? The one place
+ *  that decides; the write path asks, no surface holds a second copy. */
+export function isVisitMeasurable(context: Pick<TransitionContext, 'now' | 'endAt'>): boolean {
+  return context.now - context.endAt <= VISIT_MEASUREMENT_GRACE_MS;
+}
+
 /** Why a transition was refused. Machine-readable on purpose: a caller has to
  *  be able to tell "you may not do that" from "not yet" from "too late", and a
  *  human-readable string is not something a route can branch on. The customer

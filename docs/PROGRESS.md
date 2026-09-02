@@ -2224,3 +2224,25 @@ The string branch required `message.includes('23P01')` **and** a name. A COMMIT-
 **One existing assertion changed on purpose.** A-075's *"leaves it out of the preview too"* asserted a released no-show was **not a candidate at all**. That got half of it: the desk was never promised the move, and was also never told she was standing there. She is now a candidate that permanently cannot move, which is both halves at once, and the test says so.
 
 **Left behind:** a bystander is modelled as one envelope where the constraint is really over its `AppointmentBlock` rows, so a colour's processing gap reads as occupied and a push that could legally slot into it is named `blocked-by-one-that-stays`. Conservative in the safe direction, marked `ponytail:`, and the same shape the staying rows have always had.
+
+## A-080 — `now` was stamped as a measurement long after there was anything left to measure
+
+**Commit:** `PENDING`
+
+**Decision first: D-47, answering OQ-20.** Two hours past the scheduled `endAt`, as a physical duration, governing all three actual timestamps — `checkedInAt`, `startedAt`, `endedAt`. Outside it every one of them stays NULL. `confirmedAt` is deliberately exempt.
+
+**D-46 wrote this rule once and scoped it to the wrong thing.** It said a `completed` reached from `booked`/`confirmed` leaves both timestamps NULL, *"because a missing timestamp is honest and a Monday-morning one is a lie in the audit trail"* — and then wrote that guard onto the two edges it was adding. `/staff/unfinished` exists to close `checked_in` rows days later, through the edge D-46 did not touch, so the primary path through Phase 8's own new screen wrote the exact lie it refused: `checkedInAt` Saturday 14:15, `endedAt` Monday 09:40, a forty-three-hour visit in the one record that answers "when did this actually happen".
+
+**It is a rule about the CLOCK, not about an edge** — and stated that way it caught a sibling nothing had reported. `booked → checked_in` carries no bound at all and no `after-start` precondition, so tapping check-in on Monday for a Saturday that had been and gone wrote a Monday arrival time onto a client who sat down two days earlier. One tap to the left of the reported defect, same lie, and a rule written per-edge would have had to be re-derived when the next edge was added. There is now one predicate — `isVisitMeasurable` in `core/scheduling/transitions.ts`, beside `CORRECTION_WINDOW_MS`, whose shape it borrows — and `timestampsFor` asks it once.
+
+**Why not "the same business day", OQ-20's option (b).** The motivating scene is the till at six o'clock closing out a ten o'clock visit. (b) stamps 18:00 on it and calls that a measurement: a four-hour lie in the *primary* case rather than the exceptional one. It also gets the 23:30 booking that finishes after midnight wrong in the other direction, discarding a true measurement, and a calendar-day comparison does not survive a DST transition. A physical span does.
+
+**Why two hours rather than OQ-20's one.** A sixty-minute colour that ran eighty minutes over is the measurement the owner most wants — it is the only thing that can say what her colourist's colours really take. One hour throws it away as noise. Two hours keeps the overrun and still refuses every same-evening and next-day close-out. Exactly on the boundary counts as measured: the tap at the two-hour mark is the overrun finishing, not somebody remembering tomorrow.
+
+**`confirmedAt` stays unbounded, and that is the shape of the rule rather than an exception to it.** Confirming is an act performed AT `now` — she rang on Thursday to say she is coming — so a late confirmation is a true record of a late confirmation. The three that are bounded are the three that claim to measure the visit.
+
+**Tests: 4 new in `transition.test.ts`, 1 in the pure table, 1 rewritten.** The item's own required test — a `checked_in` row closed three days later, `endedAt` null and **`checkedInAt` untouched**, because that one was taken while she was standing at the desk. The sibling: check-in and start tapped days late stamp nothing. The overrun: eighty minutes past an eleven o'clock end still records its finish. The exemption: a confirmation arriving after the appointment has been and gone still stamps.
+
+**One existing assertion changed on purpose.** `unfinished.test.ts`'s *"still stamps the finish when she was in the chair"* tapped `completed` at six o'clock on a ten o'clock visit and asserted `endedAt = 18:00`. That row is on the "still open" list *precisely because nobody tapped at the time*, so the `now` that closes it was never a measurement either — it now taps at the till, ten minutes past the end, which is what the test was always trying to describe.
+
+**Left behind:** a visit closed out at six has no `endedAt` at all, so the first duration report must say "not recorded" rather than averaging in a number. That is the point — no report reads `endedAt` today, and the first one that does inherits honest data instead of a population of eight-hour haircuts.

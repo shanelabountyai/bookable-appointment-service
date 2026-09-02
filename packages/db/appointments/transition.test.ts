@@ -257,6 +257,77 @@ describe('D-7 — actual timestamps, not scheduled ones', () => {
   });
 });
 
+describe('D-47 — `now` is a measurement only while the visit is plausibly still happening (A-080)', () => {
+  /** THE ITEM'S SCENE. She sat down on Saturday and somebody tapped
+   *  "checked in"; nobody ever tapped anything else. `/staff/unfinished`
+   *  closes it on Tuesday. The finish time is unknowable, so it stays NULL —
+   *  and `checkedInAt` is UNTOUCHED, because that one was a real measurement
+   *  taken while she was standing at the desk. */
+  it('invents no finish time when a checked-in visit is closed three days later', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'completed',
+      actor: STAFF,
+      now: at('2026-06-12T09:40:00-05:00'),
+    });
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.status).toBe('completed');
+    expect(row.endedAt).toBeNull();
+    expect(row.checkedInAt?.toISOString()).toBe(TEN_AM.toISOString());
+  });
+
+  /** The sibling D-46 never reached, and the one the day grid drives: check-in
+   *  itself. Tapped days later it is not an arrival time, it is a note about
+   *  when somebody remembered. */
+  it('invents no arrival or start time when the taps come days late', async () => {
+    const appointment = await book();
+    const tuesday = at('2026-06-12T09:40:00-05:00');
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: tuesday });
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'in_progress',
+      actor: STAFF,
+      now: tuesday,
+    });
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.status).toBe('in_progress');
+    expect(row.checkedInAt).toBeNull();
+    expect(row.startedAt).toBeNull();
+  });
+
+  /** …and the reason the bound is a generous two hours rather than one. A
+   *  sixty-minute colour that ran eighty minutes over is the measurement the
+   *  owner most wants — throwing it away as "late" would blind the one figure
+   *  that says what her colourist's colours really take. */
+  it('keeps the finish time of a visit that overran its slot', async () => {
+    const appointment = await book();
+    const overran = at('2026-06-09T12:20:00-05:00'); // 80 minutes past an 11:00 end.
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'in_progress', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'completed', actor: STAFF, now: overran });
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.endedAt?.toISOString()).toBe(overran.toISOString());
+  });
+
+  /** Confirming is deliberately outside the bound: "she rang on Thursday to
+   *  say she is coming" is a true record of a late confirmation, not a guess
+   *  about a visit. Here it is the other direction — a confirmation arriving
+   *  after the appointment has been and gone still records when it arrived. */
+  it('still stamps a confirmation whenever it arrives', async () => {
+    const appointment = await book();
+    const late = at('2026-06-12T09:40:00-05:00');
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'confirmed', actor: STAFF, now: late });
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.confirmedAt?.toISOString()).toBe(late.toISOString());
+  });
+});
+
 describe('D-19 — the cutoff comes from the rows, most restrictive first', () => {
   it('uses the service cutoff when it demands more notice than the business', async () => {
     // Business says 120 minutes; this service says a full day.

@@ -20,6 +20,7 @@ import {
   SLOT_FREEING_STATUSES,
   canTransition,
   isCorrection,
+  isVisitMeasurable,
   staffCancellationStatus,
 } from '../../core/scheduling';
 import { fromDate } from '../../core/time';
@@ -209,7 +210,15 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
     // exclusion constraint — never check-then-write as the mechanism.
     const written = await tx.appointment.updateMany({
       where: { id: appointment.id, status: from },
-      data: { status: to, ...timestampsFor(from, to, input.now, isCorrection(from, to)) },
+      data: {
+        status: to,
+        // A-080 (D-47). `now` is a MEASUREMENT of the visit only while the
+        // visit is plausibly still happening; past that it is when somebody
+        // got round to tapping, which is a different fact. Asked here, where
+        // the context already holds both instants, and answered by the one
+        // predicate in `core/scheduling` — never re-derived on a screen.
+        ...timestampsFor(from, to, input.now, isCorrection(from, to), isVisitMeasurable(context)),
+      },
     });
 
     if (written.count === 0) {
@@ -301,8 +310,22 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
  * event payload. Correcting the other way sets nothing: nobody knows when a
  * visit that was mis-marked as a no-show actually ended, and inventing
  * `now` — days later, at correction time — would be a fabricated measurement.
+ *
+ * `measured` (A-080, D-47) is the same argument generalised: all three of
+ * these are measurements, and `now` measures the visit only while the visit is
+ * plausibly still happening. Outside that window every one of them stays NULL
+ * — the check-in tapped on Monday for Saturday, the `in_progress` row closed
+ * out at the till at six, and D-46's Monday `endedAt`, which is the one that
+ * was already guarded and the reason the other two were found. `confirmedAt`
+ * is deliberately outside it; see the case below.
  */
-function timestampsFor(from: AppointmentStatus, to: AppointmentStatus, now: Date, correction: boolean) {
+function timestampsFor(
+  from: AppointmentStatus,
+  to: AppointmentStatus,
+  now: Date,
+  correction: boolean,
+  measured: boolean,
+) {
   // A correction happens DAYS after the fact (up to seven, APPT-06), so `now`
   // is not when anything happened. It may only clear, never stamp.
   if (correction) {
@@ -310,12 +333,15 @@ function timestampsFor(from: AppointmentStatus, to: AppointmentStatus, now: Date
   }
 
   switch (to) {
+    // NOT one of the three. Confirming is an act performed at `now` — she rang
+    // on Thursday to say she is coming — so a late one is a true record of a
+    // late confirmation, not a guess about a visit.
     case 'confirmed':
       return { confirmedAt: now };
     case 'checked_in':
-      return { checkedInAt: now };
+      return measured ? { checkedInAt: now } : {};
     case 'in_progress':
-      return { startedAt: now };
+      return measured ? { startedAt: now } : {};
     case 'completed':
       // A-076 (D-46). `endedAt` is stamped only when she was actually SEEN to
       // be here — reached from `checked_in` or `in_progress`, which is the
@@ -327,7 +353,7 @@ function timestampsFor(from: AppointmentStatus, to: AppointmentStatus, now: Date
       // Monday-morning lie in the audit trail, and it would make "she was forty
       // minutes late" — D-7's whole actual-vs-scheduled point — unanswerable
       // for every retrospectively closed visit.
-      return from === 'checked_in' || from === 'in_progress' ? { endedAt: now } : {};
+      return measured && (from === 'checked_in' || from === 'in_progress') ? { endedAt: now } : {};
     case 'no_show':
       return { checkedInAt: null, startedAt: null, endedAt: null };
     default:

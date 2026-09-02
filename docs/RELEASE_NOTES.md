@@ -2421,3 +2421,31 @@ All of it now reads the stored range. Four derived fields deleted.
 ### The fixture that could see it
 
 The test room has **two chairs**, on purpose. With one chair, the failing pull-forward comes back as "no chair free" — the correct axis catches it first, and the broken one is never reached. The bug is invisible in the smaller fixture. Two chairs is what the salon actually has, and it leaves the stylist's own day as the only thing that can refuse.
+
+## A-080 — a timestamp that means "when it happened", not "when somebody got round to it"
+
+An appointment record carries both the time a visit was *scheduled* and the time it *actually* ran. The second one is what answers "she was forty minutes late" and "how long do the colours really take" — and it was being written from the system clock at the moment a button was pressed, however long after the visit that was.
+
+Closing out Saturday's book on Monday morning therefore recorded a client as arriving Saturday at 14:15 and finishing Monday at 09:40. A forty-three-hour appointment, in the one field that exists to say what actually happened.
+
+### The rule was already written down, one scope too small
+
+An earlier decision had refused exactly this and fixed it on the two paths it was adding at the time. The screen built to close out the day goes through a *different* path, so the lie arrived anyway — through the feature that exists to make the numbers right.
+
+Restated as a rule about the clock rather than about one path, it caught a second, unreported case immediately: marking a client as arrived, days after the fact, wrote a Monday arrival time onto a Saturday visit in the same way. One rule, one place, asked by every path.
+
+### Where the line falls, and why not "the same day"
+
+**Two hours past the scheduled end.** Inside that, the clock is still measuring the visit; beyond it, it is measuring when somebody remembered.
+
+"The same day" was the obvious alternative and it is worse where it matters most: closing out a ten o'clock visit at the till at six would record a four-hour appointment — a lie in the ordinary case rather than the exceptional one. It also mishandles a late booking that finishes after midnight, and a calendar day is not a fixed length twice a year.
+
+Two hours rather than one because an overrun is a real measurement worth keeping: a sixty-minute colour that ran eighty minutes over is precisely the number an owner wants, and a tighter bound discards it as noise.
+
+### What is recorded now
+
+- A visit closed at the till, on time or overrunning: a real finish time.
+- A visit closed out that evening or the following week: **no finish time at all** — and the check-in time, taken while she was standing at the desk, left exactly as it was.
+- A confirmation phoned in at any point: still stamped. Confirming is something that happens when it happens; it is not a claim about the visit.
+
+A missing timestamp is honest. The alternative is a report full of eight-hour haircuts, and no way to tell them from the real ones.

@@ -23,6 +23,7 @@ import {
   canCancel,
   staffCancellationStatus,
 } from './transitions';
+import { VISIT_MEASUREMENT_GRACE_MS, isVisitMeasurable } from './transitions';
 import { APPOINTMENT_STATUSES } from './status';
 import { instant } from './types';
 import type { ActorType } from '../auth';
@@ -497,5 +498,22 @@ describe('A-060 — deriving the cancellation status', () => {
     const noReason = permissive({ reason: null, now: instant(START + 60_000) });
     expect(canCancel('in_progress', noReason)).toBe(false);
     expect(canCancel('in_progress', { ...noReason, reason: 'she walked out' })).toBe(true);
+  });
+});
+
+/** A-080 (D-47). The boundary only, because the write path's behaviour is
+ *  tested against the database — but the boundary is where a "still near the
+ *  visit" rule is decided, and exactly ON it counts as measured for the same
+ *  reason the cutoff resolves toward the salon: the tap at the two-hour mark
+ *  is the overrun finishing, not somebody remembering tomorrow. */
+describe('is `now` still a measurement of the visit?', () => {
+  const ctx = (now: number) => ({ now: instant(now), endAt: END });
+
+  it('measures right up to and including the grace, and not past it', () => {
+    expect(isVisitMeasurable(ctx(END - 30 * 60_000))).toBe(true); // still in the chair
+    expect(isVisitMeasurable(ctx(END))).toBe(true);
+    expect(isVisitMeasurable(ctx(END + VISIT_MEASUREMENT_GRACE_MS))).toBe(true);
+    expect(isVisitMeasurable(ctx(END + VISIT_MEASUREMENT_GRACE_MS + 1))).toBe(false);
+    expect(isVisitMeasurable(ctx(END + 3 * 24 * 60 * 60_000))).toBe(false); // Monday
   });
 });
