@@ -2030,7 +2030,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-072 — ringing round a freed slot had no memory of who had already been offered it
 
-**Commit:** `TBD`
+**Commit:** `b7c2b80`
 
 **The defect.** Thursday's three-hour colour cancels on Saturday morning and lands on `/staff/opened` with two waitlist matches and a tel: link — that part works, and it is A-043 and A-067 doing their job. The desk rings Mrs Patel, who says "let me check with work". Then a walk-in arrives and the phone goes, and at 4pm the second person at the desk opens the same list, sees the same slot and the same two names, and **rings Mrs Patel again — or promises it to the second name while the first is still deciding.** A-061 fixed exactly this for the call-down list; the list with the money on it never got it. Verified: `CallDownAttempt` is keyed `(appointmentId, forDay)` and read only by the call-down, and `/staff/opened` and `/staff/waitlist` had the one-tap tel: link and no attempt tracking at all.
 
