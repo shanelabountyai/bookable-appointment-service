@@ -2249,7 +2249,7 @@ The string branch required `message.includes('23P01')` **and** a name. A COMMIT-
 
 ## A-081 — the demo was dark, and the only door to fixing the numbers locked itself after 21 days
 
-**Commit:** `PENDING`
+**Commit:** `13bc12b`
 
 **Decision first: D-48, answering OQ-21.** A widen-the-window control ON the screen — a `days` box, a GET form, clamped 1–730, defaulting to the existing 21. The day grid's "Still open (N)" badge is deliberately NOT widened with it.
 
