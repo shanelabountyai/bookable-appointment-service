@@ -81,6 +81,38 @@ export const REMINDER_ELIGIBLE_STATUSES = ['booked', 'confirmed'] as const;
 export const TERMINAL_STATUSES = ['completed', 'no_show', 'cancelled', 'cancelled_late'] as const;
 
 /**
+ * A-075 (APPT-04) — WHOSE TIME A COLUMN PUSH MAY MOVE.
+ *
+ * A POSITIVE ALLOW-LIST, and deliberately not `ACTIVE_STATUSES`, which is what
+ * the push used and is what broke it. Two separate reasons, and each one is
+ * sufficient on its own:
+ *
+ *   * **A client who did not come cannot be running late.** Dana being forty
+ *     minutes behind says nothing about the ten o'clock who never arrived, and
+ *     shifting her `startAt` an hour later records that she was due at a time
+ *     nobody ever offered her.
+ *   * **Moving a `completed` row's `startAt` rewrites history.** D-7's whole
+ *     actual-vs-scheduled split exists so "she was forty minutes late" stays
+ *     answerable, and a push that edits the scheduled side of a finished visit
+ *     destroys the question.
+ *
+ * It is also what stops A-069's release from crashing the push: `releasedAt`
+ * lives inside `[startAt, endAt)` by CHECK, and moving `startAt` out from under
+ * it raised SQLSTATE 23514 out of the running-late workflow — after the preview
+ * had promised the desk a clean push. Excluding the two terminal states the
+ * push could reach is smaller and truer than teaching the mover to carry a
+ * column it has no business touching.
+ *
+ * `cancelled` and `cancelled_late` were never in scope: they are not active,
+ * so the old list excluded them already.
+ */
+export const PUSHABLE_STATUSES = ['booked', 'confirmed', 'checked_in', 'in_progress'] as const;
+
+/** Would a column push move this one? (A-075) */
+export const isPushable = (status: AppointmentStatus): boolean =>
+  (PUSHABLE_STATUSES as readonly string[]).includes(status);
+
+/**
  * A-055 (VISIT-01) — whose SERVICES may still be changed.
  *
  * A POSITIVE ALLOW-LIST, and deliberately NOT `canReschedule`'s list, which is

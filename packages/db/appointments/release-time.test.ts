@@ -21,7 +21,9 @@ import { createWeeklyWindow } from '../availability';
 import { clientReliability } from '../clients';
 import { bookAppointment } from '../booking';
 import { dashboardSummary } from '../reports/dashboard';
-import { NotReleasable, releaseNoShowTime } from './release-time';
+import { SlotTaken } from '../booking';
+import { pushColumn, previewPush } from '../day/push-column';
+import { NotReleasable, releaseNoShowTime, unreleaseNoShowTime } from './release-time';
 import { TransitionRefused, transitionAppointment } from './transition';
 
 const prisma = new PrismaClient();
@@ -478,5 +480,199 @@ describe('the chair it gives back (A-074, RES-02)', () => {
     });
 
     expect((await holdOf(appointment.id)).bodyEnd).toEqual(at('2026-06-09T11:30:00-05:00'));
+  });
+});
+
+/**
+ * A-075 — THE PATHS THAT MOVE AN APPOINTMENT HAD NEVER HEARD OF `releasedAt`.
+ *
+ * Two failures, one column. The push crashed because `releasedAt` lives inside
+ * `[startAt, endAt)` by CHECK and the mover took `startAt` out from under it;
+ * and there was no way back, so a client who walked in fifteen minutes after
+ * the desk gave up kept a no-show she did not earn.
+ */
+describe('a column pushed over a released no-show (A-075)', () => {
+  /** A booked appointment AFTER the no-show, so the push has something it is
+   *  genuinely supposed to move and the test cannot pass by moving nothing. */
+  async function alsoBooked() {
+    return bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: [cutId],
+      clientId: null,
+      startAt: at('2026-06-09T13:00:00-05:00'),
+      now: NOW,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+  }
+
+  const push = (fromAt: Date, minutes: number) =>
+    pushColumn(prisma, {
+      businessId,
+      providerId: danaId,
+      day: '2026-06-09',
+      fromAt,
+      minutes,
+      actor: STAFF,
+      now: GAVE_UP,
+    } as Parameters<typeof pushColumn>[1]);
+
+  /** THE CRASH. Before A-075 this raised SQLSTATE 23514 out of the
+   *  running-late workflow — after the preview had promised a clean push, and
+   *  the whole transaction then rolled back, so nothing moved on the busiest
+   *  column of the week. */
+  it('does not move a released no-show, and does not crash trying', async () => {
+    const noShowAppointment = await noShow();
+    await release(noShowAppointment.id);
+    const later = await alsoBooked();
+
+    const result = await push(TEN_AM, 30);
+
+    // The one that CAN run late moved…
+    expect((await rowOf(later.id)).startAt).toEqual(at('2026-06-09T13:30:00-05:00'));
+    // …and the one who never came did not. A client who did not turn up cannot
+    // be running late, and her release is still intact.
+    const untouched = await rowOf(noShowAppointment.id);
+    expect(untouched.startAt).toEqual(TEN_AM);
+    expect(untouched.releasedAt).toEqual(GAVE_UP);
+    expect(result.moved).toBe(1);
+  });
+
+  /** A-018's own rule: the preview asks the question the push asks. Here they
+   *  share one selector, so this pins that they still do. */
+  it('leaves it out of the preview too, so the desk is never promised the move', async () => {
+    const noShowAppointment = await noShow();
+    await release(noShowAppointment.id);
+    await alsoBooked();
+
+    const preview = await previewPush(prisma, {
+      businessId,
+      providerId: danaId,
+      day: '2026-06-09',
+      fromAt: TEN_AM,
+      minutes: 30,
+    });
+
+    // Not merely "not moving" — not a CANDIDATE at all, so the desk is never
+    // shown her name in the list of what is about to happen.
+    expect(preview.candidates.map((row: { appointmentId: string }) => row.appointmentId)).not.toContain(
+      noShowAppointment.id,
+    );
+  });
+
+  /** …and an UNRELEASED no-show is left alone for the same reason, so the fix
+   *  is about the status rather than about the column. */
+  it('leaves an ordinary no-show alone as well — she cannot be running late', async () => {
+    const noShowAppointment = await noShow();
+    await alsoBooked();
+
+    await push(TEN_AM, 30);
+
+    expect((await rowOf(noShowAppointment.id)).startAt).toEqual(TEN_AM);
+  });
+});
+
+describe('she walked in after all (A-075, D-45)', () => {
+  it('puts her whole time back on the book, and the correction then succeeds', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+    expect((await rowOf(appointment.id)).blockedEnd).toEqual(GAVE_UP);
+
+    const restored = await unreleaseNoShowTime(prisma, { businessId, appointmentId: appointment.id, actor: STAFF });
+
+    expect(restored.minutes).toBe(90);
+    const row = await rowOf(appointment.id);
+    expect(row.releasedAt).toBeNull();
+    expect(row.blockedEnd).toEqual(at('2026-06-09T11:50:00-05:00'));
+    // Still a no-show until somebody says otherwise — this changes no status.
+    expect(row.status).toBe('no_show');
+
+    // THE WHOLE POINT: the APPT-06 correction now goes through, so she does
+    // not keep a no-show she did not earn.
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'completed',
+      now: at('2026-06-09T12:00:00-05:00'),
+      actor: STAFF,
+      reason: 'she was here, fifteen minutes late',
+    });
+    expect((await rowOf(appointment.id)).status).toBe('completed');
+  });
+
+  /** No check-then-write: the constraint is what refuses, and the desk is told
+   *  in words rather than by a raw SQLSTATE. */
+  it('is refused, in the shared vocabulary, once the tail has been sold', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+    await bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: [cutId],
+      clientId: null,
+      startAt: at('2026-06-09T10:30:00-05:00'),
+      now: GAVE_UP,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+
+    await expect(
+      unreleaseNoShowTime(prisma, { businessId, appointmentId: appointment.id, actor: STAFF }),
+    ).rejects.toBeInstanceOf(SlotTaken);
+    expect((await rowOf(appointment.id)).releasedAt).toEqual(GAVE_UP);
+  });
+
+  /** The same refusal reaching the CORRECTION, which is where the desk meets
+   *  it first — and where it used to arrive as a crash. */
+  it('gives the correction the same words rather than a raw database error', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+    await bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: [cutId],
+      clientId: null,
+      startAt: at('2026-06-09T10:30:00-05:00'),
+      now: GAVE_UP,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+
+    await expect(
+      transitionAppointment(prisma, {
+        appointmentId: appointment.id,
+        to: 'completed',
+        now: at('2026-06-09T12:00:00-05:00'),
+        actor: STAFF,
+        reason: 'she was here, marked wrong',
+      }),
+    ).rejects.toBeInstanceOf(SlotTaken);
+  });
+
+  it('refuses an appointment that was never released, and one off no_show', async () => {
+    const appointment = await noShow();
+
+    await expect(
+      unreleaseNoShowTime(prisma, { businessId, appointmentId: appointment.id, actor: STAFF }),
+    ).rejects.toBeInstanceOf(NotReleasable);
+  });
+
+  it('writes ONE event saying she arrived after all, and sends nothing', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+    const sent = await prisma.notificationOutbox.count();
+
+    await unreleaseNoShowTime(prisma, {
+      businessId,
+      appointmentId: appointment.id,
+      actor: STAFF,
+      reason: 'walked in at 10:35',
+    });
+
+    const events = await prisma.appointmentEvent.findMany({ where: { type: 'time_released' } });
+    expect(events).toHaveLength(2);
+    expect(events[1]!.payload).toMatchObject({ restored: true });
+    expect(events[1]!.reason).toBe('walked in at 10:35');
+    expect(await prisma.notificationOutbox.count()).toBe(sent);
   });
 });

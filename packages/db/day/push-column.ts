@@ -30,7 +30,7 @@
  * and in the control that drives it.
  */
 import type { Actor } from '../../core/auth';
-import { ACTIVE_STATUSES, resolveWindow, wallTime } from '../../core/scheduling';
+import { ACTIVE_STATUSES, PUSHABLE_STATUSES, resolveWindow, wallTime } from '../../core/scheduling';
 import { type ZoneId, calendarDay, fromDate, instant, toDate, toLabel, weekdayOf } from '../../core/time';
 import { resolveDayWindows } from '../availability';
 import { enqueueNotification } from '../notifications';
@@ -110,7 +110,13 @@ export async function previewPush(
     where: {
       businessId: args.businessId,
       providerId: args.providerId,
-      status: { in: [...ACTIVE_STATUSES] },
+      // A-075. NOT `ACTIVE_STATUSES`, which is what this used and is what
+      // broke it: `no_show` and `completed` are active — they still occupy
+      // their time (D-7) — and neither can be running late. Moving a released
+      // no-show's `startAt` out from under its `releasedAt` raised SQLSTATE
+      // 23514 into this workflow, AFTER the preview had promised a clean push.
+      // The list lives in the status module, never hand-typed here.
+      status: { in: [...PUSHABLE_STATUSES] },
       // FROM HERE, on the instant axis: everything starting at or after the
       // chosen moment. Not `startDay = day`, which would miss an overnight
       // appointment and move it out from under the client.

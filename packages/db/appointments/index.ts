@@ -35,6 +35,7 @@ export {
   type ReleaseNoShowTimeInput,
   type ReleasedTime,
   releaseNoShowTime,
+  unreleaseNoShowTime,
 } from './release-time';
 export {
   type AppointmentClientChanged,

@@ -2198,3 +2198,48 @@ The test now uses a **one-chair** room, and the size is the point: with two chai
 A regression test that has never seen the bug is a test nobody should trust. So the old, broken database trigger was put back by hand and the new tests run against it. Both failed, with the exact error from the salon floor: *Every chair is taken for that time.*
 
 The other two tests — that the twenty minutes she *did* occupy is still refused to anybody else, and that correcting her back restores the whole booking — pass against the broken code too. That is deliberate. Their job is not to catch this bug; it is to catch an over-enthusiastic fix that frees time she genuinely had.
+
+## Two ways to move an appointment that had never heard of a no-show being released
+
+The feature that lets a salon sell a no-show's abandoned time added one thing to the database: a timestamp saying *this is the moment we gave up on her*. Everything that **reads** an appointment's occupancy was updated to respect it.
+
+Nothing that **moves** an appointment was.
+
+### The push that promised and then crashed
+
+A stylist runs forty minutes behind, so the desk pushes her whole afternoon back. That feature has a preview: it says which clients will move, which cannot, and what the delay will read as afterwards. The desk reads it and commits.
+
+If anywhere in that column sat a no-show whose time had been released, the push threw a raw database error — *after* the preview had said everything was fine.
+
+The reason is a small piece of internal consistency. The release timestamp has to sit inside the appointment's own start and end; the database enforces that. The push moved the start an hour later and left the release timestamp where it was, so the appointment now claimed the desk had given up on her before she was due. The database refused, correctly, and the whole push rolled back — so on the busiest column of the week, nothing moved at all and the desk was left doing by hand exactly what the button exists to do.
+
+The fix is a list rather than a patch: **which appointments may a column push move?** Only the ones that are still going to happen. Two independent reasons, either sufficient:
+
+- A client who did not turn up cannot be running late. A stylist being forty minutes behind says nothing about the ten o'clock who never arrived, and shifting her scheduled time records that she was due at a time nobody ever offered her.
+- Moving a *finished* appointment's scheduled time rewrites history. This system deliberately keeps "when she was booked for" and "when she actually arrived" apart, precisely so *"she was forty minutes late"* stays answerable. A push that edits the scheduled side destroys the question.
+
+The list lives with all the other status lists rather than inside the query, because this codebase has been bitten repeatedly by a status rule written in one place and forgotten in another.
+
+### The client who kept a no-show she did not earn
+
+The second failure is worse, and it is the sort that only shows up when you imagine the whole afternoon rather than the feature.
+
+Ten o'clock does not arrive. At twenty past, the desk gives up, marks her a no-show and sells the rest of her time. At **thirty-five past, she walks in** — late, apologetic, and there.
+
+The obvious thing to do is put her back on. So the desk books her into the slot that is now free — which is her own released time. And then, when they try to correct the no-show to *completed*, the system refuses. Permanently. Restoring her original booking would collide with the appointment that **is her**.
+
+She keeps a no-show on her twelve-month record for an appointment she attended fifteen minutes late. That is exactly the harm three separate earlier pieces of work exist to prevent, arriving through a fourth door nobody had closed. And the desk found out about it as an unexplained error.
+
+The original feature's own notes had considered this and dismissed it — *"she has just walked in after a release is a rebooking, not an undo."* On paper that reads fine. In the salon it is neither.
+
+So the decision was written down before any code: **the release can be undone, as long as the freed time has not been sold.** One field goes back to what it was, everything re-derives from it exactly as it did on the way out, and if somebody has taken the slot in the meantime the database refuses — and now the desk gets a sentence instead of a stack trace: *"Her time has been sold to somebody else, so that correction cannot go back on the book."*
+
+Two deliberate restraints on that:
+
+**It does not reserve anything while she is on her way.** That would be a soft hold, which is a genuinely hard feature and is still parked. If the slot has gone, it has gone.
+
+**It changes no status.** Putting her time back does not decide she attended — the desk's own next tap does that, and it now works. Folding the two together would have the software quietly making a judgement about whether a client turned up, which is the one thing this product consistently refuses to guess at.
+
+### Proved from the failing side
+
+All three push tests were run against the old code with the broken behaviour restored by hand. All three fail, with the exact database error from the report. A regression test that has never seen the bug is a test nobody should trust — and this is the second time today that discipline has been the difference between a fix and a hope.

@@ -169,3 +169,96 @@ export async function releaseNoShowTime(
     throw error;
   }
 }
+
+/**
+ * A-075 / D-45 — SHE WALKED IN AFTER ALL.
+ *
+ * A-069 called this "a rebooking, not an undo" and left it out. In the salon it
+ * is neither. She turns up at 10:35, fifteen minutes after the desk gave up;
+ * the desk books her into her own released tail; and the `no_show → completed`
+ * correction (APPT-06) is then **permanently refused by the exclusion
+ * constraint**, because restoring her blocked range collides with the booking
+ * that IS her. She keeps a no-show she did not earn — the exact harm A-055,
+ * A-060 and A-068 were each built to prevent, arriving through a fourth door.
+ *
+ * D-45's answer: **un-release her while the freed tail is still empty.** One
+ * guarded `UPDATE` back to `NULL`, and the constraint refuses it the moment
+ * anything has been sold — no check-then-write, no window, no reservation. The
+ * desk's next step then is the ordinary correction, which now succeeds because
+ * the range it needs is hers again.
+ *
+ * IT IS NOT A HOLD AND IT IS NOT AUTOMATIC. Nothing here reserves the tail
+ * while she is on her way, and no rule un-releases anything on its own — D-44's
+ * "never automatic" governs both directions, for the same reason: a person
+ * decides, and the moment they decide is what gets recorded.
+ */
+export async function unreleaseNoShowTime(
+  prisma: PrismaClient,
+  input: { businessId: string; appointmentId: string; actor: Actor; reason?: string | null },
+): Promise<ReleasedTime> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const appointment = await tx.appointment.findFirst({
+        where: { id: input.appointmentId, businessId: input.businessId },
+        select: { id: true, businessId: true, status: true, endAt: true, releasedAt: true, bufferAfterMinutes: true },
+      });
+      if (!appointment) throw new NotReleasable('missing', 'That appointment is not in this business.');
+      if (appointment.releasedAt === null) {
+        throw new NotReleasable(appointment.status, 'Her time was never given back, so there is nothing to undo.');
+      }
+      // The trigger honours `releasedAt` only while the status is `no_show`, so
+      // off that status the range is already whole and this would be a no-op
+      // that wrote an event saying something happened.
+      if (appointment.status !== 'no_show') throw new NotReleasable(appointment.status);
+
+      const releasedAt = appointment.releasedAt;
+
+      // Conditional on the release we are undoing, so two desks cannot both
+      // write — the same reflex as every other same-row UPDATE here. The
+      // TRIGGER restores the blocked range, the per-block ranges and the chair
+      // body from this one column, and the exclusion constraint is what refuses
+      // if the tail has been sold. Nothing checks first.
+      const written = await tx.appointment.updateMany({
+        where: { id: appointment.id, releasedAt, status: 'no_show' },
+        data: { releasedAt: null },
+      });
+      if (written.count === 0) {
+        throw new NotReleasable(appointment.status, 'Somebody else has already changed this one.');
+      }
+
+      await tx.appointmentEvent.create({
+        data: {
+          businessId: appointment.businessId,
+          appointmentId: appointment.id,
+          // ONE type, two sentences, the same shape A-068's `client_changed`
+          // uses: this is the release and its undo, not two unrelated facts,
+          // and a second type would be a second row in every list that reads
+          // the log for one column going back to where it was.
+          type: 'time_released',
+          actor: input.actor.type,
+          actorRef: input.actor.ref,
+          reason: input.reason?.trim() || null,
+          payload: {
+            releasedAt: releasedAt.toISOString(),
+            restored: true,
+          } satisfies Prisma.InputJsonValue,
+        },
+      });
+
+      // Nothing is sent, in this direction either.
+      const blockedEnd = toDate(instant(fromDate(appointment.endAt) + appointment.bufferAfterMinutes * 60_000));
+      return {
+        appointmentId: appointment.id,
+        releasedAt,
+        fromBlockedEnd: blockedEnd,
+        minutes: Math.round((fromDate(blockedEnd) - fromDate(releasedAt)) / 60_000),
+      };
+    });
+  } catch (error) {
+    // The tail has been sold. The desk is told in words which is exactly the
+    // point of D-45 — the alternative was a client wearing a no-show she did
+    // not earn, discovered as a crash.
+    if (isSlotTakenError(error)) throw new SlotTaken([], ['overlaps-booking']);
+    throw error;
+  }
+}

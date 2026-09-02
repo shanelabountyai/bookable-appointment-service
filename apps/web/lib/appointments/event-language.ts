@@ -155,7 +155,12 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
     // because "we gave up at 10:20" is what somebody is reading this log to
     // find out — the minutes are arithmetic anybody can redo.
     case 'time_released':
-      return `Her remaining time was put back on the market by ${who}, from ${clock(payload.releasedAt, zone)}.`;
+      // A-075. ONE type, two sentences — the release and its undo are one
+      // column going back to where it was, not two unrelated facts, which is
+      // the same reasoning `client_changed` above uses.
+      return payload.restored === true
+        ? `Her time was put back on the book by ${who} — she arrived after all.`
+        : `Her remaining time was put back on the market by ${who}, from ${clock(payload.releasedAt, zone)}.`;
     case 'column_pushed':
       return `Pushed ${String(payload.minutes ?? '')} minutes later by ${who}, with the day running behind.`;
     case 'conflict_acknowledged':

@@ -25,6 +25,8 @@ import {
 import { fromDate } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
 import type { Actor } from '../../core/auth';
+import { SlotTaken } from '../booking/errors';
+import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -115,6 +117,26 @@ export interface TransitionResult {
 }
 
 export async function transitionAppointment(db: Db, input: TransitionInput): Promise<TransitionResult> {
+  try {
+    return await runTransition(db, input);
+  } catch (error) {
+    // A-075. A status change USUALLY moves no ranges, which is why this file
+    // has never needed to know about the exclusion constraint. A-069 made one
+    // exception: correcting a released `no_show` off that status restores its
+    // whole blocked range (the trigger honours `releasedAt` only while the
+    // status is `no_show`), and if the freed tail has been sold in the
+    // meantime the constraint refuses it — correctly, and until now as a raw
+    // SQLSTATE 23P01 landing on the appointment panel, whose entire job is
+    // explaining itself.
+    //
+    // Mapped to the SAME error every other lost race in the codebase raises,
+    // so the desk reads one vocabulary for one cause (`scheduling-words.ts`).
+    if (isSlotTakenError(error)) throw new SlotTaken([], ['overlaps-booking']);
+    throw error;
+  }
+}
+
+async function runTransition(db: Db, input: TransitionInput): Promise<TransitionResult> {
   return db.$transaction(async (tx) => {
     const appointment = await tx.appointment.findUniqueOrThrow({
       where: { id: input.appointmentId },

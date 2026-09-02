@@ -745,6 +745,29 @@ test.describe("a no-show's time, given back (A-069)", () => {
     await expect(page.getByRole('button', { name: /back on the market/ })).toHaveCount(0);
   });
 
+  /**
+   * A-075 / D-45 — she walked in after all.
+   *
+   * Without this she keeps a no-show she did not earn: booking her into her
+   * own released tail makes the APPT-06 correction permanently impossible, and
+   * the desk meets that as a refusal it cannot act on.
+   */
+  test('puts her time back on the book when she turns up late', async ({ page }) => {
+    const appointment = await pastNoShow();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    await page.getByRole('button', { name: /Put \d+ min back on the market/ }).click();
+    await expect(page.getByText(/went back on the market at/)).toBeVisible();
+
+    await page.getByRole('button', { name: /put her time back on the book/ }).click();
+
+    // The SETTLED state, not the toast: the action revalidates this panel, so
+    // the transient message is replaced before it can be read. The offer being
+    // on the table again IS the assertion — the time is hers.
+    await expect(page.getByText(/minutes of her slot are still blocked/)).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(/Her time was put back on the book by Front desk/)).toBeVisible();
+  });
+
   test('has no accessibility violations', async ({ page }) => {
     const appointment = await pastNoShow();
     await page.goto(`/staff/appointments/${appointment.id}`);

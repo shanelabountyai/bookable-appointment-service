@@ -18,6 +18,7 @@ import {
   releaseNoShowTime,
   setAppointmentNotes,
   transitionAppointment,
+  unreleaseNoShowTime,
 } from '@bookable/db/appointments';
 import { SlotTaken } from '@bookable/db/booking';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
@@ -63,6 +64,17 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
       };
     }
     if (error instanceof TransitionRefused) return { ok: false, message: refusalWording(error) };
+    // A-075. Correcting a released no-show off that status restores its whole
+    // blocked range, and the constraint refuses that once the freed tail has
+    // been sold. Until now it reached the panel as a raw database error on the
+    // one screen whose job is explaining itself.
+    if (error instanceof SlotTaken) {
+      return {
+        ok: false,
+        message:
+          'Her time has been sold to somebody else, so that correction cannot go back on the book. Put her time back first if the slot is still free.',
+      };
+    }
     throw error;
   }
 
@@ -110,6 +122,43 @@ export async function releaseTime(_previous: DetailState, formData: FormData): P
     // Only reachable through the correction path, but the vocabulary is shared
     // on purpose — one cause, one sentence, wherever it surfaces.
     if (error instanceof SlotTaken) return { ok: false, message: 'Somebody has already taken that time.' };
+    throw error;
+  }
+}
+
+/**
+ * A-075 / D-45 — "she walked in after all".
+ *
+ * The undo of `releaseTime` above, and it exists because without it she keeps a
+ * no-show she did not earn: booking her into her own released tail makes the
+ * APPT-06 correction permanently impossible. Never automatic, in this direction
+ * either (D-44) — a person decides.
+ */
+export async function unreleaseTime(_previous: DetailState, formData: FormData): Promise<DetailState> {
+  const staff = await requireStaff();
+  const appointmentId = String(formData.get('appointmentId') ?? '');
+
+  try {
+    const restored = await unreleaseNoShowTime(prisma, {
+      businessId: staff.businessId,
+      appointmentId,
+      actor: staffActor(staff.id),
+      reason: String(formData.get('reason') ?? '') || null,
+    });
+
+    revalidatePath(`/staff/appointments/${appointmentId}`);
+    revalidatePath('/staff/day');
+    revalidatePath('/staff/opened');
+
+    return { ok: true, message: `${restored.minutes} min back on her booking. Mark her completed when she is done.` };
+  } catch (error) {
+    if (error instanceof NotReleasable) return { ok: false, message: error.message };
+    if (error instanceof SlotTaken) {
+      return {
+        ok: false,
+        message: 'Somebody has already taken that time — it cannot go back on her booking.',
+      };
+    }
     throw error;
   }
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
-import { type DetailState, changeStatus, releaseTime } from '@/lib/appointments/actions';
+import { type DetailState, changeStatus, releaseTime, unreleaseTime } from '@/lib/appointments/actions';
 import { STATUS_ACTION_LABELS } from '@/app/staff/day/status-actions';
 
 const initial: DetailState = {};
@@ -172,13 +172,21 @@ function ReleasePanel({
     // `state.message` below stays as the FAILURE channel, where the server
     // state has not changed and the message is the only thing that has.
     return (
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Her remaining time went back on the market at {release.releasedLabel}. It is on{' '}
-        <Link href="/staff/opened" className="underline underline-offset-4">
-          What&apos;s opened up
-        </Link>
-        .
-      </p>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Her remaining time went back on the market at {release.releasedLabel}. It is on{' '}
+          <Link href="/staff/opened" className="underline underline-offset-4">
+            What&apos;s opened up
+          </Link>
+          .
+        </p>
+        {/* A-075 / D-45. Without this she keeps a no-show she did not earn:
+            booking her into her own released tail makes the APPT-06 correction
+            permanently impossible, and the desk finds that out as a refusal it
+            cannot act on. Refused by the constraint the moment the tail has
+            been sold, and said in words when it is. */}
+        <UnreleasePanel appointmentId={appointmentId} />
+      </div>
     );
   }
 
@@ -206,6 +214,30 @@ function ReleasePanel({
         {pending ? 'Putting it back…' : `Put ${release.minutes} min back on the market`}
       </button>
       <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
+        {state.message ?? ''}
+      </p>
+    </form>
+  );
+}
+
+/**
+ * A-075 / D-45 — "she's here after all; put her time back on the book".
+ *
+ * Its own form and its own action, beside the sentence that says what was
+ * done. It changes no status: she is still a no-show until somebody corrects
+ * her, and that correction is the desk's next tap — which now succeeds,
+ * because the range it needs is hers again.
+ */
+function UnreleasePanel({ appointmentId }: { appointmentId: string }) {
+  const [state, action, pending] = useActionState(unreleaseTime, initial);
+
+  return (
+    <form action={action} className="flex flex-col gap-2 text-sm">
+      <input type="hidden" name="appointmentId" value={appointmentId} />
+      <button type="submit" disabled={pending} className={`${buttonClass} self-start`}>
+        {pending ? 'Putting it back…' : 'She’s here after all — put her time back on the book'}
+      </button>
+      <p aria-live="polite" className="text-zinc-700 dark:text-zinc-300">
         {state.message ?? ''}
       </p>
     </form>
