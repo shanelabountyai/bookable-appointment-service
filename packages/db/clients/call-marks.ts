@@ -1,5 +1,6 @@
 /**
- * A-072 — WHO HAS ALREADY BEEN OFFERED THIS FREED SLOT (WAIT-02, D-37(b)).
+ * A-072, generalised by A-073 — WE RANG THIS CLIENT ABOUT SOMETHING, AND HERE
+ * IS WHAT SHE SAID (WAIT-02, RPT-01, D-37(b)).
  *
  * Thursday's three-hour colour cancels on Saturday morning and lands on
  * `/staff/opened` with two waitlist matches and a tel: link. The desk rings
@@ -11,6 +12,13 @@
  * A-061 fixed exactly this for the call-down list. The list with the money on
  * it never got it, and this is that correction.
  *
+ * A-073 GAVE IT A SECOND ERRAND and therefore its real name. "Who have we
+ * already rung about not having been in since April?" is the same question
+ * with the same four answers, and a third table beside `CallDownAttempt` and
+ * this one would have been the third shape for one idea. `subject` is WHAT was
+ * rung about — `freed:<A-067 row key>` or `lapsed` — and the unique key makes
+ * one client one row per subject.
+ *
  * A RECORD, NOT A HOLD. That is the whole reason this is buildable while
  * OQ-4's soft-hold offer is correctly still blocked: the slot stays sellable
  * to anybody throughout, nothing here refuses a booking, delays one, or
@@ -21,28 +29,28 @@
  *
  * NO CLEARING CODE, and the reason is A-067's: `/staff/opened` is derived on
  * every read, so when the slot is sold it leaves the list and these marks are
- * simply never read again. A span freed twice gets a different `freedKey` and
+ * simply never read again. A span freed twice gets a different `subject` and
  * therefore a clean slate.
  */
 import type { Actor } from '../../core/auth';
 import { resolveStaffNames } from '../auth';
-import type { FreedOfferOutcome, Prisma, PrismaClient } from '../generated/client/index.js';
+import type { CallMarkOutcome, Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
-export type { FreedOfferOutcome };
+export type { CallMarkOutcome };
 
-/** The most recent offer of one slot to one client. Never a count: a client
- *  rung twice is still one person to ring again. */
-export interface FreedOffer {
+/** The most recent call to one client about one subject. Never a count: a
+ *  client rung twice is still one person to ring again. */
+export interface CallMark {
   clientId: string;
   clientName: string | null;
-  outcome: FreedOfferOutcome;
+  outcome: CallMarkOutcome;
   /** The person who rang, when the log knows one. Null for a row whose staff
    *  id no longer resolves — never coerced to "the front desk", which would
    *  claim knowledge the row does not have (A-037's rule). */
-  offeredByName: string | null;
-  offeredAt: Date;
+  calledByName: string | null;
+  calledAt: Date;
 }
 
 /**
@@ -53,19 +61,19 @@ export interface FreedOffer {
  * fact the next person at the desk needs. Two desks pressing one button in the
  * same second is the same upsert rather than a list reading "rung, rung".
  */
-export async function recordFreedOffer(
+export async function recordCallMark(
   db: Db,
   args: {
     businessId: string;
-    /** A-067's derived row key for the freed span. */
-    freedKey: string;
+    /** WHAT was rung about: `freed:<A-067 row key>`, or `lapsed`. */
+    subject: string;
     appointmentId: string;
     clientId: string;
-    outcome: FreedOfferOutcome;
+    outcome: CallMarkOutcome;
     actor: Actor;
   },
-): Promise<FreedOffer | null> {
-  // Both sides scoped to the business, because `freedKey` arrives from a URL
+): Promise<CallMark | null> {
+  // Both sides scoped to the business, because `subject` arrives from a URL
   // and an id from another salon must not become a row here.
   const [appointment, client] = await Promise.all([
     db.appointment.findFirst({
@@ -79,18 +87,18 @@ export async function recordFreedOffer(
   ]);
   if (!appointment || !client) return null;
 
-  const row = await db.freedSlotOffer.upsert({
-    where: { freedKey_clientId: { freedKey: args.freedKey, clientId: args.clientId } },
+  const row = await db.clientCallMark.upsert({
+    where: { subject_clientId: { subject: args.subject, clientId: args.clientId } },
     create: {
       businessId: args.businessId,
-      freedKey: args.freedKey,
+      subject: args.subject,
       appointmentId: args.appointmentId,
       clientId: args.clientId,
       outcome: args.outcome,
-      offeredByActor: args.actor.type,
+      calledByActor: args.actor.type,
       actorRef: args.actor.ref,
     },
-    update: { outcome: args.outcome, offeredByActor: args.actor.type, actorRef: args.actor.ref },
+    update: { outcome: args.outcome, calledByActor: args.actor.type, actorRef: args.actor.ref },
   });
 
   const names = await resolveStaffNames(db as PrismaClient, row.actorRef ? [row.actorRef] : []);
@@ -98,8 +106,8 @@ export async function recordFreedOffer(
     clientId: row.clientId,
     clientName: client.name,
     outcome: row.outcome,
-    offeredByName: (row.offeredByActor === 'staff' && row.actorRef ? names.get(row.actorRef) : undefined) ?? null,
-    offeredAt: row.updatedAt,
+    calledByName: (row.calledByActor === 'staff' && row.actorRef ? names.get(row.actorRef) : undefined) ?? null,
+    calledAt: row.updatedAt,
   };
 }
 
@@ -109,38 +117,38 @@ export async function recordFreedOffer(
  * inverted. Reversible by the same hand that made it, the same reasoning A-059
  * and A-061 both applied to their marks.
  */
-export async function clearFreedOffer(
+export async function clearCallMark(
   db: Db,
-  args: { businessId: string; freedKey: string; clientId: string },
+  args: { businessId: string; subject: string; clientId: string },
 ): Promise<void> {
-  await db.freedSlotOffer.deleteMany({
-    where: { businessId: args.businessId, freedKey: args.freedKey, clientId: args.clientId },
+  await db.clientCallMark.deleteMany({
+    where: { businessId: args.businessId, subject: args.subject, clientId: args.clientId },
   });
 }
 
 /**
- * Every offer made about these slots, keyed by `freedKey`.
+ * Every call made about these subjects, keyed by `subject`.
  *
- * Takes the WHOLE list of keys in one call rather than one query per row: the
- * freed list is a fortnight of a salon's cancellations, and a per-row read
- * there is the N+1 the opened list already avoids for its emptiness check by
- * bounding first.
+ * Takes the WHOLE list in one call rather than one query per row: the freed
+ * list is a fortnight of a salon's cancellations and the lapsed list is
+ * eighty clients, and a per-row read is the N+1 both of them avoid by bounding
+ * first.
  */
-export async function listFreedOffers(
+export async function listCallMarks(
   db: Db,
-  args: { businessId: string; freedKeys: readonly string[] },
-): Promise<Map<string, FreedOffer[]>> {
-  const out = new Map<string, FreedOffer[]>();
-  if (args.freedKeys.length === 0) return out;
+  args: { businessId: string; subjects: readonly string[] },
+): Promise<Map<string, CallMark[]>> {
+  const out = new Map<string, CallMark[]>();
+  if (args.subjects.length === 0) return out;
 
-  const rows = await db.freedSlotOffer.findMany({
-    where: { businessId: args.businessId, freedKey: { in: [...args.freedKeys] } },
+  const rows = await db.clientCallMark.findMany({
+    where: { businessId: args.businessId, subject: { in: [...args.subjects] } },
     orderBy: { updatedAt: 'asc' },
     select: {
-      freedKey: true,
+      subject: true,
       clientId: true,
       outcome: true,
-      offeredByActor: true,
+      calledByActor: true,
       actorRef: true,
       updatedAt: true,
       client: { select: { name: true } },
@@ -150,19 +158,19 @@ export async function listFreedOffers(
 
   const names = await resolveStaffNames(
     db as PrismaClient,
-    rows.flatMap((row) => (row.offeredByActor === 'staff' && row.actorRef ? [row.actorRef] : [])),
+    rows.flatMap((row) => (row.calledByActor === 'staff' && row.actorRef ? [row.actorRef] : [])),
   );
 
   for (const row of rows) {
-    const list = out.get(row.freedKey) ?? [];
+    const list = out.get(row.subject) ?? [];
     list.push({
       clientId: row.clientId,
       clientName: row.client.name,
       outcome: row.outcome,
-      offeredByName: (row.offeredByActor === 'staff' && row.actorRef ? names.get(row.actorRef) : undefined) ?? null,
-      offeredAt: row.updatedAt,
+      calledByName: (row.calledByActor === 'staff' && row.actorRef ? names.get(row.actorRef) : undefined) ?? null,
+      calledAt: row.updatedAt,
     });
-    out.set(row.freedKey, list);
+    out.set(row.subject, list);
   }
   return out;
 }

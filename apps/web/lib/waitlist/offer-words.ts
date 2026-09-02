@@ -1,4 +1,4 @@
-import type { FreedOfferOutcome } from '@bookable/db/waitlist';
+import type { CallMarkOutcome } from '@bookable/db/clients';
 
 /**
  * A-072 — the four outcomes in the desk's own words.
@@ -21,4 +21,4 @@ export const OFFER_WORDS = {
   left_message: 'Left a message',
   thinking: 'Thinking about it',
   took_it: 'She took it',
-} satisfies Record<FreedOfferOutcome, string>;
+} satisfies Record<CallMarkOutcome, string>;

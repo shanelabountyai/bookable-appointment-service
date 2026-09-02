@@ -125,6 +125,16 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
           late count — who, and why →
         </Link>
       ) : null}
+
+      {/* A-073. NOT conditional on a count, unlike the line above: the whole
+          finding is that the owner has no way to know this list exists, and a
+          link that only appears once somebody has already lapsed is a door
+          that opens after the horse has gone. It is also the only surface in
+          the product that answers "who have we lost?", so it is worth a
+          permanent line. */}
+      <Link href="/staff/dashboard/lapsed" className="text-sm underline underline-offset-4">
+        Clients who have stopped coming — who to ring to fill a quiet Tuesday →
+      </Link>
     </main>
   );
 }

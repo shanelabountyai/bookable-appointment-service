@@ -14,7 +14,7 @@ import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
-import { clearFreedOffer, listFreedOffers, recordFreedOffer } from './offers';
+import { clearCallMark, listCallMarks, recordCallMark } from './call-marks';
 
 const prisma = new PrismaClient();
 const STAFF_WINDOW = { createdByActor: 'staff' as const, actorRef: 'staff-1' };
@@ -93,12 +93,12 @@ beforeEach(async () => {
   appointmentId = appointment.id;
 });
 
-const KEY = () => `cancelled:${appointmentId}`;
+const KEY = () => `freed:cancelled:${appointmentId}`;
 
 const offer = (clientId: string, outcome: 'no_answer' | 'left_message' | 'thinking' | 'took_it') =>
-  recordFreedOffer(prisma, { businessId, freedKey: KEY(), appointmentId, clientId, outcome, actor: STAFF });
+  recordCallMark(prisma, { businessId, subject: KEY(), appointmentId, clientId, outcome, actor: STAFF });
 
-const listed = async () => (await listFreedOffers(prisma, { businessId, freedKeys: [KEY()] })).get(KEY()) ?? [];
+const listed = async () => (await listCallMarks(prisma, { businessId, subjects: [KEY()] })).get(KEY()) ?? [];
 
 describe('the mark', () => {
   it('records who was asked, what she said, and who asked her', async () => {
@@ -106,7 +106,7 @@ describe('the mark', () => {
 
     expect(recorded).toMatchObject({ clientId: patelId, clientName: 'Mrs Patel', outcome: 'thinking' });
     // D-9. "The front desk" is four people, and at 4pm that is not an answer.
-    expect(recorded!.offeredByName).toBe('Priya');
+    expect(recorded!.calledByName).toBe('Priya');
     expect(await listed()).toHaveLength(1);
   });
 
@@ -125,14 +125,14 @@ describe('the mark', () => {
     await offer(patelId, 'thinking');
     await offer(hallId, 'no_answer');
 
-    expect((await listed()).map((row) => row.outcome).sort()).toEqual(['no_answer', 'thinking']);
+    expect((await listed()).map((row: { outcome: string }) => row.outcome).sort()).toEqual(['no_answer', 'thinking']);
   });
 
   /** A mis-tap on a SHARED screen marks the wrong client as asked, which
    *  silently skips her — the harm this exists to prevent, inverted. */
   it('is a toggle, not a one-way tick', async () => {
     await offer(patelId, 'left_message');
-    await clearFreedOffer(prisma, { businessId, freedKey: KEY(), clientId: patelId });
+    await clearCallMark(prisma, { businessId, subject: KEY(), clientId: patelId });
 
     expect(await listed()).toHaveLength(0);
   });
@@ -142,9 +142,9 @@ describe('the mark', () => {
     const stranger = await prisma.client.create({ data: { businessId: other.id, name: 'Nobody' } });
 
     expect(
-      await recordFreedOffer(prisma, {
+      await recordCallMark(prisma, {
         businessId,
-        freedKey: KEY(),
+        subject: KEY(),
         appointmentId,
         clientId: stranger.id,
         outcome: 'thinking',
@@ -187,7 +187,7 @@ describe('what makes it a RECORD and not a hold (D-37(b))', () => {
 
     await offer(patelId, 'left_message');
     await offer(hallId, 'took_it');
-    await clearFreedOffer(prisma, { businessId, freedKey: KEY(), clientId: hallId });
+    await clearCallMark(prisma, { businessId, subject: KEY(), clientId: hallId });
 
     expect(await prisma.notificationOutbox.count()).toBe(sent);
   });
@@ -198,25 +198,25 @@ describe('the key it hangs off', () => {
    *  differs, so the second round starts clean with no clearing code. */
   it('keeps two freed spans of one appointment apart', async () => {
     await offer(patelId, 'thinking');
-    await recordFreedOffer(prisma, {
+    await recordCallMark(prisma, {
       businessId,
-      freedKey: `services_changed:${appointmentId}-later`,
+      subject: `freed:services_changed:${appointmentId}-later`,
       appointmentId,
       clientId: patelId,
       outcome: 'no_answer',
       actor: STAFF,
     });
 
-    const both = await listFreedOffers(prisma, {
+    const both = await listCallMarks(prisma, {
       businessId,
-      freedKeys: [KEY(), `services_changed:${appointmentId}-later`],
+      subjects: [KEY(), `freed:services_changed:${appointmentId}-later`],
     });
     expect(both.get(KEY())![0]!.outcome).toBe('thinking');
-    expect(both.get(`services_changed:${appointmentId}-later`)![0]!.outcome).toBe('no_answer');
+    expect(both.get(`freed:services_changed:${appointmentId}-later`)![0]!.outcome).toBe('no_answer');
   });
 
   it('returns an empty map for a slot nobody has been asked about', async () => {
-    expect(await listFreedOffers(prisma, { businessId, freedKeys: [] })).toEqual(new Map());
-    expect((await listFreedOffers(prisma, { businessId, freedKeys: [KEY()] })).size).toBe(0);
+    expect(await listCallMarks(prisma, { businessId, subjects: [] })).toEqual(new Map());
+    expect((await listCallMarks(prisma, { businessId, subjects: [KEY()] })).size).toBe(0);
   });
 });

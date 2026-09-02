@@ -19,3 +19,10 @@ export {
   missedAppointments,
   reliabilityFor,
 } from './reliability';
+export {
+  type CallMark,
+  type CallMarkOutcome,
+  clearCallMark,
+  listCallMarks,
+  recordCallMark,
+} from './call-marks';

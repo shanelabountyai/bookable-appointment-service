@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { type OpenedSlot, listOpenedSlots } from '@bookable/db/appointments';
-import { type FreedOffer, listFreedOffers } from '@bookable/db/waitlist';
+import { type CallMark, listCallMarks } from '@bookable/db/clients';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
@@ -40,9 +40,9 @@ export default async function OpenedPage() {
   // whole list. This screen is where the second person at the desk starts at
   // 4pm, so it is the screen that has to say "Mrs Patel is thinking about it"
   // before anybody dials.
-  const offers = await listFreedOffers(prisma, {
+  const marks = await listCallMarks(prisma, {
     businessId: staff.businessId,
-    freedKeys: slots.map((slot) => slot.key),
+    subjects: slots.map((slot) => `freed:${slot.key}`),
   });
 
   return (
@@ -96,9 +96,9 @@ export default async function OpenedPage() {
                     to anybody throughout. This only stops the second person at
                     the desk ringing Mrs Patel again, or promising it to the
                     next name while she is still deciding. */}
-                {(offers.get(slot.key) ?? []).length > 0 ? (
+                {(marks.get(`freed:${slot.key}`) ?? []).length > 0 ? (
                   <span className="text-zinc-600 dark:text-zinc-400">
-                    Already asked: {(offers.get(slot.key) ?? []).map(offerSentence).join(' · ')}
+                    Already asked: {(marks.get(`freed:${slot.key}`) ?? []).map(callSentence).join(' · ')}
                   </span>
                 ) : null}
               </div>
@@ -168,10 +168,10 @@ function freedWords(slot: OpenedSlot, zone: string): string {
 const listWords = (names: string[]): string =>
   names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 
-/** A-072 — one offer, in the desk's words. The NAME first, because the
- *  question being answered is "has anybody rung her yet?" */
-function offerSentence(offer: FreedOffer): string {
-  const who = offer.clientName ?? 'somebody';
-  const by = offer.offeredByName ? ` (${offer.offeredByName})` : '';
-  return `${who} — ${OFFER_WORDS[offer.outcome].toLowerCase()}${by}`;
+/** A-072 — one call, in the desk's words. The NAME first, because the question
+ *  being answered is "has anybody rung her yet?" */
+function callSentence(mark: CallMark): string {
+  const who = mark.clientName ?? 'somebody';
+  const by = mark.calledByName ? ` (${mark.calledByName})` : '';
+  return `${who} — ${OFFER_WORDS[mark.outcome].toLowerCase()}${by}`;
 }

@@ -84,7 +84,12 @@ enum CallAttemptOutcome {
 /// on the call-down, and extending that enum would put two dead buttons on a
 /// screen with nothing to do with this one. "A status enum is never one edit"
 /// cuts both ways.
-enum FreedOfferOutcome {
+///
+/// A-073 reuses all four unchanged for the lapsed list, which is the evidence
+/// the vocabulary was the right one: "no answer", "left a message", "she's
+/// thinking about it" and "she took it" are what a person says after either
+/// call.
+enum CallMarkOutcome {
   no_answer
   left_message
   thinking
@@ -198,7 +203,7 @@ model Business {
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   callAttempts  CallDownAttempt[]
-  freedOffers   FreedSlotOffer[]
+  callMarks     ClientCallMark[]
 }
 
 /// D-9. One shared owner credential in v1; multi-user staff auth and roles are
@@ -601,7 +606,7 @@ model Client {
   appointments Appointment[]
   series       AppointmentSeries[]
   waitlist     WaitlistEntry[]
-  freedOffers  FreedSlotOffer[]
+  callMarks    ClientCallMark[]
 
   /// Restrict, not Cascade: a survivor that could be deleted out from under
   /// its tombstones would leave the old phone number pointing at nothing.
@@ -810,7 +815,7 @@ model Appointment {
   resourceHold  AppointmentResourceHold?
   lateCalls     RunningLateTold[]
   callAttempts  CallDownAttempt[]
-  freedOffers   FreedSlotOffer[]
+  callMarks     ClientCallMark[]
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -1178,7 +1183,8 @@ model RunningLateTold {
 /// confirmed appointment is not on the list, and an appointment RESCHEDULED to
 /// another day (D-6 keeps the same row) no longer matches, so a fortnight-old
 /// "no answer" cannot resurface against next week's booking.
-/// A-072 / WAIT-02 — WHO HAS ALREADY BEEN OFFERED THIS FREED SLOT.
+/// A-072, renamed by A-073 — WE RANG THIS CLIENT ABOUT SOMETHING, AND HERE IS
+/// WHAT SHE SAID.
 ///
 /// A three-hour colour cancels on Saturday for Thursday. The desk rings Mrs
 /// Patel, who says "let me check with work". At 4pm the second person at the
@@ -1187,29 +1193,36 @@ model RunningLateTold {
 /// is still deciding. A-061 fixed exactly this for the call-down list; the
 /// list with the money on it never got it.
 ///
+/// A-073 gave it a second errand — the client who has stopped coming — and
+/// therefore its real name. `subject` is WHAT was rung about: `freed:<A-067
+/// row key>` for an offer of a freed slot, `lapsed` for the lapsed list.
+///
 /// A RECORD, NOT A HOLD, which is what makes it buildable while OQ-4's
 /// soft-hold offer is correctly still blocked: the slot stays sellable to
 /// anybody throughout, nothing here refuses or delays a booking, and — like
 /// `RunningLateTold` and `CallDownAttempt` — it sends nothing and must appear
 /// nowhere near `deliveryWord()` (D-41).
-model FreedSlotOffer {
+model ClientCallMark {
   id         String @id @default(cuid())
   businessId String
 
-  /// A-067's derived row key — `cancelled:<appointmentId>` or
-  /// `<eventType>:<eventId>`. Different for a span freed twice, which is what
-  /// makes "cleared by the slot ceasing to be free" true with no clearing
-  /// code: the list is derived, so when the slot goes these are never read.
-  freedKey      String
+  /// WHAT was rung about. `freed:<key>` uses A-067's derived row key, which
+  /// differs for a span freed twice — so "cleared by the slot ceasing to be
+  /// free" is true with no clearing code, because the list is derived and
+  /// simply stops reading these. `lapsed` is one row per client, cleared the
+  /// same way: she books, and she leaves the report.
+  subject       String
+  /// The visit it hangs off — the one that freed the slot, or her last
+  /// completed one. Its FK is what takes the mark away with the appointment.
   appointmentId String
   clientId      String
 
-  outcome FreedOfferOutcome
+  outcome CallMarkOutcome
 
   /// D-9. At 4pm "who rang her?" has to have an answer, and "the front desk"
   /// is four people.
-  offeredByActor Actor
-  actorRef       String?
+  calledByActor Actor
+  actorRef      String?
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
@@ -1218,11 +1231,11 @@ model FreedSlotOffer {
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  /// ONE ROW PER SLOT PER CLIENT, so a second call RE-STAMPS rather than
+  /// ONE ROW PER SUBJECT PER CLIENT, so a second call RE-STAMPS rather than
   /// appending — the same reasoning as `CallDownAttempt`'s key, and the same
   /// reason two desks pressing one button is an upsert.
-  @@unique([freedKey, clientId])
-  @@index([businessId, freedKey])
+  @@unique([subject, clientId])
+  @@index([businessId, subject])
 }
 
 model CallDownAttempt {

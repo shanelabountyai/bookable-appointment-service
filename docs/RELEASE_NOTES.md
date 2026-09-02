@@ -2100,3 +2100,53 @@ The four phrases — "No answer", "Left a message" — started out living in the
 The framework quietly substitutes a placeholder for browser-side code when the server imports it. So the import worked, the types checked, the build passed — and every lookup came back empty. The page returned a blank error: *"A server error occurred."* No stack trace visible to a user, no clue what went wrong.
 
 It was caught because the test checks what the page **says**, not merely that the page **answered**. A test asserting a successful response would have passed on a broken screen, and this codebase has been bitten by exactly that before — which is why "assert what the page says" is written down as a rule rather than left to judgement.
+
+## The clients who quietly stopped coming
+
+Tuesday afternoon runs at 45% and the owner knows it. What she does not have is a list.
+
+There are three hundred clients on the books. Perhaps eighty of them were on a six-week rhythm and have not been in for fourteen weeks. Some moved. Some found somewhere closer. Most just drifted — nobody rang, nothing happened, and the habit broke.
+
+The only way to find those eighty was to open the client list and read it, one record at a time, checking each person's last visit by eye.
+
+This is not a technically hard report. It is simply the one nobody had written, and it is very likely the biggest single lever left in the product: thirty calls books six to eight, in a week that would otherwise have been quiet.
+
+### Getting the definition right matters more than the query
+
+An owner who rings a client who has a colour booked on Thursday will not open the list a second time. The definition has to be right on the first afternoon, and there are four ways to get it wrong:
+
+**A no-show is not a visit.** If the report counted "last appointment" instead of "last completed appointment", a client whose most recent contact with the salon was failing to turn up would look like somebody seen recently — hiding the exact person the report exists to find, behind the very evidence that she has stopped coming.
+
+**A cancelled future booking does not make her un-lapsed.** She is precisely who to ring.
+
+**A client the salon has flagged is left off.** Somebody blocked from booking online after repeated no-shows is not who you call to fill a quiet Tuesday. Offering her time is the opposite of what the flag exists for.
+
+**A merged-away duplicate record is left off.** It is a tombstone pointing at a real person, not a second person to ring.
+
+### The cutoff is a number on the page
+
+Six weeks for one salon, twelve for another, and it changes with the season. So there is no settings screen for it — there is a box at the top of the report reading *"away for more than [12] weeks"*, and it is part of the address, so a useful list can be bookmarked.
+
+A setting on a configuration page that nobody ever revisits is a setting that is permanently wrong.
+
+### Sorted by how long, not by how much
+
+Longest away first. It is tempting to sort by what they used to spend, but that puts the client who came once for a fringe trim below the one who came twice for a cut — true, and useless. The money is on each row instead, along with who did her hair, what she had, and a phone number that dials.
+
+The amount shown is what she actually paid at the time, not what that service costs today. "She was worth $140" has to mean something.
+
+### It remembers the calls, and that renamed a table
+
+Thirty calls do not happen in one sitting. A list that forgets who has already been rung gets copied onto paper within a week, and then the paper is the system.
+
+The mechanism for this already existed — it was built days earlier so the desk could remember who had been offered a cancelled slot. Reusing it was clearly right; reusing it *as it was named* was not, because the table was called "freed slot offer" and this is not a freed slot.
+
+So the second user of it gave it its real name: a record that somebody at this desk rang this client about something, and what she said. Same columns, same four answers, same behaviour — a rename rather than a new table, because the calls already recorded are calls, and dropping them to start again would have thrown away real work.
+
+The four answers carried over without a single change, which is the best evidence the original vocabulary was right: *no answer*, *left a message*, *thinking about it*, *she took it* are what a person says after either kind of call.
+
+### A small note on the tests
+
+One of them checks that a member of staff who is not the owner cannot see this list. The first version of that test seeded no data — so "her name is not on the page" would have passed for an empty list exactly as readily as for a proper refusal. A test that cannot fail is worse than no test, because it is counted.
+
+It now puts a client on the list, confirms the owner can see her, downgrades the account, and confirms she is gone.

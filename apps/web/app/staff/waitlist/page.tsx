@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listProviders, listServices } from '@bookable/db/settings';
-import { listFreedOffers, listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
+import { listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
+import { listCallMarks } from '@bookable/db/clients';
 import { instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
@@ -42,11 +43,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   // A-072. Who has already been rung about THIS span — one read for the whole
   // list, keyed on A-067's derived row key so a span freed twice is two rounds
   // of calls rather than one that remembers the wrong answers.
-  const offers = freed?.key
-    ? (await listFreedOffers(prisma, { businessId: staff.businessId, freedKeys: [freed.key] })).get(freed.key) ?? []
+  const subject = freed?.key ? `freed:${freed.key}` : null;
+  const marks = subject
+    ? (await listCallMarks(prisma, { businessId: staff.businessId, subjects: [subject] })).get(subject) ?? []
     : [];
   const offerFor = (clientId: string | null) =>
-    clientId ? offers.find((offer) => offer.clientId === clientId) : undefined;
+    clientId ? marks.find((mark) => mark.clientId === clientId) : undefined;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -100,7 +102,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                   {freed.key && freed.appointmentId && entry.clientId ? (
                     <span className="w-full">
                       <OfferButtons
-                        freedKey={freed.key}
+                        subject={subject!}
                         appointmentId={freed.appointmentId}
                         clientId={entry.clientId}
                         offer={offerFor(entry.clientId)}
@@ -108,8 +110,8 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                       {offerFor(entry.clientId) ? (
                         <span className="mt-1 block text-xs text-zinc-600 dark:text-zinc-400">
                           {OFFER_WORDS[offerFor(entry.clientId)!.outcome]}
-                          {offerFor(entry.clientId)!.offeredByName
-                            ? ` — ${offerFor(entry.clientId)!.offeredByName}`
+                          {offerFor(entry.clientId)!.calledByName
+                            ? ` — ${offerFor(entry.clientId)!.calledByName}`
                             : ''}
                         </span>
                       ) : null}

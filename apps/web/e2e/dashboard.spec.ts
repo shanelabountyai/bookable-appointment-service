@@ -13,7 +13,7 @@ import { seedSetup } from '@bookable/db/settings';
 import { bookAppointment } from '@bookable/db/booking';
 import { transitionAppointment } from '@bookable/db/appointments';
 import { staffActor } from '@bookable/core/auth';
-import { addDays, calendarDay, fromDate, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
+import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 let DAY: string; // a Tuesday, at least a day out
@@ -119,6 +119,112 @@ test.describe('the owner dashboard (A-024)', () => {
 
   test('has no accessibility violations', async ({ page }) => {
     await page.goto(`/staff/dashboard?week=${DAY}`);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(results.violations).toEqual([]);
+  });
+});
+
+/**
+ * A-073 — THE CLIENTS WHO HAVE STOPPED COMING (RPT-01, CLIENT-02).
+ *
+ * Tuesday is at 45% and the owner has no list to ring. Three hundred clients,
+ * eighty of them on a six-week cycle who have not been in for fourteen weeks,
+ * and the only way to find them before this page was to read the client list
+ * one record at a time.
+ */
+test.describe('the clients who have stopped coming (A-073)', () => {
+  /** A client whose last visit was months ago and who has nothing booked. */
+  async function lapsedClient(name: string, weeksAgo: number) {
+    const prisma = new PrismaClient();
+    try {
+      const client = await prisma.client.create({
+        data: { businessId, name, phone: '5125550188' },
+      });
+      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - weeksAgo * 7 * 24 * 60) * 60_000));
+      await prisma.appointment.create({
+        data: {
+          businessId,
+          providerId: danaId,
+          clientId: client.id,
+          status: 'completed',
+          startAt,
+          endAt: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+          blockedStart: startAt,
+          blockedEnd: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+          startDay: toLabel(fromDate(startAt), zoneId(ZONE)).day,
+          startWallTime: toLabel(fromDate(startAt), zoneId(ZONE)).time,
+          lines: {
+            create: { businessId, serviceId: cutId, ordinal: 0, priceCents: 14000, durationMinutes: 45 },
+          },
+        },
+      });
+      return client.id;
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  test('lists who to ring, with the money and the number, and remembers the call', async ({ page }) => {
+    await lapsedClient('Olive Gone', 30);
+
+    await page.goto('/staff/dashboard');
+    await page.getByRole('link', { name: /Clients who have stopped coming/ }).click();
+
+    await expect(page).toHaveURL(/\/staff\/dashboard\/lapsed$/);
+    await expect(page.getByRole('link', { name: 'Olive Gone' })).toBeVisible();
+    // What the call is about: how long, what she had, and what she was worth.
+    await expect(page.getByText(/30 weeks/)).toBeVisible();
+    await expect(page.getByText(/Cut · Dana · \$140\.00/)).toBeVisible();
+    await expect(page.getByRole('link', { name: '5125550188' })).toHaveAttribute('href', 'tel:5125550188');
+
+    // A-072's marks, reused — thirty calls do not happen in one sitting.
+    await page.getByRole('button', { name: 'Left a message' }).click();
+    await expect(page.getByText('Noted.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(/Left a message —/)).toBeVisible();
+  });
+
+  /** N is a number ON the report, not a setting nobody will tune. */
+  test('the cutoff is a number on the page, and it is a URL', async ({ page }) => {
+    await lapsedClient('Recent Rita', 5);
+
+    await page.goto('/staff/dashboard/lapsed');
+    await expect(page.getByText('Nobody has been away that long — try a shorter gap.')).toBeVisible();
+
+    await page.getByLabel('Away for more than (weeks)').fill('4');
+    await page.getByRole('button', { name: 'Show' }).click();
+
+    await expect(page).toHaveURL(/weeks=4/);
+    await expect(page.getByRole('link', { name: 'Recent Rita' })).toBeVisible();
+  });
+
+  test('refuses a member of staff who is not the owner (D-36)', async ({ page }) => {
+    // SEEDED FIRST, deliberately: without a row on the list, "her name is not
+    // on the page" passes for an empty list as readily as for a refusal, which
+    // is a test that cannot fail.
+    await lapsedClient('Olive Gone', 30);
+    await page.goto('/staff/dashboard/lapsed');
+    await expect(page.getByRole('link', { name: 'Olive Gone' })).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      await prisma.staffUser.updateMany({ where: { businessId }, data: { role: 'staff' } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto('/staff/dashboard/lapsed');
+    // The commercially sensitive half is the NAMES, so that is what is
+    // asserted gone — not merely that the heading is missing, which a layout
+    // that declined to render would also produce while the data streamed out
+    // beside it (CLAUDE.md's layout-only trap).
+    await expect(page.getByRole('link', { name: 'Olive Gone' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Not been in for a while' })).toHaveCount(0);
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    await lapsedClient('Olive Gone', 30);
+    await page.goto('/staff/dashboard/lapsed');
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(results.violations).toEqual([]);
   });

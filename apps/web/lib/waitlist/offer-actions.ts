@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
-import { type FreedOfferOutcome, clearFreedOffer, recordFreedOffer } from '@bookable/db/waitlist';
+import { type CallMarkOutcome, clearCallMark, recordCallMark } from '@bookable/db/clients';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
 
@@ -29,17 +29,20 @@ const OUTCOMES = ['no_answer', 'left_message', 'thinking', 'took_it'] as const;
 
 export async function recordOffer(_previous: OfferState, formData: FormData): Promise<OfferState> {
   const staff = await requireStaff();
-  const freedKey = String(formData.get('freedKey') ?? '');
+  const subject = String(formData.get('subject') ?? '');
   const appointmentId = String(formData.get('appointmentId') ?? '');
   const clientId = String(formData.get('clientId') ?? '');
   const outcome = String(formData.get('outcome') ?? '');
 
-  if (!freedKey || !clientId) return { ok: false, message: 'That slot is no longer on the screen. Reload.' };
+  if (!subject || !clientId) return { ok: false, message: 'That slot is no longer on the screen. Reload.' };
 
   if (outcome === 'clear') {
-    await clearFreedOffer(prisma, { businessId: staff.businessId, freedKey, clientId });
+    await clearCallMark(prisma, { businessId: staff.businessId, subject, clientId });
     revalidatePath('/staff/waitlist');
     revalidatePath('/staff/opened');
+    // A-073 reuses this action for the lapsed list, so it revalidates there
+    // too — one writer, and every reader of it told.
+    revalidatePath('/staff/dashboard/lapsed');
     return { ok: true, message: 'Cleared — she has not been asked.' };
   }
 
@@ -47,12 +50,12 @@ export async function recordOffer(_previous: OfferState, formData: FormData): Pr
     return { ok: false, message: 'That is not one of the four.' };
   }
 
-  const offer = await recordFreedOffer(prisma, {
+  const mark = await recordCallMark(prisma, {
     businessId: staff.businessId,
-    freedKey,
+    subject,
     appointmentId,
     clientId,
-    outcome: outcome as FreedOfferOutcome,
+    outcome: outcome as CallMarkOutcome,
     actor: staffActor(staff.id),
   });
 
@@ -61,8 +64,9 @@ export async function recordOffer(_previous: OfferState, formData: FormData): Pr
   // the whole defect is two people at one desk reading two different pictures
   // of the same round of phone calls.
   revalidatePath('/staff/opened');
+  revalidatePath('/staff/dashboard/lapsed');
 
-  return offer
+  return mark
     ? { ok: true, message: 'Noted.' }
     : { ok: false, message: 'That client or appointment is no longer here. Reload.' };
 }

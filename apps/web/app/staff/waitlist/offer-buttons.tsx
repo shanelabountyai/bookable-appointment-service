@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import type { FreedOffer, FreedOfferOutcome } from '@bookable/db/waitlist';
+import type { CallMark, CallMarkOutcome } from '@bookable/db/clients';
 import { type OfferState, recordOffer } from '@/lib/waitlist/offer-actions';
 import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
 
@@ -30,28 +30,28 @@ const initial: OfferState = {};
  * row one.
  */
 export function OfferButtons({
-  freedKey,
+  subject,
   appointmentId,
   clientId,
   offer,
 }: {
-  freedKey: string;
+  subject: string;
   appointmentId: string;
   clientId: string;
-  offer: FreedOffer | undefined;
+  offer: CallMark | undefined;
 }) {
   const [state, formAction, pending] = useActionState(recordOffer, initial);
 
   return (
     <form action={formAction} className="flex flex-wrap items-center gap-1">
-      <input type="hidden" name="freedKey" value={freedKey} />
+      <input type="hidden" name="subject" value={subject} />
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <input type="hidden" name="clientId" value={clientId} />
 
       {/* All four stay available on a marked row: "no answer at 2, thinking
           about it at 4" re-stamps the same row, so correcting a mis-pressed
           outcome needs no separate control. */}
-      {(Object.keys(OFFER_WORDS) as FreedOfferOutcome[]).map((outcome) => (
+      {(Object.keys(OFFER_WORDS) as CallMarkOutcome[]).map((outcome) => (
         <button
           key={outcome}
           name="outcome"
@@ -91,7 +91,7 @@ export function OfferButtons({
 /** The pressed outcome reads as pressed. `aria-pressed` is not available on a
  *  submit button that is also the form's payload, so the state is carried by
  *  the visible style and by the sentence on the row beside it. */
-const button = (offer: FreedOffer | undefined, outcome: FreedOfferOutcome) =>
+const button = (offer: CallMark | undefined, outcome: CallMarkOutcome) =>
   [
     'rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-60',
     offer?.outcome === outcome
