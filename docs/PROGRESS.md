@@ -2227,7 +2227,7 @@ The string branch required `message.includes('23P01')` **and** a name. A COMMIT-
 
 ## A-080 — `now` was stamped as a measurement long after there was anything left to measure
 
-**Commit:** `PENDING`
+**Commit:** `a95d772`
 
 **Decision first: D-47, answering OQ-20.** Two hours past the scheduled `endAt`, as a physical duration, governing all three actual timestamps — `checkedInAt`, `startedAt`, `endedAt`. Outside it every one of them stays NULL. `confirmedAt` is deliberately exempt.
 
