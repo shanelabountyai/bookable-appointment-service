@@ -1,6 +1,7 @@
 # Bookable — design brief
 
-**For: Claude Design.** Written 2026-09-01, at the Phase 7 boundary.
+**For: Claude Design.** Written 2026-09-01 at the Phase 7 boundary, refreshed
+at its close so the surfaces below are the ones that actually exist.
 
 This is the input for building Bookable's design system and UI/UX component
 library. It is deliberately specific about the *operating conditions* rather
@@ -53,8 +54,18 @@ the product today.
    explicit override with a typed reason. The override marker must stay rare
    enough that staff still read it.
 5. **A cancellation on Saturday for next Thursday.** Three hours of the
-   salon's most valuable service, invisible unless a screen goes and finds it.
+   salon's most valuable service, invisible unless a screen goes and finds it —
+   and at 4pm a *second* person at the desk has to be able to see who has
+   already been rung about it, or Mrs Patel gets phoned twice.
    (`/staff/opened`)
+6. **The appointment detail panel, which has quietly become the busiest screen
+   in the product.** It now carries: status controls, cancel-with-its-escape,
+   "who was this?" (attach or correct the client), "what she is having",
+   "move this appointment", the release of a no-show's dead time, the visit
+   note, the series list, and the event log. Every one of them earned its
+   place; together they are a wall. **This screen needs the most design work
+   of anything here**, and it is where a reader most needs to find one thing
+   fast. (`/staff/appointments/[id]`)
 
 ---
 
@@ -257,12 +268,19 @@ These are the product. Give each one a full state matrix.
    five surfaces.
 8. **`FreedSlotRow`** — `/staff/opened`. A span of time that just became
    sellable, *why* it became sellable in the desk's own words ("Mrs Hall
-   dropped her Colour", "moved to Thursday", "Cancelled late by …"), the
-   minutes, the stylist, a `tel:` link, and a one-tap route into the waitlist
-   matcher. Four `freedBy` kinds today: `cancelled`, `shortened`,
-   `rescheduled`, `reassigned`.
-9. **`CallDownRow`** — tomorrow's unconfirmed clients, with per-client attempt
-   marks (rung / no answer / left a message), actor-stamped and re-stampable.
+   dropped her Colour", "moved to Thursday", "Ada never came — the rest of her
+   time was put back", "Cancelled late by …"), the minutes, the stylist, a
+   `tel:` link, a one-tap route into the waitlist matcher, and a line saying
+   **who has already been rung about it and what they said**. Five `freedBy`
+   kinds: `cancelled`, `shortened`, `rescheduled`, `reassigned`, `released`.
+9. **`CallMarkButtons`** — the four-outcome attempt marks (*no answer / left a
+   message / thinking about it / she took it*), with an undo, actor-stamped and
+   re-stampable. One component, three surfaces: the waitlist matcher, the
+   lapsed-client report, and — in a two-outcome sibling — the call-down.
+   **This is the most-reused interactive control in the product and it has no
+   design at all** (four bordered buttons with the pressed one inverted).
+9a. **`CallDownRow`** — tomorrow's unconfirmed clients, with the two-outcome
+   version of the above.
 10. **`ConflictRow`** — an appointment that a hours change or a time-off entry
     has stranded. Must *surface* the collision for a human rather than hide it,
     and offer acknowledge / move / reassign.
@@ -314,7 +332,7 @@ Every route that exists, what it is for, and where the design pressure is.
 | `/staff/day?sheet=1` | The printed day sheet. |
 | `/staff/book` | Book at the counter. Search-or-create client, or none at all. |
 | `/staff/appointments/[id]` | One appointment: status, move, change services, notes, event history, end-series. |
-| `/staff/opened` | What just became sellable, and why. |
+| `/staff/opened` | What just became sellable, why, and who has been rung about it. |
 | `/staff/waitlist` | Waitlist entries, and the freed-slot matcher. |
 | `/staff/call-down` | Tomorrow's unconfirmed, with attempt marks. |
 | `/staff/conflicts` | Bookings stranded by an hours or time-off change. |
@@ -325,7 +343,7 @@ Every route that exists, what it is for, and where the design pressure is.
 ### Owner / configuration
 | Route | Job |
 |---|---|
-| `/staff/dashboard` (+ `/appointments`, `/overruled`) | Utilization, no-shows, overrides. |
+| `/staff/dashboard` (+ `/appointments`, `/overruled`, `/lapsed`) | Utilization, no-shows, overrides, and the clients who have stopped coming. |
 | `/staff/availability` | Weekly hours and one-off day overrides. |
 | `/staff/providers` `/staff/people` | The roster, and who has a desk PIN. |
 | `/staff/services` | Services, durations, buffers, and segment editing (a colour's develop gap). |
@@ -365,7 +383,12 @@ labels with an icon.
 4. The staff navigation shell, at tablet-landscape and laptop widths.
 5. `/staff/day` fully composed, at: four stylists, one stylist, a column
    running forty minutes late, and a day with a stylist off.
-6. `/staff/opened` composed with all four `freedBy` kinds visible at once.
+6. `/staff/opened` composed with all five `freedBy` kinds visible at once, one
+   of them already carrying two call marks.
+6a. `/staff/dashboard/lapsed` — a long list of rows that are each a phone call
+   waiting to be made, with the cutoff control at the top. It is the only
+   screen in the product a person works *down*, and it will be thirty rows
+   long; the row needs to survive that.
 7. The print sheet, in greyscale.
 8. The mobile public booking flow.
 
