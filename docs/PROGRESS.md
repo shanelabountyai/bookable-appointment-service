@@ -2150,7 +2150,7 @@ Two failures, one column, and the second half of the same finding A-074 fixed. A
 
 ## A-076 — nothing closed the day, and there was no path from `booked` to `completed`
 
-**Commit:** `TBD`
+**Commit:** `686e84e`
 
 **The largest standing hole in the product, and the operator review ranked it first.** Six o'clock Saturday. Twenty-nine appointments went through. Check-in got tapped most of the time, because the client was standing there; "Complete" got tapped maybe two-thirds of the time, because at the till you are taking money, rebooking her for six weeks and answering the phone. Eleven appointments sit on `booked` or `checked_in` forever, and **nothing anywhere ever mentioned them again.**
 
