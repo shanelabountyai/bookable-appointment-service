@@ -2128,7 +2128,7 @@ Two failures, one column, and the second half of the same finding A-074 fixed. A
 
 ## A-077 — the lapsed list's call marks never expired and never said when
 
-**Commit:** `TBD`
+**Commit:** `7739255`
 
 **The defect, and it is a mechanism outliving the assumption it was built on.** A-073 reused A-072's marks, which was right. But the two subjects have completely different lifetimes and only one was designed for: a freed slot dies on Thursday at 2, so a mark against it is days old at most, while the `lapsed` subject is **one row per client, forever**, and the lapsed round is a quarterly errand. So in October the owner reads *"left a message — Priya"* beside a name, from a call Priya made in June, and skips her. That is A-061's original defect — a list that lies about what has been done — **inverted**: not a missing memory, a memory with no expiry. Verified: `lapsed/page.tsx:139-144` rendered the outcome and the caller and nothing else, while `call-marks.ts:110` had been returning `calledAt` all along.
 
