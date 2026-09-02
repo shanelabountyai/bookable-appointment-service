@@ -2,7 +2,7 @@ export { type BookAppointmentInput, type BookedAppointment, bookAppointment, new
 export { BookingRejected, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
 export { type WalkInOption, clientAlreadyBookedAround, walkInOptions } from './walk-in';
 export { NoResourceFree, NotBookableOnline } from './errors';
-export { type AnyProviderTime, anyProviderDays, anyProviderTimes } from './any-provider';
+export { type AnyProviderTime, anyProviderAt, anyProviderDays, anyProviderTimes } from './any-provider';
 export { chairForMove, findFreeResource, requiredResourceTypeId } from './resources';
 /** Re-exported here rather than given its own subpath: "who can do this whole
  *  visit" is the question the public flow's "who would you like to see?" step

@@ -14,7 +14,7 @@ import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from './book';
-import { anyProviderDays, anyProviderTimes } from './any-provider';
+import { anyProviderAt, anyProviderDays, anyProviderTimes } from './any-provider';
 
 const prisma = new PrismaClient();
 const STAFF_WINDOW = { createdByActor: 'staff' as const, actorRef: 'staff-1' };
@@ -270,5 +270,73 @@ describe('the days list', () => {
         audience: 'staff',
       }),
     ).toEqual([]);
+  });
+});
+
+/**
+ * A-071 — WHO ELSE CAN DO IT AT THIS EXACT INSTANT.
+ *
+ * The half of A-056's promise it did not keep. The row said 14:00, Dana, 3
+ * free; the desk took a phone call, came back, submitted, and the public flow
+ * had taken Dana. The panel then said "that time is not free" and offered an
+ * OVERRIDE that would knowingly double-book her — while Priya and Marcus were
+ * both free at two o'clock. Either the desk takes the override (wrong) or it
+ * starts the search again with the client on the phone, and the premise of the
+ * row it tapped is thrown away at the last step.
+ */
+describe('who else can do it at this instant (A-071)', () => {
+  const TWO = at('2026-06-09T14:00:00-05:00');
+
+  const whoElse = (serviceIds: string[] = [cutId]) =>
+    anyProviderAt(prisma, { businessId, serviceIds, at: TWO, now: NOW, audience: 'staff' });
+
+  it('names the stylist SVC-02 would assign, and how many are free', async () => {
+    const instead = await whoElse();
+
+    // Nobody has anything booked, so the tiebreak is `displayOrder`.
+    expect(instead).toMatchObject({ providerName: 'Dana', freeCount: 3 });
+  });
+
+  /** THE ROW'S OWN CASE. Dana goes; the answer is another NAME at the same
+   *  time, not a refusal and certainly not an override. */
+  it('names somebody ELSE the moment the first one is taken', async () => {
+    await book(dana, TWO);
+
+    const instead = await whoElse();
+
+    expect(instead).toMatchObject({ providerName: 'Priya', freeCount: 2 });
+    expect(instead!.providerId).not.toBe(dana);
+    // The INSTANT is unchanged — that is the whole point. "Anyone at two"
+    // means two o'clock is the thing she asked for.
+    expect(instead!.at).toEqual(TWO);
+  });
+
+  /** …and when there genuinely is nobody, the ordinary refusal-plus-override
+   *  IS the right answer, so this has to be able to say so. */
+  it('is null when every qualified stylist is busy at that instant', async () => {
+    for (const providerId of [dana, priya, marcus]) await book(providerId, TWO);
+
+    expect(await whoElse()).toBeNull();
+  });
+
+  it('is null when the instant is not on offer at all — nobody was ever promised it', async () => {
+    // 03:00, comfortably outside 09:00–17:00.
+    expect(
+      await anyProviderAt(prisma, {
+        businessId,
+        serviceIds: [cutId],
+        at: at('2026-06-09T03:00:00-05:00'),
+        now: NOW,
+        audience: 'staff',
+      }),
+    ).toBeNull();
+  });
+
+  /** SVC-02's "all of it or none of it" survives: only Dana colours, so when
+   *  Dana goes there is no second answer and the desk gets the honest one. */
+  it('does not invent a substitute who cannot do the service', async () => {
+    await book(dana, TWO, [colourId]);
+
+    expect(await whoElse([colourId])).toBeNull();
   });
 });

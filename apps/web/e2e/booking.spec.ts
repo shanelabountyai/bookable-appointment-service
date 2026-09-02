@@ -13,6 +13,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
+import { instant, toDate } from '@bookable/core/time';
 import { expect, test } from './fixtures';
 
 test.beforeEach(async () => {
@@ -194,6 +195,81 @@ test.describe('booking with no preference (A-056)', () => {
       expect(appointment.status).toBe('booked');
     } finally {
       await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * A-071 — she said she does not mind who, and the one the flow picked for
+   * her is gone by the time she has typed her phone number.
+   *
+   * Sending her back to the time list throws away the one thing she DID
+   * specify. She is a first-time client who has never heard of Dana or Priya,
+   * and "sorry, pick again" is where a first-time client leaves.
+   *
+   * The race is made deterministic by STALENESS rather than a barrier: the
+   * page is holding a row that was true when it was drawn, and the stylist is
+   * taken out from under it. Time off rather than a booking, because it needs
+   * no knowledge of which instant the flow chose — and it exercises the same
+   * seam, since both refusals mean "not for HER".
+   */
+  test('re-offers the same time with somebody else, rather than dead-ending her', async ({ page }) => {
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: /No preference/ }).click();
+    await firstOption(page).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await firstOption(page).click();
+
+    // The heading names the person the TIME carries — never "No preference",
+    // which is not a sentence anybody wanted to read.
+    const named = /with (\w+)/.exec((await page.getByRole('heading', { level: 2 }).textContent())!)![1]!;
+
+    await page.getByLabel('Your name').fill('Ada Chen');
+    await page.getByLabel('Phone').fill('(512) 555-0101');
+
+    // …and while she is typing, that stylist stops being available.
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const gone = await prisma.provider.findFirstOrThrow({ where: { displayName: named } });
+      await prisma.timeOff.create({
+        data: {
+          businessId: business.id,
+          providerId: gone.id,
+          // Via the boundary helpers: `new Date(<expr>)` is banned repo-wide,
+          // because it is the exact call that crosses the calendar/instant
+          // axis through the process timezone.
+          startAt: toDate(instant(Date.now() - 60 * 60_000)),
+          endAt: toDate(instant(Date.now() + 365 * 24 * 60 * 60_000)),
+          reason: 'off sick',
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+    // Named, at the SAME time — never "here are some other times". By TEXT
+    // rather than by role: Next's own route announcer is an empty
+    // `role="alert"` on every page, so the role resolves to two elements.
+    await expect(page.getByText(/is free at the same time/)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2 })).not.toContainText(`with ${named}`);
+    // Still on the details step, with what she typed still typed.
+    await expect(page.getByLabel('Your name')).toHaveValue('Ada Chen');
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+    const after = new PrismaClient();
+    try {
+      const appointment = await after.appointment.findFirstOrThrow({ include: { provider: true } });
+      // Never silently re-assigned: she was told, and she pressed the button.
+      expect(appointment.provider.displayName).not.toBe(named);
+      expect(appointment.isOverride).toBe(false);
+    } finally {
+      await after.$disconnect();
     }
   });
 });

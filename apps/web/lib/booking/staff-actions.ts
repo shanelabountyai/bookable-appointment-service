@@ -22,6 +22,7 @@ import {
   SlotNotOffered,
   SlotTaken,
   type AnyProviderTime,
+  anyProviderAt,
   anyProviderTimes,
   bookAppointment,
   clientAlreadyBookedAround,
@@ -57,6 +58,16 @@ export interface StaffBookingState {
   /** The engine's own words, when it has any. */
   refusedReasons?: string[];
   bookedId?: string;
+  /**
+   * A-071 — WHO ELSE CAN DO IT, when an "anyone" booking lost the race.
+   *
+   * Present INSTEAD of `canOverride`, never beside it: the whole defect was
+   * offering to knowingly double-book Dana while Priya and Tess were free at
+   * the same two o'clock. Never applied silently either (A-056's rule is that
+   * what you see is what you book) — this names a person on a button the desk
+   * presses.
+   */
+  fallback?: { providerId: string; providerName: string; at: string; label: string };
   /** A-049 — set when this was a standing appointment rather than one. */
   series?: SeriesSummary;
 }
@@ -192,12 +203,20 @@ export async function findWalkInOptions(serviceIds: string[], day: string): Prom
 export async function bookAsStaff(_previous: StaffBookingState, formData: FormData): Promise<StaffBookingState> {
   const staff = await requireStaff();
 
-  const providerId = String(formData.get('providerId') ?? '');
+  // A-071's one-tap fallback carries its own field, because two inputs named
+  // `providerId` would resolve to the hidden one above it and re-book the
+  // stylist who has just gone.
+  const providerId = String(formData.get('insteadProviderId') ?? '') || String(formData.get('providerId') ?? '');
   const serviceIds = formData.getAll('serviceIds').map(String).filter(Boolean);
   const atIso = String(formData.get('at') ?? '');
   const clientIdRaw = String(formData.get('clientId') ?? '');
   const isOverride = formData.get('isOverride') === 'on';
   const overrideReason = String(formData.get('overrideReason') ?? '');
+  // A-071. The desk tapped an "anyone at two" row, which MEANS the stylists
+  // are interchangeable at that instant — so losing the race for the one it
+  // named is not the same refusal as losing the race for a stylist the client
+  // asked for by name, and must not get the same answer.
+  const fromAnyone = formData.get('fromAnyone') === '1';
 
   if (serviceIds.length === 0) return { ok: false, message: 'Choose at least one service.' };
 
@@ -259,6 +278,47 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
       message: isOverride ? 'Booked as an override, and recorded.' : 'Booked.',
     };
   } catch (error) {
+    // A-071 — THE ANYONE PATH LOSES THE RACE.
+    //
+    // The row said 14:00, Dana, 3 free. The desk took a phone call, came back,
+    // submitted, and the public flow had taken Dana in between. Offering an
+    // override HERE would be offering to knowingly double-book her while Priya
+    // and Tess are both free at the same two o'clock — so the desk either
+    // takes it (wrong) or starts the search again with the client on the
+    // phone, and A-056's whole premise is thrown away at the last step.
+    //
+    // BOTH refusals, because both mean "not for HER": a lost race, and a
+    // stylist who has gone off since the list was drawn. `anyProviderAt` asks
+    // across everybody, so it can legitimately find somebody in either case —
+    // and returns null when it cannot, which is when the ordinary
+    // refusal-plus-override below is the right answer.
+    if (fromAnyone && (error instanceof SlotTaken || error instanceof SlotNotOffered)) {
+      const instead = await anyProviderAt(prisma, {
+        businessId: staff.businessId,
+        serviceIds,
+        at: startAt,
+        now: new Date(),
+        audience: 'staff',
+      });
+      // A DIFFERENT person, because re-offering the one just refused is a dead
+      // end — which happens when the refusal was about the room (RES-04)
+      // rather than about her.
+      if (instead && instead.providerId !== providerId) {
+        return {
+          ok: false,
+          message: `${await providerName(staff.businessId, providerId)} has just gone — ${instead.providerName} can do it at ${await clock(staff.businessId, instead.at)}. Book that?`,
+          // NO override offered. That is the defect.
+          fallback: {
+            providerId: instead.providerId,
+            providerName: instead.providerName,
+            at: instead.at.toISOString(),
+            label: await clock(staff.businessId, instead.at),
+          },
+        };
+      }
+      // Nobody else qualified is free at that instant, so the ordinary
+      // refusal below IS the right answer and BOOK-05 is the right escape.
+    }
     if (error instanceof SlotTaken || error instanceof SlotNotOffered) {
       // NOT an error message and a dead end. The operator's hardest-won point
       // (D-8) is that every platform he abandoned died of a flat refusal — so
@@ -610,6 +670,16 @@ async function visitSpan(businessId: string, atIso: string, serviceIds: string[]
   });
   const minutes = services.reduce((total, s) => total + s.durationMinutes, 0);
   return { startAt, endAt: toDate((fromDate(startAt) + minutes * 60_000) as ReturnType<typeof fromDate>) };
+}
+
+/** A-071 — the stylist the desk just lost the race for, by name, because
+ *  "Dana has just gone" is the sentence and an id is not. */
+async function providerName(businessId: string, providerId: string): Promise<string> {
+  const provider = await prisma.provider.findFirst({
+    where: { id: providerId, businessId },
+    select: { displayName: true },
+  });
+  return provider?.displayName ?? 'That stylist';
 }
 
 /** A wall-clock label in the SALON's zone. Server-side, always: the browser

@@ -716,6 +716,92 @@ test.describe('booking with anyone (A-056)', () => {
   });
 
   /**
+   * A-071 — THE ANYONE ROW LOSES THE RACE.
+   *
+   * The row said 14:00 with Dana, three free. The desk takes a phone call,
+   * comes back, submits — and the public flow has taken Dana in between. The
+   * panel used to say "That time is not free" and offer an override that would
+   * knowingly DOUBLE-BOOK her, while two other stylists were free at the very
+   * same two o'clock. So the desk either took the override (wrong) or started
+   * the search again with the client on the phone, and A-056's whole premise —
+   * that at two o'clock the stylists are interchangeable — was thrown away at
+   * the last step.
+   *
+   * The race is made deterministic by STALENESS rather than by a barrier: the
+   * panel is holding a row that was true when it was drawn, and the booking is
+   * written underneath it. That is exactly the operator's scene, and it needs
+   * no concurrency at all.
+   */
+  test('offers the next free stylist by name, and never an override', async ({ page }) => {
+    await page.goto(`/staff/book?provider=any&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    const row = page.getByRole('button', { name: /^\d\d:\d\d with / }).first();
+    await expect(row).toBeVisible();
+    const label = (await row.textContent())!;
+    const named = /with (\w+)/.exec(label)![1]!;
+    const time = /^(\d\d:\d\d)/.exec(label)![1]!;
+    await row.click();
+    await page.getByRole('button', { name: 'No name' }).click();
+
+    // …and while the desk is on the phone, somebody else takes her.
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const taken = await prisma.provider.findFirstOrThrow({ where: { displayName: named } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const startAt = at(time);
+      await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: taken.id,
+          startAt,
+          endAt: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+          blockedStart: startAt,
+          blockedEnd: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+          startDay: DAY,
+          startWallTime: time,
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          },
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+
+    // NAMES the person who has gone and the person who can do it, at the same
+    // time — not "that time is not free".
+    await expect(page.getByText(new RegExp(`${named} has just gone`))).toBeVisible();
+    const offer = page.getByRole('button', { name: /^Book \w+ at \d\d:\d\d$/ });
+    await expect(offer).toBeVisible();
+    // THE DEFECT: an override here would knowingly double-book somebody while
+    // two other stylists are free at the very same time.
+    await expect(page.getByLabel('Book it anyway')).toHaveCount(0);
+
+    // One tap, and it books the person the button NAMED — never a silent
+    // re-assign (A-056: what you see is what you book).
+    const offered = /^Book (\w+) at/.exec((await offer.textContent())!)![1]!;
+    await offer.click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    const prisma2 = new PrismaClient();
+    try {
+      const booked = await prisma2.appointment.findFirstOrThrow({
+        where: { isOverride: false, provider: { displayName: offered } },
+        include: { provider: true },
+      });
+      expect(booked.provider.displayName).toBe(offered);
+      expect(offered).not.toBe(named);
+      expect(await prisma2.appointment.count({ where: { isOverride: true } })).toBe(0);
+    } finally {
+      await prisma2.$disconnect();
+    }
+  });
+
+  /**
    * SVC-02's load balancing, end to end: the whole reason the rule exists
    * rather than "pick anyone free". Fill one stylist's morning and the offer
    * moves off her.

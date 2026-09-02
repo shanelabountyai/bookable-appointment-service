@@ -2006,3 +2006,51 @@ The operator's own sentence was the specification: *"if it takes three taps to w
 So the stylist's own day list now has the note inline: one tap to open, type, save. It uses a plain collapsible element rather than a custom pop-over, which means it takes up one line when closed and is keyboard-operable and screen-reader-friendly without anybody writing that code. And it calls the *same* save routine as the detail page, so there is one thing writing this field rather than two that can drift apart.
 
 One line in that routine turned out to matter more than it looks: it previously refreshed only the appointment's own page. Now that the note is typed *from* the day and read *on* the day, without also refreshing the day the note you just wrote would vanish from the screen you wrote it on. The browser test checks that by typing a note and then looking at the list, rather than by checking the database — which is the difference between testing that it saved and testing that it worked.
+
+## "I don't mind who" — and then the software minded
+
+The most common call a salon takes is *"anything Thursday? I don't mind who."* The product answers it: one screen, one row per available time, each naming the stylist you would actually get. *2:00, with Dana, 3 free.*
+
+The front desk taps that row. The phone rings. They deal with it, come back, and press Book.
+
+In between, someone booking online has taken Dana.
+
+What the screen then said was **"That time is not free"** — with a checkbox offering to book it anyway.
+
+Both halves of that are wrong. The time *is* free: two other stylists could do it at two o'clock, which is the entire reason the row said *3 free* in the first place. And the escape hatch on offer would have deliberately double-booked Dana — the mechanism that exists for genuine judgement calls, being suggested for a situation where nobody needs to make one.
+
+So the desk had two options, and both were bad. Take the override and create a real clash. Or start the search over with a client on the phone — at which point the feature that exists to answer *"I don't mind who"* has quietly failed at its last step.
+
+### The fix is a question the software already knew how to ask
+
+*Who else could do this, at this exact time?*
+
+That is not a new search. It is the same list the desk was looking at, asked again, for one instant instead of a whole day — same rules, same load-balancing, recomputed against what is true right now. The stylist who was just taken simply is not in the answer any more.
+
+The desk now sees: **"Dana has just gone — Priya can do it at 14:00. Book that?"** One tap. No override, because there is nothing to override.
+
+And when there genuinely is nobody — the only person qualified for that service is the one who has gone — it says so, and *then* the override is the right tool for the job. The escape hatch stays where it belongs.
+
+### It never reassigns silently
+
+There is a rule this product has held since the "no preference" feature was built: **what you see is what you book.** The software may not quietly swap the person on you between reading and pressing.
+
+So the alternative arrives as a name on a button that a human presses. Not a redirect, not a substitution, not a message afterwards explaining what was decided for you.
+
+### The client's side of the same problem
+
+The same thing happens on the public booking flow, and it is worse there, because the person it happens to has never heard of Dana or Priya. She chose *No preference*, was given a time, and is halfway through typing her phone number when that stylist goes.
+
+Sending her back to the list of times throws away the one thing she actually specified. She said she does not mind who; she does mind *when*. "Sorry, pick again" is where a first-time customer closes the tab.
+
+She now stays exactly where she is, with her name and number still typed in, and is told that the same time is available with someone else — by name, on the button she was already about to press.
+
+Two small things came out of that. The confirmation heading used to read *"Cut with No preference"*, which is not a sentence anybody wanted; it names the actual stylist now, which is also the only way she can see the change. And the message deliberately does not say *why* the stylist became unavailable — booked, off sick, or the room filled — because how full the salon is happens to be nobody's business but the salon's.
+
+### A trap worth naming, because it appeared twice this week
+
+The one-tap button posts the replacement stylist. The obvious way to write that is to give the button the same field name as the hidden one already in the form.
+
+Two fields with one name, and the browser hands the server the first one — the stylist who had just gone. The button would have looked correct, worked convincingly, and rebooked exactly the person it was there to avoid.
+
+The same trap turned up two features earlier, on a different button, in a different form. Both now carry their own distinct field, and both say why in a comment, because it is the kind of thing you fix once and re-introduce a month later.

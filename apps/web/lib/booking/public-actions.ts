@@ -22,6 +22,7 @@ import {
   SelfServeBlocked,
   SlotNotOffered,
   SlotTaken,
+  anyProviderAt,
   anyProviderDays,
   anyProviderTimes,
   bookAppointment,
@@ -228,12 +229,58 @@ export async function listAnyProviderTimes(serviceIds: string[], day: string): P
   }));
 }
 
+/**
+ * A-071 — the SAME instant, with whoever is actually free.
+ *
+ * `anyProviderAt` recomputes against live rows, so the stylist who has just
+ * been taken is simply not in the answer any more. `null` when nobody
+ * qualified is free at that instant — and then the ordinary "here are the
+ * other times" IS the right answer.
+ *
+ * A DIFFERENT person, because re-offering the one just refused is a dead end:
+ * that happens when the refusal was about the room (RES-03) rather than about
+ * her.
+ */
+async function sameTimeWithSomebodyElse(
+  serviceIds: string[],
+  at: Date,
+  refusedProviderId: string,
+): Promise<OfferedTime | null> {
+  const business = await theBusiness();
+  const instead = await anyProviderAt(prisma, {
+    businessId: business.id,
+    serviceIds,
+    at,
+    now: new Date(),
+    audience: 'public',
+  });
+  if (!instead || instead.providerId === refusedProviderId) return null;
+
+  return {
+    at: instead.at.toISOString(),
+    label: toLabel(fromDate(instead.at), zoneId(business.timezone)).time,
+    providerId: instead.providerId,
+    providerName: instead.providerName,
+  };
+}
+
 export interface ConfirmResult {
   ok: boolean;
   /** Customer-facing wording only (D-10). */
   message?: string;
   /** Fresh times to choose from when the chosen one has gone. */
   alternatives?: OfferedTime[];
+  /**
+   * A-071 — the SAME time with somebody else, when she said "no preference"
+   * and the stylist the flow picked for her was taken in the meantime.
+   *
+   * A first-time client who has never heard of Dana or Priya, and who has
+   * already said she does not mind who, must not be dead-ended into choosing
+   * a different time. She is offered the two o'clock she asked for, with the
+   * person who can actually do it — named, on a button she presses. Never
+   * silently re-assigned: A-056's rule is that what you see is what you book.
+   */
+  instead?: OfferedTime;
   fieldErrors?: Record<string, string>;
 }
 
@@ -267,6 +314,12 @@ export async function confirmAppointment(input: {
    * project exists to practise not writing (D-3).
    */
   day: string;
+  /**
+   * A-071 — she said "no preference" and the flow chose the stylist for her.
+   * Losing the race for somebody she never asked for is not the same event as
+   * losing the race for somebody she did, and it must not get the same answer.
+   */
+  anyProvider?: boolean;
   name: string;
   phone: string;
   email?: string;
@@ -354,6 +407,30 @@ export async function confirmAppointment(input: {
     // business, and D-10's lexicon keeps it inside (spec §1.3). Before this
     // caught it the error escaped the action entirely and she saw a crash on
     // a time the page had just offered her.
+    // A-071. She said "no preference", so the same two o'clock with another
+    // stylist is the answer she wanted — not a list of other TIMES, which
+    // throws away the one thing she did specify. All three refusals, because
+    // each of them means "not for HER": a lost race, a stylist who has gone
+    // off since the list was drawn, and a room that has filled. `instead` is
+    // null when nobody qualified is free at that instant, and the ordinary
+    // other-times answer below is then the right one.
+    if (
+      input.anyProvider &&
+      (error instanceof SlotTaken || error instanceof SlotNotOffered || error instanceof NoResourceFree)
+    ) {
+      const instead = await sameTimeWithSomebodyElse(input.serviceIds, startAt, input.providerId).catch(() => null);
+      if (instead) {
+        return {
+          ok: false,
+          // Claims no CAUSE: this arm covers a lost race, a stylist who has
+          // gone off since the list was drawn, and a full room, and telling a
+          // customer which of the three it was is an occupancy fact about the
+          // salon that D-10's lexicon keeps inside (spec §1.3).
+          message: `We've had to change who you'd be seeing. ${instead.providerName} is free at the same time — shall we book that?`,
+          instead,
+        };
+      }
+    }
     if (error instanceof SlotTaken || error instanceof SlotNotOffered || error instanceof NoResourceFree) {
       const alternatives = await listTimesOn(input.serviceIds, input.providerId, input.day).catch(() => []);
       return {

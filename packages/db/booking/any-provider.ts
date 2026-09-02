@@ -21,7 +21,7 @@
  * a time is free.
  */
 import { ACTIVE_STATUSES } from '../../core/scheduling';
-import { fromDate, toDate } from '../../core/time';
+import { fromDate, toDate, toLabel, zoneId } from '../../core/time';
 import { type QualifiedProvider, providersForVisit } from '../qualification';
 import { computeDaySlots, daysWithAvailability } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -115,6 +115,55 @@ export async function anyProviderTimes(
         freeCount: free.length,
       };
     });
+}
+
+/**
+ * A-071 — WHO ELSE COULD DO IT AT THIS EXACT INSTANT?
+ *
+ * The other half of A-056's promise, and the half it did not keep. "Anyone at
+ * two" means the stylists are interchangeable at two o'clock — that is the
+ * entire premise of the row the desk tapped. So when the desk loses the race
+ * for the person that row named, the answer is not "that time is not free",
+ * and it is certainly not an override that would knowingly double-book her:
+ * the answer is the next free stylist, by name, on a button.
+ *
+ * NOT A SECOND SEARCH. It is `anyProviderTimes` for the day the instant falls
+ * on, filtered to that instant — the same merge, the same SVC-02 tiebreak,
+ * recomputed against live rows, so whoever has just been taken is simply not
+ * in it any more. `null` means nobody qualified is free at that instant, which
+ * is exactly when the ordinary refusal-plus-override IS the right answer.
+ *
+ * The DAY is derived here rather than taken as an argument: two callers need
+ * this (the desk and the public flow) and a business date derived twice from
+ * one instant is two chances to derive it differently.
+ */
+export async function anyProviderAt(
+  db: Db,
+  args: {
+    businessId: string;
+    serviceIds: readonly string[];
+    /** The instant she was promised (D-4), never a `{day, time}` pair. */
+    at: Date;
+    now: Date;
+    audience?: 'public' | 'staff';
+  },
+): Promise<AnyProviderTime | null> {
+  const business = await db.business.findUniqueOrThrow({
+    where: { id: args.businessId },
+    select: { timezone: true },
+  });
+  const day = toLabel(fromDate(args.at), zoneId(business.timezone)).day;
+
+  const offered = await anyProviderTimes(db, {
+    businessId: args.businessId,
+    serviceIds: args.serviceIds,
+    day,
+    now: args.now,
+    ...(args.audience ? { audience: args.audience } : {}),
+  });
+
+  const wanted = fromDate(args.at);
+  return offered.find((time) => fromDate(time.at) === wanted) ?? null;
 }
 
 /**

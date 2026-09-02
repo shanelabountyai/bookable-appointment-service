@@ -334,12 +334,22 @@ export function BookingFlow({ services }: { services: Service[] }) {
                 providerId: time.providerId ?? provider.id,
                 at: time.at,
                 day: day.day,
+                // A-071. She said she does not mind who, so losing the race
+                // for a stylist she never asked for must re-offer the same
+                // time with somebody else rather than dead-end her into
+                // picking a different one.
+                anyProvider: provider.id === ANYONE,
                 name: String(data.get('name') ?? ''),
                 phone: String(data.get('phone') ?? ''),
                 email: String(data.get('email') ?? ''),
               });
               setResult(outcome);
               if (outcome.ok) setStep('done');
+              // A-071. `instead` keeps her ON this screen with her details
+              // still typed in — the time she asked for is still on offer, and
+              // only the name beside it has changed. Sending her back to the
+              // time list would throw away the one thing she did specify.
+              else if (outcome.instead) setTime(outcome.instead);
               else if (outcome.alternatives) {
                 setTimes(outcome.alternatives);
                 setTime(null);
@@ -349,7 +359,12 @@ export function BookingFlow({ services }: { services: Service[] }) {
           }}
         >
           <h2 className="text-lg font-semibold">
-            {visitName} with {provider.name}
+            {/* A-071. On the "no preference" path the person is whoever the
+                TIME carries — SVC-02 chose her when the list was built, and
+                she changes if the first one is taken while the client is
+                typing her phone number. "with No preference" was never a
+                sentence anybody wanted to read either. */}
+            {visitName} with {time.providerName ?? provider.name}
           </h2>
           <p className="text-zinc-500">
             {day.label} at {time.label}

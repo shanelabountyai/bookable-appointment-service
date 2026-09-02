@@ -252,6 +252,11 @@ export function BookingPanel({
     <form action={formAction} className="flex flex-col gap-6">
       <input type="hidden" name="providerId" value={providerId} />
       <input type="hidden" name="at" value={startAt} />
+      {/* A-071. "Anyone at two" means the stylists are interchangeable at two
+          o'clock, so losing the race for the one this row named is a different
+          refusal from losing the race for a stylist the client asked for by
+          name — and the server cannot tell the two apart without this. */}
+      <input type="hidden" name="fromAnyone" value={anyone ? '1' : ''} />
       <input type="hidden" name="clientId" value={client?.id ?? ''} />
       {chosen.map((id) => (
         <input key={id} type="hidden" name="serviceIds" value={id} />
@@ -578,6 +583,26 @@ export function BookingPanel({
                   // which is BOOK-05's first override case, not a dead end.
                   'That time is outside her working hours.'}
             </p>
+          ) : null}
+
+          {/* A-071. The anyone row lost its race, and somebody else is free at
+              the very same time. One tap, naming her — never a silent
+              re-assign (A-056: what you see is what you book), and never
+              beside an override, because there is nothing here to override. */}
+          {state.fallback ? (
+            <button
+              type="submit"
+              // Its OWN field, never a second `providerId`: two inputs of one
+              // name and `formData.get` returns the first in the DOM, so this
+              // button would silently have re-submitted the stylist who has
+              // just gone.
+              name="insteadProviderId"
+              value={state.fallback.providerId}
+              disabled={booking}
+              className={primary}
+            >
+              {booking ? 'Booking…' : `Book ${state.fallback.providerName} at ${state.fallback.label}`}
+            </button>
           ) : null}
 
           {state.canOverride ? (
