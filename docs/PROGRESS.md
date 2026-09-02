@@ -2200,7 +2200,7 @@ The string branch required `message.includes('23P01')` **and** a name. A COMMIT-
 
 ## A-079 — the push planned against only the rows it was moving, so the rest of the column was invisible to it
 
-**Commit:** `PENDING`
+**Commit:** `076fd9f`
 
 **Saturday, quarter past twelve. The ten o'clock never came and Dana has caught up: "pull everyone forward twenty."** The preview said `canPush: true`. The transaction then died at COMMIT on `appointment_block_no_overlap`, `AFTER: nothing moved`, and the desk got a 500 in the middle of the workflow whose entire purpose is that it is told what happened. Reproduced twice before a line was changed, and the transcripts are the first two tests in `push-column.test.ts`.
 
