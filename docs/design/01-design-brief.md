@@ -304,9 +304,14 @@ Design the staff shell. Today there is none. Constraints:
 - The desk-switcher bar ("At the desk: Dana") sits above everything and is
   already built as a `<details>`; keep its behaviour, restyle it.
 - The day grid is the home screen in practice, not `/staff`.
-- Two badge counts must be visible from anywhere: **"Opened up (N)"** and
-  **messages that failed to send (N)**. Both exist and both are currently
-  buried.
+- Three badge counts must be visible from anywhere: **"Opened up (N)"**,
+  **"Still open (N)"** and **messages that failed to send (N)**. All three
+  exist and all three are currently buried.
+- **There is no route to a client from the day, and the phone never stops.** The
+  day toolbar is Walk-in, Anyone, Conflicts, Call-down, Print sheet, Opened up,
+  Still open — and no client search. "It's Mrs Kerr, can I move Thursday" is day
+  grid → `/staff` → Clients → search, while she waits. The operator review has
+  now named this twice.
 - Owner-only surfaces (dashboard, reports, settings) should be visibly a
   different tier from desk surfaces.
 - It has to work at tablet width in landscape, one-handed, without a hamburger
@@ -333,6 +338,7 @@ Every route that exists, what it is for, and where the design pressure is.
 | `/staff/book` | Book at the counter. Search-or-create client, or none at all. |
 | `/staff/appointments/[id]` | One appointment: status, move, change services, notes, event history, end-series. |
 | `/staff/opened` | What just became sellable, why, and who has been rung about it. |
+| `/staff/unfinished` | **The six-o'clock errand.** Appointments that have been and gone with nobody having said what happened — two taps each, *she came* / *she didn't*. Reachable from exactly ONE place (the day toolbar) by a badge that hides at zero, which is right and means a desk that has never seen it does not know the screen exists. |
 | `/staff/waitlist` | Waitlist entries, and the freed-slot matcher. |
 | `/staff/call-down` | Tomorrow's unconfirmed, with attempt marks. |
 | `/staff/conflicts` | Bookings stranded by an hours or time-off change. |
