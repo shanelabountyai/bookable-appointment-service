@@ -2176,7 +2176,7 @@ Two failures, one column, and the second half of the same finding A-074 fixed. A
 
 ## A-078 — the error mapper knew two constraint names and one error shape; the database had three and two
 
-**Commit:** _(recorded in the follow-up commit)_
+**Commit:** `995e3dc`
 
 **D-45 says it in the decision log: "the constraint refuses it the moment anything has been sold, and the desk is told so IN WORDS."** It was not. Run D-45's own scene — Ada's no-show released at 10:20, she walks in after all, Priya squeezes her into the one chair at 10:30 — and both the un-release (`release-time.ts:261`) and the APPT-06 correction behind it (`transition.ts:134`) returned a `PrismaClientUnknownRequestError` with the raw text `exclusion constraint "appointment_resource_body_no_overlap"`. Two independent causes, both in `errors.ts`.
 
