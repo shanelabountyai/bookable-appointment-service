@@ -11,4 +11,4 @@ export {
   countOverruledCancellations,
   listOverruledCancellations,
 } from './overruled';
-export { LAPSED_WEEKS, type LapsedClient, listLapsedClients } from './lapsed';
+export { LAPSED_WEEKS, type LapsedClient, isCallStale, listLapsedClients } from './lapsed';

@@ -8,10 +8,10 @@
  * client record being read one page at a time again.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
+import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
-import { LAPSED_WEEKS, listLapsedClients } from './lapsed';
+import { LAPSED_WEEKS, isCallStale, listLapsedClients } from './lapsed';
 
 const prisma = new PrismaClient();
 const at = (iso: string) => toDate(instantFromIso(iso));
@@ -76,6 +76,7 @@ async function visit(options: {
 }) {
   const startAt = toDate(instant(fromDate(options.startAt) + seeded++ * 60 * 60_000));
   const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
+  const label = toLabel(fromDate(startAt), zoneId('America/Chicago'));
   return prisma.appointment.create({
     data: {
       businessId,
@@ -86,8 +87,13 @@ async function visit(options: {
       endAt,
       blockedStart: startAt,
       blockedEnd: endAt,
-      startDay: '2026-01-06',
-      startWallTime: '10:00',
+      // DERIVED from the instant, never a constant. P1-6 writes these two
+      // alongside each other in every real path, and a fixture that hardcodes
+      // one while varying the other is a fixture whose two axes disagree — it
+      // passed silently until A-077 moved the flagged window onto `startDay`,
+      // and then a no-show from 2024 sat inside a twelve-month window.
+      startDay: label.day,
+      startWallTime: label.time,
       lines: {
         create: {
           businessId,
@@ -219,5 +225,67 @@ describe('who is deliberately NOT on it', () => {
     await visit({ clientId: ada, startAt: LONG_AGO });
 
     expect(await listLapsedClients(prisma, { businessId: other.id, now: NOW })).toHaveLength(0);
+  });
+});
+
+/**
+ * A-077 — the marks A-072 designed for a freed slot, on a subject that lives
+ * for months.
+ *
+ * A freed slot dies on Thursday at 2, so a mark against it is days old at
+ * most. The `lapsed` subject is one row per client, forever, and the lapsed
+ * round is quarterly — so a call from June reads in October as though it had
+ * just been made, and the owner skips her. A-061's original defect inverted:
+ * not a missing memory, a memory with no expiry.
+ */
+describe('when a call goes stale (A-077)', () => {
+  const weeksAgo = (n: number) => toDate(instant(fromDate(NOW) - n * 7 * 86_400_000));
+
+  it('is fresh inside the report\'s own window, and stale beyond it', () => {
+    // The window is the owner's own answer to "how long without a visit is too
+    // long" — the same answer to "how long before a call stops counting".
+    expect(isCallStale(weeksAgo(11), NOW, 12)).toBe(false);
+    expect(isCallStale(weeksAgo(13), NOW, 12)).toBe(true);
+  });
+
+  /** It moves WITH the control, so there is no second number to tune — a
+   *  second number is a second number nobody tunes. */
+  it('follows the cutoff the owner is looking at', () => {
+    const june = weeksAgo(8);
+
+    expect(isCallStale(june, NOW, 12)).toBe(false);
+    expect(isCallStale(june, NOW, 4)).toBe(true);
+  });
+
+  it('is exclusive at the boundary, so a mark exactly N weeks old still counts', () => {
+    expect(isCallStale(weeksAgo(12), NOW, 12)).toBe(false);
+  });
+});
+
+/**
+ * A-077 — the flagged exclusion uses CLIENT-04's OWN window.
+ *
+ * The first version hand-rolled `52 * WEEK_MS` against the instant axis, which
+ * was a second copy of the reliability window living outside the module that
+ * owns it — and it disagreed with `reliability.ts` on the AXIS as well as the
+ * source, since that one filters `startDay` on the salon's calendar.
+ */
+describe('the flagged window is CLIENT-04\'s (A-077)', () => {
+  it('still excludes a client who missed something inside the year', async () => {
+    const ada = await client('Ada Chen');
+    await visit({ clientId: ada, startAt: LONG_AGO });
+    await visit({ clientId: ada, startAt: at('2026-03-03T10:00:00-06:00'), status: 'no_show' });
+
+    expect(await list()).toHaveLength(0);
+  });
+
+  /** …and keeps one whose only miss is older than the window, which is the
+   *  half a fifty-two-week instant approximation got wrong at the edge. */
+  it('keeps a client whose only miss is older than the year', async () => {
+    const ada = await client('Ada Chen');
+    await visit({ clientId: ada, startAt: LONG_AGO });
+    await visit({ clientId: ada, startAt: at('2024-06-03T10:00:00-05:00'), status: 'no_show' });
+
+    expect((await list()).map((row) => row.name)).toEqual(['Ada Chen']);
   });
 });

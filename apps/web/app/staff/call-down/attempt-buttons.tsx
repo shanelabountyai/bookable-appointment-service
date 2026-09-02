@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import type { CallAttempt, CallAttemptOutcome } from '@bookable/db/appointments';
 import { type AttemptState, recordAttempt } from '@/lib/appointments/call-down-actions';
+import { ATTEMPT_WORDS } from '@/lib/appointments/attempt-words';
 
 const initial: AttemptState = {};
 
@@ -39,18 +40,21 @@ export function AttemptButtons({
       {/* Both stay available on a tried row: "no answer at 2, left a message
           at 4" re-stamps the same row, so correcting a mis-pressed outcome
           needs no separate control. */}
-      <button name="outcome" value="no_answer" type="submit" disabled={pending} className={button(attempt, 'no_answer')}>
-        No answer
-      </button>
-      <button
-        name="outcome"
-        value="left_message"
-        type="submit"
-        disabled={pending}
-        className={button(attempt, 'left_message')}
-      >
-        Left a message
-      </button>
+      {/* A-077. The LABELS come from the same map the page reads, so the button
+          and the sentence beside it cannot drift — the buttons used to carry
+          their own literal copies. */}
+      {(Object.keys(ATTEMPT_WORDS) as CallAttemptOutcome[]).map((outcome) => (
+        <button
+          key={outcome}
+          name="outcome"
+          value={outcome}
+          type="submit"
+          disabled={pending}
+          className={button(attempt, outcome)}
+        >
+          {ATTEMPT_WORDS[outcome]}
+        </button>
+      ))}
 
       {/* The undo. A mis-tap on a SHARED screen marks the wrong client as
           rung, which silently skips her — the harm this row exists to prevent,
@@ -86,11 +90,3 @@ const button = (attempt: CallAttempt | null, outcome: CallAttemptOutcome) =>
       ? 'border-zinc-800 bg-zinc-800 text-zinc-50 dark:border-zinc-200 dark:bg-zinc-200 dark:text-zinc-900'
       : 'border-zinc-400 dark:border-zinc-600',
   ].join(' ');
-
-/** What the row says it knows, in the words the desk would use. TOTAL over the
- *  enum, so a third outcome is a compile error rather than a raw value on a
- *  screen — the same discipline `STATUS_ACTION_LABELS` uses. */
-export const ATTEMPT_WORDS = {
-  no_answer: 'No answer',
-  left_message: 'Left a message',
-} satisfies Record<CallAttemptOutcome, string>;

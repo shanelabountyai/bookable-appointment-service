@@ -2123,3 +2123,25 @@ Two failures, one column, and the second half of the same finding A-074 fixed. A
 **Tests:** 8 new, 25 in the file, and the three push tests were **pinned from the failing side** — run against the old `ACTIVE_STATUSES` selector restored by hand, all three fail with SQLSTATE 23514 on `appointment_released_within_visit`. The five un-release tests pass against the old selector, correctly: they do not depend on the push. Plus 1 e2e walking the desk's scene — release, she turns up, put it back, and the offer is on the table again because the time is hers.
 
 **Left behind:** nothing new from this row. A-076 (nothing closes the day) and A-077 remain, and A-076 still needs OQ-18 answered as a D-number first.
+
+---
+
+## A-077 — the lapsed list's call marks never expired and never said when
+
+**Commit:** `TBD`
+
+**The defect, and it is a mechanism outliving the assumption it was built on.** A-073 reused A-072's marks, which was right. But the two subjects have completely different lifetimes and only one was designed for: a freed slot dies on Thursday at 2, so a mark against it is days old at most, while the `lapsed` subject is **one row per client, forever**, and the lapsed round is a quarterly errand. So in October the owner reads *"left a message — Priya"* beside a name, from a call Priya made in June, and skips her. That is A-061's original defect — a list that lies about what has been done — **inverted**: not a missing memory, a memory with no expiry. Verified: `lapsed/page.tsx:139-144` rendered the outcome and the caller and nothing else, while `call-marks.ts:110` had been returning `calledAt` all along.
+
+**What it built.** The date on the row, and `isCallStale` — a mark older than **the report's own window** reads as stale and says *"worth ringing again"*. The window is the rule because `weeks` is already the owner's answer to "how long without a visit is too long", and it is the same answer to "how long before a call stops counting as having been made"; a second number to tune would be a second number nobody tunes. It moves with the control, so the same June call is fresh at twelve weeks and stale at four. Nothing stored and nothing cleared, exactly as A-059's `stale` is — derived on every read, and the mark itself is never deleted, because somebody did make that call.
+
+**The two left-behinds the Phase 7 close called load-bearing, folded in.**
+
+*A-072's `ATTEMPT_WORDS` was still exported from a `'use client'` module and read by a server component* — the identical shape that produced a blank 500 on `/staff/opened` when A-072 did the same thing, because Next replaces a client module with a client-reference proxy on the server and every lookup returns `undefined`. A-072's own entry said "it demonstrably works" and left it; the reviewer was right that this is not a reason — it works because Next happens to resolve that import today. It now lives in `lib/appointments/attempt-words.ts` beside `offer-words.ts`, where the same lesson already is. While the file was open, the buttons stopped carrying their own literal copies of the two labels and read the map the page reads, so the button and the sentence beside it cannot drift.
+
+*A-073's flagged exclusion was hand-rolling `52 * WEEK_MS`* instead of calling CLIENT-04's own window — a second copy of the reliability window living outside the module that owns it, which is the status-enum rule wearing a different hat. **And it disagreed on the AXIS as well as the source:** `reliability.ts` filters `startDay` on the salon's calendar, this filtered `startAt` on the instant, and fifty-two weeks is not a year across a leap day. One call to `reliabilityWindowStart`, one window, one axis.
+
+**The fixture bug the axis change exposed, which is the part worth keeping.** `lapsed.test.ts`'s seed helper wrote `startDay: '2026-01-06'` as a constant for every visit while varying `startAt` — the two axes disagreeing inside a fixture, in the repo whose entire premise is that they must not. It passed silently for as long as nothing read `startDay`. The moment the flagged window moved onto the calendar axis, a no-show from **2024** sat inside a twelve-month window and excluded a client who should have been on the list. The helper now derives both from the instant, exactly as P1-6 does in every real path.
+
+**Tests:** 5 new unit (3 on `isCallStale` — fresh inside the window, stale beyond it, moving with the control, and exclusive at the boundary so a mark exactly N weeks old still counts; 2 on the flagged window, including the older-than-a-year case that the instant approximation got wrong at the edge) plus 1 e2e that makes the call, reads the date back, backdates the mark past the window and reads *"worth ringing again"*.
+
+**Left behind:** nothing new. A-076 is the last Phase 8 row and still needs OQ-18 answered as a D-number first.

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
-import { LAPSED_WEEKS, listLapsedClients } from '@bookable/db/reports';
+import { LAPSED_WEEKS, isCallStale, listLapsedClients } from '@bookable/db/reports';
 import { listCallMarks } from '@bookable/db/clients';
 import { requireOwner } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
@@ -43,7 +43,8 @@ export default async function LapsedPage({ searchParams }: PageProps<'/staff/das
   const asked = typeof params.weeks === 'string' ? Number(params.weeks) : NaN;
   const weeks = Number.isFinite(asked) && asked >= 1 && asked <= 260 ? Math.floor(asked) : LAPSED_WEEKS;
 
-  const rows = await listLapsedClients(prisma, { businessId: staff.businessId, now: new Date(), weeks });
+  const now = new Date();
+  const rows = await listLapsedClients(prisma, { businessId: staff.businessId, now, weeks });
   // One read for the whole list. `lapsed` is one subject for every client, so
   // her mark is cleared the same way a freed slot's is: she books, and she
   // leaves the report.
@@ -136,10 +137,26 @@ export default async function LapsedPage({ searchParams }: PageProps<'/staff/das
                     appointmentId={row.lastAppointmentId}
                     mark={mark}
                   />
+                  {/* A-077. WHEN, not only what and who. A-072's marks were
+                      designed for a freed slot that dies on Thursday at 2; the
+                      lapsed round is quarterly, so without a date the owner
+                      reads "left a message — Priya" in October about a call
+                      made in June and skips her. A mark older than the report's
+                      own window reads as STALE rather than as handled — A-059's
+                      existing rule, derived on every read, and the mark itself
+                      is never deleted because somebody did make that call. */}
                   {mark ? (
-                    <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                    <span
+                      className={
+                        isCallStale(mark.calledAt, now, weeks)
+                          ? 'text-xs font-medium text-amber-800 dark:text-amber-300'
+                          : 'text-xs text-zinc-600 dark:text-zinc-400'
+                      }
+                    >
                       {OFFER_WORDS[mark.outcome]}
-                      {mark.calledByName ? ` — ${mark.calledByName}` : ''}
+                      {mark.calledByName ? ` — ${mark.calledByName}` : ''} ·{' '}
+                      {readableInstant(mark.calledAt, business.timezone)}
+                      {isCallStale(mark.calledAt, now, weeks) ? ' · worth ringing again' : ''}
                     </span>
                   ) : null}
                 </li>

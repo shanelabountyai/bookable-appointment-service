@@ -2243,3 +2243,43 @@ Two deliberate restraints on that:
 ### Proved from the failing side
 
 All three push tests were run against the old code with the broken behaviour restored by hand. All three fail, with the exact database error from the report. A regression test that has never seen the bug is a test nobody should trust — and this is the second time today that discipline has been the difference between a fix and a hope.
+
+## A memory with no expiry date
+
+The salon has a list of clients who have stopped coming, and a way to record who has already been rung — *no answer*, *left a message*, *thinking about it*, *she took it*.
+
+That recording mechanism was built a few days earlier for a different job: remembering who had been offered a cancelled slot. A cancelled slot is a short-lived thing. Thursday's two o'clock stops existing on Thursday at two, so a note attached to it is at most a few days old. It never needed a date.
+
+The lapsed-client round is quarterly.
+
+So in October the owner opens the list, sees *"left a message — Priya"* next to a name, and moves on — from a call Priya made in **June**. The note is four months old and reads exactly like one made this morning.
+
+That is the same failure the call-down list was fixed for, running backwards. There, the problem was a list with no memory, so clients got rung twice. Here it is a memory that never expires, so clients never get rung again.
+
+### The window is already on the screen
+
+The report has a control at the top: *away for more than [12] weeks*. That number is the owner's own answer to "how long without a visit is too long".
+
+It is also, unchanged, the answer to "how long before a call stops counting as having been made". So the same control decides both, and a June call is fresh when you are looking at a twelve-week window and stale when you narrow it to four. No second setting, because a second setting is a second thing nobody adjusts.
+
+Old marks now say *worth ringing again* rather than quietly reading as handled. The record itself is never deleted — somebody did make that call, and that stays true.
+
+### Two things tidied while the files were open
+
+A note from the previous review flagged something shipped days earlier as "works, but for the wrong reason". A small lookup table of button labels lived in browser-side code and was read by a server-side page. The framework substitutes a placeholder in that situation, and the identical arrangement had already produced a blank error page on a different screen — caught then only because the test checked what the page *said*.
+
+This one worked. "It works" was recorded at the time as a reason to leave it, and that was wrong: it works because the framework happens to resolve that particular import today. Moved.
+
+The second was a duplicated definition of "the last twelve months" — the window used to decide whether a client is flagged for missed appointments. The lapsed report had its own copy, written as fifty-two weeks of milliseconds, instead of calling the one function that owns that rule.
+
+Two copies of one rule is the recurring problem in this codebase. But this pair disagreed about more than provenance: the original measures a year on the **salon's calendar**, and the copy measured it in elapsed milliseconds. Fifty-two weeks is not a year, and the gap is a day or two — enough that a no-show right at the edge counts for one and not the other.
+
+### The bug the fix uncovered
+
+Switching to the shared rule changed which of two fields the query reads: from the raw timestamp to the salon's own calendar date, which every real code path writes alongside it.
+
+A test immediately failed — and it failed for a good reason. The test's own fixture had been writing a **hardcoded calendar date** onto every appointment it created, while varying the timestamps freely. The two had been contradicting each other the whole time, harmlessly, because nothing had ever read the one that was wrong.
+
+The moment something did, a no-show from **2024** appeared to fall inside a twelve-month window and wrongly excluded a client from the list.
+
+This project exists largely to practise not confusing those two kinds of time. The production code has never confused them. A test fixture had, quietly, for as long as nobody looked.

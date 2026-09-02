@@ -33,7 +33,8 @@
  * cut — which is true and useless. The owner reads the money on the row.
  */
 import { ACTIVE_STATUSES, MISSED_STATUSES } from '../../core/scheduling';
-import { fromDate, instant, toDate } from '../../core/time';
+import { reliabilityWindowStart } from '../../core/clients';
+import { calendarDay, fromDate, instant, toDate, toLabel, zoneId } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -112,16 +113,26 @@ export async function listLapsedClients(
   const hasSomethingBooked = new Set(booked.flatMap((row) => (row.clientId ? [row.clientId] : [])));
 
   // BOUND — not flagged. "A no-show-blocked client is not who you ring to fill
-  // a Tuesday", and the window is CLIENT-04's own twelve months, asked here as
-  // "has she missed anything since her last visit or lately" rather than
-  // re-deriving `clientReliability`'s arithmetic: this list only needs to know
-  // whether to exclude her, not by how much.
+  // a Tuesday."
+  //
+  // A-077: the window is CLIENT-04's, taken from the module that owns it. The
+  // first version of this hand-rolled `52 * WEEK_MS` against the INSTANT axis,
+  // which was a second copy of the reliability window living outside
+  // `reliabilityWindowStart` — the status-enum rule wearing a different hat,
+  // and it disagreed with `reliability.ts` on the axis as well as the source:
+  // that one filters `startDay` on the salon's calendar, and fifty-two weeks is
+  // not a year across a leap day. One call, one window, one axis.
+  const business = await db.business.findUniqueOrThrow({
+    where: { id: args.businessId },
+    select: { timezone: true },
+  });
+  const today = calendarDay(toLabel(fromDate(args.now), zoneId(business.timezone)).day);
   const flagged = await db.appointment.findMany({
     where: {
       businessId: args.businessId,
       clientId: { in: lapsed.map((row) => row.clientId) },
       status: { in: [...MISSED_STATUSES] },
-      startAt: { gte: toDate(instant(fromDate(args.now) - 52 * WEEK_MS)) },
+      startDay: { gte: reliabilityWindowStart(today) as string },
     },
     select: { clientId: true },
     distinct: ['clientId'],
@@ -190,4 +201,28 @@ export async function listLapsedClients(
     (a, b) => fromDate(a.lastVisitAt) - fromDate(b.lastVisitAt) || (a.name ?? '').localeCompare(b.name ?? ''),
   );
   return args.limit ? rows.slice(0, args.limit) : rows;
+}
+
+/**
+ * A-077 — has this call gone stale?
+ *
+ * A-072's marks were designed for a freed slot, which dies on Thursday at 2, so
+ * a mark against one is days old at most. The `lapsed` subject is **one row per
+ * client, forever**, and the lapsed round is a quarterly errand — so in October
+ * the owner reads "left a message — Priya" beside a name, from a call Priya
+ * made in June, and skips her. That is A-061's original defect (a list that
+ * lies about what has been done) inverted: not a missing memory, a memory with
+ * no expiry.
+ *
+ * THE REPORT'S OWN WINDOW IS THE RULE. `weeks` is already the owner's answer to
+ * "how long without a visit is too long"; it is the same answer to "how long
+ * before a call stops counting as having been made". A second number to tune
+ * would be a second number nobody tunes.
+ *
+ * Nothing stored and nothing cleared, exactly as A-059's `stale` is: derived on
+ * every read from `calledAt`, so a mark cannot rot into a wrong answer. The
+ * mark itself is never deleted — somebody did make that call.
+ */
+export function isCallStale(calledAt: Date, now: Date, weeks: number): boolean {
+  return fromDate(now) - fromDate(calledAt) > weeks * WEEK_MS;
 }

@@ -7,7 +7,8 @@ import { clientReliability } from '@bookable/db/clients';
 import { flagSentence } from '@/components/client-flag';
 import { listCallDown } from '@/lib/appointments/call-down-actions';
 import { ConfirmButton } from './confirm-button';
-import { ATTEMPT_WORDS, AttemptButtons } from './attempt-buttons';
+import { ATTEMPT_WORDS } from '@/lib/appointments/attempt-words';
+import { AttemptButtons } from './attempt-buttons';
 
 export const dynamic = 'force-dynamic';
 

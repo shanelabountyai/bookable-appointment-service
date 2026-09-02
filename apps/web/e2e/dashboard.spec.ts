@@ -222,6 +222,43 @@ test.describe('the clients who have stopped coming (A-073)', () => {
     await expect(page.getByRole('heading', { name: 'Not been in for a while' })).toHaveCount(0);
   });
 
+  /**
+   * A-077 — the mark says WHEN, and an old one reads as worth ringing again.
+   *
+   * A-072's marks were designed for a freed slot that dies on Thursday at 2.
+   * The lapsed round is quarterly, so without a date the owner reads "left a
+   * message — Priya" in October about a call made in June, and skips her.
+   */
+  test('says when the call was made, and flags one older than the window', async ({ page }) => {
+    const clientId = await lapsedClient('Olive Gone', 30);
+
+    await page.goto('/staff/dashboard/lapsed');
+    await page.getByRole('button', { name: 'Left a message' }).click();
+    await expect(page.getByText('Noted.')).toBeVisible();
+    await page.reload();
+
+    // Fresh: what, who, and WHEN — the field that was already in the payload
+    // and was not being rendered.
+    await expect(page.getByText(/Left a message —/)).toBeVisible();
+    await expect(page.getByText(/worth ringing again/)).toHaveCount(0);
+
+    // …and the same mark, backdated past the window on the report, reads as
+    // stale rather than as handled. Derived on every read; the mark itself is
+    // never deleted, because somebody did make that call.
+    const prisma = new PrismaClient();
+    try {
+      await prisma.clientCallMark.updateMany({
+        where: { clientId, subject: 'lapsed' },
+        data: { updatedAt: toDate(instant(fromDate(new Date()) - 20 * 7 * 24 * 60 * 60_000)) },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.reload();
+    await expect(page.getByText(/worth ringing again/)).toBeVisible();
+  });
+
   test('has no accessibility violations', async ({ page }) => {
     await lapsedClient('Olive Gone', 30);
     await page.goto('/staff/dashboard/lapsed');
