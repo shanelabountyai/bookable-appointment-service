@@ -52,7 +52,7 @@ export interface PushCandidate {
    * go — but it is NAMED, which is the whole difference between a partial
    * push and a silently-lossy one.
    */
-  problem?: 'past-closing' | 'before-opening' | 'blocked-by-one-that-stays' | 'no-chair-free';
+  problem?: 'past-closing' | 'before-opening' | 'blocked-by-one-that-stays' | 'no-chair-free' | 'still-in-the-chair';
   /**
    * A-034. The chair it will hold AT THE DESTINATION — the same chair when it
    * is still free (the ordinary case), a different one when somebody who is
@@ -66,6 +66,24 @@ export interface PushCandidate {
    */
   toResourceId?: string;
 }
+
+/**
+ * A-079 — WAS THIS ONE A CASUALTY OF THE PUSH, OR WAS IT NEVER ASKED TO MOVE?
+ *
+ * `problem` conflates two different facts and only one of them is the push's
+ * doing. `still-in-the-chair` is a row the move set never contained — a visit
+ * still running, a no-show still holding its ninety minutes (D-7), one that
+ * started before `fromAt` — and it is in the preview so the desk is told the
+ * column is not empty, NOT because the push failed to move it.
+ *
+ * Everything that counts casualties asks THIS, once, rather than each reader
+ * re-deriving "problem !== undefined" and quietly meaning something different:
+ * `leftBehind` (D-26's list the desk must act on) and `deltaAfterPush` (D-43 —
+ * a push that left somebody behind has not worked the delta off) are both
+ * about the move set, and a bystander standing in the column is neither.
+ */
+export const isLeftBehind = (candidate: PushCandidate): boolean =>
+  candidate.problem !== undefined && candidate.problem !== 'still-in-the-chair';
 
 export interface PushPreview {
   providerId: string;
@@ -105,6 +123,7 @@ export async function previewPush(
   });
   const zone = business.timezone as ZoneId;
   const day = calendarDay(args.day);
+  const shift = args.minutes * MIN;
 
   const appointments = await db.appointment.findMany({
     where: {
@@ -128,10 +147,11 @@ export async function previewPush(
       id: true,
       startAt: true,
       endAt: true,
-      bufferAfterMinutes: true,
       // A-034. The chair, and the envelope its hold actually spans — gaps and
       // both buffers included (RES-02), which is why these are read rather
-      // than re-derived from `startAt`/`endAt` here.
+      // than re-derived from `startAt`/`endAt` here. A-079 removed the last
+      // reader of `bufferAfterMinutes`: every range in this function now comes
+      // from the stored columns, so there is no second copy left to drift.
       resourceId: true,
       blockedStart: true,
       blockedEnd: true,
@@ -141,6 +161,82 @@ export async function previewPush(
       client: { select: { name: true } },
     },
   });
+
+  /**
+   * A-079 — EVERYTHING ELSE STANDING IN THE COLUMN.
+   *
+   * The query above is the MOVE SET, and it is narrow twice over: pushable
+   * statuses only (A-075), and `startAt >= fromAt`. Both are right. What was
+   * wrong is that the planner then modelled the column as if the move set were
+   * all of it — so the visit still running, the no-show still holding its
+   * ninety minutes (D-7), the one that started at 13:00 and is pulled back
+   * onto, were all simply invisible. D-26 promises that a left-behind
+   * appointment still occupies its old time; that was true only of the ones
+   * the push happened to select, and the rest reached COMMIT as a raw
+   * `appointment_block_no_overlap` after the preview said `canPush: true`.
+   *
+   * The CHAIR axis has asked this question correctly since A-034 (`loadRoom`
+   * reads holds in `ACTIVE_STATUSES`). One function, two axes, one of them
+   * told — which is CLAUDE.md's own rule about a narrower list being a new
+   * fact, inside a single function.
+   *
+   * The span is the whole affected stretch, on the instant axis and never
+   * `startDay = day`: an appointment that began yesterday evening and is still
+   * running occupies this morning.
+   *
+   * ponytail: a bystander is modelled as ONE envelope, `blockedStart` to
+   * `blockedEnd`, where the constraint is really over its `AppointmentBlock`
+   * rows — so a colour's processing gap reads as occupied and a push that
+   * could legally slot into it is named `blocked-by-one-that-stays` instead.
+   * Conservative in the safe direction and the same shape the staying rows
+   * have always used. Model the blocks if the salon ever needs that gap.
+   */
+  const spanFrom = fromDate(args.fromAt);
+  // The DESTINATION footprint, measured from the stored blocked ranges rather
+  // than from `fromAt` — a first appointment with a buffer before it lands
+  // earlier than `fromAt + shift` does, and an occupant in that quarter of an
+  // hour is exactly the one the constraint would refuse.
+  const spanStart = appointments.reduce(
+    (earliest, a) => Math.min(earliest, fromDate(a.blockedStart) + shift),
+    Math.min(spanFrom, spanFrom + shift),
+  );
+  const spanEnd = appointments.reduce(
+    (latest, a) => Math.max(latest, fromDate(a.blockedEnd) + shift),
+    Math.max(spanFrom, spanFrom + shift),
+  );
+  const occupying = (
+    appointments.length === 0
+      ? []
+      : await db.appointment.findMany({
+          where: {
+            businessId: args.businessId,
+            providerId: args.providerId,
+            // What OCCUPIES time, which is the wider list and deliberately so:
+            // `no_show` and `completed` still hold their ranges (D-7).
+            status: { in: [...ACTIVE_STATUSES] },
+            id: { notIn: appointments.map((a) => a.id) },
+            blockedStart: { lt: toDate(instant(spanEnd)) },
+            blockedEnd: { gt: toDate(instant(spanStart)) },
+          },
+          orderBy: { startAt: 'asc' },
+          select: {
+            id: true,
+            startAt: true,
+            endAt: true,
+            resourceId: true,
+            blockedStart: true,
+            blockedEnd: true,
+            clientId: true,
+            client: { select: { name: true } },
+          },
+        })
+  ).filter(
+    // D-8: a staff override's blocked range is ZERO-WIDTH on purpose, and an
+    // empty range participates in no `&&`. It occupies nothing, the database
+    // refuses nothing on account of it, and calling it "still in the chair"
+    // would be the planner inventing a refusal the constraint does not make.
+    (a) => fromDate(a.blockedEnd) > fromDate(a.blockedStart),
+  );
 
   // The provider's own closing time for the day, resolved through the same
   // chain and the same axis crossing the engine uses.
@@ -183,16 +279,18 @@ export async function previewPush(
   });
   const runningLateMinutes = late?.minutes ?? 0;
 
-  const shift = args.minutes * MIN;
-
   interface Row {
     appointment: (typeof appointments)[number];
-    shiftedStart: number;
-    shiftedBlockedEnd: number;
-    stayingStart: number;
-    stayingBlockedEnd: number;
+    /** A-079. False for a row that is here because it OCCUPIES the column
+     *  rather than because the push can move it: it never shifts, it is never
+     *  planned a chair, and it is permanently `still-in-the-chair`. */
+    inMoveSet: boolean;
     problem?: PushCandidate['problem'];
   }
+
+  /** How far THIS row moves. Zero for a bystander, which is what makes one
+   *  set of range helpers serve both. */
+  const shiftOf = (row: Row) => (row.inMoveSet ? shift : 0);
 
   /** The chair hold's envelope, before and after the shift (A-034). Distinct
    *  from the provider spans above: a chair is held through the developing
@@ -202,8 +300,8 @@ export async function previewPush(
     end: fromDate(row.appointment.blockedEnd),
   });
   const holdAfter = (row: Row) => ({
-    start: fromDate(row.appointment.blockedStart) + shift,
-    end: fromDate(row.appointment.blockedEnd) + shift,
+    start: fromDate(row.appointment.blockedStart) + shiftOf(row),
+    end: fromDate(row.appointment.blockedEnd) + shiftOf(row),
   });
 
   /** The BODY — her actually in the chair, buffers excluded. A-063 split the
@@ -214,30 +312,39 @@ export async function previewPush(
     end: fromDate(row.appointment.endAt),
   });
   const bodyAfter = (row: Row) => ({
-    start: fromDate(row.appointment.startAt) + shift,
-    end: fromDate(row.appointment.endAt) + shift,
+    start: fromDate(row.appointment.startAt) + shiftOf(row),
+    end: fromDate(row.appointment.endAt) + shiftOf(row),
   });
   /** `COALESCE(clientId, 'appt:' || id)` — the same expression the hold-writing
    *  trigger uses. A nullable key would make every unnamed walk-in one holder. */
   const holderOf = (row: Row) => row.appointment.clientId ?? `appt:${row.appointment.id}`;
 
-  const rows: Row[] = appointments.map((appointment) => ({
-    appointment,
-    shiftedStart: fromDate(appointment.startAt) + shift,
-    shiftedBlockedEnd: fromDate(appointment.endAt) + shift + appointment.bufferAfterMinutes * MIN,
-    stayingStart: fromDate(appointment.startAt),
-    stayingBlockedEnd: fromDate(appointment.endAt) + appointment.bufferAfterMinutes * MIN,
-    // Past closing is the loss APPT-04 names. A shift that ends the day after
-    // the salon shuts is not a scheduling decision, it is a mistake with a
-    // client attached — so this one stays put and is named.
-    ...(lastClose > 0 && fromDate(appointment.endAt) + shift + appointment.bufferAfterMinutes * MIN > lastClose
-      ? { problem: 'past-closing' as const }
-      : firstOpen > 0 && fromDate(appointment.startAt) + shift < firstOpen
-        ? // Only reachable on a pull-forward, and named rather than refused for
-          // D-26's reason: the three that CAN come forward still should.
-          { problem: 'before-opening' as const }
-        : {}),
-  }));
+  const rows: Row[] = [
+    ...appointments.map((appointment) => ({
+      appointment,
+      inMoveSet: true,
+      // Past closing is the loss APPT-04 names. A shift that ends the day after
+      // the salon shuts is not a scheduling decision, it is a mistake with a
+      // client attached — so this one stays put and is named. Measured from the
+      // STORED blocked end, never re-derived as `endAt + bufferAfter` — that is
+      // the same fact under a second name, and A-069's release cuts it.
+      ...(lastClose > 0 && fromDate(appointment.blockedEnd) + shift > lastClose
+        ? { problem: 'past-closing' as const }
+        : firstOpen > 0 && fromDate(appointment.startAt) + shift < firstOpen
+          ? // Only reachable on a pull-forward, and named rather than refused for
+            // D-26's reason: the three that CAN come forward still should. Her
+            // SEAT time, not her buffer: "would start before she opens".
+            { problem: 'before-opening' as const }
+          : {}),
+    })),
+    // A-079. Permanently immovable, and named — the preview says "the 13:00 is
+    // still in the chair" rather than promising a clean pull.
+    ...occupying.map((appointment) => ({
+      appointment,
+      inMoveSet: false,
+      problem: 'still-in-the-chair' as const,
+    })),
+  ];
 
   /**
    * THE CASCADE (D-26). An appointment left behind still occupies its old
@@ -255,9 +362,15 @@ export async function previewPush(
       const staying = rows.filter((r) => r.problem);
       for (const row of rows) {
         if (row.problem) continue;
-        const collides = staying.some(
-          (s) => row.shiftedStart < s.stayingBlockedEnd && s.stayingStart < row.shiftedBlockedEnd,
-        );
+        const after = holdAfter(row);
+        // The STORED range on both sides (A-069): `startAt`/`endAt` plus a
+        // re-derived buffer is a second copy of the same fact, and it is wrong
+        // at the front (no `bufferBefore`) and at the back (a released no-show
+        // is cut short). Half-open, so back-to-back is not a collision.
+        const collides = staying.some((s) => {
+          const held = holdBefore(s);
+          return after.start < held.end && held.start < after.end;
+        });
         if (collides) {
           row.problem = 'blocked-by-one-that-stays';
           changed = true;
@@ -277,7 +390,11 @@ export async function previewPush(
    * most one pass per appointment.
    */
   const chairRows = () =>
-    rows.map((row) => ({
+    // A-079. Only the move set. A bystander's chair hold reaches the planner
+    // through `loadRoom` — the authoritative `AppointmentResourceHold` row,
+    // release cut and body included — and planning it here would be a second,
+    // poorer copy of it.
+    rows.filter((row) => row.inMoveSet).map((row) => ({
       id: row.appointment.id,
       resourceId: row.appointment.resourceId,
       staying: row.problem !== undefined,
@@ -288,13 +405,17 @@ export async function previewPush(
       bodyAfter: bodyAfter(row),
     }));
 
+  const moving = rows.filter((r) => r.inMoveSet);
   let chairs = new Map<string, string>();
-  if (rows.some((r) => r.appointment.resourceId)) {
+  if (moving.some((r) => r.appointment.resourceId)) {
     const room = await loadRoom(db, {
       businessId: args.businessId,
-      excludeAppointmentIds: rows.map((r) => r.appointment.id),
-      windowStart: Math.min(...rows.flatMap((r) => [holdBefore(r).start, holdAfter(r).start])),
-      windowEnd: Math.max(...rows.flatMap((r) => [holdBefore(r).end, holdAfter(r).end])),
+      // Only the move set is excluded: everything else's hold is a hold that
+      // genuinely stays, which is the half A-079 found missing on the provider
+      // axis and that this axis has had right since A-034.
+      excludeAppointmentIds: moving.map((r) => r.appointment.id),
+      windowStart: Math.min(...moving.flatMap((r) => [holdBefore(r).start, holdAfter(r).start])),
+      windowEnd: Math.max(...moving.flatMap((r) => [holdBefore(r).end, holdAfter(r).end])),
     });
 
     for (;;) {
@@ -310,14 +431,20 @@ export async function previewPush(
     cascade();
   }
 
-  const candidates: PushCandidate[] = rows.map((row) => ({
-    appointmentId: row.appointment.id,
-    clientName: row.appointment.client?.name ?? null,
-    from: row.appointment.startAt,
-    to: toDate(instant(row.shiftedStart)),
-    ...(row.problem ? { problem: row.problem } : {}),
-    ...(chairs.has(row.appointment.id) ? { toResourceId: chairs.get(row.appointment.id)! } : {}),
-  }));
+  const candidates: PushCandidate[] = rows
+    .map((row) => ({
+      appointmentId: row.appointment.id,
+      clientName: row.appointment.client?.name ?? null,
+      from: row.appointment.startAt,
+      // A bystander's `shiftOf` is zero, so it reads "13:00 → 13:00": it is in
+      // the list to be SEEN, not to be moved.
+      to: toDate(instant(fromDate(row.appointment.startAt) + shiftOf(row))),
+      ...(row.problem ? { problem: row.problem } : {}),
+      ...(chairs.has(row.appointment.id) ? { toResourceId: chairs.get(row.appointment.id)! } : {}),
+    }))
+    // One list in column order, so the desk reads the day rather than the two
+    // queries it came from.
+    .sort((a, b) => fromDate(a.from) - fromDate(b.from));
 
   return {
     providerId: args.providerId,
@@ -329,7 +456,7 @@ export async function previewPush(
     runningLateAfter: deltaAfterPush({
       current: runningLateMinutes,
       minutes: args.minutes,
-      leftBehind: candidates.filter((c) => c.problem !== undefined).length,
+      leftBehind: candidates.filter(isLeftBehind).length,
     }),
   };
 }
@@ -536,7 +663,7 @@ export async function pushColumn(
     // forbids, and refusing outright left the desk doing by hand exactly what
     // this feature exists to do (demo checkpoint 2, §9).
     const movable = preview.candidates.filter((c) => c.problem === undefined);
-    const leftBehind = preview.candidates.filter((c) => c.problem !== undefined);
+    const leftBehind = preview.candidates.filter(isLeftBehind);
     const delta = { runningLateMinutes: preview.runningLateMinutes, runningLateAfter: preview.runningLateAfter };
     if (movable.length === 0) return { moved: 0, notified: 0, leftBehind, ...delta };
 

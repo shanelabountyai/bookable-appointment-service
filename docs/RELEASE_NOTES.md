@@ -2391,3 +2391,33 @@ Every test added here was checked by breaking the fix and confirming it fails.
 The most interesting one is the fixture. To reach the *body* constraint specifically, the freed time has to be sold to a **different stylist** for the **same client** — because the envelope constraint deliberately permits one client's overlapping envelopes, leaving the body as the only thing that can refuse. Sell it to a stranger instead and a different constraint fires first, one the code already recognised.
 
 That is how the gap survived nine items: every existing test took the path that already worked.
+
+## A-079 — planning a move against only the things you are moving
+
+Saturday lunchtime. The ten o'clock never came, the stylist has caught up, and the front desk asks the obvious thing: *pull everyone forward twenty minutes.*
+
+The preview said it could. The save then failed at the last possible moment — the database refused the whole thing — and the screen showed an unhandled error with nothing moved.
+
+### What was actually wrong
+
+The feature that shifts a whole column is careful about **what it is allowed to move**. A client who never turned up cannot be running late. An appointment already finished cannot have its start time rewritten. Both restrictions are correct and were added deliberately.
+
+The mistake was letting that same restricted list stand in for **what is standing in the column**. Those are two different questions, and the answer to the second one is larger: the visit still running, the no-show whose slot is deliberately still held, the appointment that started before the point the desk picked. None of them were in the plan, so the planner cascaded its moves against a day with holes in it and handed the database an overlap it was always going to refuse.
+
+The same function already asked the *right* question about chairs — the room's occupancy has been read correctly since an earlier item. One function, two axes, and only one of them had been told. Both are lists of the same type, so nothing about the code looked wrong.
+
+### What the desk sees now
+
+The preview lists the bystanders too, in column order, each saying what it is: **"still in the chair, not moving."** A pull-forward that only half works now reads as a partial move with named casualties, which is what this feature has always promised, instead of a clean sweep that fails on save.
+
+They are shown but they are not counted as failures. An appointment that was never going to move is not a casualty of the push, so it does not appear in the "left where they were" list and does not keep the running-late marker standing. That distinction is now a single named predicate rather than a condition each caller re-derives.
+
+### Measuring occupancy once
+
+Three places had quietly kept their own arithmetic for "how much time does this appointment take up" — start time, end time, plus a buffer added back on. That is a second copy of a number the database already stores, and it was wrong twice: it left out the buffer *before* an appointment entirely, and it did not know that releasing a no-show's remaining time cuts the range short.
+
+All of it now reads the stored range. Four derived fields deleted.
+
+### The fixture that could see it
+
+The test room has **two chairs**, on purpose. With one chair, the failing pull-forward comes back as "no chair free" — the correct axis catches it first, and the broken one is never reached. The bug is invisible in the smaller fixture. Two chairs is what the salon actually has, and it leaves the stylist's own day as the only thing that can refuse.

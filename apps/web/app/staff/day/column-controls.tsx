@@ -154,6 +154,12 @@ export function ColumnControls({
                       {row.problem === 'before-opening' ? ' — stays: would start before she opens' : ''}
                       {row.problem === 'blocked-by-one-that-stays' ? ' — stays: blocked by one that stays' : ''}
                       {row.problem === 'no-chair-free' ? ' — stays: no chair free at the new time' : ''}
+                      {/* A-079. Everything else standing in the column: the
+                          visit still running, the no-show still holding its
+                          time (D-7), the one that started before here. It was
+                          never in the move set — it is here so "pull everyone
+                          forward twenty" cannot read as a clean sweep. */}
+                      {row.problem === 'still-in-the-chair' ? ' — still in the chair, not moving' : ''}
                     </li>
                   ))}
                 </ul>

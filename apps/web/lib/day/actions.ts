@@ -21,6 +21,7 @@ import {
   unmarkToldAbout,
 } from '@bookable/db/day';
 import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { SlotTaken } from '@bookable/db/booking';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
 
@@ -170,6 +171,17 @@ export async function confirmColumnPush(_previous: DayActionState, formData: For
     };
   } catch (error) {
     if (error instanceof RangeError) return { ok: false, message: 'Choose how many minutes to push by.' };
+    // A-079. `pushColumn` maps a lost race to `SlotTaken` (A-034) and this
+    // caught only `RangeError`, so the one outcome the mapping exists to
+    // produce still reached the day grid as a 500. The preview plans inside
+    // the same transaction, so this means somebody committed between the plan
+    // and the COMMIT — nothing moved, and saying so is the whole point.
+    if (error instanceof SlotTaken) {
+      return {
+        ok: false,
+        message: 'Somebody booked into this column while you were looking at it. Nothing moved — preview it again.',
+      };
+    }
     throw error;
   }
 }
@@ -209,6 +221,9 @@ const PROBLEMS: Record<string, string> = {
   'before-opening': 'would start before she opens',
   'blocked-by-one-that-stays': 'blocked by one that stayed',
   'no-chair-free': 'no chair free at the new time',
+  // A-079. Not a casualty of the push — a bystander the push was never going
+  // to move, named so the desk does not read a partial pull as a clean one.
+  'still-in-the-chair': 'still in the chair, not moving',
 };
 
 async function shapeFor(preview: PushPreview, businessId: string): Promise<PreviewShape> {

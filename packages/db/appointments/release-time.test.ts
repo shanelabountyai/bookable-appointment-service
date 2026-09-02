@@ -598,9 +598,17 @@ describe('a column pushed over a released no-show (A-075)', () => {
     expect(result.moved).toBe(1);
   });
 
-  /** A-018's own rule: the preview asks the question the push asks. Here they
-   *  share one selector, so this pins that they still do. */
-  it('leaves it out of the preview too, so the desk is never promised the move', async () => {
+  /**
+   * A-018's own rule: the preview asks the question the push asks. Here they
+   * share one selector, so this pins that they still do.
+   *
+   * A-079 changed the SHAPE of the answer and not the answer. She was out of
+   * the preview entirely, which meant the desk was never promised the move —
+   * and also never told she was standing there, so a pull-forward onto her
+   * time previewed clean and died at COMMIT. She is now a candidate that
+   * permanently cannot move, which is both halves at once.
+   */
+  it('shows her as standing there, never as about to move', async () => {
     const noShowAppointment = await noShow();
     await release(noShowAppointment.id);
     await alsoBooked();
@@ -613,11 +621,11 @@ describe('a column pushed over a released no-show (A-075)', () => {
       minutes: 30,
     });
 
-    // Not merely "not moving" — not a CANDIDATE at all, so the desk is never
-    // shown her name in the list of what is about to happen.
-    expect(preview.candidates.map((row: { appointmentId: string }) => row.appointmentId)).not.toContain(
-      noShowAppointment.id,
-    );
+    // Named, and named as a bystander: the move set never contained her, so
+    // there is no arm of this preview on which she is about to be moved.
+    const hers = preview.candidates.find((row) => row.appointmentId === noShowAppointment.id);
+    expect(hers?.problem).toBe('still-in-the-chair');
+    expect(hers?.to).toEqual(hers?.from);
   });
 
   /** …and an UNRELEASED no-show is left alone for the same reason, so the fix
