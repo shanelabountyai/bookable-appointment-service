@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client } from 'pg';
 import { ACTIVE_STATUSES, APPOINTMENT_STATUSES, SLOT_FREEING_STATUSES } from '../core/scheduling/status';
-import { isSlotTakenError } from './errors';
+import { isSlotTakenError, OUR_EXCLUSION_CONSTRAINTS } from './errors';
 import { instantFromIso, toDate } from '../core/time';
 
 const db = new Client({ connectionString: process.env.DATABASE_URL });
@@ -210,6 +210,30 @@ describe('the partial predicate — which statuses free the slot (D-15)', () => 
         ORDER BY e.enumsortorder`,
     );
     expect(rows.map((r) => r.label)).toEqual([...APPOINTMENT_STATUSES]);
+  });
+
+  /**
+   * A-078 — the same guard again, one axis over: the DATABASE CAN GROW AN
+   * INVARIANT THE APPLICATION CANNOT READ.
+   *
+   * A-063 added `appointment_resource_body_no_overlap` and `errors.ts` still
+   * knew two names, so nine items shipped while a real refusal — D-45's own
+   * scene, the released no-show squeezed back into her chair — reached the desk
+   * as a stack trace instead of the sentence D-45 promised. The status
+   * predicate has had this test since A-003; the NAMES did not.
+   *
+   * Set equality, not `toContain`: a constraint the mapper does not know is a
+   * 500, and a name the mapper knows that no longer exists is a mapping that
+   * silently stopped working. Both are failures here.
+   */
+  it('the LIVE exclusion constraints match OUR_EXCLUSION_CONSTRAINTS in the error module', async () => {
+    const { rows } = await db.query<{ conname: string }>(
+      `SELECT conname FROM pg_constraint c
+         JOIN pg_namespace n ON n.oid = c.connamespace
+        WHERE c.contype = 'x' AND n.nspname = 'public'
+        ORDER BY conname`,
+    );
+    expect(rows.map((r) => r.conname)).toEqual([...OUR_EXCLUSION_CONSTRAINTS].sort());
   });
 });
 
@@ -636,6 +660,59 @@ describe('deferrable constraint — the Saturday swap (operator review R-2)', ()
     }
     await db.query('ROLLBACK').catch(() => {});
     expect(caught).toBeDefined();
+    expect(isSlotTakenError(caught)).toBe(true);
+  });
+
+  /**
+   * A-078 — THE SHAPE NOBODY HAD EVER CAUGHT.
+   *
+   * The test above defers through node-postgres, where the driver sets
+   * `code = '23P01'` and the structured branch answers. Through PRISMA a
+   * deferred violation loses the SQLSTATE entirely on its way out of the
+   * connector: `PrismaClientUnknownRequestError`, no `code`, and no '23P01'
+   * anywhere in the message — only the constraint NAME survives.
+   *
+   * `push-column.ts` is the only place in this codebase that defers, so its
+   * catch (and A-034's whole mapping) had never once fired. Eight call sites
+   * share that helper, including the sick-stylist bulk move.
+   *
+   * The two negative assertions are the point: they are what a future "tidy-up"
+   * that reinstates a `message.includes('23P01')` guard would break.
+   */
+  it('isSlotTakenError recognises a DEFERRED violation through PRISMA, which carries no SQLSTATE', async () => {
+    const { PrismaClient } = await import('./generated/client/index.js');
+    const prisma = new PrismaClient();
+    const shared = {
+      businessId,
+      providerId: providerA,
+      startDay: '2026-06-09',
+      startWallTime: '10:00',
+      blockedStart: toDate(instantFromIso('1970-01-01T00:00:00Z')),
+      blockedEnd: toDate(instantFromIso('1970-01-01T00:00:00Z')),
+    };
+    let caught: unknown;
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const name of OUR_EXCLUSION_CONSTRAINTS) {
+          await tx.$executeRawUnsafe(`SET CONSTRAINTS "${name}" DEFERRED`);
+        }
+        await tx.appointment.create({
+          data: { id: 'd1', ...shared, startAt: toDate(instantFromIso('2026-06-09T15:00:00Z')), endAt: toDate(instantFromIso('2026-06-09T16:00:00Z')) },
+        });
+        await tx.appointment.create({
+          data: { id: 'd2', ...shared, startAt: toDate(instantFromIso('2026-06-09T15:30:00Z')), endAt: toDate(instantFromIso('2026-06-09T16:30:00Z')) },
+        });
+      });
+    } catch (e) {
+      caught = e;
+    } finally {
+      await prisma.$disconnect();
+    }
+    expect(caught).toBeDefined();
+    // Neither piece of evidence the immediate shapes rely on is present.
+    expect((caught as { code?: string }).code).toBeUndefined();
+    expect(String((caught as Error).message)).not.toContain(EXCLUSION_VIOLATION);
+    // The name is, and the name is enough.
     expect(isSlotTakenError(caught)).toBe(true);
   });
 });

@@ -2339,3 +2339,55 @@ And an appointment closed this way records **no arrival time and no finish time*
 Adding the two missing transitions broke a test — the right one. This project keeps a normative table of every legal appointment state change in its product spec, and a test parses that table and checks the code against it, cell by cell, for all sixty-four combinations.
 
 Changing what the software allows therefore requires changing the spec first. It did, and the paragraph explaining why is now in the document rather than only in a commit message.
+
+---
+
+## The promise in the decision log, and the stack trace that arrived instead
+
+A decision recorded earlier in this build says, plainly: when a released no-show's time has already been sold and somebody tries to put her back on the book, *"the constraint refuses it the moment anything has been sold, and the desk is told so in words."*
+
+It was not. Running that exact scene — a client marked no-show, her remaining time released and sold, and then she walks in after all — produced a raw database error with no handling at all, in the middle of the one workflow whose entire point is that the desk is told what happened.
+
+Two separate causes, and they are two different lessons.
+
+### The database grew an invariant the application could not read
+
+An earlier item had split one constraint into two: chairs may share an *envelope* for the same client, but two *bodies* never share a seat. That change threaded the migration, both database triggers and every write path.
+
+It did not thread the code that turns a database refusal into a sentence. That code held a list of constraint names it recognised. The list had two entries; the database had three.
+
+Nine items shipped in that state — and the reason they did is the more useful half of the story. The one test that touched the new constraint asserted the **raw error text**. It passed. It proved the database refused. It could not prove anybody was ever told, because it was written from outside the bug rather than from inside the workflow.
+
+This project already had the right shape of test for this, one axis over: a test that reads the *live* constraint definition out of Postgres and compares it against the list in the code, so that adding a status without updating the code fails immediately. Constraint **names** now have the same test — set equality against everything Postgres actually holds, so both a constraint the code has never heard of and a name that no longer exists are failures.
+
+### The same violation, deferred, is a different error entirely
+
+The second cause is the kind of thing you only find by provoking it.
+
+One operation in this codebase — moving a whole column of appointments when a stylist is running late — asks Postgres to defer its overlap checks to the end of the transaction, because rearranging four appointments necessarily passes through states where two of them overlap. That is legitimate and the checks still run; they just run at commit.
+
+A violation raised at commit comes back as a **different object**, and the difference is not cosmetic. The ordinary form carries the SQL error code `23P01`. The deferred form, on its way out of the database connector, loses the code entirely: no error code, and no `23P01` anywhere in the message. Only the constraint name survives.
+
+The code required the error code *and* the name. So the catch clause guarding the column push had never fired once — not in any test, not in any run. The mapping it was there to perform had never worked.
+
+Three shapes, verified against a live database and now written into the file's header, because this is exactly the sort of fact that is expensive to re-derive and invisible until a real workflow crashes:
+
+| how it arrived | error code | `23P01` in the message |
+|---|---|---|
+| straight from the Postgres driver | `23P01` | no |
+| through the ORM, checked immediately | `P2010` | yes |
+| **through the ORM, checked at commit** | **none** | **no** |
+
+The check now matches on the constraint name alone. The list of names is exhaustive and every member means the same thing — *somebody just took that time* — so the name is sufficient evidence, and demanding an error code that one shape does not carry is what kept the path dark.
+
+### One list, and a test that catches the next one
+
+The names now live in one place, and the column push reads that same list when it asks for deferral rather than repeating the three names itself. Adding a fourth constraint is one edit, in the file that owns them, and it is no longer possible to defer a constraint without also being able to explain it.
+
+### Proving it from the failing side
+
+Every test added here was checked by breaking the fix and confirming it fails.
+
+The most interesting one is the fixture. To reach the *body* constraint specifically, the freed time has to be sold to a **different stylist** for the **same client** — because the envelope constraint deliberately permits one client's overlapping envelopes, leaving the body as the only thing that can refuse. Sell it to a stranger instead and a different constraint fires first, one the code already recognised.
+
+That is how the gap survived nine items: every existing test took the path that already worked.

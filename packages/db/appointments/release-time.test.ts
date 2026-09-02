@@ -481,6 +481,65 @@ describe('the chair it gives back (A-074, RES-02)', () => {
 
     expect((await holdOf(appointment.id)).bodyEnd).toEqual(at('2026-06-09T11:30:00-05:00'));
   });
+
+  /**
+   * A-078 — D-45's SCENE, THE HALF NOBODY HAD RUN.
+   *
+   * The two refusal tests further down sell the tail to DANA, so the PROVIDER
+   * constraint refuses and the desk gets its sentence. Sell it to PRIYA in a
+   * one-chair room and Dana's own column is untouched: the only thing that can
+   * refuse is `appointment_resource_body_no_overlap`, which A-063 added to the
+   * database and never added to `errors.ts`. Both paths therefore reached the
+   * desk as `PrismaClientUnknownRequestError` — a stack trace where D-45
+   * promised words — and nine items went by, because the only test that
+   * touched that constraint asserted the RAW error string.
+   *
+   * A one-chair room is the only size that can fail (CLAUDE.md).
+   */
+  const priyaTakesTheChair = async () =>
+    bookAppointment(prisma, {
+      businessId,
+      providerId: priyaId,
+      serviceIds: [cutId],
+      // HER OWN client id, not a stranger's. That is what isolates the BODY
+      // constraint: A-063's envelope constraint carries `holderKey WITH <>`, so
+      // one holder's overlapping envelopes are permitted and the only thing
+      // left to refuse two people in one seat is the body. A walk-in stranger
+      // trips the envelope constraint first, which `errors.ts` already knew —
+      // which is exactly how the gap survived nine items.
+      clientId,
+      startAt: at('2026-06-09T10:30:00-05:00'),
+      now: GAVE_UP,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+
+  it('tells the desk in WORDS when only the CHAIR refuses the un-release', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+    await priyaTakesTheChair();
+
+    await expect(
+      unreleaseNoShowTime(prisma, { businessId, appointmentId: appointment.id, actor: STAFF }),
+    ).rejects.toBeInstanceOf(SlotTaken);
+    expect((await rowOf(appointment.id)).releasedAt).toEqual(GAVE_UP);
+  });
+
+  it('gives the APPT-06 correction behind it the same words', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+    await priyaTakesTheChair();
+
+    await expect(
+      transitionAppointment(prisma, {
+        appointmentId: appointment.id,
+        to: 'completed',
+        now: at('2026-06-09T12:00:00-05:00'),
+        actor: STAFF,
+        reason: 'she was here, marked wrong',
+      }),
+    ).rejects.toBeInstanceOf(SlotTaken);
+  });
 });
 
 /**

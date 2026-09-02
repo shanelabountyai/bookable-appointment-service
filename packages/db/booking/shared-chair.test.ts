@@ -22,6 +22,7 @@ import { resetDatabase } from '../testing';
 import { seedSetup } from '../settings';
 import { bookAppointment } from './book';
 import { findFreeResource } from './resources';
+import { isSlotTakenError } from '../errors';
 
 const prisma = new PrismaClient();
 const ACTOR = staffActor('staff-1');
@@ -173,13 +174,24 @@ describe('A-063 — the chair follows the client', () => {
     await book('Marcus', 'Cut', '2026-06-13T13:00:00-05:00', shared.id);
 
     const [a, b] = await holdsOver('2026-06-13T13:00:00-05:00', '2026-06-13T13:45:00-05:00');
-    await expect(
-      prisma.$executeRawUnsafe(
+    let caught: unknown;
+    try {
+      await prisma.$executeRawUnsafe(
         'UPDATE "AppointmentResourceHold" SET "resourceId" = $1 WHERE "id" = $2',
         a!.resourceId,
         b!.id,
-      ),
-    ).rejects.toThrow(/23P01|appointment_resource_body_no_overlap/);
+      );
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeDefined();
+    // A-078. This asserted the RAW error string — `/23P01|appointment_resource_
+    // body_no_overlap/` — and that is why nine items went by with `errors.ts`
+    // not knowing this constraint existed at all. An assertion written from the
+    // OUTSIDE of a bug proves the database refused; it cannot prove the desk was
+    // told. What the desk actually meets is the MAPPING, so that is what this
+    // asserts now.
+    expect(isSlotTakenError(caught)).toBe(true);
   });
 
   it('nobody named is nobody shared — two anonymous walk-ins take two chairs', async () => {

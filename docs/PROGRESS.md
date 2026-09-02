@@ -2171,3 +2171,29 @@ Two failures, one column, and the second half of the same finding A-074 fixed. A
 **Tests:** 20 unit and 4 e2e. The unit tests are mostly about which rows belong — all four non-terminal statuses in, all four terminal ones out, a visit still running excluded, the lookback, the departed provider, business scoping, and the count agreeing with the list because the badge is what makes it findable. Then D-46's half: one tap from `booked` and from `confirmed`, **no invented arrival or finish time**, the ordinary till tap still stamping because she WAS seen, the `after-start` refusal, and an ordinary event recording who closed it. The e2e walks it from the day grid's badge through both answers and asserts the tab is absent at zero.
 
 **Left behind:** no bulk close-out. The row scoped one, per D-26/D-39's arithmetic, and two taps per row on a list that is usually single digits did not earn the partial-failure surface a bulk action needs — the reviewer's own framing was eleven rows, not a hundred. If a real book grows one, `listUnfinished` already returns everything a bulk action would need.
+
+---
+
+## A-078 — the error mapper knew two constraint names and one error shape; the database had three and two
+
+**Commit:** _(recorded in the follow-up commit)_
+
+**D-45 says it in the decision log: "the constraint refuses it the moment anything has been sold, and the desk is told so IN WORDS."** It was not. Run D-45's own scene — Ada's no-show released at 10:20, she walks in after all, Priya squeezes her into the one chair at 10:30 — and both the un-release (`release-time.ts:261`) and the APPT-06 correction behind it (`transition.ts:134`) returned a `PrismaClientUnknownRequestError` with the raw text `exclusion constraint "appointment_resource_body_no_overlap"`. Two independent causes, both in `errors.ts`.
+
+**(a) THE DATABASE CAN GROW AN INVARIANT THE APPLICATION CANNOT READ.** `OURS` was a two-element array built from two module-level consts. A-063 added a THIRD exclusion constraint — the chair BODY — and told the migration, both triggers and the push's deferral list, but not the mapper. Confirmed against `pg_constraint`: three constraints, two known. Nine items shipped in between, and the reason they did is the second half of the finding: **the only test that touched that constraint asserted the RAW error** (`shared-chair.test.ts:182`, `rejects.toThrow(/23P01|appointment_resource_body_no_overlap/)`). An assertion written from the OUTSIDE of a bug proves the database refused. It cannot prove the desk was told. This is the Phase 8 process note — *a narrower list is a new fact* — one axis over: constraint NAMES needed the same live-SQL test the status predicate has had since A-003.
+
+**(b) A DEFERRED VIOLATION IS A DIFFERENT ERROR SHAPE WITH NO SQLSTATE AT ALL.** Verified against Prisma 6.19 + PG17, three shapes now written into the file's header:
+
+| driver / timing | class | `code` | `constraint` | `23P01` in message |
+|---|---|---|---|---|
+| node-postgres | driver error | `23P01` | the name | no |
+| Prisma, immediate | `PrismaClientKnownRequestError` | `P2010` | — | yes |
+| **Prisma, deferred (at COMMIT)** | `PrismaClientUnknownRequestError` | **none** | — | **no** |
+
+The string branch required `message.includes('23P01')` **and** a name. A COMMIT-time violation loses the SQLSTATE on its way out of the connector, so only the NAME survives — and `push-column.ts:558` is the only place in this codebase that defers. **`push-column.ts:677`'s catch had therefore never once fired, and A-034's mapping had never worked.** Eight call sites share that helper, including `reassign.ts:155`, the sick-stylist bulk move.
+
+**What it built.** One exported `OUR_EXCLUSION_CONSTRAINTS` in the module that owns the mapping, and the push's `SET CONSTRAINTS … DEFERRED` now loops over it rather than keeping a third copy of the names — a fourth constraint is one edit, in the file that owns them, and it cannot be deferred without also being mapped. The message check accepts **the constraint name alone**: a name of ours is sufficient evidence, the list is exhaustive, every member is an overlap refusal, and requiring a SQLSTATE is exactly what kept the deferred path dark.
+
+**Tests: 5, and each one was mutation-checked against the bug it exists for.** (1) The live-SQL guard — `pg_constraint` where `contype='x'` compared for **set equality** against the list, so a constraint the mapper does not know and a name that no longer exists are both failures; drop the third name and it fails. (2) The Prisma DEFERRED shape provoked for real inside `SET CONSTRAINTS … DEFERRED`, asserting `code` is undefined and the message does **not** contain `23P01` before asserting the mapping holds — the two negatives are there so a future tidy-up that reinstates the SQLSTATE guard breaks; reinstate it and it fails. (3–4) D-45's scene with the tail sold to **PRIYA** rather than Dana, which is what isolates the body constraint: A-063's envelope constraint carries `holderKey WITH <>`, so booking **her own** client id makes the envelope permit and leaves the body as the only refusal. A stranger trips the envelope constraint first — already mapped — which is precisely how the gap survived nine items. Both paths now assert `SlotTaken`; drop the third name and both fail. (5) `shared-chair.test.ts` stops asserting the raw string and asserts the mapped error, which is what the desk actually meets.
+
+**Left behind:** nothing. The three-shape table is in the header of `errors.ts` because the deferred shape is the kind of fact that is expensive to re-derive and invisible until a workflow crashes.
