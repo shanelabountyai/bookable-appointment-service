@@ -2054,7 +2054,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-073 — nothing listed the clients who had stopped coming
 
-**Commit:** `TBD`
+**Commit:** `bbaca88`
 
 **The gap.** Tuesday is at 45% and the owner has no list to ring: three hundred clients, eighty of them on a six-week cycle who have not been in for fourteen weeks, and the only way to find them was to read the client list one record at a time. A-040 fixed the other half of this — rebooking at the checkout — and this was the largest untapped lever left. Verified: `packages/db/reports/` held `dashboard.ts` and `overruled.ts` and nothing else; `clientHistory` is per client and there was no cross-client recency query anywhere.
 
