@@ -2008,7 +2008,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-071 — "anyone at two" lost the race and offered an override instead of the next free stylist
 
-**Commit:** `TBD`
+**Commit:** `2600d8e`
 
 **The defect.** The client had no preference; the row said 14:00, Dana, 3 free. The desk takes a phone call, comes back, submits — and the public flow has taken Dana in between. The panel said *"That time is not free"* and offered **an override that would knowingly double-book Dana**, while Priya and Marcus were both free at two o'clock. So the desk either takes the override (wrong, and it is how the marker D-8 rests on stops meaning anything) or starts the search again with the client on the phone — and **the whole premise of A-056, that at two o'clock the stylists are interchangeable, is thrown away at the last step.** Verified: `staff-actions.ts:262-281` returned `canOverride: true` with `refusedReasons: ['overlaps-booking']` on every path; nothing distinguished the anyone path and nothing re-asked `anyProviderTimes`. Checkpoint 5 did not walk this seam.
 
