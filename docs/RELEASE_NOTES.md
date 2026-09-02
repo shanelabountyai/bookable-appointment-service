@@ -2150,3 +2150,51 @@ The four answers carried over without a single change, which is the best evidenc
 One of them checks that a member of staff who is not the owner cannot see this list. The first version of that test seeded no data — so "her name is not on the page" would have passed for an empty list exactly as readily as for a proper refusal. A test that cannot fail is worse than no test, because it is counted.
 
 It now puts a client on the list, confirms the owner can see her, downgrades the account, and confirms she is gone.
+
+## The empty chair the room refused to sell
+
+A client does not turn up for a ten o'clock colour. At twenty past, the desk gives up, marks her a no-show, and — using the feature built earlier the same day — puts the remaining seventy minutes back on the market.
+
+The day view immediately shows a bookable gap where the rest of her appointment was. That is correct, and it is what the feature is for.
+
+A walk-in comes in at half past. The desk taps the gap and the system says:
+
+> **Every chair is taken for that time.**
+
+There is one chair. Nobody is in it.
+
+### Two names for one fact
+
+The room in this product is modelled twice, deliberately. Each appointment holds a chair for its **envelope** — the service plus the clean-down either side — and separately for its **body**, the time somebody is physically sitting in it. Two clients can share an envelope (your clean-down overlapping the next person's set-up), and never a body.
+
+Releasing the no-show's time cut the envelope. It did not cut the body. So the database still believed a woman who never arrived was sitting in that chair until half past eleven — while every screen, correctly, showed the time as free.
+
+That is the worst shape a scheduling bug can take. Not a refusal, which a person can work around. **An offer, followed by a refusal**, on a chair the desk can see is empty. The only route through is the deliberate override — the one reserved for knowingly double-booking somebody — and using it on genuinely empty time is exactly how that marker stops meaning anything. Which is the harm the release feature was built to prevent in the first place.
+
+### The comment that was half true
+
+The release code said this about itself, in its own header:
+
+> *"the exclusion constraint, the busy set, **the chair holds** and the engine all read the ranges the trigger writes, so every one of them follows without knowing this file exists."*
+
+Three of those four are right. The chair holds are half right, and the half that is wrong is the one enforced by a constraint added three days earlier.
+
+The general lesson is worth more than the fix, and it is now a written rule in this codebase:
+
+> When a new column changes what a range **means**, the things to go looking for are not the readers of that column. They are the things that keep **the same fact under a different name.**
+
+"Where the envelope ends" and "where the body ends" are the same fact — the moment she stops being in the chair. Only one of them was told.
+
+Applying that rule properly turned up one more site: the code that re-picks a chair when a client's identity is corrected on an appointment. That path is deliberately allowed on a no-show, and it was asking the room a *stricter* question than the room actually enforces — which does not double-book anybody, but does refuse chairs that are genuinely free.
+
+### The fixture that could not fail
+
+The underlying cause was simpler than any of that. The release feature's test file **created no chairs at all** — no room, no chair type, no requirement that any service needs one. An item that changes who occupies what, in a product where occupancy is enforced by two database constraints, was tested with the room switched off.
+
+The test now uses a **one-chair** room, and the size is the point: with two chairs the walk-in simply takes the other one and the bug is invisible. One chair is the only room that can fail.
+
+### Proved from both sides
+
+A regression test that has never seen the bug is a test nobody should trust. So the old, broken database trigger was put back by hand and the new tests run against it. Both failed, with the exact error from the salon floor: *Every chair is taken for that time.*
+
+The other two tests — that the twenty minutes she *did* occupy is still refused to anybody else, and that correcting her back restores the whole booking — pass against the broken code too. That is deliberate. Their job is not to catch this bug; it is to catch an over-enthusiastic fix that frees time she genuinely had.

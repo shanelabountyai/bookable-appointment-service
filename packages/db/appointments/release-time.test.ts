@@ -38,6 +38,7 @@ const GAVE_UP = at('2026-06-09T10:20:00-05:00');
 
 let businessId: string;
 let danaId: string;
+let priyaId: string;
 let colourId: string;
 let cutId: string;
 let clientId: string;
@@ -63,6 +64,10 @@ beforeEach(async () => {
   });
   businessId = business.id;
   danaId = (await prisma.provider.create({ data: { businessId, displayName: 'Dana' } })).id;
+  // A-074's mirror test needs a SECOND stylist: the time she did occupy has to
+  // be refused by the ROOM, and asking on Dana's own column would be refused by
+  // the provider axis for the wrong reason.
+  priyaId = (await prisma.provider.create({ data: { businessId, displayName: 'Priya', displayOrder: 1 } })).id;
 
   // UNEQUAL BUFFERS (CLAUDE.md): the release cuts at an instant, and a test
   // where both buffers are the same cannot tell whose was dropped.
@@ -91,7 +96,9 @@ beforeEach(async () => {
     })
   ).id;
   await prisma.serviceProvider.createMany({
-    data: [colourId, cutId].map((serviceId) => ({ businessId, serviceId, providerId: danaId })),
+    data: [danaId, priyaId].flatMap((providerId) =>
+      [colourId, cutId].map((serviceId) => ({ businessId, serviceId, providerId })),
+    ),
   });
   clientId = (await prisma.client.create({ data: { businessId, name: 'Ada Chen', phone: '5125550101' } })).id;
 
@@ -100,11 +107,13 @@ beforeEach(async () => {
     { businessId, providerId: null, weekday: 2, open: '09:00', close: '18:00', endsNextDay: false },
     STAFF_WINDOW,
   );
-  await createWeeklyWindow(
-    prisma,
-    { businessId, providerId: danaId, weekday: 2, open: '09:00', close: '18:00', endsNextDay: false },
-    STAFF_WINDOW,
-  );
+  for (const providerId of [danaId, priyaId]) {
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId, weekday: 2, open: '09:00', close: '18:00', endsNextDay: false },
+      STAFF_WINDOW,
+    );
+  }
 });
 
 /** Her colour: body 10:00–11:30, envelope 09:50–11:50. */
@@ -363,5 +372,111 @@ describe('correcting her back (APPT-06)', () => {
     expect(refusal).toBeInstanceOf(Error);
     expect(refusal).not.toBeInstanceOf(TransitionRefused);
     expect((await rowOf(appointment.id)).status).toBe('no_show');
+  });
+});
+
+/**
+ * A-074 — THE CHAIR, which A-069 shipped without a fixture for at all.
+ *
+ * This file created no `ResourceType`, no `Resource` and no
+ * `requiredResourceTypeId`, so the entire release item was tested with the room
+ * switched off — and the room is enforced by TWO exclusion constraints, one of
+ * which (`appointment_resource_body_no_overlap`) is unconditional on the
+ * holder. A-069 told the two triggers that write the blocked range and not the
+ * one that writes the chair's BODY, so the grid offered the freed tail and the
+ * room refused it: `NoResourceFree` on a chair with nobody in it, which is
+ * A-063's stated harm word for word.
+ *
+ * ONE CHAIR IS THE ONLY SIZE THAT CAN FAIL. With two, the walk-in simply takes
+ * the other one and the bug is invisible — which is exactly how a fixture
+ * passes while the salon cannot sell the slot.
+ */
+describe('the chair it gives back (A-074, RES-02)', () => {
+  let chairId: string;
+
+  beforeEach(async () => {
+    const type = await prisma.resourceType.create({ data: { businessId, name: 'Chair' } });
+    chairId = (await prisma.resource.create({ data: { businessId, resourceTypeId: type.id, name: 'Chair 1' } })).id;
+    await prisma.service.updateMany({ where: { businessId }, data: { requiredResourceTypeId: type.id } });
+  });
+
+  const holdOf = (appointmentId: string) =>
+    prisma.appointmentResourceHold.findFirstOrThrow({ where: { appointmentId } });
+
+  it('cuts the chair BODY at the release, not only the envelope', async () => {
+    const appointment = await noShow();
+    expect((await holdOf(appointment.id)).bodyEnd).toEqual(at('2026-06-09T11:30:00-05:00'));
+
+    await release(appointment.id);
+
+    const hold = await holdOf(appointment.id);
+    // The envelope followed on its own — the trigger copies it off the row.
+    expect(hold.blockedEnd).toEqual(GAVE_UP);
+    // The body did NOT, until A-074. `blockedEnd` and `bodyEnd` are the same
+    // fact under two names, and only one of them was told.
+    expect(hold.bodyEnd).toEqual(GAVE_UP);
+    expect(hold.resourceId).toBe(chairId);
+  });
+
+  /** THE DEFECT, end to end, on the one-chair room that is the only fixture
+   *  that can fail. The day grid paints this slot as bookable because gaps
+   *  derive from the busy set; before A-074 the room then refused it. */
+  it('sells the released tail to a walk-in, on the only chair in the room', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+
+    const walkIn = await bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: [cutId],
+      clientId: null,
+      startAt: at('2026-06-09T10:30:00-05:00'),
+      now: GAVE_UP,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+
+    // The same chair she stopped sitting in, and NOT an override — the whole
+    // point of A-069 was that this needs no BOOK-05 marker.
+    expect((await holdOf(walkIn.id)).resourceId).toBe(chairId);
+    expect((await rowOf(walkIn.id)).isOverride).toBe(false);
+  });
+
+  /** The mirror, so the fix cannot overshoot: the twenty minutes she DID hold
+   *  is still hers, and the room still says so. */
+  it('still refuses a body over the time she actually occupied', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+
+    await expect(
+      bookAppointment(prisma, {
+        businessId,
+        providerId: priyaId,
+        serviceIds: [cutId],
+        clientId: null,
+        startAt: TEN_AM,
+        now: NOW,
+        actor: STAFF,
+        audience: 'staff',
+      } as Parameters<typeof bookAppointment>[1]),
+    ).rejects.toThrow();
+  });
+
+  /** Correcting her back restores the whole body, by the same status guard the
+   *  blocked range uses — so no transition path has to remember, and the
+   *  constraint is what refuses if the time has since been sold. */
+  it('restores the body when she is corrected off no_show', async () => {
+    const appointment = await noShow();
+    await release(appointment.id);
+
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'completed',
+      now: at('2026-06-09T12:00:00-05:00'),
+      actor: STAFF,
+      reason: 'she was here, marked wrong',
+    });
+
+    expect((await holdOf(appointment.id)).bodyEnd).toEqual(at('2026-06-09T11:30:00-05:00'));
   });
 });

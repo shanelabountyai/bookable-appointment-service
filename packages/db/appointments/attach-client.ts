@@ -128,6 +128,11 @@ export async function setAppointmentClient(
         blockedStart: true,
         blockedEnd: true,
         resourceId: true,
+        // A-074. A released no-show stops holding its chair at the release, so
+        // the chair CHOOSER has to ask the same question the constraint does —
+        // and A-068 is the one path that re-chairs a `no_show`, because it is
+        // deliberately allowed from every status.
+        releasedAt: true,
         client: { select: { id: true, name: true } },
         // Only ever read on the refusal path, to name the room in the sentence
         // a human gets ("Every chair is taken for that time").
@@ -234,6 +239,7 @@ async function rechair(
     endAt: Date;
     blockedStart: Date;
     blockedEnd: Date;
+    releasedAt: Date | null;
     status: string;
     lines: { serviceId: string }[];
   },
@@ -252,6 +258,13 @@ async function rechair(
   // exact double-hold A-063 exists to prevent, arriving through the door this
   // file opens. So the chair her OTHER visit holds wins over the one this
   // visit is in, and only when she holds none does it keep what it had.
+  // A-074. THE BODY THE CONSTRAINT WILL SEE, not the body the row was booked
+  // with. A released no-show stops occupying its chair at `releasedAt`, and a
+  // chooser asking the stricter question would refuse chairs that are genuinely
+  // free — the failure mode `findFreeResource`'s own header warns about.
+  const bodyEnd =
+    appointment.status === 'no_show' && appointment.releasedAt ? appointment.releasedAt : appointment.endAt;
+
   const shared = await chairHeldByHolder(tx, {
     businessId: appointment.businessId,
     appointmentId: appointment.id,
@@ -260,7 +273,7 @@ async function rechair(
     start: appointment.blockedStart,
     end: appointment.blockedEnd,
     bodyStart: appointment.startAt,
-    bodyEnd: appointment.endAt,
+    bodyEnd,
   });
 
   const resourceId = await chairForMove(tx, {
@@ -269,7 +282,7 @@ async function rechair(
     resourceId: shared ?? appointment.resourceId,
     start: appointment.blockedStart,
     end: appointment.blockedEnd,
-    holder: { key: holderKey, bodyStart: appointment.startAt, bodyEnd: appointment.endAt },
+    holder: { key: holderKey, bodyStart: appointment.startAt, bodyEnd },
   });
   if (resourceId === null) {
     // Detaching split a shared chair and there is no second one free. A
