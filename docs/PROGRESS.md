@@ -2104,7 +2104,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-075 — the paths that MOVE an appointment had never heard of `releasedAt`
 
-**Commit:** `TBD`
+**Commit:** `44ab219`
 
 Two failures, one column, and the second half of the same finding A-074 fixed. A-069 added a cut and told the readers; these are the WRITERS, and neither of them knew the column existed.
 
