@@ -2080,7 +2080,7 @@ The fix is the honest product behaviour rather than a probe workaround: `salon()
 
 ## A-074 — a released no-show still held its chair, and the room said the chair was free
 
-**Commit:** `TBD`
+**Commit:** `4f4e34d`
 
 **This is a correction to A-069, shipped the same day.** Its header comment listed the readers that follow a release "for free" and named *the chair holds* among them. The chair hold's ENVELOPE follows, because the trigger copies `blockedStart`/`blockedEnd` straight off the row. Its **BODY does not**: `bodyStart`/`bodyEnd` are written from `startAt`/`endAt`, which the release deliberately never moves — and A-063's `appointment_resource_body_no_overlap` is unconditional on the holder. A-069's PROGRESS entry repeated the claim. Both were wrong, and this row is their correction.
 
