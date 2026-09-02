@@ -9,8 +9,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
-import { instantFromIso, toDate } from '../../core/time';
+import { calendarDay, daysBetween, fromDate, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
 import { computeDaySlots } from '../scheduling';
+import { countUnfinished, listOpenedSlots, listUnfinished } from '../appointments';
 import { DEMO_WEEK, FALL_BACK_DAY, SPRING_FORWARD_DAY, seedDensity } from './density-seed';
 import { seedSetup } from './setup-seed';
 
@@ -27,11 +28,24 @@ const prisma = new PrismaClient();
 const SEED_TIMEOUT = 120_000;
 let shared: Awaited<ReturnType<typeof seedDensity>>;
 
+/**
+ * A-081 — the seed's `now`, FROZEN, for the same reason every engine test
+ * freezes one. Half of what `seedDensity` produces is anchored to it, so a test
+ * reading the real clock would assert against a book that is a different shape
+ * every day it runs — and, twice a year, a different shape on the same day.
+ *
+ * A Wednesday afternoon: `today` is a day the salon opens, and 15:30 leaves
+ * real past rows behind it and real future rows ahead of it, which is what the
+ * unfinished list and the opened-up list respectively need to be non-empty.
+ * Deliberately twelve weeks past `SEED_ANCHOR_DAY` — that gap IS the defect.
+ */
+const SEED_NOW = toDate(instantFromIso('2026-09-02T15:30:00-05:00'));
+
 beforeAll(async () => {
   await prisma.$connect();
   await resetDatabase(prisma);
   await seedSetup(prisma);
-  shared = await seedDensity(prisma);
+  shared = await seedDensity(prisma, { now: SEED_NOW });
 }, SEED_TIMEOUT);
 
 afterAll(async () => {
@@ -161,7 +175,7 @@ describe('determinism and safety', () => {
       const run = async () => {
         await resetDatabase(prisma);
         await seedSetup(prisma);
-        const result = await seedDensity(prisma, { randomSeed: 12345 });
+        const result = await seedDensity(prisma, { randomSeed: 12345, now: SEED_NOW });
         const rows = await prisma.appointment.findMany({
           orderBy: [{ startAt: 'asc' }, { providerId: 'asc' }],
           select: { startAt: true, startDay: true, provider: { select: { displayName: true } } },
@@ -190,6 +204,86 @@ describe('determinism and safety', () => {
     });
     expect(grouped.length).toBeGreaterThan(0);
     expect(Math.max(...grouped.map((g) => g._count._all))).toBeGreaterThanOrEqual(3);
+  });
+
+  /**
+   * A-081 — THE ASSERTIONS THAT WOULD HAVE CAUGHT THE DARK DEMO.
+   *
+   * Every one of these passed vacuously before this item, because the surfaces
+   * they name were all built AFTER the fixed book they read from, and none of
+   * them had a test that ran against the seed at all. Measured on the real
+   * thing twelve weeks after `SEED_ANCHOR_DAY`: `unfinished 0, opened up 0, on
+   * today's book 0` against 227 seeded appointments and 176 rows past and still
+   * open. Counting appointments cannot see this — the book was full, it was
+   * simply full in June.
+   *
+   * So these assert what the SCREENS say, not what the tables hold. The e2e
+   * suite structurally cannot: `e2e/fixtures.ts` TRUNCATEs and seeds its own
+   * rows before every spec, so a feature dormant on a fresh install is dormant
+   * in e2e too (CLAUDE.md).
+   */
+  describe('A-081 — the moving book', () => {
+    it('leaves rows on today\'s book', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const today = toLabel(fromDate(SEED_NOW), zoneId(business.timezone)).day;
+      const onToday = await prisma.appointment.count({
+        where: { businessId: business.id, startDay: today },
+      });
+      expect(onToday).toBeGreaterThan(0);
+    });
+
+    it('leaves past appointments nobody closed, for /staff/unfinished', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const count = await countUnfinished(prisma, { businessId: business.id, now: SEED_NOW });
+      expect(count).toBeGreaterThan(0);
+      expect(shared.leftUnfinished).toBeGreaterThan(0);
+
+      // UNEVENLY, which is the fixture. A-076's screen is worth building only
+      // because "she was seen to arrive" and "she never checked in" are
+      // different answers and the desk has to say which — a seed that left
+      // every open row on the same status demonstrates neither.
+      const rows = await listUnfinished(prisma, { businessId: business.id, now: SEED_NOW });
+      expect(new Set(rows.map((row) => row.status)).size).toBeGreaterThan(1);
+    });
+
+    it('leaves future time that has just been freed, for /staff/opened', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const opened = await listOpenedSlots(prisma, { businessId: business.id, now: SEED_NOW });
+      expect(opened.length).toBeGreaterThan(0);
+    });
+
+    it('cuts a no-show\'s range rather than freeing it (A-069)', async () => {
+      const released = await prisma.appointment.findFirst({
+        where: { status: 'no_show', releasedAt: { not: null } },
+        select: { startAt: true, endAt: true, releasedAt: true, blockedEnd: true },
+      });
+      expect(released).not.toBeNull();
+      // The CUT, which is the whole mechanism: the chair is let go of at
+      // `releasedAt`, not at `endAt`, and the trigger — not the seed — is what
+      // wrote that.
+      expect(released!.blockedEnd.toISOString()).toBe(released!.releasedAt!.toISOString());
+      expect(released!.releasedAt!.getTime()).toBeGreaterThan(released!.startAt.getTime());
+      expect(released!.releasedAt!.getTime()).toBeLessThan(released!.endAt.getTime());
+    });
+
+    /**
+     * THE TWO BOOKS DO NOT TOUCH. The moving window is nineteen days wide and
+     * `SEED_ANCHOR_DAY` is a constant, so nothing stops them colliding on some
+     * future September — and a collision is not a crash, it is A-024's exact
+     * utilization constant quietly measuring extra appointments. The margin is
+     * ±3 days because that assertion is over DEMO_WEEK's whole ISO WEEK, not
+     * over its five open days.
+     */
+    it('never lands on the fixed fixtures', () => {
+      for (const fixed of [...DEMO_WEEK, SPRING_FORWARD_DAY, FALL_BACK_DAY]) {
+        for (const day of shared.recentDays) {
+          expect(Math.abs(daysBetween(calendarDay(day), calendarDay(fixed)))).toBeGreaterThan(3);
+        }
+      }
+      // And it did not skip everything: a window that reserved its way to
+      // nothing would make every assertion above pass on an empty set.
+      expect(shared.recentDays.length).toBeGreaterThan(10);
+    });
   });
 
   // D-17: a household shares a phone number, and they must remain SEPARATE

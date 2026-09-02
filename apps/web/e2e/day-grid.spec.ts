@@ -382,15 +382,16 @@ test.describe('the note about today (A-070)', () => {
  */
 test.describe('what is still open (A-076)', () => {
   /** An appointment that has been and gone with nobody having said what
-   *  happened. Yesterday, so it is comfortably past and inside the lookback. */
-  async function unclosed(name: string, status = 'booked') {
+   *  happened. Yesterday by default, so it is comfortably past and inside the
+   *  lookback; `minutesAgo` puts one deliberately OUTSIDE it (A-081). */
+  async function unclosed(name: string, status = 'booked', minutesAgo = 24 * 60) {
     const prisma = new PrismaClient();
     try {
       const business = await prisma.business.findFirstOrThrow();
       const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
       const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
       const client = await prisma.client.create({ data: { businessId: business.id, name, phone: '5125550177' } });
-      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - 24 * 60) * 60_000));
+      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - minutesAgo) * 60_000));
       const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
       return await prisma.appointment.create({
         data: {
@@ -464,6 +465,38 @@ test.describe('what is still open (A-076)', () => {
   test('the tab is not there when nothing is open', async ({ page }) => {
     await page.goto(`/staff/day?day=${DAY}`);
 
+    await expect(page.getByRole('link', { name: /Still open/ })).toHaveCount(0);
+  });
+
+  /**
+   * A-081 / D-48 — THE DOOR THAT USED TO LOCK ITSELF.
+   *
+   * 21 days was the right default and the wrong ceiling: past it a row could
+   * never be closed, so `dashboard.ts`, `lapsed.ts` and `reliability.ts` stayed
+   * permanently wrong about it and D-46's whole argument — the reports get
+   * right because the desk can tell them the truth — had no door left. The
+   * BADGE deliberately does not widen with the box: the badge is tonight's
+   * errand, the box is the backlog behind it, and asserting both here is what
+   * stops a later "make them consistent" tidy-up from undoing the decision.
+   */
+  test('widens past the default window, and the badge does not follow', async ({ page }) => {
+    await unclosed('Winnie Winter', 'booked', 40 * 24 * 60);
+
+    await page.goto('/staff/unfinished');
+    await expect(
+      page.getByText('Nothing left open — every appointment that has been and gone has an answer against it.'),
+    ).toBeVisible();
+
+    await page.getByLabel('Going back (days)').fill('60');
+    await page.getByRole('button', { name: 'Show' }).click();
+
+    await expect(page).toHaveURL(/days=60/);
+    await expect(page.getByRole('link', { name: 'Winnie Winter' })).toBeVisible();
+    await expect(page.getByText('Showing the last 60 days.')).toBeVisible();
+
+    // The badge stays on the 21-day errand — a forty-day-old row is not a thing
+    // the desk is closing out tonight.
+    await page.goto(`/staff/day?day=${DAY}`);
     await expect(page.getByRole('link', { name: /Still open/ })).toHaveCount(0);
   });
 

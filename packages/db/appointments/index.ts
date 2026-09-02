@@ -16,7 +16,9 @@ export {
 export { FREED_LOOKBACK_DAYS, type OpenedSlot, listOpenedSlots } from './opened';
 export {
   UNFINISHED_LOOKBACK_DAYS,
+  UNFINISHED_MAX_LOOKBACK_DAYS,
   type UnfinishedAppointment,
+  clampLookbackDays,
   countUnfinished,
   listUnfinished,
 } from './unfinished';

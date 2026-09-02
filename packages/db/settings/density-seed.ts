@@ -1,15 +1,27 @@
 /**
  * THE DENSITY SEED (A-011, §9). Appointments on top of A-025's setup seed.
  *
- * ANCHORED TO FIXED DATE CONSTANTS, never to `now` (CLAUDE.md). A seed
- * anchored to the current date makes the DST fixtures exist in March and
+ * TWO BOOKS, TWO ANCHORS, and the distinction is the whole of A-081.
+ *
+ * The FIXED book is anchored to date constants, never to `now` (CLAUDE.md): a
+ * seed anchored to the current date makes the DST fixtures exist in March and
  * vanish in July with nothing failing — the demo silently loses the two days
  * the whole project is about, and no test goes red to say so.
  *
- * DETERMINISTIC. The only randomness is a seeded PRNG, so the same command
- * produces byte-identical data every time: a demo that differs run to run
- * cannot be walked through with anybody, and a "flaky" screenshot test built
- * on it is unfixable.
+ * The MOVING book (A-081, at the bottom of `seedDensity`) is anchored to `now`
+ * on purpose and does not replace it. Every date-relative surface built in
+ * Phases 6-8 renders its empty state once the fixed book is twelve weeks old —
+ * measured, `unfinished 0, opened up 0, on today's book 0` against 227 seeded
+ * appointments — so a fresh install demonstrated none of them. The two do not
+ * interfere: the moving window skips any day near the fixed fixtures.
+ *
+ * DETERMINISTIC GIVEN `randomSeed` AND `now`. The only randomness is a seeded
+ * PRNG, so the same command produces byte-identical data: a demo that differs
+ * run to run cannot be walked through with anybody, and a "flaky" screenshot
+ * test built on it is unfixable. A-081 added `now` to that list rather than
+ * breaking it — the moving book below shifts with the calendar by design, so
+ * any test asserting an exact shape must FREEZE `now`, exactly as every engine
+ * test already does.
  *
  * Booked through the REAL write path (`bookAppointment`), not raw inserts.
  * That is slower and worth it: the seed then proves the booking path,
@@ -18,9 +30,9 @@
  */
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
-import { transitionAppointment } from '../appointments';
+import { releaseNoShowTime, transitionAppointment } from '../appointments';
 import { staffActor } from '../../core/auth';
-import { instantFromIso, toDate } from '../../core/time';
+import { addDays, calendarDay, fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
 import type { PrismaClient } from '../generated/client/index.js';
 import { upsertDateOverride } from '../availability';
 
@@ -33,6 +45,13 @@ export const FALL_BACK_DAY = '2026-11-01';
 
 /** The demo week: Tuesday through Saturday, the days the salon opens. */
 export const DEMO_WEEK = ['2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', '2026-06-13'] as const;
+
+/** A-081 — how far either side of `now` the moving book runs. Nine and nine:
+ *  enough past for a fortnight of unclosed rows (`UNFINISHED_LOOKBACK_DAYS` is
+ *  21) and enough future for `/staff/opened` to have somewhere to sell to
+ *  (`FREED_LOOKBACK_DAYS` is 14). */
+const RECENT_BACK_DAYS = 9;
+const RECENT_FORWARD_DAYS = 9;
 
 const STAFF_STAMP = { createdByActor: 'staff' as const, actorRef: 'seed' };
 
@@ -57,17 +76,29 @@ export interface DensitySeedResult {
   byProvider: Record<string, number>;
   springForwardCount: number;
   fallBackCount: number;
+  /** A-081 — the days of the `now`-anchored book, fixed-fixture collisions
+   *  already removed. A caller (or a test) asserts against these rather than
+   *  recomputing the window and quietly disagreeing about the margin. */
+  recentDays: string[];
+  /** How many recent past appointments were deliberately left open, so a test
+   *  can assert `/staff/unfinished` has something on it rather than trusting
+   *  the modulo. */
+  leftUnfinished: number;
 }
 
 export async function seedDensity(
   prisma: PrismaClient,
-  opts: { randomSeed?: number } = {},
+  opts: { randomSeed?: number; now?: Date } = {},
 ): Promise<DensitySeedResult> {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('seedDensity refuses to run with NODE_ENV=production.');
   }
 
   const random = prng(opts.randomSeed ?? 20260609);
+  // A PARAMETER, defaulted — the moving half of this seed (A-081, below) needs
+  // to know what day it is, and a test that cannot freeze that has no way to
+  // assert the book it produces.
+  const now = opts.now ?? new Date();
   const business = await prisma.business.findFirstOrThrow();
   const providers = await prisma.provider.findMany({
     where: { businessId: business.id, active: true },
@@ -157,13 +188,17 @@ export async function seedDensity(
     const eligible = servicesFor.get(providerId) ?? [];
     if (eligible.length === 0) return 0;
     const serviceId = pick(eligible);
-    const now = toDate(instantFromIso(`${day}T00:00:00-05:00`));
+    // BOOKED AS OF THAT DAY'S MIDNIGHT, not as of the seed's `now`: the write
+    // path refuses a booking in the past, and half of A-081's moving book is
+    // deliberately in it. Named `asOf` rather than `now` since A-081 gave the
+    // seed a real `now` of its own, and the two are different questions.
+    const asOf = toDate(instantFromIso(`${day}T00:00:00-05:00`));
     const { slots } = await computeDaySlots(prisma, {
       businessId: business.id,
       providerId,
       serviceIds: [serviceId],
       day,
-      now,
+      now: asOf,
       audience: 'staff',
     });
     if (slots.length === 0) return 0;
@@ -189,7 +224,7 @@ export async function seedDensity(
           serviceIds: [serviceId],
           clientId: pick(clients).id,
           startAt: toDate(slot.start),
-          now,
+          now: asOf,
           actor: staffActor('seed'),
           audience: 'staff',
           idempotencyKey: `seed:${label}:${providerId}:${slot.start}`,
@@ -289,12 +324,143 @@ export async function seedDensity(
     clients,
   );
 
+  // ── A-081 (D-48) — THE BOOK THAT MOVES ─────────────────────────────────
+  //
+  // Everything above is anchored to fixed constants, and that is correct: a
+  // `now`-anchored seed makes the DST fixtures exist in March and vanish in
+  // July with nothing failing. Twelve weeks past `SEED_ANCHOR_DAY` the same
+  // correctness meant every date-relative surface built in Phases 6-8 rendered
+  // its EMPTY STATE on a freshly seeded database. Measured 2026-09-02 against
+  // 227 seeded appointments: `unfinished 0, opened up 0, on today's book 0`,
+  // with 176 rows past and still open — every one of them out of reach. Nobody
+  // had ever seen `/staff/unfinished`, `/staff/opened` or the day grid on a
+  // full book, and the e2e specs could not say so because `e2e/fixtures.ts`
+  // TRUNCATEs and seeds its own rows. That is CLAUDE.md's "dormant on a fresh
+  // install" trap wearing a demo hat.
+  //
+  // So a SECOND book, anchored to `now`, BESIDE the fixed one rather than
+  // instead of it. The DST days and `DEMO_WEEK` do not move by a day, and any
+  // date this window would land on near them is skipped — with a margin, since
+  // A-024 asserts an exact utilization constant over DEMO_WEEK's whole ISO
+  // WEEK and a Monday or Sunday added to it would be measured too.
+  //
+  // `now` is a parameter (see the top of this function). Nothing here reads the
+  // clock, so a test can freeze the day and assert the book it produces.
+  const zone = zoneId(business.timezone);
+  const today = toLabel(fromDate(now), zone).day;
+  const reserved = new Set<string>();
+  for (const fixed of [...DEMO_WEEK, SPRING_FORWARD_DAY, FALL_BACK_DAY]) {
+    for (let offset = -3; offset <= 3; offset += 1) reserved.add(addDays(calendarDay(fixed), offset));
+  }
+  const recentDays: string[] = [];
+  for (let offset = -RECENT_BACK_DAYS; offset <= RECENT_FORWARD_DAYS; offset += 1) {
+    const day = addDays(today, offset);
+    // Days the salon does not open need no special case: `fill` finds no slots
+    // and returns 0. Only a collision with the fixed fixtures does.
+    if (!reserved.has(day)) recentDays.push(day);
+  }
+
+  for (const day of recentDays) {
+    await fill(dana.id, day, 0.7, 'recent-dana');
+    await fill(priya.id, day, 0.4, 'recent-priya');
+  }
+
+  // WHAT THE DESK ACTUALLY LEFT BEHIND. A real book does not end the week
+  // tidy — A-076's opening paragraph is the whole fixture: check-in gets
+  // tapped because the client is standing there, "complete" gets tapped maybe
+  // two-thirds of the time because at the till you are taking money, rebooking
+  // her and answering the phone. So the past half of this window is closed out
+  // UNEVENLY and on purpose, one in four never checked in and one in four
+  // checked in and never closed.
+  //
+  // Deterministic BY POSITION, never off the PRNG: whether `/staff/unfinished`
+  // has anything on it is the property this fixture exists to guarantee, and a
+  // random mix makes that a different answer every run.
+  const recentPast = await prisma.appointment.findMany({
+    where: { businessId: business.id, startDay: { in: recentDays }, endAt: { lt: now }, status: 'booked' },
+    // `id` as the tiebreak, not decoration: two providers can start at the
+    // same instant, and `findMany` would then order those two however Postgres
+    // felt, which moves the modulo below and changes the fixture.
+    orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+    select: { id: true, startAt: true, endAt: true },
+  });
+  let leftUnfinished = 0;
+  for (const [index, row] of recentPast.entries()) {
+    // The visit's OWN clock, not the seed's. D-47 stamps a timestamp only
+    // while the visit is plausibly still happening, so passing `now` here
+    // would close every seeded visit with three NULL timestamps and give the
+    // appointment panel nothing to render — the seed would be demonstrating
+    // A-080's refusal rather than a salon's day.
+    const stage = index % 4;
+    if (stage === 0) {
+      leftUnfinished += 1; // never checked in
+      continue;
+    }
+    await transitionAppointment(prisma, { appointmentId: row.id, to: 'checked_in', actor: staffActor('seed'), now: row.startAt });
+    if (stage === 1) {
+      leftUnfinished += 1; // she was seen to arrive and nobody closed it
+      continue;
+    }
+    await transitionAppointment(prisma, { appointmentId: row.id, to: 'in_progress', actor: staffActor('seed'), now: row.startAt });
+    await transitionAppointment(prisma, { appointmentId: row.id, to: 'completed', actor: staffActor('seed'), now: row.endAt });
+  }
+
+  // A-043's cancellation and A-069's release, the two things `/staff/opened`
+  // renders — and it too was empty on a fresh install.
+  //
+  // The CANCELLATION goes on a future row, because `listOpenedSlots` sells
+  // FUTURE time: a Tuesday that has already happened is not a phone call.
+  //
+  // The RELEASE goes on today's LAST STARTED row — ordinarily the one still
+  // running — and that is the honest place for it rather than a convenient
+  // one. A-069's scene is a slot that has begun and a client who has not
+  // arrived: she has to be past her start for there to be a no-show at all,
+  // and the tail has to be ahead of `now` for there to be anything left to
+  // sell. Seeded after closing there is no running row and it falls back to
+  // the day's last finished one — still the cut range the day grid needs,
+  // just with nothing left to offer. The cancellation is what keeps
+  // `/staff/opened` non-empty either way.
+  const recentFuture = await prisma.appointment.findMany({
+    where: { businessId: business.id, startDay: { in: recentDays }, startAt: { gt: now }, status: 'booked' },
+    orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+    select: { id: true },
+  });
+  // Not the very next one: a cancellation inside the cutoff is `cancelled_late`
+  // and a different fixture, and the demo wants an ordinary one.
+  const toCancel = recentFuture[Math.min(3, recentFuture.length - 1)];
+  if (toCancel) {
+    await transitionAppointment(prisma, { appointmentId: toCancel.id, to: 'cancelled', actor: staffActor('seed'), now });
+  }
+
+  const todaysLast = await prisma.appointment.findFirst({
+    where: { businessId: business.id, startDay: today, status: 'booked', startAt: { lt: now } },
+    orderBy: [{ startAt: 'desc' }, { id: 'asc' }],
+    select: { id: true, startAt: true, endAt: true },
+  });
+  if (todaysLast) {
+    await transitionAppointment(prisma, { appointmentId: todaysLast.id, to: 'no_show', actor: staffActor('seed'), now: todaysLast.endAt });
+    await releaseNoShowTime(prisma, {
+      businessId: business.id,
+      appointmentId: todaysLast.id,
+      // Halfway through. The whole point of A-069 is that the range gets CUT
+      // rather than freed, so a release at `startAt` (nothing occupied) or at
+      // `endAt` (refused outright) would demonstrate neither.
+      releasedAt: toDate(
+        instant(fromDate(todaysLast.startAt) + Math.floor((fromDate(todaysLast.endAt) - fromDate(todaysLast.startAt)) / 2)),
+      ),
+      actor: staffActor('seed'),
+      reason: 'Twenty minutes late and not answering',
+    });
+  }
+
   return {
     appointmentsCreated,
     clientsCreated: clients.length,
     byProvider,
     springForwardCount,
     fallBackCount,
+    recentDays,
+    leftUnfinished,
   };
 }
 

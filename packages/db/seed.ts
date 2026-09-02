@@ -20,7 +20,8 @@ async function main(): Promise<void> {
     console.info(
       `[seed] ${setup.providerIds.length} providers, ${setup.serviceIds.length} services, ` +
         `${density.appointmentsCreated} appointments, ${density.clientsCreated} clients ` +
-        `(spring-forward ${density.springForwardCount}, fall-back ${density.fallBackCount})`,
+        `(spring-forward ${density.springForwardCount}, fall-back ${density.fallBackCount}; ` +
+        `${density.recentDays.length} days around today, ${density.leftUnfinished} left open)`,
     );
   } finally {
     await prisma.$disconnect();

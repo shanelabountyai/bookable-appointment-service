@@ -48,6 +48,64 @@ const DAY_MS = 86_400_000;
  */
 export const UNFINISHED_LOOKBACK_DAYS = 21;
 
+/**
+ * A-081 (D-48). The bound above is the right DEFAULT and the wrong CEILING.
+ *
+ * D-46's whole argument is that the reports become right because the desk can
+ * tell them the truth — and until now the only surface that lets it went blind
+ * at day 22, permanently. Measured on a freshly seeded book: 176 rows past and
+ * still open, of which the screen offered the 0 that fell inside three weeks.
+ * Every one of those is a row `dashboard.ts`, `lapsed.ts` and `reliability.ts`
+ * are wrong about, with no door left to fix it through.
+ *
+ * So the number is a control ON the screen — the same shape and the same
+ * reasoning as `LAPSED_WEEKS` on A-073's report: a salon closing out a
+ * fortnight and an owner clearing a year's backlog both want to slide it while
+ * looking at the answer, and the default stays 21 so the toolbar badge remains
+ * a number the desk acts on rather than a backlog it learns to ignore.
+ *
+ * Two years, because the ceiling exists to stop a hand-typed URL asking for a
+ * table scan, not to express a policy — CLIENT-04's reliability window is
+ * twelve months and nothing reads further back than that.
+ */
+export const UNFINISHED_MAX_LOOKBACK_DAYS = 730;
+
+/**
+ * The one predicate, asked by both readers below.
+ *
+ * `listUnfinished` and `countUnfinished` are the LIST and the BADGE for the
+ * same question, and the badge is how the desk learns the list exists. Two
+ * copies of this `where` is two definitions of "unfinished" — the shape
+ * CLAUDE.md keeps out, and the shape that would now also have to agree about
+ * the clamp.
+ */
+function unfinishedWhere(args: { businessId: string; now: Date; lookbackDays?: number }) {
+  const since = toDate(
+    instant(fromDate(args.now) - (args.lookbackDays ?? UNFINISHED_LOOKBACK_DAYS) * DAY_MS),
+  );
+  return {
+    businessId: args.businessId,
+    status: { in: [...PUSHABLE_STATUSES] },
+    // PAST — the appointment's own END, not its start: a visit still running
+    // at six o'clock is not unfinished, it is in progress.
+    endAt: { lt: args.now, gte: since },
+    // A provider who has left cannot be asked what happened (A-041), and her
+    // column is not what the desk is closing out tonight.
+    provider: { is: { active: true } },
+  };
+}
+
+/**
+ * The clamp, next to the bounds it clamps to — a surface that re-derives it is
+ * the second copy again, and `days` arrives off a URL anybody can type.
+ */
+export function clampLookbackDays(asked: string | undefined): number {
+  const n = Number(asked);
+  return Number.isFinite(n) && n >= 1 && n <= UNFINISHED_MAX_LOOKBACK_DAYS
+    ? Math.floor(n)
+    : UNFINISHED_LOOKBACK_DAYS;
+}
+
 export interface UnfinishedAppointment {
   id: string;
   startAt: Date;
@@ -82,21 +140,8 @@ export async function listUnfinished(
   db: Db,
   args: { businessId: string; now: Date; lookbackDays?: number },
 ): Promise<UnfinishedAppointment[]> {
-  const since = toDate(
-    instant(fromDate(args.now) - (args.lookbackDays ?? UNFINISHED_LOOKBACK_DAYS) * DAY_MS),
-  );
-
   const rows = await db.appointment.findMany({
-    where: {
-      businessId: args.businessId,
-      status: { in: [...PUSHABLE_STATUSES] },
-      // PAST — the appointment's own END, not its start: a visit still running
-      // at six o'clock is not unfinished, it is in progress.
-      endAt: { lt: args.now, gte: since },
-      // A provider who has left cannot be asked what happened (A-041), and her
-      // column is not what the desk is closing out tonight.
-      provider: { is: { active: true } },
-    },
+    where: unfinishedWhere(args),
     orderBy: { startAt: 'asc' },
     select: {
       id: true,
@@ -128,15 +173,5 @@ export async function countUnfinished(
   db: Db,
   args: { businessId: string; now: Date; lookbackDays?: number },
 ): Promise<number> {
-  const since = toDate(
-    instant(fromDate(args.now) - (args.lookbackDays ?? UNFINISHED_LOOKBACK_DAYS) * DAY_MS),
-  );
-  return db.appointment.count({
-    where: {
-      businessId: args.businessId,
-      status: { in: [...PUSHABLE_STATUSES] },
-      endAt: { lt: args.now, gte: since },
-      provider: { is: { active: true } },
-    },
-  });
+  return db.appointment.count({ where: unfinishedWhere(args) });
 }

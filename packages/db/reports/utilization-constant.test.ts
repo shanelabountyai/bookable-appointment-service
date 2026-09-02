@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
+import { instantFromIso, toDate } from '../../core/time';
 import { seedSetup } from '../settings';
 import { DEMO_WEEK, seedDensity } from '../settings/density-seed';
 import { dashboardSummary } from './dashboard';
@@ -32,7 +33,11 @@ beforeAll(async () => {
   await resetDatabase(prisma);
   const setup = await seedSetup(prisma);
   businessId = setup.businessId;
-  await seedDensity(prisma);
+  // A-081 — the seed's `now` is frozen here too. The moving book skips any day
+  // within three of DEMO_WEEK, but the exact constant below is measured over
+  // DEMO_WEEK's whole ISO week, so "which days did the moving book take?" must
+  // not be a question with a different answer every time this file runs.
+  await seedDensity(prisma, { now: toDate(instantFromIso('2026-09-02T15:30:00-05:00')) });
 }, SEED_TIMEOUT);
 
 afterAll(async () => {

@@ -2449,3 +2449,29 @@ Two hours rather than one because an overrun is a real measurement worth keeping
 - A confirmation phoned in at any point: still stamped. Confirming is something that happens when it happens; it is not a claim about the visit.
 
 A missing timestamp is honest. The alternative is a report full of eight-hour haircuts, and no way to tell them from the real ones.
+
+## A-081 — the demo that was working perfectly, on a book three months out of date
+
+The sample data for this system is anchored to fixed dates on purpose. Daylight-saving transitions are the hardest thing it has to get right, and a sample book anchored to "today" would contain those two days in March and quietly stop containing them in July — with no test failing to say so.
+
+Twelve weeks after that anchor, three screens built on top of it were all rendering their empty state on a fresh install: the list of appointments nobody closed out, the list of time that has just been freed, and today's grid. The book held 227 appointments and 176 of them were past and still unclosed. The screens offered zero. Nobody had ever seen any of them on a full book.
+
+The automated end-to-end tests could not catch this. They wipe the database and create their own handful of rows before each test, so a feature that is dormant on a fresh install is equally dormant under test. A feature can be entirely correct and still invisible.
+
+### Two sample books, not one
+
+The fixed book stays exactly where it is. A second one now runs nine days either side of today, and the two are kept apart by a deliberate margin — a collision would not crash anything, it would silently add appointments to a week that another test measures an exact figure over.
+
+The moving book is closed out the way a real week actually ends, not tidily: roughly a quarter of past appointments never checked in, another quarter checked in and never closed, a cancellation in the coming week, and one client who did not turn up whose remaining time was given back to the salon.
+
+### Assertions about screens, not about tables
+
+Counting rows could never have caught this — the book was full, it was full in June. The new tests ask what the screens *say*: that today has appointments on it, that the unclosed list is non-empty **and that the rows on it do not all say the same thing** (a screen whose whole purpose is telling "she arrived and nobody closed it" apart from "she never arrived" proves nothing if every row is identical), and that the freed-time list has something to sell.
+
+### A door that used to lock itself
+
+The unclosed list looked back three weeks. That is the right default — it keeps the badge on the toolbar a number the desk acts on rather than a backlog it learns to ignore.
+
+It was the wrong ceiling. Past three weeks an appointment could never be closed at all, so three reports stayed permanently wrong about it, and the argument for the whole feature — the numbers get right *because* somebody can tell them the truth — had a door that locked itself after twenty-one days.
+
+The window is now a number on the screen, adjustable up to two years, in exactly the shape an earlier report already established: a box, a plain form, and an answer that is a bookmarkable link. The toolbar badge deliberately keeps the three-week default. The badge is tonight's errand; the box is the backlog behind it.
