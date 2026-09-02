@@ -15,6 +15,12 @@ export {
 } from './call-down';
 export { FREED_LOOKBACK_DAYS, type OpenedSlot, listOpenedSlots } from './opened';
 export {
+  UNFINISHED_LOOKBACK_DAYS,
+  type UnfinishedAppointment,
+  countUnfinished,
+  listUnfinished,
+} from './unfinished';
+export {
   AppointmentAlreadyMoved,
   RescheduleRefused,
   type RescheduleInput,

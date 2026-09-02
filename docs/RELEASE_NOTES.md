@@ -2283,3 +2283,59 @@ A test immediately failed — and it failed for a good reason. The test's own fi
 The moment something did, a no-show from **2024** appeared to fall inside a twelve-month window and wrongly excluded a client from the list.
 
 This project exists largely to practise not confusing those two kinds of time. The production code has never confused them. A test fixture had, quietly, for as long as nobody looked.
+
+## Eleven appointments nobody ever closed
+
+Six o'clock on a Saturday. Twenty-nine clients went through the salon.
+
+Check-in got tapped nearly every time, because the client was standing right there. *Complete* got tapped maybe two-thirds of the time — because at the till you are taking money, rebooking her for six weeks, and answering the phone.
+
+So eleven appointments sat there, half-finished, forever. Nothing in the entire product ever mentioned them again.
+
+### Eleven taps, three wrong numbers
+
+That is not an untidiness problem. Three separate things the salon actually runs on were quietly wrong:
+
+**Utilization was understated every week.** The weekly figure counts finished appointments. A third of Saturday's work was invisible to it — and that number is what the owner uses to decide whether to keep the junior stylist on for Tuesdays.
+
+**The lapsed-client list rang the wrong people.** That report finds clients whose last *completed* visit was months ago. A regular who was in three weeks ago on an unclosed ticket looked like she had vanished — so the owner's first call of the round opens with *"we haven't seen you in a while"* to somebody who was in three weeks ago. That report's own design notes say it: get the definition wrong once and nobody opens it again.
+
+**And a no-show nobody tapped is not a no-show.** The reliability count reads the status. Clients who repeatedly fail to turn up were not accumulating anything, so the protection built around that never fired. The leak the product exists to plug was leaking.
+
+### It could not be fixed at the desk either
+
+Here is the part that made it structural rather than a discipline problem.
+
+There was **no way to mark a booked appointment as completed.** The only route to *completed* ran through *checked in* first. So closing out Saturday on Monday morning meant twenty-two taps for eleven appointments — and worse, it wrote a *Monday 9:40am check-in time* onto a client who sat down at quarter past two on Saturday.
+
+This system keeps "when she was scheduled" and "when she actually arrived" deliberately separate, precisely so *"she was forty minutes late"* stays answerable. Faking the second to satisfy a rule in the first would have destroyed that for every appointment closed after the fact.
+
+### The decision was to refuse a shortcut
+
+There is an obvious fix, and it is wrong: have a job automatically mark appointments complete a few hours after they end.
+
+That silently converts a genuine no-show into a completed visit. In the client's favour. Permanently. And invisibly — nobody would ever see it happen.
+
+The subtler version is just as wrong: have the *reports* treat a past unclosed appointment as attended, without writing it down. Same guess, less honesty about making it.
+
+The silence is identical whether she came and nobody tapped, or she never came and nobody tapped. Those two facts have opposite consequences for a client's record, and no amount of cleverness distinguishes them.
+
+So the decision recorded before any code: **nothing infers attendance from silence.** No report changed. What was built is the screen that lets the desk say which — and the numbers became right because they are being told the truth, not because they started guessing.
+
+### What it looks like at six o'clock
+
+A tab on the day view, with a count: **Still open (11)**. It disappears when there is nothing behind it, so it never becomes a permanent piece of furniture that stops being read.
+
+The list is grouped by the day it happened on, because "last Saturday" is how the desk thinks about it rather than a run of timestamps. Each row says who, when, what, with whom, and how far it got — *never checked in* is a genuinely different starting point from *checked in*, and that distinction is most of the answer already.
+
+Two buttons: **She came.** **She didn't.**
+
+Not a status picker. The desk is answering one question about a client it remembers, and every extra option is a row that stays open instead. Neither button is styled as the dangerous one, because the no-show count is only worth having if the second gets tapped as readily as the first.
+
+And an appointment closed this way records **no arrival time and no finish time**. Nobody knows when she sat down. A missing timestamp is honest; an invented one is a lie in a record that exists to answer questions later.
+
+### A note on the spec
+
+Adding the two missing transitions broke a test — the right one. This project keeps a normative table of every legal appointment state change in its product spec, and a test parses that table and checks the code against it, cell by cell, for all sixty-four combinations.
+
+Changing what the software allows therefore requires changing the spec first. It did, and the paragraph explaining why is now in the document rather than only in a commit message.

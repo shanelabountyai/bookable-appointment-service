@@ -157,8 +157,8 @@ Rows = from, columns = to. ✓ = allowed (actor / precondition), · = refused. A
 
 | from \ to | confirmed | checked_in | in_progress | completed | no_show | cancelled | cancelled_late |
 |---|---|---|---|---|---|---|---|
-| **booked** | ✓ S,C | ✓ S | ✓ S | · | ✓ S (only after `startAt`) | ✓ S any time; C outside cutoff | ✓ S; C inside cutoff per policy |
-| **confirmed** | · | ✓ S | ✓ S | · | ✓ S (after `startAt`) | ✓ S; C outside cutoff | ✓ S; C inside cutoff |
+| **booked** | ✓ S,C | ✓ S | ✓ S | ✓ S (only after `startAt`) — A-076/D-46 | ✓ S (only after `startAt`) | ✓ S any time; C outside cutoff | ✓ S; C inside cutoff per policy |
+| **confirmed** | · | ✓ S | ✓ S | ✓ S (after `startAt`) — A-076/D-46 | ✓ S (after `startAt`) | ✓ S; C outside cutoff | ✓ S; C inside cutoff |
 | **checked_in** | · | · | ✓ S | ✓ S | · (they're here) | ✓ S | · |
 | **in_progress** | · | · | · | ✓ S | · | ✓ S (walk-out, reason) | · |
 | **completed** | · | · | · | — | ✓ S ≤7d, reason (APPT-06) | · | · |
@@ -167,6 +167,8 @@ Rows = from, columns = to. ✓ = allowed (actor / precondition), · = refused. A
 | **cancelled_late** | · | · | · | · | · | · | — |
 
 Reschedule is not a column: it is an event on a surviving appointment (D-6), permitted from `booked`/`confirmed` only, gated by the same cutoff for the token actor.
+
+**A-076 (D-46) added the two `→ completed` edges from `booked` and `confirmed`,** which this table originally refused. Closing out Saturday on Monday otherwise meant tapping `checked_in` and then `completed` — twenty-two taps for eleven appointments, and a Monday-morning check-in timestamp written onto a client who sat down on Saturday, corrupting APPT-03's actual-vs-scheduled split to satisfy the table. `after-start` for the same reason `no_show` carries it: an appointment that has not begun cannot have been finished. **A `completed` reached this way leaves `startedAt` and `endedAt` NULL** — nobody knows when she sat down, and a missing timestamp is honest where a Monday-morning one is a lie in the audit trail.
 
 ## 8. §13-style canonical entities
 

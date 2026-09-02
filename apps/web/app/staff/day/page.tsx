@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { loadDayView } from '@bookable/db/day';
-import { listOpenedSlots } from '@bookable/db/appointments';
+import { countUnfinished, listOpenedSlots } from '@bookable/db/appointments';
 import { clientReliability } from '@bookable/db/clients';
 import { resolveStaffNames } from '@bookable/db/auth';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
@@ -46,6 +46,10 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
   // What opened up is a fact about the weeks ahead, so paging to last Tuesday
   // must not empty the tab.
   const opened = await listOpenedSlots(prisma, { businessId: staff.businessId, now });
+  // A-076. The COUNT, not just the link — the same reasoning A-043 gave for
+  // "Opened up (N)": a door nobody knows to walk through is a door nobody walks
+  // through, and eleven unclosed appointments are invisible by definition.
+  const unfinished = await countUnfinished(prisma, { businessId: staff.businessId, now });
 
   // CLIENT-04, one grouped query for the whole day rather than one per chip.
   // Counted against TODAY, not the day being viewed: the window is "the last
@@ -164,6 +168,18 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         >
           Opened up{opened.length > 0 ? ` (${opened.length})` : ''}
         </Link>
+        {/* A-076 (D-46). The six-o'clock errand, on the screen the desk is
+            already on. Hidden at zero like the count above: a permanent link to
+            an empty list is a link that stops being read, and this one is only
+            worth a tap when there is something behind it. */}
+        {unfinished > 0 ? (
+          <Link
+            href="/staff/unfinished"
+            className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
+          >
+            Still open ({unfinished})
+          </Link>
+        ) : null}
       </div>
 
       <nav aria-label="View" className="flex flex-wrap gap-2 text-sm">

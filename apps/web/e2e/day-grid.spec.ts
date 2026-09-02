@@ -12,7 +12,7 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { instantFromIso, toDate } from '@bookable/core/time';
+import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 const at = (iso: string) => toDate(instantFromIso(iso));
@@ -366,5 +366,111 @@ test.describe('the note about today (A-070)', () => {
 
     await expect(page.getByText('⚑ Allergic to PPD.')).toBeVisible();
     await expect(page.getByText('✎ Bring the reference photo')).toBeVisible();
+  });
+});
+
+/**
+ * A-076 / D-46 — WHAT IS STILL OPEN.
+ *
+ * Six o'clock Saturday: twenty-nine went through and eleven are still on
+ * `booked` or `checked_in`, because at the till you are taking money and
+ * answering the phone. Nothing mentioned them again, and three readers were
+ * wrong because of it — utilization, the lapsed round, and CLIENT-04's block.
+ *
+ * The list is derived, the two answers are the desk's, and NOTHING infers
+ * attendance from silence (D-46).
+ */
+test.describe('what is still open (A-076)', () => {
+  /** An appointment that has been and gone with nobody having said what
+   *  happened. Yesterday, so it is comfortably past and inside the lookback. */
+  async function unclosed(name: string, status = 'booked') {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const client = await prisma.client.create({ data: { businessId: business.id, name, phone: '5125550177' } });
+      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - 24 * 60) * 60_000));
+      const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
+      return await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          clientId: client.id,
+          status: status as 'booked',
+          startAt,
+          endAt,
+          blockedStart: startAt,
+          blockedEnd: endAt,
+          startDay: toLabel(fromDate(startAt), zoneId(business.timezone)).day,
+          startWallTime: toLabel(fromDate(startAt), zoneId(business.timezone)).time,
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 14000, durationMinutes: 45 },
+          },
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  const statusOf = async (id: string) => {
+    const prisma = new PrismaClient();
+    try {
+      return await prisma.appointment.findUniqueOrThrow({ where: { id } });
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  test('is one tap from the day, with a count, and closes one out in two taps', async ({ page }) => {
+    const appointment = await unclosed('Olive Open');
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    // The COUNT is the point: eleven unclosed appointments are invisible by
+    // definition, so a door nobody knows about is a door nobody walks through.
+    await page.getByRole('link', { name: 'Still open (1)' }).click();
+
+    await expect(page).toHaveURL(/\/staff\/unfinished$/);
+    await expect(page.getByRole('link', { name: 'Olive Open' })).toBeVisible();
+    // The size of it in the units the owner staffs on.
+    await expect(page.getByText(/\$140\.00 of work the week's figures cannot see/)).toBeVisible();
+    await expect(page.getByText('never checked in')).toBeVisible();
+
+    await page.getByRole('button', { name: 'She came' }).click();
+    await expect(page.getByText('Nothing left open — every appointment that has been and gone has an answer against it.')).toBeVisible();
+
+    const row = await statusOf(appointment.id);
+    expect(row.status).toBe('completed');
+    // D-46's honest timestamps: nobody knows when she sat down or got up.
+    expect(row.checkedInAt).toBeNull();
+    expect(row.endedAt).toBeNull();
+  });
+
+  /** The other half of the truth, and the one CLIENT-04's counter depends on
+   *  the desk tapping as readily as the first. */
+  test('records a no-show, so the reliability count is finally told', async ({ page }) => {
+    const appointment = await unclosed('Nora Never');
+
+    await page.goto('/staff/unfinished');
+    await page.getByRole('button', { name: "She didn't" }).click();
+    await expect(page.getByText(/Nothing left open/)).toBeVisible();
+
+    expect((await statusOf(appointment.id)).status).toBe('no_show');
+  });
+
+  /** The badge disappears at zero, so it never becomes a permanent piece of
+   *  furniture the desk stops reading. */
+  test('the tab is not there when nothing is open', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    await expect(page.getByRole('link', { name: /Still open/ })).toHaveCount(0);
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    await unclosed('Olive Open');
+    await page.goto('/staff/unfinished');
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(results.violations).toEqual([]);
   });
 });

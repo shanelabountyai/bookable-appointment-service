@@ -209,7 +209,7 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
     // exclusion constraint — never check-then-write as the mechanism.
     const written = await tx.appointment.updateMany({
       where: { id: appointment.id, status: from },
-      data: { status: to, ...timestampsFor(to, input.now, isCorrection(from, to)) },
+      data: { status: to, ...timestampsFor(from, to, input.now, isCorrection(from, to)) },
     });
 
     if (written.count === 0) {
@@ -302,7 +302,7 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
  * visit that was mis-marked as a no-show actually ended, and inventing
  * `now` — days later, at correction time — would be a fabricated measurement.
  */
-function timestampsFor(to: AppointmentStatus, now: Date, correction: boolean) {
+function timestampsFor(from: AppointmentStatus, to: AppointmentStatus, now: Date, correction: boolean) {
   // A correction happens DAYS after the fact (up to seven, APPT-06), so `now`
   // is not when anything happened. It may only clear, never stamp.
   if (correction) {
@@ -317,7 +317,17 @@ function timestampsFor(to: AppointmentStatus, now: Date, correction: boolean) {
     case 'in_progress':
       return { startedAt: now };
     case 'completed':
-      return { endedAt: now };
+      // A-076 (D-46). `endedAt` is stamped only when she was actually SEEN to
+      // be here — reached from `checked_in` or `in_progress`, which is the
+      // ordinary tap at the till the moment she finishes.
+      //
+      // Reached from `booked` or `confirmed` it is Monday and this is Saturday
+      // being closed out: nobody knows when she sat down or when she got up, so
+      // both stay NULL. A missing timestamp is honest; `now` here would be a
+      // Monday-morning lie in the audit trail, and it would make "she was forty
+      // minutes late" — D-7's whole actual-vs-scheduled point — unanswerable
+      // for every retrospectively closed visit.
+      return from === 'checked_in' || from === 'in_progress' ? { endedAt: now } : {};
     case 'no_show':
       return { checkedInAt: null, startedAt: null, endedAt: null };
     default:

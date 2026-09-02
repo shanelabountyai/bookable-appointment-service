@@ -42,8 +42,8 @@ import type { ActorType } from '../auth';
  */
 const SECTION_7 = `
 from           | booked | confirmed | checked_in | in_progress | completed | no_show | cancelled | cancelled_late
-booked         | -      | S,C       | S          | S           | ·         | S*      | S,C-out   | S,C-in
-confirmed      | ·      | -         | S          | S           | ·         | S*      | S,C-out   | S,C-in
+booked         | -      | S,C       | S          | S           | S*        | S*      | S,C-out   | S,C-in
+confirmed      | ·      | -         | S          | S           | S*        | S*      | S,C-out   | S,C-in
 checked_in     | ·      | ·         | -          | S           | S         | ·       | S         | ·
 in_progress    | ·      | ·         | ·          | -           | S         | ·       | S+r       | ·
 completed      | ·      | ·         | ·          | ·           | -         | S7r     | ·         | ·

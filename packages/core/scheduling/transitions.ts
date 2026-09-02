@@ -89,6 +89,21 @@ const TRANSITIONS: Partial<Record<AppointmentStatus, Partial<Record<AppointmentS
     confirmed: [{ actor: 'staff' }, { actor: 'customer_token' }],
     checked_in: [{ actor: 'staff' }],
     in_progress: [{ actor: 'staff' }],
+    // A-076 (D-46) — CLOSING OUT SATURDAY ON MONDAY.
+    //
+    // "Complete" gets tapped perhaps two-thirds of the time, because at the
+    // till you are taking money, rebooking her and answering the phone. Without
+    // this edge the only way to close one afterwards was `checked_in` THEN
+    // `completed` — twenty-two taps for eleven appointments, and a Monday
+    // check-in timestamp written onto a client who sat down on Saturday, which
+    // corrupts APPT-03's actual-vs-scheduled split to satisfy a table.
+    //
+    // `after-start`, for the same reason `no_show` carries it: an appointment
+    // that has not begun cannot have been finished, and marking one is always a
+    // mis-tap. No reason required — this is the ordinary six-o'clock errand,
+    // and demanding a sentence for each of eleven rows is how it stops
+    // happening.
+    completed: [{ actor: 'staff', precondition: 'after-start' }],
     // "only after startAt" — marking a no-show before the appointment has even
     // begun is always a mis-tap, and it would free nothing anyway (D-7).
     no_show: [{ actor: 'staff', precondition: 'after-start' }],
@@ -98,6 +113,9 @@ const TRANSITIONS: Partial<Record<AppointmentStatus, Partial<Record<AppointmentS
   confirmed: {
     checked_in: [{ actor: 'staff' }],
     in_progress: [{ actor: 'staff' }],
+    // A-076 (D-46), same edge and same reasoning: she confirmed, she came, and
+    // nobody tapped anything else all afternoon.
+    completed: [{ actor: 'staff', precondition: 'after-start' }],
     no_show: [{ actor: 'staff', precondition: 'after-start' }],
     cancelled: [{ actor: 'staff' }, { actor: 'customer_token', precondition: 'outside-cutoff' }],
     cancelled_late: [{ actor: 'staff' }, { actor: 'customer_token', precondition: 'inside-cutoff' }],
