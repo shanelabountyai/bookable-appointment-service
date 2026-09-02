@@ -79,6 +79,18 @@ enum CallAttemptOutcome {
   left_message
 }
 
+/// A-072. NOT `CallAttemptOutcome`: a confirmation call and an offer are
+/// different questions with different answers — "she took it" is meaningless
+/// on the call-down, and extending that enum would put two dead buttons on a
+/// screen with nothing to do with this one. "A status enum is never one edit"
+/// cuts both ways.
+enum FreedOfferOutcome {
+  no_answer
+  left_message
+  thinking
+  took_it
+}
+
 enum StaffRole {
   owner
   staff
@@ -186,6 +198,7 @@ model Business {
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   callAttempts  CallDownAttempt[]
+  freedOffers   FreedSlotOffer[]
 }
 
 /// D-9. One shared owner credential in v1; multi-user staff auth and roles are
@@ -588,6 +601,7 @@ model Client {
   appointments Appointment[]
   series       AppointmentSeries[]
   waitlist     WaitlistEntry[]
+  freedOffers  FreedSlotOffer[]
 
   /// Restrict, not Cascade: a survivor that could be deleted out from under
   /// its tombstones would leave the old phone number pointing at nothing.
@@ -796,6 +810,7 @@ model Appointment {
   resourceHold  AppointmentResourceHold?
   lateCalls     RunningLateTold[]
   callAttempts  CallDownAttempt[]
+  freedOffers   FreedSlotOffer[]
 
   @@unique([businessId, idempotencyKey])
   /// The busy-set query is an instant-overlap predicate over these columns —
@@ -1163,6 +1178,53 @@ model RunningLateTold {
 /// confirmed appointment is not on the list, and an appointment RESCHEDULED to
 /// another day (D-6 keeps the same row) no longer matches, so a fortnight-old
 /// "no answer" cannot resurface against next week's booking.
+/// A-072 / WAIT-02 — WHO HAS ALREADY BEEN OFFERED THIS FREED SLOT.
+///
+/// A three-hour colour cancels on Saturday for Thursday. The desk rings Mrs
+/// Patel, who says "let me check with work". At 4pm the second person at the
+/// desk opens the same list, sees the same slot and the same two names, and
+/// rings Mrs Patel again — or promises it to the second name while the first
+/// is still deciding. A-061 fixed exactly this for the call-down list; the
+/// list with the money on it never got it.
+///
+/// A RECORD, NOT A HOLD, which is what makes it buildable while OQ-4's
+/// soft-hold offer is correctly still blocked: the slot stays sellable to
+/// anybody throughout, nothing here refuses or delays a booking, and — like
+/// `RunningLateTold` and `CallDownAttempt` — it sends nothing and must appear
+/// nowhere near `deliveryWord()` (D-41).
+model FreedSlotOffer {
+  id         String @id @default(cuid())
+  businessId String
+
+  /// A-067's derived row key — `cancelled:<appointmentId>` or
+  /// `<eventType>:<eventId>`. Different for a span freed twice, which is what
+  /// makes "cleared by the slot ceasing to be free" true with no clearing
+  /// code: the list is derived, so when the slot goes these are never read.
+  freedKey      String
+  appointmentId String
+  clientId      String
+
+  outcome FreedOfferOutcome
+
+  /// D-9. At 4pm "who rang her?" has to have an answer, and "the front desk"
+  /// is four people.
+  offeredByActor Actor
+  actorRef       String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /// ONE ROW PER SLOT PER CLIENT, so a second call RE-STAMPS rather than
+  /// appending — the same reasoning as `CallDownAttempt`'s key, and the same
+  /// reason two desks pressing one button is an upsert.
+  @@unique([freedKey, clientId])
+  @@index([businessId, freedKey])
+}
+
 model CallDownAttempt {
   id            String @id @default(cuid())
   businessId    String

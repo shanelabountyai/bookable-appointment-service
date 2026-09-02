@@ -146,6 +146,80 @@ test.describe('the waitlist, staff half (A-023)', () => {
     await expect(page.getByText(/^Waiting \(0\)/)).toBeVisible();
   });
 
+  /**
+   * A-072 — RINGING ROUND A FREED SLOT, WITH A MEMORY (WAIT-02, D-37(b)).
+   *
+   * The desk rings Mrs Patel, who says "let me check with work". A walk-in
+   * arrives and the phone goes, and at 4pm the second person at the desk opens
+   * the same list, sees the same slot and the same name, and rings her again —
+   * or promises it to the next name while she is still deciding. A-061 fixed
+   * exactly this for the call-down; the list with the money on it never got it.
+   *
+   * The assertion that defines the item is the LAST one: the outbox does not
+   * move. This is a record of a phone call a human made, not OQ-4's soft-hold
+   * offer, which is correctly still blocked.
+   */
+  test('remembers who has already been rung about a freed slot, and sends nothing', async ({ page }) => {
+    const appointmentId = await bookDanasCut();
+
+    const seed = new PrismaClient();
+    try {
+      const business = await seed.business.findFirstOrThrow();
+      await seed.client.create({ data: { businessId: business.id, name: 'Beth Waits', phone: '5125550199' } });
+    } finally {
+      await seed.$disconnect();
+    }
+
+    await page.goto('/staff/waitlist');
+    await page.getByPlaceholder('Name or phone number').fill('Beth');
+    await page.getByRole('button', { name: /Beth Waits/ }).click();
+    await page.getByLabel('Service').selectOption({ label: 'Cut' });
+    await page.getByLabel('From', { exact: true }).fill(DAY);
+    await page.getByLabel('To', { exact: true }).fill(DAY);
+    await page.getByRole('checkbox', { name: 'tuesday' }).check();
+    await page.getByRole('button', { name: 'Add to waitlist' }).click();
+    await expect(page.getByText(/^Waiting \(1\)/)).toBeVisible();
+
+    await page.goto(`/staff/appointments/${appointmentId}`);
+    await page.getByLabel('Reason').fill('Client rescheduled elsewhere');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('link', { name: 'Who wants this slot?' }).click();
+
+    // The baseline is taken HERE, not at the top: the cancellation itself
+    // legitimately tells the client, and asserting zero would have been
+    // asserting the wrong thing. What must not move is the count across the
+    // MARKS.
+    const outboxBefore = await countOutbox();
+
+    // She is rung, and she is thinking about it.
+    await page.getByRole('button', { name: 'Thinking about it' }).click();
+    await expect(page.getByText('Noted.')).toBeVisible();
+
+    // THE SECOND PERSON AT THE DESK, arriving at the list from the other door.
+    await page.goto('/staff/opened');
+    await expect(page.getByText(/Already asked: Beth Waits — thinking about it/)).toBeVisible();
+
+    // …and it is a RECORD, not a hold: the slot is still on offer to anybody.
+    await expect(page.getByRole('link', { name: 'Who wants this slot?' })).toBeVisible();
+
+    // A mis-tap on a shared screen has to be reversible by the same hand.
+    await page.getByRole('link', { name: 'Who wants this slot?' }).click();
+    await page.getByRole('button', { name: 'Not asked' }).click();
+    await expect(page.getByText('Cleared — she has not been asked.')).toBeVisible();
+
+    // D-41's line, held: a note about a phone call sends nothing, ever.
+    expect(await countOutbox()).toBe(outboxBefore);
+  });
+
+  async function countOutbox(): Promise<number> {
+    const prisma = new PrismaClient();
+    try {
+      return await prisma.notificationOutbox.count();
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
   test('has no accessibility violations', async ({ page }) => {
     await page.goto('/staff/waitlist');
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();

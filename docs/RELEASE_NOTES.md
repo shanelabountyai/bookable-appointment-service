@@ -2054,3 +2054,49 @@ The one-tap button posts the replacement stylist. The obvious way to write that 
 Two fields with one name, and the browser hands the server the first one — the stylist who had just gone. The button would have looked correct, worked convincingly, and rebooked exactly the person it was there to avoid.
 
 The same trap turned up two features earlier, on a different button, in a different form. Both now carry their own distinct field, and both say why in a comment, because it is the kind of thing you fix once and re-introduce a month later.
+
+## Ringing round a cancellation, twice
+
+Saturday morning. A three-hour colour on Thursday cancels — the most valuable block the salon sells, and now empty. It appears on the screen built for exactly this, with the two people on the waitlist who fit it, and their phone numbers.
+
+The desk rings the first one. *"Let me check with work and call you back."*
+
+Then a walk-in comes in, the phone rings twice, and somebody needs a receipt.
+
+At four o'clock the other person on the desk opens the same screen. Same slot. Same two names. Nothing on it has changed, because nothing recorded that anything happened.
+
+So she rings the first one again — which reads, to the client, as a salon that does not know what it is doing. Or she offers the slot to the second name, while the first one is still deciding, and now two people think they have Thursday.
+
+### The distinction that makes this small
+
+There is an obvious-looking feature next to this one: *hold the slot for her while she decides*. That one is genuinely hard — it takes inventory off the market on a promise, needs an expiry, needs to release cleanly when she does not call back, and can lose the salon a booking if any of that goes wrong. It has been deliberately parked.
+
+This is not that. This is a **note about a phone call somebody made**.
+
+The slot stays completely available the entire time. Anybody can book it — the waitlist match, a walk-in at the door, a stranger on the website. Nothing is reserved, nothing expires, nothing has to be released. The only thing that changes is that the screen now says who has already been asked and what they said.
+
+That distinction is what makes it a small, safe piece of work rather than the risky one. Two of the tests exist purely to hold the line: one books somebody else straight into a slot another client is "thinking about" and checks it goes through untouched, and one checks that none of this sends the client anything at all.
+
+### Four answers, not a tick
+
+*No answer.* *Left a message.* *Thinking about it.* *She took it.*
+
+Each one is a different next move. "No answer" means try again. "Left a message" means the ball is in her court. "Thinking about it" means do not promise this to anybody else yet. "She took it" means stop ringing.
+
+A simple "rung" checkbox collapses all four into a state that tells the next person nothing actionable — which is the exact state the Post-it beside the monitor existed to escape.
+
+It is also undoable. On a screen two people share, a mis-tap marks the *wrong* client as already asked, and that silently skips her — the harm this feature exists to prevent, running backwards.
+
+### It cleans up after itself by not existing
+
+The freed-slot list is recalculated from scratch every time somebody looks at it. Nothing anywhere stores "this slot is available"; it is worked out on the spot from what is actually in the book.
+
+That means when the slot gets booked, it simply stops appearing — and the notes about who was rung stop being read at the same moment. No expiry job, no cleanup, no flag that can be left behind pointing at a slot that was filled last Tuesday.
+
+### The bug the test caught, and why it matters
+
+The four phrases — "No answer", "Left a message" — started out living in the same file as the buttons that use them. That file runs in the browser. One of the two screens that needed those phrases runs on the server.
+
+The framework quietly substitutes a placeholder for browser-side code when the server imports it. So the import worked, the types checked, the build passed — and every lookup came back empty. The page returned a blank error: *"A server error occurred."* No stack trace visible to a user, no clue what went wrong.
+
+It was caught because the test checks what the page **says**, not merely that the page **answered**. A test asserting a successful response would have passed on a broken screen, and this codebase has been bitten by exactly that before — which is why "assert what the page says" is written down as a rule rather than left to judgement.

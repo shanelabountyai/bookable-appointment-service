@@ -9,3 +9,10 @@ export {
   matchFreedSlot,
   setWaitlistEntryStatus,
 } from './waitlist';
+export {
+  type FreedOffer,
+  type FreedOfferOutcome,
+  clearFreedOffer,
+  listFreedOffers,
+  recordFreedOffer,
+} from './offers';

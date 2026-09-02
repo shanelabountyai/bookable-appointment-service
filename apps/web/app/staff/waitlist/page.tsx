@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listProviders, listServices } from '@bookable/db/settings';
-import { listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
+import { listFreedOffers, listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
 import { instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
+import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
 import { EntryForm } from './entry-form';
 import { EntryStatusButton } from './entry-status-button';
+import { OfferButtons } from './offer-buttons';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +39,14 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
 
   const freed = freedSlotFrom(params, business.timezone, providers, services);
   const matches = freed ? await matchFreedSlot(prisma, { ...freed.query, businessId: staff.businessId }) : null;
+  // A-072. Who has already been rung about THIS span — one read for the whole
+  // list, keyed on A-067's derived row key so a span freed twice is two rounds
+  // of calls rather than one that remembers the wrong answers.
+  const offers = freed?.key
+    ? (await listFreedOffers(prisma, { businessId: staff.businessId, freedKeys: [freed.key] })).get(freed.key) ?? []
+    : [];
+  const offerFor = (clientId: string | null) =>
+    clientId ? offers.find((offer) => offer.clientId === clientId) : undefined;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -83,6 +93,28 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                     </Link>
                     <EntryStatusButton entryId={entry.id} status="fulfilled" label="Fulfilled" />
                   </span>
+
+                  {/* A-072 — the marks, on the screen that has the names and
+                      the numbers on it. A RECORD, not a hold: the Book button
+                      above stays live for anybody throughout. */}
+                  {freed.key && freed.appointmentId && entry.clientId ? (
+                    <span className="w-full">
+                      <OfferButtons
+                        freedKey={freed.key}
+                        appointmentId={freed.appointmentId}
+                        clientId={entry.clientId}
+                        offer={offerFor(entry.clientId)}
+                      />
+                      {offerFor(entry.clientId) ? (
+                        <span className="mt-1 block text-xs text-zinc-600 dark:text-zinc-400">
+                          {OFFER_WORDS[offerFor(entry.clientId)!.outcome]}
+                          {offerFor(entry.clientId)!.offeredByName
+                            ? ` — ${offerFor(entry.clientId)!.offeredByName}`
+                            : ''}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -146,6 +178,11 @@ function freedSlotFrom(
   const serviceId = typeof params.serviceId === 'string' ? params.serviceId : null;
   const at = typeof params.at === 'string' ? params.at : null;
   const minutes = typeof params.minutes === 'string' ? Number(params.minutes) : null;
+  // A-072. Absent on a link built before this shipped, and absent is simply
+  // "no marks on this screen" — never a crash and never a reason to refuse the
+  // matcher, which is the useful half.
+  const key = typeof params.key === 'string' ? params.key : null;
+  const appointmentId = typeof params.appointmentId === 'string' ? params.appointmentId : null;
   if (!providerId || !serviceId || !at || !minutes || !Number.isFinite(minutes) || minutes <= 0) return null;
 
   const provider = providers.find((p) => p.id === providerId);
@@ -164,6 +201,8 @@ function freedSlotFrom(
     providerName: provider.displayName,
     serviceName: service.name,
     at,
+    key,
+    appointmentId,
     query: { providerId, serviceId, day: label.day, time: label.time, freedMinutes: minutes },
   };
 }

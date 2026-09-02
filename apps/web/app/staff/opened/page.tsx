@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { type OpenedSlot, listOpenedSlots } from '@bookable/db/appointments';
+import { type FreedOffer, listFreedOffers } from '@bookable/db/waitlist';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
+import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +36,14 @@ export default async function OpenedPage() {
   });
 
   const slots = await listOpenedSlots(prisma, { businessId: staff.businessId, now: new Date() });
+  // A-072. Who has already been rung about each of these, in ONE read for the
+  // whole list. This screen is where the second person at the desk starts at
+  // 4pm, so it is the screen that has to say "Mrs Patel is thinking about it"
+  // before anybody dials.
+  const offers = await listFreedOffers(prisma, {
+    businessId: staff.businessId,
+    freedKeys: slots.map((slot) => slot.key),
+  });
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -82,6 +92,15 @@ export default async function OpenedPage() {
                     </>
                   ) : null}
                 </span>
+                {/* A-072. A RECORD, not a hold — the slot below stays sellable
+                    to anybody throughout. This only stops the second person at
+                    the desk ringing Mrs Patel again, or promising it to the
+                    next name while she is still deciding. */}
+                {(offers.get(slot.key) ?? []).length > 0 ? (
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    Already asked: {(offers.get(slot.key) ?? []).map(offerSentence).join(' · ')}
+                  </span>
+                ) : null}
               </div>
               <div className="flex items-center gap-3">
                 {slot.primaryServiceId ? (
@@ -91,6 +110,8 @@ export default async function OpenedPage() {
                       serviceId: slot.primaryServiceId,
                       startAt: slot.startAt,
                       freedMinutes: slot.freedMinutes,
+                      key: slot.key,
+                      appointmentId: slot.appointmentId,
                     })}
                     className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
                   >
@@ -146,3 +167,11 @@ function freedWords(slot: OpenedSlot, zone: string): string {
 /** "colour", "colour and blow-dry", "colour, cut and blow-dry". */
 const listWords = (names: string[]): string =>
   names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
+/** A-072 — one offer, in the desk's words. The NAME first, because the
+ *  question being answered is "has anybody rung her yet?" */
+function offerSentence(offer: FreedOffer): string {
+  const who = offer.clientName ?? 'somebody';
+  const by = offer.offeredByName ? ` (${offer.offeredByName})` : '';
+  return `${who} — ${OFFER_WORDS[offer.outcome].toLowerCase()}${by}`;
+}

@@ -283,6 +283,11 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
             serviceId: detail.primaryServiceId,
             startAt: detail.startAt,
             freedMinutes: freedMinutes(detail),
+            // A-072. The same key `/staff/opened` derives for a cancellation,
+            // so the two doors into the matcher carry ONE identity and the
+            // marks made through either are the same marks.
+            key: `cancelled:${detail.id}`,
+            appointmentId: detail.id,
           })}
           className="text-sm font-medium underline underline-offset-4"
         >
