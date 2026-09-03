@@ -2271,7 +2271,7 @@ The string branch required `message.includes('23P01')` **and** a name. A COMMIT-
 
 ## A-082 — demo checkpoint 6, the walk at the Phase 9 boundary
 
-**Commit:** `PENDING`
+**Commit:** `4fefe89`
 
 **Full transcript and the four scenes walked: `docs/reviews/17-demo-checkpoint-6.md`.**
 
