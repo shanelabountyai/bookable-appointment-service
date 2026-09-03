@@ -2475,3 +2475,60 @@ The unclosed list looked back three weeks. That is the right default — it keep
 It was the wrong ceiling. Past three weeks an appointment could never be closed at all, so three reports stayed permanently wrong about it, and the argument for the whole feature — the numbers get right *because* somebody can tell them the truth — had a door that locked itself after twenty-one days.
 
 The window is now a number on the screen, adjustable up to two years, in exactly the shape an earlier report already established: a box, a plain form, and an answer that is a bookmarkable link. The toolbar badge deliberately keeps the three-week default. The badge is tonight's errand; the box is the backlog behind it.
+
+---
+
+## A-082 — a room that is never full, and still has nowhere to sit her
+
+Every so often this project stops building and walks the product instead, looking for defects that are invisible from inside the feature that caused them. This walk found one that had been shipping for nine months, and the reason it had never been seen is worth as much as the bug.
+
+### The complaint
+
+A customer picks 2:15 on the public booking page. She submits. The salon tells her the time is unavailable. She refreshes; 2:15 is still on the list. She picks it again, and is refused again.
+
+It looks like losing a race to another customer, and the code had been treating it as exactly that — there is a comment in the booking flow describing it as *"that time has just gone."* Nothing else was booking. The refusal is permanent, and the slot never sells.
+
+### Two halves of the same question
+
+The salon has four chairs. A colour holds a chair through its developing hour while the stylist takes somebody else, so four stylists can seat eight clients — and the fifth is refused. Two pieces of code have to agree about that:
+
+- the part that decides **what appears on the screen**, and
+- the part that decides **which chair she actually sits in** when she submits.
+
+They were asking different questions. The screen asked *"are all four chairs occupied at some moment during her visit?"* The write asked *"is there one chair free for the whole of her visit?"*
+
+Those are not the same question, and the difference is an ordinary Saturday:
+
+```
+wanted 2:15-2:40
+ Chair 1                        ▓▓▓▓▓▓▓ 2:30-3:05
+ Chair 2          ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 2:15-2:40
+ Chair 3   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 2:05-4:35
+ Chair 4  ▓▓▓▓▓▓▓▓▓▓▓▓                   1:45-2:20
+```
+
+Three chairs are busy at every instant and never four, so the room is never *full* — and there is no single chair free for all twenty-five minutes. The screen said yes; the room said no.
+
+A count of occupied chairs is the answer you would get if the room could be rearranged between clients. It cannot: a woman having her colour done is in a physical chair and stays in it.
+
+### Why nine months of tests never noticed
+
+Three reasons, and the middle one is the general lesson.
+
+**It cannot be reached by booking alone.** For four appointments to be pushed onto four separate chairs, each must clash with all the ones before it — and a set of intervals that all clash pairwise always shares a common moment, at which the room genuinely *is* full and the old logic was right. To get the staggered version, something has to **move**: a client rescheduled earlier, a visit shortened, a no-show's time given back. Every fixture in the suite built its busy room by booking into it, so none of them could produce the shape. The regression test now books four and then moves one, which is what a Saturday does before lunch.
+
+**Each half had tests, and nothing tested the agreement.** The screen's logic had its own suite and passed. The chair-picker had its own suite and passed. Both were correct about their own question. Nobody had written the test that says *the thing we offer must be the thing we can accept* — so the fix does not make the two agree, it makes them the **same predicate**, and the room can no longer hold two opinions.
+
+**The symptom had already been explained away.** The refusal used to reach the customer as a crash; that was fixed by catching it and describing it as a lost race. Fixing the sentence retired the evidence.
+
+### The fix, and the part that is easy to get wrong
+
+The screen now asks the write path's question, in the write path's own words. The old cardinality logic is deleted rather than corrected — it was the wrong shape, not a wrong number — and there is now exactly one way to run the availability engine, so no future screen can quietly bypass the room.
+
+The trap on the other side is being too strict. The system deliberately lets one client's *own* appointments share a single chair — her cut and her colour, back to back, with their padding overlapping — because she is the person sitting in it. A stricter test would have started refusing her the chair she was already in, which is the same class of defect pointing the other way: not offering a time the salon could sell. So the offer is now told who would be sitting there, wherever that is known, and falls back to the cautious answer only for a visitor who has not yet said who she is.
+
+### Found clean, and said so
+
+The same walk stress-tested two features it did not break. Pushing a running-late column was exercised across every stylist, every day of the sample book and four different delays — 408 previews, 271 real pushes, and not one case where the preview promised something the transaction then refused. Giving a no-show's time back was walked end to end: the booking's hold on its chair is trimmed, the freed time appears on the screen that sells it, the engine offers it and the booking succeeds.
+
+A checkpoint that only reports failures is not a checkpoint. Knowing which parts held is the other half of the result.

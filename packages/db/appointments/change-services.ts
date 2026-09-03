@@ -40,7 +40,6 @@ import {
   type VisitLine,
   canChangeServices,
   composeVisit,
-  computeSlots,
 } from '../../core/scheduling';
 import { effectiveDurationMinutes, effectivePriceCents, visitPattern } from '../../core/settings';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
@@ -49,7 +48,7 @@ import { BookingRejected, NoResourceFree, SlotNotOffered, SlotTaken } from '../b
 import { chairForMove, findFreeResource, requiredResourceTypeId, resourceTypeName } from '../booking/resources';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
-import { buildSlotQuery } from '../scheduling';
+import { buildSlotQuery, computeSlotsIn } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { repointManageTokens } from './manage-token';
 
@@ -410,7 +409,7 @@ const bookedMinutes = (lines: readonly { durationMinutes: number }[]): number =>
 async function assertStillOffered(
   tx: Prisma.TransactionClient,
   args: {
-    appointment: { id: string; businessId: string; providerId: string; startAt: Date };
+    appointment: { id: string; businessId: string; providerId: string; startAt: Date; clientId: string | null };
     lines: VisitLine[];
     visit: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number };
     day: string;
@@ -418,7 +417,7 @@ async function assertStillOffered(
     audience: 'public' | 'staff';
   },
 ): Promise<void> {
-  const { query } = await buildSlotQuery(tx, {
+  const built = await buildSlotQuery(tx, {
     businessId: args.appointment.businessId,
     providerId: args.appointment.providerId,
     serviceIds: args.lines.map((l) => l.serviceId),
@@ -427,12 +426,13 @@ async function assertStillOffered(
     audience: args.audience,
     // It must not block its own new length — the same exclusion a move needs.
     excludeAppointmentId: args.appointment.id,
+    // A-082 — A-063's shared chair, asked of the OFFER as well as the chooser.
+    holderKey: args.appointment.clientId,
   });
 
-  const result = computeSlots({
-    ...query,
+  const result = computeSlotsIn(built, {
     service: {
-      ...query.service,
+      ...built.query.service,
       durationMinutes: args.visit.durationMinutes,
       bufferBeforeMinutes: args.visit.bufferBeforeMinutes,
       bufferAfterMinutes: args.visit.bufferAfterMinutes,

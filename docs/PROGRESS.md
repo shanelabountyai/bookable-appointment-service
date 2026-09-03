@@ -2266,3 +2266,46 @@ The string branch required `message.includes('23P01')` **and** a name. A COMMIT-
 **One reduction along the way.** `listUnfinished` and `countUnfinished` — the list and the badge for the same question — held two copies of the same `where`. Two copies is two definitions of "unfinished", and with the clamp arriving they would also have had to agree about it. One `unfinishedWhere`, one `clampLookbackDays` beside the bounds it clamps to, and the page re-derives neither.
 
 **Left behind:** the widened list is not paginated, so an owner typing 730 into a salon with years of history gets a very long page. Revisit when a real book makes that a complaint. `seedDensity`'s output is now `now`-dependent by construction — the two tests that assert exact shapes freeze it, and any future test that seeds density and asserts a count must do the same.
+
+---
+
+## A-082 — demo checkpoint 6, the walk at the Phase 9 boundary
+
+**Commit:** `PENDING`
+
+**Full transcript and the four scenes walked: `docs/reviews/17-demo-checkpoint-6.md`.**
+
+**One defect, and nothing in Phases 7–9 wrote it.** What Phase 9 did was make it visible: A-081 lit up a book with 411 appointments in it, and this defect needs a genuinely busy room to appear at all. Two of the four scenes below could not have been walked on 2026-09-01, because every date-relative surface rendered its empty state.
+
+**The finding: the room's READ MODEL and the room's CHOOSER have been asking different questions since A-032.** `fullSpans`/`findRoomFullIntervals` asked *"are all four chairs occupied at some instant inside the envelope?"* and collapsed the answer into busy intervals for the engine to subtract. `findFreeResource`, which decides what the write ACCEPTS, asks *"is there ONE chair free for the whole envelope?"*. The first is **necessary and not sufficient**, and the transcript is a Saturday afternoon:
+
+```
+wanted 14:15-14:40
+ Chair 1                        ▓▓▓▓▓▓▓ 14:30-15:05
+ Chair 2          ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 14:15-14:40
+ Chair 3   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 14:05-16:35
+ Chair 4  ▓▓▓▓▓▓▓▓▓▓▓▓                   13:45-14:20
+ full spans over the envelope: []
+```
+
+Three chairs taken at every instant and never four, so the room was never *full* — and no ONE chair is free from 14:15 to 14:40, so the chooser returned null. The public page offered the time and `bookAppointment` refused it with `NoResourceFree`. **Not a race: nothing else was booking, and the same time is refused again every time she picks it.** Measured over the seeded book: **3 refusals in 169 offers taken at random, 1.8%** — concentrated exactly where the money is, in the fragmented middle of a busy afternoon.
+
+**A count assumes the room can be reshuffled.** In the transcript it can: move Chair 4's 13:45 client onto Chair 1, empty until 14:30, and Chair 4 opens. A real client is in a physical chair and stays in it, so the count was measuring a room the salon does not have. `resource-load.ts`'s own header claimed to have closed exactly this defect — *"the refusal arrived at SUBMIT, on a time the screen had just offered"* — and A-032 had closed the case where the room genuinely FILLS while leaving open the case where it merely FRAGMENTS, which is what a salon's afternoon is.
+
+**Why nothing caught it, and the middle reason is the transferable one.**
+
+- *It needs a busy room to exist.* Every fixture in the suite fills the room by BOOKING into it, and first-fit assignment cannot reach this state: bookings that force each other onto separate chairs must pairwise overlap, and pairwise-overlapping intervals always share a common instant, at which the room IS full and the old model refuses correctly. **Something has to MOVE.** The regression fixture books four and then reschedules one twenty-five minutes earlier — which is what a Saturday does before lunch.
+- *A-032's tests asked the read model and A-063's asked the chooser.* Both were right about their own half. **Nothing asked whether the two agreed** — checkpoint 5's finding 3 exactly one axis over, which is why the fix makes them the same predicate rather than two correct ones.
+- *The refusal had already been mistaken for concurrency.* `public-actions.ts` catches `NoResourceFree` and says *"that time has just gone"*, with a comment recording that before it was caught *"she saw a crash on a time the page had just offered her."* The crash was fixed and the cause was read as a race. It is not, and the wording is a lie the third time she picks the same slot.
+
+**What it built.** `fullSpans` and `findRoomFullIntervals` are **deleted** — a cardinality collapsed into intervals was the wrong shape, not a wrong constant. `canSeat(seating, envelope, body, holderKey)` replaces them and mirrors `findFreeResource`'s two arms line for line, for the same reason A-063 made those arms mirror the two exclusion constraints. It **cannot** be a busy interval, and that is provable rather than a preference: in the transcript the infeasible starts span fifteen minutes while the envelope is twenty-five, so no interval the engine subtracts by overlap can name it — hence a filter over candidates, and the `resource-full` busy kind is gone.
+
+**`computeSlotsIn` is now the only way to run the engine on a built query**, and it is the thing that applies the room. All five offering surfaces route through it — the day list, the date picker, reschedule options, A-055's change-services check, the booking re-check. That was not optional: three of them read the `no-resource-free` exclusion reason to say *"she is free, the room is not"* and to reach RES-04's override, so a slot that merely vanished would have arrived as `SlotNotOffered` with no reasons at all.
+
+**The offer now knows who would be sitting in the chair.** A-063 lets one client's own overlapping envelopes share a chair, so the room's answer differs for a client already in it. The chooser has had that input since A-063; the offer did not ask, and could get away with it only while it asked the weaker question. `holderKey` is threaded from reschedule, change-services and the booking re-check; `null` — the strict question — stays the default and is right for an anonymous visitor who has not said who she is yet. Without it this fix would have been **stricter than the constraint**, which CLAUDE.md is explicit does not fail safe.
+
+**Walked and found CLEAN, which is worth recording.** *The push (A-079):* every provider × every seeded day × four shifts × two `fromAt` choices — **408 previews, 271 real pushes, zero disagreements** and no `canPush` that moved nothing. *The release seam (A-069/A-074/A-075/A-078):* no-show at 09:15 on a 90-minute root touch-up, released, and the envelope cut, **the body cut with it**, the freed span on `/staff/opened` as `released`, the engine offering 09:30 and the write accepting it.
+
+**Tests: the file goes from 13 to 21.** Ten unit on `canSeat` — the staircase itself, the seven old `fullSpans` cases re-stated as seating questions (checkpoint 5's shared chair among them), and A-063's two-arm pair: she keeps the chair she is in even in a one-chair room, and two BODIES never share one however the phone number reads. Six integration on a four-chair room built by booking four and moving one. **Three of the six fail against the code as it stood**, verified by stashing the fix and running them; the other three are the guard against over-correcting — each of the four lands on its own chair, the afternoon is still offered where the room can seat it, and the write still agrees with the offer.
+
+**Left behind:** the operator review for the Phase 9 close, which is what scopes Phase 10 and is the next thing due. A-053 is still ⛔ blocked on a real notification channel and nothing here changes that. `canSeat` is O(chairs × holds) per candidate — a few thousand comparisons on a salon's day, and the number to watch if a business ever has fifty resources.

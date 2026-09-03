@@ -41,7 +41,6 @@ import {
   type SlotResult,
   type TransitionRefusal,
   canReschedule,
-  computeSlots,
 } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
@@ -51,7 +50,7 @@ import { chairForMove, resourceTypeName } from '../booking/resources';
 import { qualifiedForVisit } from '../qualification';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
-import { buildSlotQuery } from '../scheduling';
+import { buildSlotQuery, computeSlotsIn } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { repointManageTokens } from './manage-token';
 
@@ -432,7 +431,7 @@ async function slotsForMove(
   appointment: LoadedAppointment,
   args: { day: string; now: Date; audience: 'public' | 'staff'; explain?: boolean; providerId?: string },
 ): Promise<SlotResult> {
-  const { query } = await buildSlotQuery(db, {
+  const built = await buildSlotQuery(db, {
     businessId: appointment.businessId,
     // A-038: the DESTINATION provider's windows and busy set, which is what
     // makes "Priya at 2" answerable at all — Dana's calendar has nothing to
@@ -444,16 +443,19 @@ async function slotsForMove(
     audience: args.audience,
     // The appointment must not block its own destination — see `busy-set.ts`.
     excludeAppointmentId: appointment.id,
+    // A-082 — she keeps the chair she is already in (A-063), so the room's
+    // answer differs for her. The chooser has known this since A-063; the
+    // OFFER now asks the same question and needs the same input.
+    holderKey: appointment.clientId,
   });
 
-  return computeSlots({
-    ...query,
+  return computeSlotsIn(built, {
     // D-18's snapshot, deliberately overriding what buildSlotQuery derived
     // from the live catalogue. The buffers stay as the query built them:
     // buffers are the salon's operational padding, not something the client
     // agreed to, and A-018's column push is where a stale buffer would
     // actually matter.
-    service: { ...query.service, durationMinutes: bookedDurationMinutes(appointment) },
+    service: { ...built.query.service, durationMinutes: bookedDurationMinutes(appointment) },
     ...(args.explain ? { explain: true } : {}),
   });
 }

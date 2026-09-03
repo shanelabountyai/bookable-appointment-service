@@ -215,7 +215,6 @@ export function computeSlots(query: SlotQuery): SlotResult {
     if (otherKinds.has('time_off')) reasons.push('overlaps-time-off');
     if (otherKinds.has('ad_hoc_block')) reasons.push('overlaps-block');
     if (otherKinds.has('running-late')) reasons.push('provider-running-late');
-    if (otherKinds.has('resource-full')) reasons.push('no-resource-free');
 
     // ── now and lead time (§3.K) ──
     if (start < now) reasons.push('in-the-past');

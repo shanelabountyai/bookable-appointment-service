@@ -2,16 +2,9 @@
  * THE ROOM'S BUSY SET (A-032, RES-03, D-30).
  *
  * The provider axis asks "is Dana free?" and gets a yes/no per interval. The
- * resource axis asks a CARDINALITY question — "are all four chairs taken?" —
- * and that is the whole reason it needed its own machinery at the database
- * (D-30) and needs its own machinery here.
- *
- * The engine must stay a pure function of intervals and must never learn what
- * a chair is, so this module collapses the cardinality question back into
- * intervals before the engine ever sees it: the spans in which the count of
- * concurrent holds reaches the number of chairs. Those go in as busy intervals
- * of kind `resource-full`, exactly the way D-22's overrun does, and the engine
- * subtracts them without knowing why.
+ * resource axis asks a SEATING question — "is there a chair this visit can sit
+ * in, start to finish?" — and that is the whole reason it needed its own
+ * machinery at the database (D-30) and needs its own machinery here.
  *
  * WHY THIS EXISTS AT ALL: before A-030 the room could not fill, because a
  * client occupied a chair only while her provider was working — four stylists
@@ -20,10 +13,44 @@
  * somebody else, so four stylists can seat eight clients in four chairs. The
  * database has refused the fifth since A-031. Until this module existed, the
  * refusal arrived at SUBMIT, on a time the screen had just offered — the
- * offered-then-refused defect this repo has already caught twice.
+ * offered-then-refused defect this repo keeps catching.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DEMO CHECKPOINT 6 (A-082) — WHY THIS IS NO LONGER A CARDINALITY QUESTION.
+ *
+ * Until A-082 this module answered "are all four chairs occupied at some
+ * instant inside the envelope?", collapsed the answer into busy intervals, and
+ * handed them to the engine. That question is NECESSARY and NOT SUFFICIENT,
+ * and the difference is a real Saturday:
+ *
+ *     wanted 14:15–14:40      chair 1  ▓▓▓▓ 14:30–15:05
+ *                             chair 2  ▓▓▓▓▓▓▓▓ 14:15–14:40
+ *                             chair 3  ▓▓▓▓▓▓▓▓ 14:05–16:35
+ *                             chair 4  ▓▓▓▓ 13:45–14:20
+ *
+ * Three chairs are taken at every instant and never four, so the room was
+ * never "full" and the time was OFFERED — and there is no single chair free
+ * for the whole twenty-five minutes, so `findFreeResource` returned null and
+ * the write refused it with `NoResourceFree`. Permanently: not a race, not a
+ * near miss. She picks the time, is told to pick another, and it is still
+ * there when the list refreshes.
+ *
+ * A COUNT ASSUMES THE ROOM CAN BE RESHUFFLED. It cannot — a client is in a
+ * physical chair and stays in it. So this module now asks the question the
+ * CHOOSER asks, in the chooser's own words: is there a chair with no hold
+ * that would take it? `canSeat` mirrors `findFreeResource`'s two arms line for
+ * line, for the same reason A-063 made those two arms mirror the two exclusion
+ * constraints — a read model that PREDICTS a chooser's answer must ask the
+ * chooser's question, not a weaker one that happens to imply it.
+ *
+ * It cannot be an interval set, and that is provable rather than a matter of
+ * taste: with the envelope above, the infeasible starts are a 15-minute window
+ * and the envelope is 25 minutes long, so no set of intervals the engine
+ * subtracts by overlap can name it. Hence a filter over candidate slots
+ * (`slot-query.ts`) rather than another `BusyInterval` kind.
  */
 import { ACTIVE_STATUSES } from '../../core/scheduling';
-import { type Instant, fromDate, instant } from '../../core/time';
+import { type Instant, fromDate } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -33,73 +60,72 @@ export interface Span {
   end: Instant;
 }
 
-/** A hold, with the chair it is on — because after A-063 two holds can be one
- *  chair, and the room's capacity question is about CHAIRS. */
+/**
+ * One chair's hold, with everything the chooser's predicate reads.
+ *
+ * The ENVELOPE (`start`/`end`) is buffers and gaps included (RES-02); the BODY
+ * is the visit itself. A-063 made those two different questions — envelopes may
+ * overlap for ONE holder, bodies never overlap for anyone — and A-069's release
+ * cuts the envelope without touching the body, so neither can be derived from
+ * the other here.
+ */
 export interface ChairHold extends Span {
   resourceId: string;
+  /** `clientId`, or `appt:<id>` for a walk-in nobody has keyed. Written by the
+   *  hold trigger; never derived a second time. */
+  holderKey: string;
+  bodyStart: Instant;
+  bodyEnd: Instant;
+}
+
+/** The room over one query window: which chairs are in service, and what is
+ *  already sitting in them. */
+export interface Seating {
+  resourceTypeId: string;
+  /** ACTIVE chairs only. A chair taken out of service shrinks the room; a hold
+   *  still sitting on it is excluded below for the same reason, or a retired
+   *  chair would both shrink the room and fill it. */
+  chairIds: readonly string[];
+  holds: readonly ChairHold[];
 }
 
 /**
- * The spans in which every chair is taken — i.e. the room is full and the next
- * client cannot be seated.
+ * Could this visit be seated — is there one chair free for its WHOLE envelope?
  *
- * COUNTS CHAIRS, NOT HOLDS, and that distinction is the whole of checkpoint 5's
- * third finding. A-063 made one client's two appointments share a single chair
- * through the buffers between them, so from that moment "how many holds
- * overlap" and "how many chairs are occupied" stopped being the same number.
- * Counting holds declared a four-chair room full with three chairs in use and
- * refused a real client — which is the exact harm A-063's row set out to
- * remove, still alive on the surface that decides whether a time is OFFERED.
+ * MIRRORS `findFreeResource`, deliberately and line for line. The chooser
+ * asking a laxer question than this one means a time is offered and then
+ * refused; asking a stricter one means chairs that are genuinely free are
+ * never offered, and CLAUDE.md is explicit that a reader stricter than the
+ * constraint does not fail safe.
  *
- * Half-open `[start, end)` on both sides, like everything else in this project:
- * a hold ending at 11:00 frees its chair for one starting at 11:00, so the end
- * event is processed BEFORE the start event at the same instant. With `'[]'`
- * the salon would lose a seating at every boundary — the same defect the
- * exclusion constraint would have had.
- *
- * Returns nothing for `capacity <= 0`; a type with no active resources is not
- * "never full", it is ALWAYS full, and the caller handles that case explicitly
- * because it needs the query window to express it.
+ * `holderKey` is who would be sitting in it: `''` (the default) is a key no
+ * hold can carry, so an unknown holder makes the first arm match every row —
+ * the strict question, which is the right one for an anonymous visitor who has
+ * not said who she is yet.
  */
-export function fullSpans(holds: readonly ChairHold[], capacity: number): Span[] {
-  if (capacity <= 0) return [];
-
-  const events: { t: number; delta: number; resourceId: string }[] = [];
-  for (const h of holds) {
-    // A zero-width hold occupies nothing. Overrides hold no chair at all
-    // (D-30), so this should not arise — but a hold that did slip through
-    // would otherwise open and close a full span at the same instant.
-    if (h.end <= h.start) continue;
-    events.push({ t: h.start, delta: 1, resourceId: h.resourceId }, { t: h.end, delta: -1, resourceId: h.resourceId });
-  }
-  // `delta` ascending breaks the tie so -1 lands before +1.
-  events.sort((a, b) => a.t - b.t || a.delta - b.delta);
-
-  const spans: Span[] = [];
-  // Holds open per chair. A chair counts ONCE however many of one client's
-  // holds are sitting on it; `occupied` is how many chairs have at least one.
-  const perChair = new Map<string, number>();
-  let occupied = 0;
-  let openedAt: number | null = null;
-  for (const e of events) {
-    const before = perChair.get(e.resourceId) ?? 0;
-    const after = before + e.delta;
-    perChair.set(e.resourceId, after);
-    if (before === 0 && after > 0) occupied += 1;
-    else if (before > 0 && after === 0) occupied -= 1;
-
-    if (openedAt === null && occupied >= capacity) openedAt = e.t;
-    else if (openedAt !== null && occupied < capacity) {
-      spans.push({ start: instant(openedAt), end: instant(e.t) });
-      openedAt = null;
-    }
-  }
-  return spans;
+export function canSeat(
+  seating: Seating,
+  envelope: Span,
+  body: Span,
+  holderKey: string | null,
+): boolean {
+  const key = holderKey ?? '';
+  return seating.chairIds.some(
+    (chairId) =>
+      !seating.holds.some(
+        (hold) =>
+          hold.resourceId === chairId &&
+          // Envelopes may overlap for ONE holder: her own buffers, her own chair.
+          ((hold.start < envelope.end && hold.end > envelope.start && hold.holderKey !== key) ||
+            // Bodies never overlap, whoever the holder is. D-17's mother and
+            // daughter are one client record and two people in two chairs.
+            (hold.bodyStart < body.end && hold.bodyEnd > body.start)),
+      ),
+  );
 }
 
 /**
- * Busy intervals for "every chair of this type is taken", over the query
- * window.
+ * The room over the query window.
  *
  * Reads `AppointmentResourceHold`, which spans each appointment's WHOLE
  * envelope including its gaps (RES-02) — that is the entire difference from
@@ -110,8 +136,12 @@ export function fullSpans(holds: readonly ChairHold[], capacity: number): Span[]
  * `excludeAppointmentId` is here for the same reason it is on the busy set: an
  * appointment being moved must not count its own chair against its own
  * destination, or a full room would make every reschedule impossible.
+ *
+ * A required type with NO active chairs comes back with `chairIds: []`, so
+ * `canSeat` is false everywhere and nothing is bookable — the same answer the
+ * old whole-window busy interval gave, without a special case.
  */
-export async function findRoomFullIntervals(
+export async function loadSeating(
   db: Db,
   args: {
     businessId: string;
@@ -120,41 +150,44 @@ export async function findRoomFullIntervals(
     windowEnd: Date;
     excludeAppointmentId?: string | null;
   },
-): Promise<Span[]> {
-  // Capacity is ACTIVE resources only. A chair taken out of service reduces the
-  // room, and a hold still sitting on it (booked before it was deactivated) is
-  // excluded from the count below for the same reason — otherwise a retired
-  // chair both shrinks the room and fills it.
-  const capacity = await db.resource.count({
-    where: { businessId: args.businessId, resourceTypeId: args.resourceTypeId, active: true },
-  });
+): Promise<Seating> {
+  const [chairs, holds] = await Promise.all([
+    db.resource.findMany({
+      where: { businessId: args.businessId, resourceTypeId: args.resourceTypeId, active: true },
+      select: { id: true },
+    }),
+    db.appointmentResourceHold.findMany({
+      where: {
+        businessId: args.businessId,
+        status: { in: [...ACTIVE_STATUSES] },
+        resource: { resourceTypeId: args.resourceTypeId, active: true },
+        // Instant-overlap, never a date filter — the 23:30 hold running past
+        // midnight belongs to both days (the busy-set trap, same shape).
+        blockedStart: { lt: args.windowEnd },
+        blockedEnd: { gt: args.windowStart },
+        ...(args.excludeAppointmentId ? { appointmentId: { not: args.excludeAppointmentId } } : {}),
+      },
+      select: {
+        resourceId: true,
+        holderKey: true,
+        blockedStart: true,
+        blockedEnd: true,
+        bodyStart: true,
+        bodyEnd: true,
+      },
+    }),
+  ]);
 
-  // A required type with no chairs at all: nothing is bookable, and the whole
-  // window is full. Reporting this as an ordinary busy interval keeps the one
-  // answer the caller can act on — no slots — instead of an error on a screen
-  // that has no way to explain it.
-  if (capacity === 0) return [{ start: fromDate(args.windowStart), end: fromDate(args.windowEnd) }];
-
-  const holds = await db.appointmentResourceHold.findMany({
-    where: {
-      businessId: args.businessId,
-      status: { in: [...ACTIVE_STATUSES] },
-      resource: { resourceTypeId: args.resourceTypeId, active: true },
-      // Instant-overlap, never a date filter — the 23:30 hold running past
-      // midnight belongs to both days (the busy-set trap, same shape).
-      blockedStart: { lt: args.windowEnd },
-      blockedEnd: { gt: args.windowStart },
-      ...(args.excludeAppointmentId ? { appointmentId: { not: args.excludeAppointmentId } } : {}),
-    },
-    select: { blockedStart: true, blockedEnd: true, resourceId: true },
-  });
-
-  return fullSpans(
-    holds.map((h) => ({
+  return {
+    resourceTypeId: args.resourceTypeId,
+    chairIds: chairs.map((c) => c.id),
+    holds: holds.map((h) => ({
+      resourceId: h.resourceId,
+      holderKey: h.holderKey,
       start: fromDate(h.blockedStart),
       end: fromDate(h.blockedEnd),
-      resourceId: h.resourceId,
+      bodyStart: fromDate(h.bodyStart),
+      bodyEnd: fromDate(h.bodyEnd),
     })),
-    capacity,
-  );
+  };
 }

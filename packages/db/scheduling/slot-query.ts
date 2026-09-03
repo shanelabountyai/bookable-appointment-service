@@ -8,6 +8,7 @@
 import {
   type BusyInterval,
   type ComposedVisit,
+  type Exclusion,
   type Slot,
   type SlotPolicy,
   type SlotQuery,
@@ -27,7 +28,7 @@ import { findAbsences, resolveDayWindows } from '../availability';
 import { findRunningLate, runningLateInterval } from '../day/running-late';
 import { requiredResourceTypeId } from '../booking/resources';
 import { findBusyAppointments } from './busy-set';
-import { findRoomFullIntervals } from './resource-load';
+import { type Seating, canSeat, loadSeating } from './resource-load';
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
@@ -75,10 +76,38 @@ export interface BuildSlotQueryArgs {
    * other caller leaves it undefined and sees the whole busy set.
    */
   excludeAppointmentId?: string | null;
+  /**
+   * A-082 — WHO WOULD BE SITTING IN THE CHAIR, when that is already known.
+   *
+   * A-063 lets one client's own overlapping ENVELOPES share a single chair, so
+   * the room's answer differs for a client who is already in it. The write
+   * path has passed this to `findFreeResource` since A-063; the OFFER did not
+   * ask at all, which was safe only while the offer asked the weaker
+   * cardinality question. Now that it asks the chooser's question it has to be
+   * given the chooser's inputs, or a client rescheduling next to her own
+   * colour would be refused a chair she is already sitting in.
+   *
+   * `null`/omitted is the STRICT question and the right default: an anonymous
+   * visitor has not said who she is yet, and a nameless walk-in can never
+   * share (two anonymous appointments are two different people).
+   */
+  holderKey?: string | null;
 }
 
 export interface BuiltSlotQuery {
   query: SlotQuery;
+  /**
+   * A-082. The room, carried BESIDE the query rather than folded into
+   * `busy`, because "is there one chair free start to finish?" cannot be
+   * expressed as intervals the engine subtracts by overlap — see the header of
+   * `resource-load.ts` for the proof. `null` when the visit needs no chair.
+   *
+   * Nothing should read this directly: `computeSlotsIn` is the only way to run
+   * the engine on a built query, and it is the thing that applies it.
+   */
+  seating: Seating | null;
+  /** A-082 — forwarded from the args, for `canSeat`. */
+  holderKey: string | null;
   /** True when the day is past the self-serve horizon (D-21). The query is
    *  still returned, with no windows, so callers render "nothing available"
    *  rather than an error. */
@@ -127,22 +156,58 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
     bufferAfterMinutes: links.visit.bufferAfterMinutes,
   };
 
-  const busy = resolved.windows.length === 0
-    ? []
-    : await loadBusy(db, {
-        businessId: args.businessId,
-        providerId: args.providerId,
-        serviceIds: args.serviceIds,
-        day,
-        zone,
-        windows: resolved.windows,
-        service,
-        excludeAppointmentId: args.excludeAppointmentId ?? null,
-        now: args.now,
-      });
+  // The widest span this day's candidates can touch: local midnight to local
+  // midnight of the following day covers every window including an overnight
+  // one, and the buffers extend it either side. Computed ONCE and handed to
+  // both the busy set and the room, so the two provably measure the same day —
+  // the reason `loadRoom` takes `loadDayView`'s bounds rather than its own.
+  const windowStart = toDate(
+    instant(startOfDay(day, zone) - service.bufferBeforeMinutes * MIN - 24 * 60 * MIN),
+  );
+  const windowEnd = toDate(
+    instant(startOfDay(addDays(day, 1), zone) + service.bufferAfterMinutes * MIN + 24 * 60 * MIN),
+  );
+
+  // RES-03. The chair the visit would need, and therefore whether the ROOM can
+  // seat it — a question about everybody's appointments, not this provider's.
+  // Null for a service that needs no resource (a phone consult), and skipped
+  // entirely on a day this provider does not work: `daysWithAvailability` walks
+  // 28 of these to draw a date picker, and a closed day has no candidate to
+  // seat.
+  const resourceTypeId =
+    resolved.windows.length === 0 ? null : await requiredResourceTypeId(db, args.serviceIds);
+
+  const [busy, seating] = await Promise.all([
+    resolved.windows.length === 0
+      ? Promise.resolve([] as BusyInterval[])
+      : loadBusy(db, {
+          businessId: args.businessId,
+          providerId: args.providerId,
+          serviceIds: args.serviceIds,
+          day,
+          zone,
+          windows: resolved.windows,
+          service,
+          excludeAppointmentId: args.excludeAppointmentId ?? null,
+          now: args.now,
+          windowStart,
+          windowEnd,
+        }),
+    resourceTypeId
+      ? loadSeating(db, {
+          businessId: args.businessId,
+          resourceTypeId,
+          windowStart,
+          windowEnd,
+          excludeAppointmentId: args.excludeAppointmentId ?? null,
+        })
+      : Promise.resolve(null),
+  ]);
 
   return {
     beyondHorizon: false,
+    seating,
+    holderKey: args.holderKey ?? null,
     query: {
       day,
       businessZone: zone,
@@ -169,11 +234,62 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
   };
 }
 
+/**
+ * A-082 — THE ONLY WAY TO RUN THE ENGINE ON A BUILT QUERY.
+ *
+ * Runs `computeSlots` and then asks the room the question the CHAIR CHOOSER
+ * asks: is there one chair free for this candidate's whole envelope? A count
+ * of occupied chairs cannot answer that (see `resource-load.ts`), and the
+ * answer cannot be folded back into `busy` as intervals, so it is a filter
+ * over candidates and it lives here — with the engine call — rather than in
+ * each of the five places that offer a time.
+ *
+ * `overrides` is for the callers that legitimately run the engine against
+ * something other than the live catalogue: D-18's duration snapshot on a
+ * reschedule, A-055's new visit length, `explain` on the write paths.
+ *
+ * A slot the room cannot seat becomes an EXCLUSION with `no-resource-free`,
+ * not a silent disappearance: three write paths read that reason to tell the
+ * desk "she is free, the room is not" and to offer RES-04's override, and a
+ * slot that merely vanished would reach them as `SlotNotOffered` with no
+ * reasons at all.
+ */
+export function computeSlotsIn(built: BuiltSlotQuery, overrides?: Partial<SlotQuery>): SlotResult {
+  const query = overrides ? { ...built.query, ...overrides } : built.query;
+  const result = computeSlots(query);
+  const seating = built.seating;
+  if (!seating) return result;
+
+  const slots: Slot[] = [];
+  const refused: Exclusion[] = [];
+  for (const slot of result.slots) {
+    if (canSeat(seating, { start: slot.blockedStart, end: slot.blockedEnd }, { start: slot.start, end: slot.end }, built.holderKey)) {
+      slots.push(slot);
+    } else if (query.explain === true) {
+      refused.push({
+        candidateStart: slot.start,
+        label: slot.label,
+        reasons: ['no-resource-free'],
+        // Nothing a human could open: the conflict is everybody's appointments
+        // at once rather than one of them, which is why the old synthetic
+        // interval id was synthetic too.
+        conflictIds: [],
+      });
+    }
+  }
+  if (slots.length === result.slots.length) return result;
+
+  return {
+    ...result,
+    slots,
+    excluded: [...result.excluded, ...refused].sort((a, b) => a.candidateStart - b.candidateStart),
+  };
+}
+
 /** Runs the engine for one day. The engine stays pure; this is the only
  *  place that hands it database-shaped inputs. */
 export async function computeDaySlots(db: Db, args: BuildSlotQueryArgs): Promise<SlotResult> {
-  const { query } = await buildSlotQuery(db, args);
-  return computeSlots(query);
+  return computeSlotsIn(await buildSlotQuery(db, args));
 }
 
 /**
@@ -198,8 +314,8 @@ export async function daysWithAvailability(
   // A hard stop, so a caller that passes toDay < fromDay, or a range of years,
   // cannot spin. 400 covers any horizon D-21 permits with room to spare.
   for (let guard = 0; day <= last && guard < 400; guard++) {
-    const { query, beyondHorizon } = await buildSlotQuery(db, { ...args, day });
-    if (!beyondHorizon && query.windows.length > 0 && computeSlots(query).slots.length > 0) {
+    const built = await buildSlotQuery(db, { ...args, day });
+    if (!built.beyondHorizon && built.query.windows.length > 0 && computeSlotsIn(built).slots.length > 0) {
       available.push(day);
     }
     day = addDays(day, 1);
@@ -226,6 +342,8 @@ function emptyQuery(
 ): BuiltSlotQuery {
   return {
     beyondHorizon,
+    seating: null,
+    holderKey: args.holderKey ?? null,
     query: {
       day: calendarDay(args.day),
       businessZone: zoneId(business.timezone),
@@ -337,23 +455,17 @@ async function loadBusy(
     service: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number };
     excludeAppointmentId: string | null;
     now: Date;
+    /** PASSED IN, not recomputed (A-082). The room is loaded over the same two
+     *  instants; two functions each deriving "the widest span this day can
+     *  touch" is the same fact under two names, and the day the buffers move
+     *  they would disagree by exactly the buffer. */
+    windowStart: Date;
+    windowEnd: Date;
   },
 ): Promise<BusyInterval[]> {
-  // The widest span the day's candidates can possibly touch. Local midnight to
-  // local midnight of the following day covers every window including an
-  // overnight one, and the buffers extend it either side.
-  const dayStart = startOfDay(args.day, args.zone);
-  const dayEnd = startOfDay(addDays(args.day, 1), args.zone);
-  const windowStart = toDate(instant(dayStart - args.service.bufferBeforeMinutes * MIN - 24 * 60 * MIN));
-  const windowEnd = toDate(instant(dayEnd + args.service.bufferAfterMinutes * MIN + 24 * 60 * MIN));
+  const { windowStart, windowEnd } = args;
 
-  // RES-03. The chair the visit would need, and therefore whether the ROOM can
-  // take it — a question about everybody's appointments, not this provider's.
-  // Null for a service that needs no resource (a phone consult), which is the
-  // case that costs nothing: no type, no query, no interval.
-  const resourceTypeId = await requiredResourceTypeId(db, args.serviceIds);
-
-  const [appointments, absences, late, roomFull] = await Promise.all([
+  const [appointments, absences, late] = await Promise.all([
     findBusyAppointments(db, {
       providerId: args.providerId,
       windowStart,
@@ -365,15 +477,6 @@ async function loadBusy(
     // was set for — a delta does not survive to tomorrow, and nothing has to
     // remember to clear it overnight.
     findRunningLate(db, { businessId: args.businessId, day: args.day }),
-    resourceTypeId
-      ? findRoomFullIntervals(db, {
-          businessId: args.businessId,
-          resourceTypeId,
-          windowStart,
-          windowEnd,
-          excludeAppointmentId: args.excludeAppointmentId,
-        })
-      : Promise.resolve([]),
   ]);
 
   const overrun = late
@@ -401,18 +504,10 @@ async function loadBusy(
     // `provider-running-late`, so the day view can say "Dana is behind"
     // rather than the flatly wrong "she is unavailable".
     ...overrun,
-    // RES-03 — the room, not the stylist. Its own kind for the same reason
-    // every other kind has one: "she already has a client then" is the wrong
-    // thing to tell a desk staring at an empty stylist and a full room, and a
-    // screen that explains itself wrongly stops being read. The id is
-    // synthetic because there is nothing a human could open — the conflict is
-    // everybody's appointments at once, not one of them.
-    ...roomFull.map((span, i) => ({
-      start: span.start,
-      end: span.end,
-      kind: 'resource-full' as const,
-      id: `resource-full:${resourceTypeId}:${i}`,
-    })),
+    // RES-03 — THE ROOM IS NOT HERE ANY MORE (A-082). It was, as a
+    // `resource-full` interval kind, and that shape could only ever express
+    // "every chair is taken at this instant" — which is not the question the
+    // chair chooser asks. `computeSlotsIn` applies it per candidate instead.
   ] satisfies BusyInterval[];
 }
 

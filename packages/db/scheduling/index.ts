@@ -1,10 +1,11 @@
 export { type BusyRow, findBusyAppointments } from './busy-set';
-export { type Span, findRoomFullIntervals, fullSpans } from './resource-load';
+export { type ChairHold, type Seating, type Span, canSeat, loadSeating } from './resource-load';
 export {
   type BuildSlotQueryArgs,
   type BuiltSlotQuery,
   SlotQueryUnavailable,
   buildSlotQuery,
   computeDaySlots,
+  computeSlotsIn,
   daysWithAvailability,
 } from './slot-query';

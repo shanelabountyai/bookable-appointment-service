@@ -26,13 +26,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '../../core/auth';
-import { type Slot, type VisitLine, composeVisit, computeSlots } from '../../core/scheduling';
+import { type Slot, type VisitLine, composeVisit } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { effectivePriceCents, effectiveDurationMinutes, visitPattern } from '../../core/settings';
 import { issueManageToken } from '../appointments';
 import { type ClientReliability, reliabilityFor } from '../clients';
 import { enqueueNotification } from '../notifications';
-import { buildSlotQuery } from '../scheduling';
+import { buildSlotQuery, computeSlotsIn } from '../scheduling';
 import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { BookingRejected, NoResourceFree, NotBookableOnline, SelfServeBlocked, SlotNotOffered, SlotTaken } from './errors';
@@ -196,16 +196,19 @@ export async function bookAppointment(
           await lockProviderDay(tx, input.providerId, businessDay);
         }
 
-        const { query } = await buildSlotQuery(tx, {
+        const built = await buildSlotQuery(tx, {
           businessId: input.businessId,
           providerId: input.providerId,
           serviceIds: input.serviceIds,
           day: businessDay,
           now: input.now,
           audience,
+          // A-082 — the same holder the chair chooser is given below, so the
+          // re-check and `findFreeResource` cannot disagree about the room.
+          holderKey: input.clientId ?? null,
         });
 
-        const result = computeSlots({ ...query, explain: true });
+        const result = computeSlotsIn(built, { explain: true });
         const offered = result.slots.find((s) => s.start === fromDate(input.startAt));
 
         if (!offered && !isOverride) {
@@ -505,15 +508,16 @@ async function freshAlternatives(
       where: { id: input.businessId },
       select: { timezone: true },
     });
-    const { query } = await buildSlotQuery(prisma, {
+    const built = await buildSlotQuery(prisma, {
       businessId: input.businessId,
       providerId: input.providerId,
       serviceIds: input.serviceIds,
       day: businessDayOf(input.startAt, business.timezone),
       now: input.now,
       audience,
+      holderKey: input.clientId ?? null,
     });
-    return [...computeSlots(query).slots];
+    return [...computeSlotsIn(built).slots];
   } catch {
     // Never let the alternatives lookup turn a clean 409 into a 500.
     return [];
