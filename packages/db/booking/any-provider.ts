@@ -67,6 +67,16 @@ export async function anyProviderTimes(
     now: Date;
     /** Staff lifts the horizon and the lead time (D-21, D-25); public does not. */
     audience?: 'public' | 'staff';
+    /**
+     * A-083 — WHO would be sitting in the chair (A-063), when the caller knows.
+     *
+     * "Anyone on Thursday" asked for a client the desk has already picked is
+     * still a question about HER: one of her own overlapping envelopes may
+     * share her chair, and asking anonymously offers fewer times than the
+     * write would accept. `null`/omitted stays the strict question, which is
+     * the right one for the public flow's visitor who has not said who she is.
+     */
+    holderKey?: string | null;
   },
 ): Promise<AnyProviderTime[]> {
   const providers = await providersForVisit(db, { businessId: args.businessId, serviceIds: args.serviceIds });
@@ -90,6 +100,7 @@ export async function anyProviderTimes(
         day: args.day,
         now: args.now,
         audience: args.audience ?? 'public',
+        holderKey: args.holderKey ?? null,
       });
       return { provider, starts: slots.map((slot) => slot.start) };
     }),
@@ -146,6 +157,8 @@ export async function anyProviderAt(
     at: Date;
     now: Date;
     audience?: 'public' | 'staff';
+    /** A-083 — forwarded to the room's question, same as above. */
+    holderKey?: string | null;
   },
 ): Promise<AnyProviderTime | null> {
   const business = await db.business.findUniqueOrThrow({
@@ -160,6 +173,7 @@ export async function anyProviderAt(
     day,
     now: args.now,
     ...(args.audience ? { audience: args.audience } : {}),
+    holderKey: args.holderKey ?? null,
   });
 
   const wanted = fromDate(args.at);

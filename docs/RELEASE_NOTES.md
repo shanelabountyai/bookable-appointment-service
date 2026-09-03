@@ -2532,3 +2532,33 @@ The trap on the other side is being too strict. The system deliberately lets one
 The same walk stress-tested two features it did not break. Pushing a running-late column was exercised across every stylist, every day of the sample book and four different delays — 408 previews, 271 real pushes, and not one case where the preview promised something the transaction then refused. Giving a no-show's time back was walked end to end: the booking's hold on its chair is trimmed, the freed time appears on the screen that sells it, the engine offers it and the booking succeeds.
 
 A checkpoint that only reports failures is not a checkpoint. Knowing which parts held is the other half of the result.
+
+---
+
+## A-083 — the same screen, the same time, two different answers
+
+The checkpoint before this one fixed a room that was never *full* and still had nowhere to sit her. Fixing it required telling the availability screen something it had never needed to know: **who would be sitting in the chair.** One client's own back-to-back appointments are allowed to share a chair — her cut and her colour, their padding overlapping, because she is the person in it. So the room's answer genuinely depends on whose question it is, and "nobody in particular" has to be the cautious answer.
+
+That input was threaded through every caller that had an appointment in hand. It was not threaded through either of the two that have a *client* and no appointment yet — **which is exactly what a booking screen is.**
+
+### What the desk saw
+
+The booking panel resolves the client, puts her in the form, shows her name at the top — and then asks the room about nobody. On a two-chair room: nine times offered anonymously, eleven with her named, and the booking system accepts the two that were withheld. The desk reads *"every chair is taken then — she is free, the room is not"* about a chair that is hers and empty.
+
+### Why the workaround is worse than the refusal
+
+There is a way past that sentence: the deliberate double-book, with a typed reason. It exists for the times the salon really does decide to squeeze somebody in, and it is honest about what it is.
+
+But an override takes **no chair**. It is booked outside the room's model on purpose, because the whole point is that the operator has overruled the room. So a wrongly refused offer does not cost one awkward conversation — it puts a real client in a real chair that the system believes is empty, and every availability answer for the rest of that afternoon is then wrong for everybody else. **A refusal the desk can route around with a lie is more expensive than one it cannot.**
+
+### The test that can see it, and the two that cannot
+
+Each half of this had a passing suite. The screen's logic was tested. The booking path's logic was tested. Both were right about their own question, and the defect lives *between* them: **the screen asks a stricter question than the booking path answers.** No number of separate assertions can see that, because both assertions are true.
+
+So the regression test computes the same offer twice and compares it against what the write actually accepts — one assertion, two answers, over a room built to make them differ. A weaker question is right in every simple fixture and wrong only where the room is interesting.
+
+### Where it now asks
+
+Four screens, not three: the stylist's own column, "anything Thursday, I don't mind who", the recovery path that finds another stylist at the same time, and the walk-in search — because a named walk-in is usually somebody already in a chair for something else. And the panel re-asks when the desk picks the client, since it asks for her **last**: services, then time, then who she is. Naming her can only add times, never remove one, so the time already chosen stays chosen.
+
+The public flow still asks cautiously, and that is correct rather than unfinished: a first-time visitor has not said who she is until the last step, and until she does, the safe answer is the only honest one.

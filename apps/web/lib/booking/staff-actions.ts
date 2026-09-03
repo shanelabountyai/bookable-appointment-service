@@ -180,9 +180,21 @@ export interface WalkInChoice {
 }
 
 /** BOOK-04's walk-in: who could take this visit, soonest first. */
-export async function findWalkInOptions(serviceIds: string[], day: string): Promise<WalkInChoice[]> {
+export async function findWalkInOptions(
+  serviceIds: string[],
+  day: string,
+  clientId?: string | null,
+): Promise<WalkInChoice[]> {
   const staff = await requireStaff();
-  const options = await walkInOptions(prisma, { businessId: staff.businessId, serviceIds, day, now: new Date() });
+  const options = await walkInOptions(prisma, {
+    businessId: staff.businessId,
+    serviceIds,
+    day,
+    now: new Date(),
+    // A-083 — a named walk-in is often a client already in a chair for
+    // something else; the stranger at the door is the `null` case.
+    holderKey: clientId || null,
+  });
   return Promise.all(
     options.map(async (option) => ({
       providerId: option.providerId,
@@ -298,6 +310,10 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
         serviceIds,
         at: startAt,
         now: new Date(),
+        // A-083 — the same holder the write just used, or the search that
+        // answers "who else could take her" is stricter than the booking it
+        // is recovering from.
+        holderKey: clientIdRaw || null,
         audience: 'staff',
       });
       // A DIFFERENT person, because re-offering the one just refused is a dead
@@ -392,7 +408,23 @@ export interface GridTime {
  * So a gap link now means "book around here": the panel lists the real
  * offered times and preselects the first one at or after it.
  */
-export async function staffSlotsFor(providerId: string, serviceIds: string[], day: string): Promise<GridTime[]> {
+/**
+ * A-083 — THE DESK KNOWS WHO IT IS BOOKING, SO IT MUST SAY SO.
+ *
+ * `clientId` is A-063's holder: one client's own overlapping envelopes may
+ * share her chair, so the room's answer DEPENDS on who would be sitting in it.
+ * `null` is the strict question and is right for a visitor who has not said
+ * who she is — it was also what this panel passed for a client it had already
+ * resolved, so the desk was told "every chair is taken then" about a chair
+ * that was hers and empty, and the only way through was a BOOK-05 override
+ * that by D-30 holds no chair at all.
+ */
+export async function staffSlotsFor(
+  providerId: string,
+  serviceIds: string[],
+  day: string,
+  clientId?: string | null,
+): Promise<GridTime[]> {
   const staff = await requireStaff();
   if (serviceIds.length === 0 || !providerId) return [];
 
@@ -404,6 +436,7 @@ export async function staffSlotsFor(providerId: string, serviceIds: string[], da
     now: new Date(),
     // Staff: no horizon, no lead time, and exclusion reasons available.
     audience: 'staff',
+    holderKey: clientId || null,
   });
 
   // A-042 — THE WHOLE COLUMN, not only the sellable part of it.
@@ -454,7 +487,11 @@ export interface AnyoneChoice {
  * booking lost. Every time here still comes from the engine, once per
  * qualified stylist; this only merges them and applies SVC-02's assignment.
  */
-export async function anyoneTimesFor(serviceIds: string[], day: string): Promise<AnyoneChoice[]> {
+export async function anyoneTimesFor(
+  serviceIds: string[],
+  day: string,
+  clientId?: string | null,
+): Promise<AnyoneChoice[]> {
   const staff = await requireStaff();
   if (serviceIds.length === 0) return [];
 
@@ -471,6 +508,9 @@ export async function anyoneTimesFor(serviceIds: string[], day: string): Promise
     now: new Date(),
     // Staff: no horizon, no lead time (D-21, D-25).
     audience: 'staff',
+    // A-083 — the same holder as the provider path above; "I don't mind who"
+    // never meant "I don't mind whose chair".
+    holderKey: clientId || null,
   });
 
   return offered.map((time) => ({

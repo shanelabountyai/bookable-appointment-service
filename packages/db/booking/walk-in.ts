@@ -36,7 +36,18 @@ export interface WalkInOption {
  */
 export async function walkInOptions(
   db: Db,
-  args: { businessId: string; serviceIds: readonly string[]; day: string; now: Date },
+  args: {
+    businessId: string;
+    serviceIds: readonly string[];
+    day: string;
+    now: Date;
+    /** A-083 — WHO would be sitting in the chair, when the desk already knows.
+     *  A walk-in the desk has named may be a client who is already in a chair
+     *  for something else (D-17's add-on), and A-063 lets her own envelopes
+     *  share it. `null`/omitted is the STRICT question — the right one for the
+     *  stranger at the door, and wrong for a client the desk has picked. */
+    holderKey?: string | null;
+  },
 ): Promise<WalkInOption[]> {
   // A multi-service visit needs ONE provider qualified for ALL of it
   // (VISIT-01: same provider, in order) — not one who happens to do the first.
@@ -59,6 +70,7 @@ export async function walkInOptions(
         // Staff: no horizon, no lead time (D-21, D-25). The whole point is to
         // book the person standing at the desk.
         audience: 'staff',
+        holderKey: args.holderKey ?? null,
       });
 
       const soonest = slots.find((slot) => slot.start >= fromDate(args.now));

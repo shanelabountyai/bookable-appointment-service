@@ -8,6 +8,8 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
+import { bookAppointment } from '@bookable/db/booking';
+import { staffActor } from '@bookable/core/auth';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
@@ -468,6 +470,89 @@ test.describe('staff booking (A-017)', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  /**
+   * A-083 — THE DESK NAMES HER, AND THE ROOM CHANGES ITS ANSWER.
+   *
+   * Her cut holds chair 1 until 13:55 (buffers included); somebody else holds
+   * chair 2. A colour at 13:45 needs one chair for 13:35–16:05, and the only
+   * chair that can take it is the one SHE is already in — A-063 lets one
+   * client's own envelopes overlap, and her bodies do not.
+   *
+   * So the same screen, the same time, two answers: refused while the panel
+   * asks anonymously, offered once it says who she is, and the write accepts
+   * it. Asserted through the browser because the defect was in the browser —
+   * the page resolved the client five lines above the call and passed `null`.
+   */
+  test('offers her the chair she is already in, once the desk says who she is', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      // TWO chairs: a room that cannot bind cannot disagree with anything.
+      const spare = await prisma.resource.findMany({
+        where: { businessId: business.id, active: true },
+        orderBy: { name: 'asc' },
+        skip: 2,
+      });
+      await prisma.resource.updateMany({ where: { id: { in: spare.map((r) => r.id) } }, data: { active: false } });
+
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const tess = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Tess' } });
+      const cut = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const nadia = await prisma.client.create({
+        data: { businessId: business.id, name: 'Nadia Okafor', phone: '5125550188' },
+      });
+      const ben = await prisma.client.create({ data: { businessId: business.id, name: 'Ben Rios' } });
+      const before = (when: Date) => toDate(instant(fromDate(when) - 3 * 60 * 60_000));
+      // Chair 1 — hers, until 13:55 with the after-buffer.
+      await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: dana.id,
+        serviceIds: [cut.id],
+        clientId: nadia.id,
+        startAt: at('13:00'),
+        now: before(at('13:00')),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+      // Chair 2 — somebody else's, across the time she wants.
+      await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: tess.id,
+        serviceIds: [cut.id],
+        clientId: ben.id,
+        startAt: at('13:45'),
+        now: before(at('13:45')),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    await page.getByRole('link', { name: 'Book with Priya' }).click();
+    await page.getByRole('button', { name: /^Colour\d/ }).click();
+
+    // Nobody named yet: the strict question, and it is the right one here.
+    const refused = page.getByRole('button', { name: /^13:45 — every chair is taken then/ });
+    await expect(refused).toBeVisible();
+    // Tapped BEFORE she is named, which is the order BOOK-04 asks in — and the
+    // tap that arms the override, so it has to survive the reload below.
+    await refused.click();
+
+    await page.getByLabel('Find a client by name or phone number').fill('Nadia');
+    await page.getByRole('button', { name: /Nadia Okafor/ }).click();
+
+    // The chair is hers. Same screen, same time, no override in sight — and
+    // still the time the desk chose, not the next one down the list.
+    const offered = page.getByRole('button', { name: '13:45', exact: true });
+    await expect(offered).toBeVisible();
+    await expect(offered).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    // AGREEMENT: what the panel offered is what the write took.
+    await expect(page.getByText('Booked.')).toBeVisible();
   });
 
   test('has no accessibility violations', async ({ page }) => {

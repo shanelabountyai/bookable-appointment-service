@@ -103,6 +103,17 @@ export function BookingPanel({
   const [repeatEvery, setRepeatEvery] = useState(4);
 
   const [client, setClient] = useState<ClientChoice | null>(initialClient);
+  /**
+   * A-083 — WHO the room should be asked about, or nobody.
+   *
+   * BOOK-04's "No name" is a SENTINEL with `id: ''` rather than a null client
+   * (the form sends the empty string as "booked with nobody"), and an empty
+   * key is the strict question — the same thing `null` means. Comparing the
+   * objects instead treated picking "No name" as a change of holder, which
+   * reloaded the times and threw away the refused chip A-042's override flow
+   * had just armed.
+   */
+  const holderOf = (choice: ClientChoice | null) => choice?.id || null;
 
   // In "anyone" mode the provider comes from the row the desk tapped — SVC-02
   // decided it when the list was built, so what they read is what they book.
@@ -131,9 +142,24 @@ export function BookingPanel({
    */
   const latestRequest = useRef(0);
 
-  // Shared by "pick a service" and "pick a day" (A-039) — either one
-  // invalidates whatever times were offered for the OLD combination.
-  function loadFor(nextDay: string, nextServices: string[]) {
+  /**
+   * Shared by "pick a service" and "pick a day" (A-039) — either one
+   * invalidates whatever times were offered for the OLD combination. A-083
+   * added the third input: WHO she is, because A-063 lets one client's own
+   * overlapping envelopes share a chair, so the room's answer depends on her
+   * and asking anonymously offers fewer times than the write accepts.
+   *
+   * `anchorAt` is the instant to re-select once the answer lands. Naming a
+   * client can only WIDEN the list — sharing relaxes what one holder may do
+   * and nothing else — so the time already chosen is still in it, and a client
+   * picked after the time (BOOK-04's order) must not silently unpick it.
+   */
+  function loadFor(
+    nextDay: string,
+    nextServices: string[],
+    nextClient: ClientChoice | null = client,
+    anchorAt: string | null = null,
+  ) {
     const request = ++latestRequest.current;
     setPick(null);
     setOptions([]);
@@ -145,27 +171,37 @@ export function BookingPanel({
     setTypedError(null);
     if (nextServices.length === 0) return;
     setAnyoneTimes([]);
+    // A-083 — the same row the desk had tapped, in the recomputed list. Keyed
+    // on the INSTANT and matched exactly (D-4): "the first one at or after" is
+    // right for a gap the desk tapped and wrong here, where it would quietly
+    // move her to a different time than the one she was told.
+    const reselect = (rows: readonly { providerId: string; at: string; label: string }[]) => {
+      const same = anchorAt ? rows.find((row) => row.at === anchorAt) : undefined;
+      if (same) setPick({ providerId: same.providerId, at: same.at, label: same.label });
+    };
     if (walkIn) {
       startLoadingOptions(async () => {
-        const found = await findWalkInOptions(nextServices, nextDay);
+        const found = await findWalkInOptions(nextServices, nextDay, holderOf(nextClient));
         if (request !== latestRequest.current) return;
         setOptions(found);
+        reselect(found);
       });
       return;
     }
     if (anyone) {
       startLoadingOptions(async () => {
-        const found = await anyoneTimesFor(nextServices, nextDay);
+        const found = await anyoneTimesFor(nextServices, nextDay, holderOf(nextClient));
         // The same staleness guard A-054 added to the provider path: a slow
         // answer for the day the desk has left must not select a time on it.
         if (request !== latestRequest.current) return;
         setAnyoneTimes(found);
+        reselect(found);
       });
       return;
     }
     if (provider) {
       startLoadingOptions(async () => {
-        const offered = await staffSlotsFor(provider.id, nextServices, nextDay);
+        const offered = await staffSlotsFor(provider.id, nextServices, nextDay, holderOf(nextClient));
         // A newer question has been asked since this one went out. Dropping
         // the answer leaves the panel with no times rather than the WRONG
         // times, and the newer request is already on its way with the right
@@ -191,7 +227,16 @@ export function BookingPanel({
         // stops meaning anything.
         const anchor = nextDay === initialDay ? at : null;
         const bookable = offered.filter((slot) => slot.reasons.length === 0);
-        setChosenSlot(bookable.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? bookable[0]?.at ?? null);
+        // A-083 — the tapped instant survives a client change, REFUSED OR NOT.
+        // A refused chip that is still selected is how BOOK-05's override is
+        // armed (A-042), and naming the client is the step the desk takes
+        // immediately after tapping it: re-selecting "the first bookable time
+        // at or after" instead would silently disarm the override and book a
+        // different appointment than the one on the screen.
+        const keep = anchorAt && offered.some((slot) => slot.at === anchorAt) ? anchorAt : null;
+        setChosenSlot(
+          keep ?? bookable.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? bookable[0]?.at ?? null,
+        );
       });
     }
   }
@@ -208,6 +253,26 @@ export function BookingPanel({
   function changeDay(nextDay: string) {
     setDay(nextDay);
     loadFor(nextDay, chosen);
+  }
+
+  /**
+   * A-083 — NAMING HER CHANGES WHAT THE ROOM CAN DO.
+   *
+   * The panel asks in BOOK-04's order (services → who and when → client), so
+   * every list on the screen was computed for nobody: the strict question,
+   * which is right for a stranger and wrong for the client now in state. The
+   * chair her other appointment holds is hers to share (A-063), and the desk
+   * was being told "every chair is taken then" about it — with a BOOK-05
+   * override, which holds no chair at all (D-30), as the only way through.
+   */
+  function changeClient(next: ClientChoice | null) {
+    const before = holderOf(client);
+    setClient(next);
+    // Only when the ROOM's answer can change. "No name" on a panel that never
+    // had a client asks the identical question, and reloading on it would
+    // throw the desk's chosen time away for nothing — which is exactly what
+    // it did to A-042's override flow: the refused chip it had just tapped.
+    if (holderOf(next) !== before && chosen.length > 0) loadFor(day, chosen, next, pick?.at ?? chosenSlot);
   }
 
   if (state.ok) {
@@ -559,7 +624,11 @@ export function BookingPanel({
             D-17's household case and CLIENT-04's flag. The SEARCH is bound
             here, because the note this one wants is about the slot being
             chosen. */}
-        <ClientPicker value={client} onChange={setClient} search={(text: string) => findClientsForBooking(text, startAt, chosen)} />
+        <ClientPicker
+          value={client}
+          onChange={changeClient}
+          search={(text: string) => findClientsForBooking(text, startAt, chosen)}
+        />
       </fieldset>
 
       {state.message && !state.ok ? (

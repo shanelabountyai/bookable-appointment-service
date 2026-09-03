@@ -93,7 +93,11 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
   // Loaded on the server so a prefilled panel renders with its times already
   // there — the alternative is a mount effect that flashes an empty list.
   const initialSlots =
-    !walkIn && provider && prefillServiceIds.length > 0 ? await staffSlotsFor(provider.id, prefillServiceIds, day) : [];
+    !walkIn && provider && prefillServiceIds.length > 0
+      // A-083 — the client is resolved five lines above; withholding her here
+      // made the server-rendered list stricter than the write.
+      ? await staffSlotsFor(provider.id, prefillServiceIds, day, prefillClient?.id || null)
+      : [];
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
