@@ -2314,7 +2314,7 @@ Three chairs taken at every instant and never four, so the room was never *full*
 
 ## A-083 — the desk names the client and then asks the room the anonymous question
 
-**Commit:** `PENDING`
+**Commit:** `110f8ac`
 
 **A-082's fix, with the sign flipped.** Checkpoint 6 made the room's read model ask the chooser's question, and gave that question an input: `holderKey`, *who would be sitting in the chair*. A-063 lets one client's own overlapping envelopes share a chair — her cut's after-buffer and her colour's before-buffer, the chair she is physically in — so the room's answer **depends on who is asking**. `null` is the strict question, and it is the correct default for a visitor who has not said who she is.
 
