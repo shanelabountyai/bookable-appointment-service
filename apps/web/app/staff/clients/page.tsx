@@ -4,6 +4,9 @@ import { clientReliability, searchClients } from '@bookable/db/clients';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { ClientFlag } from '@/components/client-flag';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Field, Input } from '@/components/ui/field';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,29 +50,24 @@ export default async function ClientsPage({ searchParams }: PageProps<'/staff/cl
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Clients</h1>
       </div>
 
-      <form className="flex gap-2">
-        <label htmlFor="q" className="sr-only">
-          Search by name or phone number
-        </label>
-        <input
-          id="q"
-          name="q"
-          defaultValue={query}
-          placeholder="Name or phone number"
-          className="flex-1 rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700"
-        />
-        <button
-          type="submit"
-          className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-        >
+      {/* A-089. The primitives' first real caller. No `error` prop: a search
+          box cannot fail, and an always-present live region here would reserve
+          a line for an announcement that never comes. */}
+      <form className="flex items-end gap-2">
+        <Field id="q" label="Search by name or phone number" labelHidden className="flex-1">
+          {(control) => (
+            <Input {...control} name="q" defaultValue={query} placeholder="Name or phone number" />
+          )}
+        </Field>
+        <Button type="submit" variant="primary">
           Search
-        </button>
+        </Button>
       </form>
 
       {query === '' ? (
-        <p className="text-zinc-500">Search by name, or by the last few digits of a number.</p>
+        <EmptyState>Search by name, or by the last few digits of a number.</EmptyState>
       ) : results.length === 0 ? (
-        <p className="text-zinc-500">Nobody matches “{query}”.</p>
+        <EmptyState>Nobody matches “{query}”.</EmptyState>
       ) : (
         <ul className="flex flex-col gap-2">
           {results.map((client) => (

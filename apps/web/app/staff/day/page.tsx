@@ -10,6 +10,7 @@ import { readableDay } from '@/lib/customer-format';
 import { toGridModel } from '@/lib/day/view-model';
 import { flagSentence } from '@/components/client-flag';
 import { DateJump } from '@/components/date-jump';
+import { Tab, Tabs } from '@/components/ui/tabs';
 import { DayGrid } from './day-grid';
 import { DaySheet } from './day-sheet';
 import { ProviderDay } from './provider-day';
@@ -182,25 +183,19 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         ) : null}
       </div>
 
-      <nav aria-label="View" className="flex flex-wrap gap-2 text-sm">
-        <Link
-          href={link(day, null)}
-          aria-current={providerId ? undefined : 'page'}
-          className={`rounded-md border px-3 py-1.5 ${providerId ? 'border-zinc-300 dark:border-zinc-700' : 'border-zinc-900 font-medium dark:border-zinc-100'}`}
-        >
+      {/* A-089. The same links, the same `aria-current`, through the primitive
+          — which is also what gives the selected tab a print rule the hand-
+          written version never had. */}
+      <Tabs label="View">
+        <Tab href={link(day, null)} current={!providerId}>
           Everyone
-        </Link>
+        </Tab>
         {model.columns.map((c) => (
-          <Link
-            key={c.providerId}
-            href={link(day, c.providerId)}
-            aria-current={providerId === c.providerId ? 'page' : undefined}
-            className={`rounded-md border px-3 py-1.5 ${providerId === c.providerId ? 'border-zinc-900 font-medium dark:border-zinc-100' : 'border-zinc-300 dark:border-zinc-700'}`}
-          >
+          <Tab key={c.providerId} href={link(day, c.providerId)} current={providerId === c.providerId}>
             {c.providerName}
-          </Link>
+          </Tab>
         ))}
-      </nav>
+      </Tabs>
       </div>
 
       {asSheet ? (

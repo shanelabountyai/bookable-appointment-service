@@ -2642,3 +2642,49 @@ The fix is one rule, applied once, globally — not a setting on a button compon
 ### And it prints
 
 Dark mode text prints as nothing, because printers do not ink the dark background it was legible against. The print rules now flatten every colour in the new system to black on white — including the status colours, which is safe precisely because this product never uses colour as the only signal. The words survive the greyscale.
+
+---
+
+## Six components, and the twelve that were not built
+
+The design brief listed eighteen interface primitives. This shipped six: a button, a button-shaped link, a count badge, a form field, a set of tabs, and the thing a screen says when there is nothing on it.
+
+The other twelve were not deferred out of laziness. This project has now found six separate defects that were invisible from *inside* the change that introduced them — a component nobody has put on a real screen has a set of states nobody has actually looked at. A dropdown built today, for a screen that arrives in three weeks, is twelve states drawn from imagination and zero checked against a salon.
+
+So the six that shipped are the six the next screen genuinely needs, and each one landed with a page that renders every state it has, an automated accessibility pass over that page, and a test that drives it from the keyboard.
+
+### One fact, written down once
+
+A form field's real job is invisible: connecting the label to the input, and connecting the input to its hint and its error message, so a screen reader announces all three together. Those connections are built out of generated identifiers — and there are three or four obvious ways to build this component that end up writing the same identifier down in two places.
+
+That is the exact shape of bug this codebase keeps finding elsewhere: the same fact stored twice under two names, correct until the day the two copies disagree. So the field computes its identifiers once and hands them to the input, and the type system will not let a caller forget to use them.
+
+### The error message has to exist before the error does
+
+A live region — the thing that makes a screen reader speak an error the moment it appears — only works if it was already on the page. An error message element that appears at the same instant as its own text is announced by nobody.
+
+So the field distinguishes between *a form that has no errors* (no element, no wasted space) and *a form whose error is currently empty* (the element is always there, silent until it has something to say). One is a search box. The other is every form that writes something down. The reserved blank line is also what stops the form jumping when the message arrives.
+
+### A busy button is a disabled button
+
+Every control in this application that changes something goes through the same submit-and-wait mechanism, and every one of them knows whether it is currently working. A button that still looks pressable while its request is in flight is a double booking waiting to happen — in a product whose entire reason for existing is not putting two people in the same chair.
+
+So "busy" and "disabled" are not two states here; they are one, and it is announced rather than merely drawn.
+
+### Tabs that are actually links
+
+The row of stylist names across the top of the day view looks like tabs. It is not. Each one is a real page the front desk keeps open on a second browser tab, goes back to, and prints from. Building it with the standard tab pattern would have promised keyboard behaviour it does not have and told a screen reader the content is on the same page when it is not.
+
+They are links, and the selected one is marked as the current page — which is also what makes it survive being printed.
+
+### The one thing that got bigger
+
+The staff application's buttons and inputs were about forty pixels tall. The brief's own accessibility rules require 44 on the salon's tablet, because the person tapping it is holding a phone in the other hand and has a client in the chair.
+
+They are 44 now, and a test measures the rendered pixels rather than checking that the right class name is present — a class name is easy to override by accident, and the whole point was the physical size of the target.
+
+### And a guard that stops the drift
+
+The old code wrote its greys by hand roughly two hundred times, each with a second copy for dark mode. The new colour system removes the need for the second copy entirely. A test now reads the new components and fails if any of them reaches past the system back to a hand-written colour — because such a value quietly stops adapting to dark mode, stops being covered by the contrast checks, and stops flattening correctly when the page is printed.
+
+It was broken on purpose to confirm it fires.
