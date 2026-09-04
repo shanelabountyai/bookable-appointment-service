@@ -2380,7 +2380,7 @@ What D-49 adds beyond the answer is the thing that makes (b) different from the 
 
 ## A-086 — the last hand-typed status list, and there were two of them
 
-**Commit:** `PENDING`
+**Commit:** `2c8a68f`
 
 **Flagged at the Phase 8 close as "one constant, next time the file is open"; Phase 9 never opened the file.** `reports/dashboard.ts:89` typed `status: { in: ['completed', 'no_show'] }` at its call site while every other status reader in the product derives from `scheduling/status.ts` — right today, wrong the day a ninth status arrives, and CLAUDE.md's first structural rule.
 
