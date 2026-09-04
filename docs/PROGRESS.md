@@ -2402,7 +2402,7 @@ What D-49 adds beyond the answer is the thing that makes (b) different from the 
 
 ## A-088 — the token layer, derived from an audit rather than invented
 
-**Commit:** `PENDING`
+**Commit:** `a96f5b3`
 
 **The audit is the item.** Before designing anything, count what the staff app already renders: `text-zinc-600` ×136 and `dark:text-zinc-400` ×132, `border-zinc-300` ×67 beside `border-zinc-400` ×66, amber in 80 text positions (running late, no-show, override), `rounded-md` ×158 against nine of everything else, `text-sm` ×347 / `text-xs` ×89 / `text-2xl` for titles — and **one** `shadow` in the entire application. That measurement decides the scale: this product is zinc + four intents, one radius pair, no shadow, three type sizes. A token sheet that disagreed with those numbers would be reformatted away on first contact.
 
