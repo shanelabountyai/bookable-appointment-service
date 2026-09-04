@@ -33,6 +33,10 @@ import type { Actor } from '../../core/auth';
 import { ACTIVE_STATUSES, PUSHABLE_STATUSES, resolveWindow, wallTime } from '../../core/scheduling';
 import { type ZoneId, calendarDay, fromDate, instant, toDate, toLabel, weekdayOf } from '../../core/time';
 import { resolveDayWindows } from '../availability';
+// A-084 — the ONE copy of the room rule. Imported from the file, not the
+// barrel: `scheduling/index` pulls `slot-query`, which imports `./running-late`
+// from this very directory.
+import { seatBlocked } from '../scheduling/resource-load';
 import { enqueueNotification } from '../notifications';
 import { repointManageTokens } from '../appointments';
 import { SlotTaken } from '../booking';
@@ -466,7 +470,7 @@ interface Span {
   end: number;
 }
 
-interface RoomState {
+export interface RoomState {
   /** Every chair's type, INACTIVE ONES INCLUDED — an appointment can still be
    *  holding a chair that was retired after it was booked, and it still has to
    *  be given a chair of the right type at its destination. */
@@ -479,11 +483,15 @@ interface RoomState {
    *  the other stylists' clients, whose chairs are simply not available —
    *  except to the SAME holder, which is what A-063 made true of the database
    *  and checkpoint 5 found the planner still did not know. */
-  others: (Span & { resourceId: string; holderKey: string; body: Span })[];
+  others: (Span & { resourceId: string; holderKey: string; bodyStart: number; bodyEnd: number })[];
 }
 
-/** The room, as one read, for the whole push (A-034). */
-async function loadRoom(
+/** The room, as one read, for the whole push (A-034).
+ *
+ * Exported for A-084's agreement test only — nothing else outside this file
+ * plans a column, and the day the desk gets a second planner is the day this
+ * rule has a fourth copy. */
+export async function loadRoom(
   db: Prisma.TransactionClient | PrismaClient,
   args: { businessId: string; excludeAppointmentIds: string[]; windowStart: number; windowEnd: number },
 ): Promise<RoomState> {
@@ -527,7 +535,8 @@ async function loadRoom(
       start: fromDate(h.blockedStart),
       end: fromDate(h.blockedEnd),
       holderKey: h.holderKey,
-      body: { start: fromDate(h.bodyStart), end: fromDate(h.bodyEnd) },
+      bodyStart: fromDate(h.bodyStart),
+      bodyEnd: fromDate(h.bodyEnd),
     })),
   };
 }
@@ -550,7 +559,7 @@ async function loadRoom(
  * global re-shuffle would fit her, and she comes back as `leftBehind` rather
  * than as a wrong answer. Upgrade to a matching if a real salon ever hits it.
  */
-function planChairs(
+export function planChairs(
   rows: {
     id: string;
     resourceId: string | null;
@@ -563,42 +572,39 @@ function planChairs(
   }[],
   room: RoomState,
 ): { chairs: Map<string, string> } | { blocked: string } {
-  interface Held extends Span {
-    holderKey: string;
-    body: Span;
-  }
+  type Held = Span & { holderKey: string; bodyStart: number; bodyEnd: number };
   const busy = new Map<string, Held[]>();
   const occupy = (resourceId: string, held: Held) =>
     busy.set(resourceId, [...(busy.get(resourceId) ?? []), held]);
-
-  // Half-open on both sides, like every other range in this project: a hold
-  // ending at 15:00 frees its chair for one starting at 15:00.
-  const overlaps = (a: Span, b: Span) => a.start < b.end && b.start < a.end;
+  const seat = (envelope: Span, body: Span, holderKey: string): Held => ({
+    ...envelope,
+    holderKey,
+    bodyStart: body.start,
+    bodyEnd: body.end,
+  });
 
   /**
-   * THE TWO QUESTIONS THE DATABASE ASKS, ASKED IN THE SAME SHAPE (A-063).
+   * THE ROOM RULE — asked here in EXACTLY the words the offer and the write
+   * ask it in (A-084). One shared predicate, three callers, because this
+   * planner is the third copy: A-063 split the chair invariant in two and
+   * checkpoint 5 found the planner still asking one question, so a client whose
+   * cut and colour share one chair was counted as needing two and left behind
+   * on a full Saturday. The version that replaced it asked both halves but
+   * arranged them differently — `E && (D || B)` where the other two say
+   * `(E && D) || B` — which agree only while the body stays inside the
+   * envelope. It always does; nothing in TypeScript said so. Now nothing has
+   * to: there is one expression.
    *
-   * This used to be one question — "does anything overlap?" — which is the
-   * planner A-063 left behind as "strictly stricter than the database, a
-   * seating cosmetic". Checkpoint 5 proved it is not cosmetic: a client whose
-   * cut and colour share one chair was counted as needing two, and on a full
-   * Saturday the push reported `no-chair-free` and left her behind for a chair
-   * she was sitting in. A planner stricter than the constraint does not fail
-   * safe, it refuses a move the salon needs most when it is busiest.
-   *
-   * - Envelopes may overlap only for the SAME holder (`holderKey WITH <>`).
-   * - Bodies never overlap, whoever the holder is — the stronger of the two.
+   * The planner still reads its own in-memory room and never the database,
+   * deliberately: it is planning a column that does not exist yet.
    */
   const free = (resourceId: string, envelope: Span, body: Span, holderKey: string) =>
-    !(busy.get(resourceId) ?? []).some(
-      (held) =>
-        overlaps(envelope, held) && (held.holderKey !== holderKey || overlaps(body, held.body)),
-    );
+    !(busy.get(resourceId) ?? []).some((held) => seatBlocked(held, envelope, body, holderKey));
 
   for (const hold of room.others) occupy(hold.resourceId, hold);
   for (const row of rows) {
     if (row.staying && row.resourceId) {
-      occupy(row.resourceId, { ...row.before, holderKey: row.holderKey, body: row.bodyBefore });
+      occupy(row.resourceId, seat(row.before, row.bodyBefore, row.holderKey));
     }
   }
 
@@ -615,7 +621,7 @@ function planChairs(
     if (!chair) return { blocked: row.id };
 
     chairs.set(row.id, chair);
-    occupy(chair, { ...row.after, holderKey: row.holderKey, body: row.bodyAfter });
+    occupy(chair, seat(row.after, row.bodyAfter, row.holderKey));
   }
   return { chairs };
 }

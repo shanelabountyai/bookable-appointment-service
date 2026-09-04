@@ -2341,3 +2341,27 @@ Both failures came from specs written for other items, on flows this item never 
 **And one e2e**, because the defect was in the browser: day grid → *Book with Priya* → Colour → `13:45 — every chair is taken then` → type "Nadia" → the same 13:45, plain → Book → *Booked.* No hand-built URL.
 
 **Left behind.** The public flow still asks anonymously, and that is correct rather than deferred: the visitor has no identity until she types her email at the last step, and `bookAppointment` resolves the client inside the write. A returning client booking two overlapping-envelope visits online will still be refused the chair she is in — the fix for that is knowing who she is earlier in the public flow, not passing a holder nobody has. A-084 is next and is the structural half of this: three copies of the room rule, only two of them pinned together.
+
+---
+
+## A-084 — one room rule, one predicate, and a test that makes all three say it
+
+**Commit:** `PENDING`
+
+**The structural half of checkpoint 6.** A-082 pinned two of the three copies of the room rule together — `findFreeResource` (what the WRITE accepts) and `canSeat` (what the SCREEN offers) — and their headers say so. The third, `planChairs` in `day/push-column.ts` (where the push SEATS a moved column, in memory and deliberately not at the database), was written as `E && (D || B)` where the other two say `(E && D) || B`.
+
+Those two arrangements agree **only** where a body overlap implies an envelope overlap. It always does: the hold trigger keeps the body inside the envelope on every branch including A-069's release cut, guarded by a CHECK in a migration three files away and **asserted nowhere in TypeScript**. Not a live defect — the precondition of checkpoint 6, which is two correct-looking halves agreeing for a reason nobody wrote down.
+
+**What it built.** `seatBlocked(hold, envelope, body, holderKey)` in `scheduling/resource-load.ts` — one pure predicate, the only copy of the rule. `canSeat` and `planChairs` both call it; the push still reads its own in-memory room and never the database, which is the point of having a planner at all. `findFreeResource` is a Prisma `where` and cannot call it, so it stays a mirror and is held to it by the test rather than by the compiler.
+
+The predicate takes a structural `{ start: number; end: number }` rather than the branded `Span`, because the push's spans are `fromDate(x) + shift` and have lost the brand. Epoch millis either way, and comparing two numbers is the one operation on this axis that cannot cross to the other — a `WallTime` is a string and never reaches here.
+
+`loadRoom`, `planChairs` and `RoomState` are exported for the test and nothing else.
+
+**The test is `scheduling/room-rule.test.ts`, and the fixture is the whole test.** Four tests: the three answers are equal on every candidate asked anonymously, equal again asked as the client already in a chair, the candidates are interesting (the two-chair room refuses some and seats others), and naming the holder never *narrows* any of the three — the A-083 defect's shape, which any of the three could reintroduce.
+
+**The first fixture was vacuous and passed anyway, which is the thing worth recording.** Nadia's cut and colour booked back to back — the obvious A-063 fixture, copied from `shared-chair.test.ts` — makes her BODIES contiguous, so every probe that touches her envelope touches her body too. All three answers are then false for both holders, the agreement is trivially true, and **dropping the holder from any of the three still passes.** The gap between her bodies and the gap between her envelopes have to be *different spans* for the relaxation to be visible at all: cut 13:00 (body to 13:45, envelope to 13:55) and colour at 14:30 (envelope from 14:20, body from 14:30), with Ben holding the other chair 13:30–14:25 across exactly that gap. Hence the fourth test's `widened` assertion, which fails if the room stops being able to tell the two questions apart.
+
+**Verified by mutation, in both directions.** Making the planner ask the anonymous question (checkpoint 5's defect — stricter than the write) fails with `13:45: write=true offer=true push=false` and two more. Dropping the body arm from `canSeat` (laxer than the write — offered-then-refused) fails with `13:15: write=false offer=true push=false` and one more. A test that only ever sees agreement is a test that would pass with the predicate deleted.
+
+**Left behind.** The database CHECK that keeps the body inside the envelope is still the reason `findFreeResource`'s Prisma arrangement and the shared predicate agree; sharing the predicate removes the divergence between the two *in-memory* copies, not the mirror. If a fourth surface ever plans a room, `room-rule.test.ts` is where it gets added — and the day the desk gets a second planner is the day this rule has a fourth copy. A-085 is next: the staff shell, and OQ-22 needs a D-number before it is built.

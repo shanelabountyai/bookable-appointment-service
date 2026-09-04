@@ -2562,3 +2562,31 @@ So the regression test computes the same offer twice and compares it against wha
 Four screens, not three: the stylist's own column, "anything Thursday, I don't mind who", the recovery path that finds another stylist at the same time, and the walk-in search — because a named walk-in is usually somebody already in a chair for something else. And the panel re-asks when the desk picks the client, since it asks for her **last**: services, then time, then who she is. Naming her can only add times, never remove one, so the time already chosen stays chosen.
 
 The public flow still asks cautiously, and that is correct rather than unfinished: a first-time visitor has not said who she is until the last step, and until she does, the safe answer is the only honest one.
+
+---
+
+## A-084 — the same rule, written down once
+
+Three parts of this product have to answer one question: **is there a chair this visit can sit in, from the moment it starts to the moment it ends?** The booking system asks it to decide what it will accept. The availability screen asks it to decide what to offer. And when the desk pushes a running-late column back half an hour, the planner asks it to work out where everybody ends up sitting — in memory, without touching the database, because it is planning an afternoon that does not exist yet.
+
+Each was a separate piece of code saying the same thing. Two of them had been deliberately matched, line for line, by the previous item. The third said it in a different order.
+
+### Two right answers for a reason nobody had written down
+
+The difference was arrangement, not content — the same two conditions, combined differently. The two forms give the same answer as long as one thing stays true: a client's actual appointment always sits inside the padded block reserved around it. It always does. It is guaranteed by a rule in the database, three files away, and **no part of the application said so.**
+
+So this was not a bug. It was the exact setup that produced the last two: pieces that agree today, for a reason that lives somewhere else, and nothing that would notice if that reason stopped holding. The previous checkpoint found two halves of the room's logic that had quietly disagreed for fifty items. This one closes the door on the third.
+
+### One sentence, three readers
+
+The rule is now written once and called from the places that can call it. The booking system's version is a database query and unavoidably its own phrasing — so it is held to the others by a **test** instead of by the compiler: put the room in a state, ask all three, and assert the three answers are **equal**. Not that each is correct — equal. Three separate correctness checks all pass while the three disagree, which is precisely how the last defect survived.
+
+### The fixture that passed while proving nothing
+
+Worth admitting, because it is the failure mode of this kind of test. The first version booked a client's two appointments back to back, which is the natural way to set up the case. Back to back, her two blocks touch — and then every question the test asks lands on top of her, every answer is "no chair", and the three agree trivially. **The test passed, and it would have passed with the rule deleted from all three.**
+
+The room had to be arranged so that the answer genuinely depends on who is asking: a gap where the chair is hers to share and nobody else's to take, with another client holding the second chair across exactly that gap. The suite now asserts that the room stays interesting — that naming the client actually changes some answers — so a future fixture cannot quietly go vacuous.
+
+### Proven by breaking it
+
+Both directions were introduced on purpose to confirm the test catches them. Making the push planner forget who is asking — too strict, refusing a move the salon needs on its busiest day — fails. Letting the availability screen forget that two people cannot share one chair — too loose, offering a time the booking system will refuse — fails. A test that has only ever seen agreement has not been tested.

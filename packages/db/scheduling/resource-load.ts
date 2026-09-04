@@ -61,6 +61,18 @@ export interface Span {
 }
 
 /**
+ * A span the shared predicate below can compare, whether or not the caller has
+ * kept the `Instant` brand. Epoch millis either way — the push carries plain
+ * numbers because its spans are `fromDate(x) + shift` — and comparing two
+ * numbers is the one operation on this axis that cannot cross to the other:
+ * a `WallTime` is a string and never reaches here. (A-084)
+ */
+interface Range {
+  start: number;
+  end: number;
+}
+
+/**
  * One chair's hold, with everything the chooser's predicate reads.
  *
  * The ENVELOPE (`start`/`end`) is buffers and gaps included (RES-02); the BODY
@@ -90,18 +102,55 @@ export interface Seating {
 }
 
 /**
+ * ONE HOLD, ONE CHAIR: does it block this visit?
+ *
+ * THE ONLY COPY OF THE ROOM RULE (A-084). Three places have to answer the same
+ * operational question — `findFreeResource` (what the WRITE accepts, a Prisma
+ * `where` and so unavoidably a fourth expression of it), `canSeat` below (what
+ * the SCREEN offers) and `planChairs` in `day/push-column.ts` (where the push
+ * SEATS a moved column, in memory and deliberately not at the database). The
+ * last two now call this; the first mirrors it line for line and says so, and
+ * `room-rule.test.ts` puts a room in a state and asserts all three AGREE.
+ *
+ * They were three separate expressions until A-084, and the push's was written
+ * as `E && (D || B)` where these are `(E && D) || B`. Those agree only where a
+ * body overlap implies an envelope overlap — true, because the hold trigger
+ * keeps the body inside the envelope on every branch including A-069's release
+ * cut, guarded by a CHECK in a migration three files away and asserted nowhere
+ * in TypeScript. Two correct-looking halves agreeing for a reason nobody wrote
+ * down is the precondition of checkpoint 6; sharing the predicate removes it.
+ *
+ * - Envelopes may overlap only for the SAME holder (`holderKey WITH <>`): her
+ *   own buffers, her own chair.
+ * - Bodies never overlap, whoever the holder is — the stronger of the two.
+ *   D-17's mother and daughter are one client record and two people in two
+ *   chairs.
+ *
+ * `holderKey` is who would be sitting in it. `''` is a key no hold can carry
+ * (the trigger writes the client id or `appt:<id>`), so an unknown holder makes
+ * the first arm match every row — the strict question, which is the right one
+ * for an anonymous visitor who has not said who she is yet.
+ */
+export function seatBlocked(
+  hold: Range & { holderKey: string; bodyStart: number; bodyEnd: number },
+  envelope: Range,
+  body: Range,
+  holderKey: string | null,
+): boolean {
+  return (
+    (hold.start < envelope.end && hold.end > envelope.start && hold.holderKey !== (holderKey ?? '')) ||
+    (hold.bodyStart < body.end && hold.bodyEnd > body.start)
+  );
+}
+
+/**
  * Could this visit be seated — is there one chair free for its WHOLE envelope?
  *
- * MIRRORS `findFreeResource`, deliberately and line for line. The chooser
- * asking a laxer question than this one means a time is offered and then
- * refused; asking a stricter one means chairs that are genuinely free are
- * never offered, and CLAUDE.md is explicit that a reader stricter than the
- * constraint does not fail safe.
- *
- * `holderKey` is who would be sitting in it: `''` (the default) is a key no
- * hold can carry, so an unknown holder makes the first arm match every row —
- * the strict question, which is the right one for an anonymous visitor who has
- * not said who she is yet.
+ * MIRRORS `findFreeResource`, deliberately and line for line, through the one
+ * predicate above. The chooser asking a laxer question than this one means a
+ * time is offered and then refused; asking a stricter one means chairs that are
+ * genuinely free are never offered, and CLAUDE.md is explicit that a reader
+ * stricter than the constraint does not fail safe.
  */
 export function canSeat(
   seating: Seating,
@@ -109,17 +158,10 @@ export function canSeat(
   body: Span,
   holderKey: string | null,
 ): boolean {
-  const key = holderKey ?? '';
   return seating.chairIds.some(
     (chairId) =>
       !seating.holds.some(
-        (hold) =>
-          hold.resourceId === chairId &&
-          // Envelopes may overlap for ONE holder: her own buffers, her own chair.
-          ((hold.start < envelope.end && hold.end > envelope.start && hold.holderKey !== key) ||
-            // Bodies never overlap, whoever the holder is. D-17's mother and
-            // daughter are one client record and two people in two chairs.
-            (hold.bodyStart < body.end && hold.bodyEnd > body.start)),
+        (hold) => hold.resourceId === chairId && seatBlocked(hold, envelope, body, holderKey),
       ),
   );
 }
