@@ -2428,7 +2428,7 @@ What D-49 adds beyond the answer is the thing that makes (b) different from the 
 
 ## A-089 — the primitives the shell actually uses, and the ones deliberately not built
 
-**Commit:** `PENDING`
+**Commit:** `653067a`
 
 **What it built.** `apps/web/components/ui/` — `Button` (four variants × rest/hover/focus/active/disabled/pending, two sizes), `LinkButton`, `Badge`, `Field` + `Input`, `Tabs` + `Tab`, `EmptyState` — all server components, all spending A-088's tokens, none adding a client-side dependency (§9). Plus `/staff/design`, the state matrix as a page, and two real callers.
 
