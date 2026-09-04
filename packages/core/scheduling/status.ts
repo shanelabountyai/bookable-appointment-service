@@ -81,6 +81,31 @@ export const REMINDER_ELIGIBLE_STATUSES = ['booked', 'confirmed'] as const;
 export const TERMINAL_STATUSES = ['completed', 'no_show', 'cancelled', 'cancelled_late'] as const;
 
 /**
+ * A-086 (RPT-02) — THE HOURS THE SALON ACTUALLY SPENT.
+ *
+ * The utilization numerator, and the last hand-typed status list in the
+ * product: `reports/dashboard.ts` and the drill-down link on the dashboard
+ * tile each carried their own `['completed', 'no_show']`, which is two copies
+ * of one fact under no name at all — a tile and the list it opens, free to
+ * disagree the day a ninth status arrives.
+ *
+ * DERIVED, not typed: terminal AND still occupying its time. Both halves are
+ * load-bearing and neither list alone is the answer —
+ *
+ *   * `ACTIVE_STATUSES` includes everything still to come, so it would count
+ *     next Friday's booking as time already spent.
+ *   * `TERMINAL_STATUSES` includes both cancellations, so it would charge the
+ *     stylist for hours she got back and could sell again.
+ *
+ * `no_show` is IN, and that is D-7's whole point restated as a number: nobody
+ * sat in the chair and the hour was still gone.
+ */
+export const CONSUMED_STATUSES = TERMINAL_STATUSES.filter(
+  (s): s is Exclude<(typeof TERMINAL_STATUSES)[number], (typeof SLOT_FREEING_STATUSES)[number]> =>
+    !(SLOT_FREEING_STATUSES as readonly string[]).includes(s),
+);
+
+/**
  * A-075 (APPT-04) — WHOSE TIME A COLUMN PUSH MAY MOVE.
  *
  * A POSITIVE ALLOW-LIST, and deliberately not `ACTIVE_STATUSES`, which is what

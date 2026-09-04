@@ -2590,3 +2590,21 @@ The room had to be arranged so that the answer genuinely depends on who is askin
 ### Proven by breaking it
 
 Both directions were introduced on purpose to confirm the test catches them. Making the push planner forget who is asking — too strict, refusing a move the salon needs on its busiest day — fails. Letting the availability screen forget that two people cannot share one chair — too loose, offering a time the booking system will refuse — fails. A test that has only ever seen agreement has not been tested.
+
+---
+
+## One fact, written down twice, in two places that have to agree
+
+A small piece of housekeeping with one finding in it worth the space.
+
+Appointment statuses in this product all come from a single file, on purpose: adding a ninth state should mean changing one list and then following the compiler to everyone who reads it. One call site had never joined that scheme — the utilization report typed its own list of which appointments count as time the salon actually spent.
+
+The backlog said it was two lines. It was two *places*. Searching for the fact rather than for the line turned up a second copy: the link behind the utilization number on the dashboard, which opens the list of appointments that number was made of. The report and the list it opens each held their own copy of the same answer.
+
+Nothing was wrong. Both copies said the same thing. But they were free to stop — and the day they do, an owner clicks a percentage and gets a different set of appointments than the percentage counted, with nothing anywhere reporting an error.
+
+### The list is now derived, not written
+
+"The hours the salon actually spent" is not a list anyone should type. It is *settled* and *still occupying its time* — an appointment that has been and gone, whether the client came or not. A no-show is in: nobody sat in the chair and the hour was still gone. A cancellation is out: the salon got that hour back and could sell it again. Both halves matter, and each of the two lists that already existed gets it wrong on its own — one would count next Friday's booking as time already spent, the other would charge a stylist for hours she never lost.
+
+The test names today's answer out loud rather than re-checking the arithmetic. Re-checking a derivation against itself passes forever. Naming the answer means the next person to add a status has to come to this file and decide whether the salon spent that hour — which is the entire point of keeping the list in one place.

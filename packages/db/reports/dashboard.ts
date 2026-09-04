@@ -10,7 +10,7 @@
  */
 import { availableMinutesForDay, utilizationFraction, weekOf } from '../../core/reports';
 import { type CalendarDay, type ZoneId, addDays, calendarDay, fromDate, startOfDay, toDate, wallTime, weekdayOf, zoneId } from '../../core/time';
-import type { AppointmentStatus } from '../../core/scheduling';
+import { type AppointmentStatus, CONSUMED_STATUSES } from '../../core/scheduling';
 import { findAbsences, resolveDayWindows } from '../availability';
 import { countOverruledCancellations } from './overruled';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -86,7 +86,9 @@ export async function dashboardSummary(
     where: {
       businessId: args.businessId,
       startDay: { gte: fromDay, lte: toDay },
-      status: { in: ['completed', 'no_show'] },
+      // A-086. The list is `CONSUMED_STATUSES`, never re-typed here: the tile
+      // and the drill-down link it opens have to be the same set of rows.
+      status: { in: [...CONSUMED_STATUSES] },
     },
     select: { providerId: true, startAt: true, endAt: true },
   });

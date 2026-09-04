@@ -2365,3 +2365,29 @@ The predicate takes a structural `{ start: number; end: number }` rather than th
 **Verified by mutation, in both directions.** Making the planner ask the anonymous question (checkpoint 5's defect — stricter than the write) fails with `13:45: write=true offer=true push=false` and two more. Dropping the body arm from `canSeat` (laxer than the write — offered-then-refused) fails with `13:15: write=false offer=true push=false` and one more. A test that only ever sees agreement is a test that would pass with the predicate deleted.
 
 **Left behind.** The database CHECK that keeps the body inside the envelope is still the reason `findFreeResource`'s Prisma arrangement and the shared predicate agree; sharing the predicate removes the divergence between the two *in-memory* copies, not the mirror. If a fourth surface ever plans a room, `room-rule.test.ts` is where it gets added — and the day the desk gets a second planner is the day this rule has a fourth copy. A-085 is next: the staff shell, and OQ-22 needs a D-number before it is built.
+
+---
+
+## D-49 — the staff shell waits for the design pass (OQ-22, answered)
+
+**No code.** OQ-22 was raised at the Phase 9 close and gates A-085. The reviewer recommended (a), ship the shell plain now and restyle when the design lands; **the owner chose (b), wait.**
+
+Recorded as D-49 with the three costs written down rather than left to be re-discovered: `/staff/unfinished` keeps exactly one door behind a badge that hides at zero, `/staff` names twelve of twenty-three staff routes, and there is still no route to a client from the day while the phone rings. Those are accepted, not forgotten.
+
+What D-49 adds beyond the answer is the thing that makes (b) different from the four previous deferrals: **it forbids the partial version arriving as a ride-along.** A screen may still link to a page it owns; nothing may add persistent chrome to `app/staff/layout.tsx`. Half a shell built in pieces is how the designer inherits something nobody specified, and it is the specific failure (b) is choosing to avoid. A-085's dependency changes from `—` to the design pass; A-087 (checkpoint 7), which exists to walk the product *through* the new shell, waits with it.
+
+---
+
+## A-086 — the last hand-typed status list, and there were two of them
+
+**Commit:** `PENDING`
+
+**Flagged at the Phase 8 close as "one constant, next time the file is open"; Phase 9 never opened the file.** `reports/dashboard.ts:89` typed `status: { in: ['completed', 'no_show'] }` at its call site while every other status reader in the product derives from `scheduling/status.ts` — right today, wrong the day a ninth status arrives, and CLAUDE.md's first structural rule.
+
+**The backlog row said two lines. Grepping for the fact rather than the line found a second copy**, which is the only part of this item worth recording: `dashboard/page.tsx:104`, the utilization tile's drill-down link, carried its own `['completed', 'no_show']`. A tile and the list it opens, holding one fact twice under no name at all — the same shape as A-069's `bodyStart`/`bodyEnd`, at report scale rather than occupancy scale. Nothing is wrong today; the day the two disagree, the owner clicks a number and gets a different set of rows than the number counted, with no error anywhere.
+
+**What it built.** `CONSUMED_STATUSES` in `scheduling/status.ts` — *the hours the salon actually spent*. **Derived, not typed:** terminal AND still occupying its time, which is `TERMINAL_STATUSES` minus `SLOT_FREEING_STATUSES`. Both halves are load-bearing and neither existing list is the answer on its own — `ACTIVE_STATUSES` would count next Friday's booking as time already spent, `TERMINAL_STATUSES` would charge the stylist for hours she got back and could sell again. `no_show` is in, which is D-7's whole point restated as a number: nobody sat in the chair and the hour was still gone.
+
+**The test pins the answer out loud** (`scheduling/status.test.ts`): `expect(CONSUMED_STATUSES).toEqual(['completed', 'no_show'])`. A derivation-only assertion would be a tautology and would pass forever; naming today's answer is what forces whoever adds a ninth status to come here and *decide* whether the salon spent that hour, instead of inheriting whichever list happened to include it.
+
+**Left behind.** `ON_THE_CHIP` in `lib/day/view-model.ts:471` is a fourth hand-typed list and is deliberately not this one — it answers "has she arrived", not "did the hour go", and it includes `checked_in` and `in_progress`. It belongs in the status module by the same rule; it is a different fact and wants its own name and its own reason, not a fifth caller of this constant. A-085 is blocked (D-49), so the next buildable row is that one, or the design pass itself.

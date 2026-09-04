@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { dashboardSummary } from '@bookable/db/reports';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
+import { CONSUMED_STATUSES } from '@bookable/core/scheduling';
 import { requireOwner } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 
@@ -101,7 +102,7 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
           <ul className="flex flex-col gap-1">
             {summary.utilizationByProvider.map((p) => (
               <li key={p.providerId}>
-                <Link href={drill({ status: ['completed', 'no_show'], provider: p.providerId })} className="text-sm underline underline-offset-4">
+                <Link href={drill({ status: [...CONSUMED_STATUSES], provider: p.providerId })} className="text-sm underline underline-offset-4">
                   {p.providerName}: {percent(p.utilization)}
                 </Link>
               </li>
