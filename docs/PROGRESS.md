@@ -2346,7 +2346,7 @@ Both failures came from specs written for other items, on flows this item never 
 
 ## A-084 — one room rule, one predicate, and a test that makes all three say it
 
-**Commit:** `PENDING`
+**Commit:** `6e3c499`
 
 **The structural half of checkpoint 6.** A-082 pinned two of the three copies of the room rule together — `findFreeResource` (what the WRITE accepts) and `canSeat` (what the SCREEN offers) — and their headers say so. The third, `planChairs` in `day/push-column.ts` (where the push SEATS a moved column, in memory and deliberately not at the database), was written as `E && (D || B)` where the other two say `(E && D) || B`.
 
