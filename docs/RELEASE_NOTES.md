@@ -2608,3 +2608,37 @@ Nothing was wrong. Both copies said the same thing. But they were free to stop �
 "The hours the salon actually spent" is not a list anyone should type. It is *settled* and *still occupying its time* — an appointment that has been and gone, whether the client came or not. A no-show is in: nobody sat in the chair and the hour was still gone. A cancellation is out: the salon got that hour back and could sell it again. Both halves matter, and each of the two lists that already existed gets it wrong on its own — one would count next Friday's booking as time already spent, the other would charge a stylist for hours she never lost.
 
 The test names today's answer out loud rather than re-checking the arithmetic. Re-checking a derivation against itself passes forever. Naming the answer means the next person to add a status has to come to this file and decide whether the salon spent that hour — which is the entire point of keeping the list in one place.
+
+---
+
+## Designing from a measurement instead of a mood board
+
+The staff side of this product had no design system — every screen wrote its own colours by hand, roughly two hundred times. The obvious way to fix that is to sit down and invent a palette. This started by counting instead.
+
+What the count said: the app is grey plus **amber** (eighty places — running late, no-show, the override marker), red for danger, and almost nothing else. One corner radius, used a hundred and fifty-eight times against nine uses of everything else. **One shadow in the entire application.** Three text sizes carrying every screen, with the body size at 14px, not the 16px a design system would assume.
+
+That is a real product with real habits, and a token sheet that disagreed with it would have been quietly reformatted away the first time somebody built a screen. So the tokens name what is already there — and the three places the brief asked for something the product does not have were cut, with the reason written where the token would have been: there is no *overlay* colour because nothing overlays; there is no *neutral* intent because neutral is three other tokens wearing a hat.
+
+### Two colours were changed, and the count is why
+
+Only two values differ from what ships today, and both fail a contrast bar on a background they actually appear on.
+
+The muted grey used in 110 places measures **4.83:1** on a white page and **4.40:1** inside a panel — so it passes as body text on the page and fails inside the very boxes muted text lives in. And the border on 133 controls measures **1.48:1** and **2.56:1** against the 3:1 an interface boundary is meant to clear. Both are now one token each, darkened until they pass on the *harder* background — which is the only version that cannot go wrong halfway down a screen. The public marketing palette learned this same lesson the hard way once already, and its own code comment says so.
+
+### The contrast numbers are calculated, not written down
+
+The brief asked for "a stated contrast result" beside each colour. Stated results rot: they are correct the day they are typed and silently wrong the first time somebody nudges a hex.
+
+So there is no stated result. There is a test that reads the shipped stylesheet and computes every one of them — each ink on every background it can land on, each status colour against its own tint, the control border and the focus ring at the interface bar. Twenty-nine checks, run on every build.
+
+It was then broken on purpose three times to prove it works. Putting back today's muted grey fails. Putting back today's border fails. And deleting a single dark-mode colour — the quiet one, where a colour defined only for light mode silently leaks into dark and lands at **2.79:1** on a near-black background — fails too. A contrast suite that has only ever seen passing values has not actually been tested.
+
+### The thing nobody had noticed
+
+Counting turned up one outright gap: the entire staff application had **three** visible keyboard-focus styles. Everything else relied on whatever the browser draws by default, which on a bright screen under a salon window is close to nothing.
+
+The fix is one rule, applied once, globally — not a setting on a button component. A link, a disclosure arrow, a date field and a scrollable grid are all places a keyboard can land, and none of them is a button. Fixing it where every one of them already passes through beats adding a property that two hundred controls each have to remember.
+
+### And it prints
+
+Dark mode text prints as nothing, because printers do not ink the dark background it was legible against. The print rules now flatten every colour in the new system to black on white — including the status colours, which is safe precisely because this product never uses colour as the only signal. The words survive the greyscale.

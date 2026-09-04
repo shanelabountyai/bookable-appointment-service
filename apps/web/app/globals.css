@@ -1,5 +1,253 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+ * A-088 — THE STAFF APP'S TOKEN LAYER (design brief §5.1, §5.2).
+ *
+ * Named by ROLE, never by value, and DERIVED from an audit of what the staff
+ * screens already render rather than invented: zinc everywhere, amber for
+ * attention (80 text uses — running late, no-show, override), red for danger,
+ * a little emerald and sky for confirmed / checked-in, ONE radius
+ * (`rounded-md` ×158) and ONE shadow use in the entire application. Where a
+ * value below differs from today's utility class it is because the old one
+ * misses its contrast bar on a ground it actually renders on, and the header
+ * on that token says so.
+ *
+ * TWO SURFACES, TWO PALETTES (§5.1). The public marketing pages keep the
+ * bone/clay/serif identity defined below this block and are NOT folded in.
+ * The shared CONCEPTS are the role names — a third surface picks a side by
+ * choosing which set to read, never by averaging them.
+ *
+ * WHY `var()` INDIRECTION AND NOT A FLAT `@theme` VALUE: the tokens are
+ * declared here on `:root`, re-declared under `prefers-color-scheme: dark`,
+ * and only then mapped into `@theme inline`. Because the mapping references
+ * the custom property rather than copying its value, `bg-ground-raised`
+ * resolves at use time and flips with the scheme on its own. That is what
+ * retires the `dark:` twin on every rule that uses a token — the audit counted
+ * 132 `dark:text-zinc-400`s whose only job was to say the same thing twice.
+ * ======================================================================== */
+
+:root {
+  /* Ground. Four, not the five §5.1 lists: there is no `overlay`, because
+     there is nothing that overlays — the desk switcher is a native
+     `<details>` and the product has no popover, no modal and no menu. The day
+     an overlay exists it brings its own token and its own shadow. */
+  --ground-page: #ffffff;
+  --ground-raised: #fafafa;
+  --ground-sunken: #f4f4f5;
+  --ground-inverted: #18181b;
+
+  /* Ink. `--ink-muted` is zinc-600 and NOT the zinc-500 the app uses in 110
+     places: #71717a measures 4.83:1 on the page ground and 4.40:1 on the
+     sunken one, so it passes as body text on white and fails inside the very
+     panels muted text lives in. Same story, same fix and same reason as
+     `--color-muted-ink` in the public palette below — one token darkened
+     until it passes on the DARKER ground is the only version that cannot
+     regress halfway through a screen. */
+  --ink-primary: #171717;
+  --ink-secondary: #3f3f46;
+  --ink-muted: #52525b;
+  --ink-inverted: #fafafa;
+
+  /* Line. `--line-control` is the boundary that IDENTIFIES a control, so it
+     carries the 3:1 graphical bar (WCAG 1.4.11) and is zinc-500 — today's
+     `border-zinc-300` and `border-zinc-400` measure 1.48:1 and 2.56:1 on
+     white, which is below that bar on 133 borders. `--line-hairline` is
+     decorative (a rule between rows, a card edge beside a filled ground);
+     nothing is identified by it, so it carries no bar and is not asserted. */
+  --line-hairline: #e4e4e7;
+  --line-control: #71717a;
+  --line-strong: #18181b;
+
+  /* Intent. FOUR, not §5.1's five: `neutral` is an alias, not a colour — it
+     is `--ink-secondary` on `--ground-raised` inside `--line-hairline`, and a
+     token whose value is another token's value is a second name for one fact
+     (A-086's lesson, one layer up).
+     Each intent is three tokens with three different jobs and three different
+     bars: `-ink` is text (4.5:1, checked on the page ground, the raised
+     ground AND its own fill), `-line` is the graphic — a chip stripe, a
+     border, a marker (3:1), `-fill` is the ground it sits on. Colour is never
+     alone (§4): these accompany a word or a glyph, they do not replace one. */
+  --intent-positive-ink: #047857;
+  --intent-positive-line: #059669;
+  --intent-positive-fill: #ecfdf5;
+
+  --intent-attention-ink: #92400e;
+  --intent-attention-line: #b45309;
+  --intent-attention-fill: #fffbeb;
+
+  --intent-danger-ink: #b91c1c;
+  --intent-danger-line: #dc2626;
+  --intent-danger-fill: #fef2f2;
+
+  --intent-info-ink: #0369a1;
+  --intent-info-line: #0284c7;
+  --intent-info-fill: #f0f9ff;
+
+  /* Focus. THE GAP THE AUDIT FOUND: three explicit focus styles in the whole
+     staff app against §4's "every interactive control is keyboard operable
+     with a visible focus ring". It is `--ink-primary`'s value on purpose —
+     the ring can never be the weakest thing on the screen — and it is applied
+     once at the bottom of this file to `:focus-visible`, not per control,
+     because 200 controls is 200 chances to forget one. The offset puts the
+     ring on the ground BEHIND the control, which is why the page ground is
+     what it is measured against. */
+  --focus-ring: #171717;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* Disabled. No contrast bar — WCAG 1.4.3 exempts inactive controls — but it
+     must still read as OFF rather than as low-quality. Never the only signal:
+     a disabled control also carries `disabled` for the accessibility tree. */
+  --ink-disabled: #a1a1aa;
+
+  /* SELECTION is deliberately not a token either. "Selected" in this product
+     means the current stylist, the current view tab, today — and it is drawn
+     by INVERTING (`--ground-inverted` / `--ink-inverted`) plus
+     `aria-current`, which is a stronger signal than a tint and survives
+     greyscale printing. */
+
+  /* Radius is two steps and shadow is ONE, both declared in the `@theme`
+     block below rather than here — they do not vary with the colour scheme,
+     so they need no `var()` indirection. Two radii because the app has
+     exactly two (`rounded-md` ×158, `rounded-sm` ×5); one shadow because the
+     audit found one shadow in the entire staff app. Depth here is a line and
+     a ground, not a blur. */
+
+  /* Motion: one duration and one easing. The day grid refreshes every 15
+     seconds via a server round-trip and §4 forbids anything that flashes or
+     jumps, so this is for state changes a person caused — a disclosure
+     opening, a pending button — and nothing else. */
+  --duration-fast: 120ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground-page: #0a0a0a;
+    --ground-raised: #27272a;
+    /* Nearly the page ground, deliberately: in dark, depth is drawn with the
+       hairline and not with a fill, because two near-black fills a person can
+       tell apart on a desk tablet are two a laser printer and a sunlit window
+       cannot. */
+    --ground-sunken: #09090b;
+    --ground-inverted: #f4f4f5;
+
+    --ink-primary: #ededed;
+    --ink-secondary: #d4d4d8;
+    --ink-muted: #a1a1aa;
+    --ink-inverted: #18181b;
+
+    --line-hairline: #3f3f46;
+    --line-control: #71717a;
+    --line-strong: #f4f4f5;
+
+    --intent-positive-ink: #6ee7b7;
+    --intent-positive-line: #10b981;
+    --intent-positive-fill: #022c22;
+
+    --intent-attention-ink: #fcd34d;
+    --intent-attention-line: #f59e0b;
+    --intent-attention-fill: #451a03;
+
+    --intent-danger-ink: #f87171;
+    --intent-danger-line: #ef4444;
+    --intent-danger-fill: #450a0a;
+
+    --intent-info-ink: #7dd3fc;
+    --intent-info-line: #0ea5e9;
+    --intent-info-fill: #082f49;
+
+    --focus-ring: #ededed;
+    --ink-disabled: #52525b;
+  }
+}
+
+/* A-088 — THE TYPE SCALE (§5.2). FIVE sizes, and the audit is why: the staff
+ * app renders `text-sm` 347 times, `text-xs` 89, `text-2xl` for titles and
+ * `text-lg` three times. Body is therefore 14px and not 16px — that is what
+ * this product IS, a dense operational screen read at arm's length, and a
+ * scale that pretends otherwise would be reformatted away on first contact.
+ *
+ * `body-sm` and `label` from §5.2's list are NOT sizes here. `label` is
+ * `caption` at `font-medium` in `--ink-secondary` — a role, not a measurement
+ * — and `body-sm` has no caller; a token whose value equals another token's
+ * value is one fact under two names, which is the defect A-086 closed one
+ * layer down. `numeric` is `.numeric` below, because tabular figures are a
+ * font-variant and cannot live in a size token. */
+@theme inline {
+  --text-display: 1.875rem;
+  --text-display--line-height: 2.25rem;
+  --text-page-title: 1.5rem;
+  --text-page-title--line-height: 2rem;
+  --text-section: 1.125rem;
+  --text-section--line-height: 1.75rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+
+  --color-ground-page: var(--ground-page);
+  --color-ground-raised: var(--ground-raised);
+  --color-ground-sunken: var(--ground-sunken);
+  --color-ground-inverted: var(--ground-inverted);
+
+  --color-ink-primary: var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-inverted: var(--ink-inverted);
+  --color-ink-disabled: var(--ink-disabled);
+
+  --color-line-hairline: var(--line-hairline);
+  --color-line-control: var(--line-control);
+  --color-line-strong: var(--line-strong);
+
+  --color-positive-ink: var(--intent-positive-ink);
+  --color-positive-line: var(--intent-positive-line);
+  --color-positive-fill: var(--intent-positive-fill);
+  --color-attention-ink: var(--intent-attention-ink);
+  --color-attention-line: var(--intent-attention-line);
+  --color-attention-fill: var(--intent-attention-fill);
+  --color-danger-ink: var(--intent-danger-ink);
+  --color-danger-line: var(--intent-danger-line);
+  --color-danger-fill: var(--intent-danger-fill);
+  --color-info-ink: var(--intent-info-ink);
+  --color-info-line: var(--intent-info-line);
+  --color-info-fill: var(--intent-info-fill);
+
+  --color-focus-ring: var(--focus-ring);
+
+  /* Declared here and NOT on `:root` above: unlike a colour, a radius does
+     not flip with the scheme, so it needs no indirection — and naming the
+     `:root` copy the same thing would make `var(--radius-control)` resolve to
+     itself. */
+  --radius-control: 0.375rem;
+  --radius-tight: 0.125rem;
+  --shadow-raised: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+}
+
+/* A-088. THE FOCUS RING, ONCE, FOR EVERY CONTROL. The audit found three
+ * explicit focus styles in the whole staff app; the rest inherit whatever the
+ * browser draws, which on a light ground under a salon window is close to
+ * nothing. Applied here rather than in a `Button` primitive because a link, a
+ * `<summary>`, a native date input and a `tabIndex={0}` scroll region are all
+ * keyboard stops and none of them is a Button — the same reflex as fixing a
+ * shared function instead of every caller.
+ *
+ * `:focus-visible` and not `:focus`, so a mouse click on a button does not
+ * leave a ring behind it. */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* A-088 (§5.2). Tabular figures, WHERE COLUMNS OF NUMBERS ARE COMPARED DOWN
+ * the page: the day grid's time gutter, a duration or price in a table, the
+ * dashboard's tiles. Not on prose — proportional figures read better inside a
+ * sentence, and "2 no-shows in the last 12 months" is a sentence. */
+.numeric {
+  font-variant-numeric: tabular-nums;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -54,6 +302,35 @@ body {
   :root {
     --background: #ffffff;
     --foreground: #000000;
+
+    /* A-088 extends A-062's fix to the token layer, and it is the SAME bug:
+       a sheet printed off a tablet in dark mode carries #ededed text onto
+       paper the printer never inks, so the page comes out blank. Every ground
+       goes to white and every ink to black — including the intent inks, since
+       §4 requires the sheet to be legible in greyscale and an amber that
+       survives a screen is a pale grey on a laser printer. The intents keep
+       their WORDS; §4's "never colour alone" is what makes that lossless. */
+    --ground-page: #ffffff;
+    --ground-raised: #ffffff;
+    --ground-sunken: #ffffff;
+    --ground-inverted: #000000;
+    --ink-primary: #000000;
+    --ink-secondary: #000000;
+    --ink-muted: #000000;
+    --ink-inverted: #ffffff;
+    --ink-disabled: #000000;
+    --line-hairline: #000000;
+    --line-control: #000000;
+    --line-strong: #000000;
+    --intent-positive-ink: #000000;
+    --intent-attention-ink: #000000;
+    --intent-danger-ink: #000000;
+    --intent-info-ink: #000000;
+    --intent-positive-fill: #ffffff;
+    --intent-attention-fill: #ffffff;
+    --intent-danger-fill: #ffffff;
+    --intent-info-fill: #ffffff;
+    --shadow-raised: none;
   }
 
   body {
