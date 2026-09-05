@@ -2528,7 +2528,7 @@ Three decisions, each defensible alone, and the product of them is the defect. `
 
 ## A-090 — the chip, the grid, and a time axis that was never actually shared
 
-**Commit:** `TBD`
+**Commit:** `0033f5b`
 
 **What it built.** `AppointmentChip` as its own component (`app/staff/day/appointment-chip.tsx`), spending A-088's tokens instead of raw zinc/emerald/sky/amber; the eight statuses and six modifiers drawn as a MATRIX on `/staff/design`, plus §8.5's four day compositions (four stylists, one stylist, a column forty minutes behind, a day with a stylist off) built from hand-written fixtures; `AWAITING_START_STATUSES` in the status module; and a rebuilt `DayGrid`/`RoomStrip` layout.
 
