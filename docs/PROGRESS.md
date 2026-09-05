@@ -2616,7 +2616,7 @@ list 5044px tall = 6.6 screens; row 134px
 
 ## A-093 — the day on paper, and the hour of the colour that was drawn nowhere
 
-**Commit:** `TBD`
+**Commit:** `fe5e482`
 
 **What it built.** `DaySheet` redrawn against the brief (§8.7, §5.4.4): the stylist's identity moved inside the table's `<thead>`, the working hours in words, "Not working today." told apart from "Nothing in the book.", the status word, the override marker with its typed reason, A-069's released line, and A-088's tokens in place of hand-written black. `GridColumn.hours` and `GridItem.overrideReason` in the view model, `statusWord()` exported from the chip, `packages/design/sheet-parity.test.ts`, and the fix underneath all of it in `day-view.ts`.
 
