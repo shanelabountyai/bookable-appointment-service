@@ -221,3 +221,37 @@ export const STILL_ON_THEIR_WAY_STATUSES = ['booked', 'confirmed'] as const;
 /** Is this client still on her way, and so still worth a call (A-059)? */
 export const isStillOnTheirWay = (status: AppointmentStatus): boolean =>
   (STILL_ON_THEIR_WAY_STATUSES as readonly string[]).includes(status);
+
+/**
+ * A-090 (APPT-03, design brief §4) — WHOSE START TIME HAS NOT HAPPENED YET, and
+ * so gets a PROJECTED time drawn on its chip when the column is behind.
+ *
+ * THE FOURTH LIST IN THIS FILE FOR ONE RUNNING-LATE COLUMN, and the reason it
+ * has to exist is that the other three each answer a different question about
+ * the same delta:
+ *
+ *   whose time may a push MOVE?          `PUSHABLE_STATUSES`        4 members
+ *   whose start has not happened yet?     here                      3 members
+ *   who is worth RINGING about it?       `STILL_ON_THEIR_WAY`       2 members
+ *
+ * They are properly nested and every boundary is a different fact.
+ * `in_progress` is pushable and is NOT here: she is in the chair, the visit has
+ * already begun, and a projected START on it is not late — it is wrong.
+ * `checked_in` IS here and is not on the call list: she is in the building, so
+ * nobody rings her, and "you will go in about twenty to" is exactly what the
+ * desk says to her face when she asks.
+ *
+ * WHAT IT REPLACED. `view-model.ts` hand-typed `status === 'booked'` — twice,
+ * once for the chip and once for its accessible name — which is CLAUDE.md's
+ * first structural rule broken in the narrowest possible way: a status list of
+ * ONE, narrower than both of its neighbours. A confirmed client in a column
+ * forty minutes behind was on the desk's call list as "booked 14:00, likely
+ * 14:40" and her chip three inches away on the same screen showed 14:00 and no
+ * projection at all. Two answers to one question, on one screen, in one glance.
+ */
+export const AWAITING_START_STATUSES = ['booked', 'confirmed', 'checked_in'] as const;
+
+/** Has this appointment not started yet, so that a column's delay projects a
+ *  later start onto it (A-090)? */
+export const isAwaitingStart = (status: AppointmentStatus): boolean =>
+  (AWAITING_START_STATUSES as readonly string[]).includes(status);

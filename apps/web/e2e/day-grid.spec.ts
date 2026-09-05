@@ -284,6 +284,60 @@ test.describe('the staff day grid (A-016)', () => {
   });
 
   /**
+   * A-090 — EVERY COLUMN AND THE GUTTER SHARE ONE MINUTE ZERO.
+   *
+   * The defect this replaces was on the product's home screen and had been
+   * there since A-016. Each column laid out its own heading, then its own
+   * controls, and only then its positioned box — so minute zero sat wherever
+   * that column's chrome happened to end, and the chrome's height depends on
+   * the DATA. Measured on a seeded Tuesday with nothing running late:
+   *
+   *     gutter 380 | Dana 480 | Priya 480 | Marcus 438 | Tess 438
+   *
+   * The hour labels were 100px — 67 minutes — above the rows they label, and
+   * the two stylists with nothing left in their columns were drawn 42px
+   * (28 minutes) above their colleagues, because a column with nothing to push
+   * renders no "push the column" control.
+   *
+   * "Who is free at two?" is a question you answer by reading ACROSS a day
+   * grid. It was off by half an hour, differently per column, according to how
+   * busy each stylist was — which is the one variable that makes the question
+   * worth asking.
+   *
+   * THE FIXTURE IS THE TEST. One column is given a running-late delta so that
+   * its chrome grows a ring-round panel and a "back on time" button, while the
+   * three empty columns beside it have the shortest chrome the product draws.
+   * Every fixture in this suite before today had one provider, or four with
+   * identical chrome — which is why nothing saw it.
+   */
+  test('every column and the time gutter start on the same pixel', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    // Make the chrome heights genuinely differ: Dana grows a ring-round panel,
+    // the other three stay at their shortest.
+    const dana = page.getByRole('region', { name: /^Dana/ });
+    await dana.getByLabel('Behind by').fill('40');
+    await dana.getByRole('button', { name: 'Set' }).click();
+    await expect(page.getByText('+40 min')).toBeVisible();
+
+    const axes = page.locator('main [data-day-axis]');
+    const count = await axes.count();
+    // The gutter plus one per provider. If this ever reads 1 the assertion
+    // below is vacuously true, which is the way an alignment test dies quietly.
+    expect(count).toBeGreaterThan(2);
+
+    const tops = await axes.evaluateAll((nodes) =>
+      nodes.map((n) => ({
+        axis: n.getAttribute('data-day-axis'),
+        top: Math.round(n.getBoundingClientRect().top),
+      })),
+    );
+    const distinct = [...new Set(tops.map((t) => t.top))];
+    expect(distinct, `columns start at different heights: ${JSON.stringify(tops)}`).toHaveLength(1);
+  });
+
+  /**
    * ONE CHIP OF EVERY STATUS THAT REPAINTS THE CHIP, not one chip.
    *
    * Demo checkpoint 7: this test seeded a single `booked` appointment and was

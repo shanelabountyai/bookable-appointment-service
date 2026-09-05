@@ -32,11 +32,11 @@ function RoomType({ type, ticks, height }: { type: RoomModel; ticks: GridModel['
     <section aria-label={`${type.typeName}s — ${type.capacity} in service`}>
       <h2 className="text-sm font-semibold">
         The room
-        <span className="ml-2 font-normal text-zinc-600 dark:text-zinc-400">
+        <span className="ml-2 font-normal text-ink-muted">
           {type.capacity} {type.typeName.toLowerCase()}
           {type.capacity === 1 ? '' : 's'} in service
         </span>
-        <Link href="/staff/resources" className="ml-2 font-normal text-zinc-600 underline underline-offset-4 dark:text-zinc-400">
+        <Link href="/staff/resources" className="ml-2 font-normal text-ink-muted underline underline-offset-4">
           Manage
         </Link>
       </h2>
@@ -45,7 +45,7 @@ function RoomType({ type, ticks, height }: { type: RoomModel; ticks: GridModel['
         /* Not decoration: a required type with nothing in service makes every
            slot unbookable, and the engine reports that as an ordinary empty
            day. This is the only place that says WHY. */
-        <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+        <p className="mt-1 text-sm font-medium text-attention-ink">
           No {type.typeName.toLowerCase()} is in service, so nothing that needs one can be booked.
         </p>
       ) : (
@@ -54,41 +54,59 @@ function RoomType({ type, ticks, height }: { type: RoomModel; ticks: GridModel['
            keyboard, so it needs its own tab stop. It happens to hold links on
            most days — which is exactly why this was invisible until a day with
            an empty room rendered one with none. */
-        <div tabIndex={0} className="mt-1 flex gap-2 overflow-x-auto">
-          <div className="relative w-14 shrink-0" style={{ height }} aria-hidden="true">
-            {ticks.map((tick) => (
-              <span
-                key={tick.label + tick.top}
-                className="absolute right-1 -translate-y-1/2 text-xs text-zinc-600 dark:text-zinc-400"
-                style={{ top: tick.top * PX_PER_MINUTE }}
-              >
-                {tick.label}
-              </span>
-            ))}
+        /* A-090 — TWO ROWS AND A SUBGRID, the same fix and the same defect as
+           the day grid above it: every track laid out its own heading and then
+           its own box, so minute zero sat wherever that heading happened to
+           end. A chair OUT OF SERVICE carries a second phrase in its heading,
+           which wraps — so retiring one chair slid its track down against
+           every other chair's and against the gutter. The room strip exists to
+           be read ACROSS ("is any chair free at two?"), which is precisely the
+           reading a per-column origin breaks. */
+        <div
+          tabIndex={0}
+          className="mt-1 grid grid-flow-col auto-cols-[minmax(8rem,1fr)] grid-rows-[auto_auto] gap-x-2 overflow-x-auto"
+        >
+          <div className="row-span-2 grid w-14 shrink-0 grid-rows-subgrid" aria-hidden="true">
+            <div />
+            <div className="relative" style={{ height }}>
+              {ticks.map((tick) => (
+                <span
+                  key={tick.label + tick.top}
+                  className="absolute right-1 -translate-y-1/2 text-caption text-ink-muted numeric"
+                  style={{ top: tick.top * PX_PER_MINUTE }}
+                >
+                  {tick.label}
+                </span>
+              ))}
+            </div>
           </div>
 
           {type.tracks.map((track) => (
-            <section key={track.resourceId} className="min-w-32 flex-1" aria-label={track.name}>
+            <section key={track.resourceId} className="row-span-2 grid grid-rows-subgrid" aria-label={track.name}>
               <h3 className="text-sm font-medium">
                 {track.active ? (
                   track.name
                 ) : (
                   <>
-                    <span className="text-zinc-400 line-through">{track.name}</span>
+                    {/* `--ink-muted`, not zinc-400: that value is 2.62:1 on
+                        white at this size and it only ever renders on a chair
+                        somebody has retired, which is why no axe run had seen
+                        it (demo checkpoint 7's rule, one screen over). */}
+                    <span className="text-ink-muted line-through">{track.name}</span>
                     {/* Retiring never rewrites history, so a chair taken out of
                         service keeps whoever is already in it until she
                         leaves. Saying so beats a row the desk cannot explain. */}
-                    <span className="ml-2 font-normal text-zinc-600 dark:text-zinc-400">out of service</span>
+                    <span className="ml-2 font-normal text-ink-muted">out of service</span>
                   </>
                 )}
               </h3>
 
-              <div className="relative rounded-md border border-zinc-200 dark:border-zinc-800" style={{ height }}>
+              <div className="relative rounded-control border border-line-hairline" style={{ height }}>
                 {ticks.map((tick) => (
                   <div
                     key={tick.top}
                     aria-hidden="true"
-                    className="absolute inset-x-0 border-t border-zinc-100 dark:border-zinc-800/60"
+                    className="absolute inset-x-0 border-t border-line-hairline"
                     style={{ top: tick.top * PX_PER_MINUTE }}
                   />
                 ))}
@@ -97,7 +115,7 @@ function RoomType({ type, ticks, height }: { type: RoomModel; ticks: GridModel['
                   {track.blocks.map((block) => (
                     <li
                       key={block.key}
-                      className="absolute inset-x-1 overflow-hidden rounded-sm border border-zinc-300 bg-zinc-100 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800"
+                      className="absolute inset-x-1 overflow-hidden rounded-tight border border-line-hairline bg-ground-sunken px-2 py-1 text-caption"
                       style={{ top: block.top * PX_PER_MINUTE, height: Math.max(block.minutes * PX_PER_MINUTE, 18) }}
                     >
                       <Link
@@ -106,7 +124,7 @@ function RoomType({ type, ticks, height }: { type: RoomModel; ticks: GridModel['
                         className="block h-full focus:outline-2 focus:outline-offset-2"
                       >
                         <span className="block truncate font-medium">{block.title}</span>
-                        <span className="block truncate text-zinc-600 dark:text-zinc-400">{block.detail}</span>
+                        <span className="block truncate text-ink-muted">{block.detail}</span>
                       </Link>
                     </li>
                   ))}

@@ -4,6 +4,18 @@ import { Button, LinkButton } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input } from '@/components/ui/field';
 import { Tab, Tabs } from '@/components/ui/tabs';
+import { PX_PER_MINUTE } from '@/lib/day/scale';
+import type { GridItem } from '@/lib/day/view-model';
+import { AppointmentChip } from '../day/appointment-chip';
+import { DayGrid } from '../day/day-grid';
+import {
+  A_STYLIST_OFF,
+  FOUR_STYLISTS,
+  MODIFIER_MATRIX,
+  ONE_STYLIST,
+  RUNNING_FORTY_LATE,
+  STATUS_MATRIX,
+} from './day-fixtures';
 
 /**
  * A-089 — THE STATE MATRIX, AS A PAGE (design brief §8.2).
@@ -141,6 +153,90 @@ export default async function DesignPage() {
         <h2 className="text-section font-semibold">Empty state</h2>
         <EmptyState>Nobody matches “Kerr”.</EmptyState>
       </section>
+
+      {/* ==================================================================
+          A-090 — the domain components (§5.4.1–3), drawn as matrices.
+          ================================================================== */}
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-section font-semibold">Appointment chip — the eight statuses</h2>
+        <p className="text-body text-ink-muted">
+          Every one carries its status as a WORD as well as a colour (§4). <strong>Booked</strong> is
+          the only one with no word, because it is most of every column and a marker on all of them is
+          a marker on none. The stripe down the left edge is graphical and carries the 3:1 bar; the
+          word carries the meaning.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {STATUS_MATRIX.map((item) => (
+            <ChipBox key={item.key} item={item} />
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-section font-semibold">Appointment chip — the modifiers</h2>
+        <p className="text-body text-ink-muted">
+          One at a time rather than all at once, which is the only composition that never happens in a
+          salon. Each is a glyph or a word, never a tint: they have to survive greyscale on the printed
+          sheet and a colour-blind reader on the tablet.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {MODIFIER_MATRIX.map(({ caption, item }) => (
+            <div key={item.key} className="flex flex-col gap-1">
+              <span className="text-caption text-ink-muted">{caption}</span>
+              <ChipBox item={item} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {DAYS.map(({ heading, note, model }) => (
+        <section key={heading} className="flex flex-col gap-4">
+          <h2 className="text-section font-semibold">{heading}</h2>
+          <p className="text-body text-ink-muted">{note}</p>
+          {/* `live={false}`: four grids each holding a 15-second refresh would
+              reload the workbench under whoever is reading it. */}
+          <DayGrid model={model} live={false} />
+        </section>
+      ))}
     </main>
   );
 }
+
+/**
+ * The chip is absolutely positioned inside its column, so the gallery gives it
+ * a box of exactly the height its duration buys at 1.5px/min — which is the
+ * whole point of drawing it here. A 45-minute cut is 67 pixels and everything
+ * §5.4.1 lists has to fit inside that.
+ */
+function ChipBox({ item }: { item: GridItem }) {
+  return (
+    <ol className="relative w-52" style={{ height: item.minutes * PX_PER_MINUTE }}>
+      <AppointmentChip item={item} style={{ top: 0, height: item.minutes * PX_PER_MINUTE }} />
+    </ol>
+  );
+}
+
+/** §8.5's four compositions, in the order the brief lists them. */
+const DAYS = [
+  {
+    heading: 'The day — four stylists',
+    note: 'The tablet’s real shape: a shared gutter, four columns, the now-line, a gap that can be booked, a break, and a chip of most of the eight statuses.',
+    model: FOUR_STYLISTS,
+  },
+  {
+    heading: 'The day — one stylist',
+    note: 'What the desk filters to on a quiet Monday, and what a stylist opens on her own phone.',
+    model: ONE_STYLIST,
+  },
+  {
+    heading: 'The day — a column forty minutes behind',
+    note: 'The composition this component is riskiest in. Everyone who has not started yet carries BOTH times — the one on her confirmation and the one she is likely to be seen at. The visit already in the chair carries one, because a projected start on it would not be late, it would be wrong.',
+    model: RUNNING_FORTY_LATE,
+  },
+  {
+    heading: 'The day — a stylist off',
+    note: 'Her column is still drawn. A missing column reads as a missing stylist rather than a day off — and time off over a working column is drawn as a band, because AVAIL-05 says a collision is surfaced for a human rather than hidden.',
+    model: A_STYLIST_OFF,
+  },
+];

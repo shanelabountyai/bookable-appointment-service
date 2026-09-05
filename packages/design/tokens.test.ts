@@ -94,6 +94,30 @@ describe.each(['light', 'dark'] as const)('the %s token set', (mode) => {
     }
   });
 
+  /**
+   * A-090 — THE PAIR THE APPOINTMENT CHIP ACTUALLY RENDERS, and it was not
+   * asserted by anything above.
+   *
+   * A chip's status decides its GROUND (`--intent-*-fill`) and everything
+   * written on it — the client's name, the service, the projected time — is
+   * ordinary ink. So `--ink-primary` on `--intent-positive-fill` is a real,
+   * shipped, eight-times-a-column pair, and until this item nothing measured
+   * it: the rules above check each intent's own ink on its own fill, which is
+   * a different pair entirely.
+   *
+   * This is also why the chip writes its inner lines in its own ink rather
+   * than in amber. An intent ink on ANOTHER intent's fill is not asserted
+   * anywhere and should not be — the fix is not to widen this rule to a
+   * cross-product nothing renders, it is to not render the cross-product.
+   * (Demo checkpoint 7, one layer up: a colour proven on one ground and used
+   * on another is the whole defect.)
+   */
+  it.each(INTENTS)('ordinary ink is text-legible on the %s fill a chip uses as its ground', (intent) => {
+    for (const ink of ['--ink-primary', '--ink-secondary', '--ink-muted']) {
+      expect(ratio(ink, `--intent-${intent}-fill`), `${ink} on ${intent} fill (${mode})`).toBeGreaterThanOrEqual(TEXT);
+    }
+  });
+
   it.each(INTENTS)('%s line clears the graphical bar on every ground AND on its own fill', (intent) => {
     for (const ground of [...GROUNDS, `--intent-${intent}-fill`]) {
       expect(ratio(`--intent-${intent}-line`, ground), `${intent} line on ${ground} (${mode})`).toBeGreaterThanOrEqual(GRAPHIC);

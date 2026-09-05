@@ -33,11 +33,46 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Primitives' })).toBeVisible();
 });
 
+const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+
 test('the state matrix has no accessibility violations', async ({ page }) => {
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze();
+  const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   expect(results.violations).toEqual([]);
+});
+
+/**
+ * A-090 — THE DOMAIN MATRICES, AND IN BOTH SCHEMES.
+ *
+ * Demo checkpoint 7's rule, applied to the gallery that exists to prevent its
+ * class of defect: an accessibility assertion over a screen with no data on it
+ * is an assertion over the chrome. This page now draws eight statuses, six
+ * modifiers and four whole days, and it draws them from FIXTURES rather than
+ * from the book — so the states axe measures here are the states the component
+ * has, not the states the demo install happens to contain (checkpoint 7 found
+ * that the demo has no running-late column and no stylist off at all).
+ */
+test('the chip matrix and the four days have no accessibility violations, in both schemes', async ({ page }) => {
+  // The compositions §8.5 asks for are all on the page, not just the easy one.
+  for (const heading of ['four stylists', 'one stylist', 'a column forty minutes behind', 'a stylist off']) {
+    await expect(page.getByRole('heading', { name: `The day — ${heading}` })).toBeVisible();
+  }
+  // Eight statuses drawn, seven of them wearing their word (§4, never colour
+  // alone). `booked` is the eighth and carries none, on purpose.
+  for (const word of ['Confirmed', 'Here', 'In chair', 'Done', 'No-show', 'Cancelled', 'Late cancel']) {
+    await expect(page.getByText(word, { exact: true }).first()).toBeVisible();
+  }
+
+  const light = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+  expect(light.violations).toEqual([]);
+
+  // Reload rather than only `emulateMedia` — see `day-grid.spec.ts`: switching
+  // the query on a live page leaves every control mid-transition and axe then
+  // samples the blend.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'The day — a stylist off' })).toBeVisible();
+  const dark = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+  expect(dark.violations).toEqual([]);
 });
 
 test('a pending button is disabled and says so in the accessibility tree', async ({ page }) => {

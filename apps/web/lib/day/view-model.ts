@@ -13,7 +13,7 @@ import 'server-only';
  * file has no opinion about it.
  */
 import type { DayColumn, DayRoom, DayView } from '@bookable/db/day';
-import { type AppointmentStatus, availableTransitions } from '@bookable/core/scheduling';
+import { type AppointmentStatus, availableTransitions, isAwaitingStart } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
 
 const MIN = 60_000;
@@ -28,6 +28,17 @@ export interface GridItem {
   minutes: number;
   /** "10:00–11:00" in the salon's zone. */
   time: string;
+  /**
+   * A-090 — just the START, for the chip's first line.
+   *
+   * The chip is positioned BY time and drawn AT the height of its duration, so
+   * the end of the range is already on screen twice; spending eleven characters
+   * of a 200px column restating it cost the client's name its last four
+   * letters. The full range stays in `time` (the stylist's list and the printed
+   * sheet both read it) and in the accessible name, which is the one place a
+   * reader cannot infer it from the geometry.
+   */
+  startTime?: string;
   /** A-062. The BODY's length in PHYSICAL minutes — what the stylist has the
    *  chair for, not the envelope `minutes` the chip is drawn from. Appointments
    *  only. */
@@ -322,6 +333,7 @@ function toColumn(
         top: f.minutesFrom(appointment.occupiesStart),
         minutes: (appointment.occupiesEnd.getTime() - appointment.occupiesStart.getTime()) / MIN,
         time: f.range(appointment.startAt, appointment.endAt),
+        startTime: f.clock(appointment.startAt),
         durationMinutes: (appointment.endAt.getTime() - appointment.startAt.getTime()) / MIN,
         title: who,
         detail: [services, appointment.clientPhone].filter(Boolean).join(' · '),
@@ -352,10 +364,16 @@ function toColumn(
         // is clickable — this is the sentence that makes that legible instead
         // of alarming.
         ...(appointment.releasedAt ? { released: f.clock(appointment.releasedAt) } : {}),
-        // Only for what has not started yet: projecting a time onto an
-        // appointment already in the chair is noise, and projecting onto a
-        // finished one is wrong.
-        ...(column.runningLateMinutes && appointment.status === 'booked'
+        // A-090 — `isAwaitingStart`, DERIVED, never `status === 'booked'`.
+        //
+        // That hand-typed comparison was a status list of ONE and narrower
+        // than both of its neighbours, so a CONFIRMED client in a column
+        // forty minutes behind appeared on the desk's own call list as
+        // "booked 14:00, likely 14:40" while her chip on the same screen
+        // showed 14:00 and no projection at all. `in_progress` is still out —
+        // she is in the chair, and a projected START on her is not late, it
+        // is wrong — and so is everything terminal.
+        ...(column.runningLateMinutes && isAwaitingStart(appointment.status as AppointmentStatus)
           ? { projected: f.shift(appointment.startAt, column.runningLateMinutes) }
           : {}),
         // A-027 exists now, so a chip goes to the APPOINTMENT rather than to
@@ -374,8 +392,13 @@ function toColumn(
           // after the other: one is about her, one is about today.
           appointment.notes ? `today: ${appointment.notes}` : '',
           missed ?? '',
-          column.runningLateMinutes && appointment.status === 'booked'
-            ? `likely ${f.shift(appointment.startAt, column.runningLateMinutes)}`
+          // THE TWO TIMES, IN WORDS (§4). The name opens with the booked
+          // range, so this has to say which time it is talking about rather
+          // than adding a fourth bare clock reading to a sentence that
+          // already holds three. "Booked for 14:00, likely to start 14:40" is
+          // unambiguous read aloud; "14:00-15:00 … 14:40" is not.
+          column.runningLateMinutes && isAwaitingStart(appointment.status as AppointmentStatus)
+            ? `booked for ${f.clock(appointment.startAt)}, likely to start ${f.shift(appointment.startAt, column.runningLateMinutes)}`
             : '',
         ]
           .filter(Boolean)

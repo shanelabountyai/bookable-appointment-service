@@ -31,13 +31,19 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL(/\/staff\/day/);
 }
 
-async function seedAppointments(times: string[]) {
+/** A time, or a time with a status on it — A-090 needs a column carrying more
+ *  than one status at once, because the whole question is where the projection
+ *  stops. */
+type Seeded = string | { time: string; status: string };
+
+async function seedAppointments(times: readonly Seeded[]) {
   const prisma = new PrismaClient();
   try {
     const business = await prisma.business.findFirstOrThrow();
     const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
     const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
-    for (const [index, time] of times.entries()) {
+    for (const [index, seeded] of times.entries()) {
+      const { time, status } = typeof seeded === 'string' ? { time: seeded, status: 'booked' } : seeded;
       const client = await prisma.client.create({
         data: { businessId: business.id, name: `Client ${index + 1}`, phone: `51255501${index}0` },
       });
@@ -54,6 +60,7 @@ async function seedAppointments(times: string[]) {
           blockedEnd: endAt,
           startDay: DAY,
           startWallTime: time,
+          status: status as 'booked',
           lines: {
             create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
           },
@@ -146,6 +153,53 @@ test.describe('running late (A-018)', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  /**
+   * A-090 — WHERE THE PROJECTION STOPS, which is the whole of this item's risk.
+   *
+   * The test above seeds one `booked` chip, and that is exactly how the defect
+   * survived: `view-model.ts` hand-typed `status === 'booked'`, a status list of
+   * ONE and narrower than both of its neighbours. So a CONFIRMED client in a
+   * column forty minutes behind appeared on the desk's own ring-round as
+   * "booked 14:00, likely 14:40" and her chip three inches away on the same
+   * screen showed 14:00 and no projection at all — two answers to one question,
+   * in one glance.
+   *
+   * The column below carries three statuses at once because the boundary is the
+   * subject: `confirmed` and `checked_in` are still to come and both project;
+   * `in_progress` is in the chair, and a projected START on her is not late, it
+   * is wrong.
+   */
+  test('projects onto everyone who has not started, and stops at the chair', async ({ page }) => {
+    await seedAppointments([
+      { time: '10:00', status: 'in_progress' },
+      { time: '14:00', status: 'confirmed' },
+      { time: '15:00', status: 'checked_in' },
+    ]);
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const dana = page.getByRole('region', { name: /Dana/ });
+    await dana.getByLabel('Behind by').fill('40');
+    await dana.getByRole('button', { name: 'Set' }).click();
+
+    await expect(page.getByText('→ likely 14:40')).toBeVisible();
+    await expect(page.getByText('→ likely 15:40')).toBeVisible();
+    // She is in the chair. Nothing is projected onto her, at 10:40 or at all.
+    await expect(page.getByText('→ likely 10:40')).toHaveCount(0);
+    await expect(dana.getByText('→ likely')).toHaveCount(2);
+
+    // THE TWO TIMES IN THE ACCESSIBLE NAME (§4). Not two bare clock readings in
+    // one sentence — each one says which time it is.
+    await expect(
+      page.getByRole('link', { name: /booked for 14:00, likely to start 14:40/ }),
+    ).toBeVisible();
+
+    // NEVER COLOUR ALONE (§4): the status is a word on the chip, not a tint.
+    // `checked_in` and `in_progress` share one intent and are told apart here.
+    await expect(dana.getByText('Confirmed', { exact: true })).toBeVisible();
+    await expect(dana.getByText('Here', { exact: true })).toBeVisible();
+    await expect(dana.getByText('In chair', { exact: true })).toBeVisible();
   });
 });
 

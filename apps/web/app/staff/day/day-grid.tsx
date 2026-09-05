@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
-import { STATUS_WORDS } from '@/lib/day/view-model';
+import { AppointmentChip, CHIP_SHELL } from './appointment-chip';
 import { ColumnControls } from './column-controls';
-import { StatusActions } from './status-actions';
 
 /**
  * The day grid (A-016, Goal 3).
@@ -22,10 +21,10 @@ import { StatusActions } from './status-actions';
  * a chip tall enough to hold two lines of text. Shared with the room strip
  * (A-046) from `lib/day/scale`.
  *
- * The greys below are zinc-600 rather than the zinc-400/500 that reads better
- * at a glance, because at 12px on white those measure 2.6:1 and 4.4:1 — both
- * under WCAG AA's 4.5:1, and axe said so before this shipped. Small grey text
- * is exactly where contrast quietly fails.
+ * A-090: every colour on this file is now a token (A-088). The greys it used
+ * to hard-code were zinc-600 rather than the zinc-400/500 that reads better at
+ * a glance, because at 12px those measure 2.6:1 and 4.4:1 — the reasoning is
+ * now `--ink-muted`'s, asserted by `tokens.test.ts` instead of repeated here.
  */
 
 /**
@@ -39,26 +38,66 @@ import { StatusActions } from './status-actions';
  */
 const REFRESH_MS = 15_000;
 
-export function DayGrid({ model }: { model: GridModel }) {
-  useAutoRefresh();
+export function DayGrid({ model, live = true }: { model: GridModel; live?: boolean }) {
+  // `live` is off in the gallery only (A-090). Four grids on `/staff/design`
+  // each holding a 15-second `router.refresh()` would reload the workbench
+  // under whoever is reading it, and the fixtures cannot change anyway.
+  useAutoRefresh(live);
 
   const height = model.totalMinutes * PX_PER_MINUTE;
 
   return (
+    /**
+     * A-090 — ONE GRID, TWO ROWS, AND THAT IS WHAT MAKES THE TIME AXIS SHARED.
+     *
+     * This was a flex row of independent columns, each of which laid out its own
+     * header, then its own controls, and THEN its positioned box — so every
+     * column's minute zero sat wherever its own chrome happened to end. Measured
+     * on a seeded Tuesday with nothing running late:
+     *
+     *     gutter 380 | Dana 480 | Priya 480 | Marcus 438 | Tess 438
+     *
+     * The hour labels were **100px — 67 minutes — above the rows they label**,
+     * and Marcus and Tess were drawn **42px (28 minutes) above** their two
+     * colleagues, because a column with nothing left in it renders no "push the
+     * column" control and its chrome is shorter. A day grid whose columns do not
+     * share a vertical axis is not a day grid: "who is free at two?" is a
+     * question you answer by looking ACROSS, and the answer was off by half an
+     * hour, differently per column, according to the data.
+     *
+     * The fix is structural rather than a measurement anybody has to maintain:
+     * a two-row grid, with every column a `subgrid` spanning both. Row one takes
+     * the height of the TALLEST chrome — a column running late with a ring-round
+     * on it is much taller than an empty one — and every row-two cell therefore
+     * starts on the same pixel, the gutter included. No JavaScript, no measuring,
+     * and nothing to keep in step: a column that grows a new control cannot
+     * shift its own minute zero any more, because it no longer owns it.
+     */
     // Same tab stop as the room strip, for the same reason: a day where every
     // provider is off has no gap chips and no appointments, so this box holds
     // nothing focusable and a keyboard cannot scroll it.
-    <div tabIndex={0} className="flex gap-2 overflow-x-auto">
-      <div className="relative w-14 shrink-0" style={{ height }} aria-hidden="true">
-        {model.ticks.map((tick) => (
-          <span
-            key={tick.label + tick.top}
-            className="absolute right-1 -translate-y-1/2 text-xs text-zinc-600 dark:text-zinc-400"
-            style={{ top: tick.top * PX_PER_MINUTE }}
-          >
-            {tick.label}
-          </span>
-        ))}
+    <div tabIndex={0} className="grid grid-flow-col auto-cols-[minmax(13rem,1fr)] grid-rows-[auto_auto] gap-x-2 overflow-x-auto">
+      <div className="row-span-2 grid w-14 shrink-0 grid-rows-subgrid" aria-hidden="true">
+        {/* Row one: the gutter has no chrome of its own and takes whatever
+            height the tallest column's does. */}
+        <div />
+        {/* `data-day-axis` is a TEST HOOK and says so: `day-grid.spec.ts`
+            asserts that every element carrying it starts on the same pixel.
+            A structural locator ("the last div of the section") would go on
+            passing while pointing at the wrong box the first time anybody
+            wraps something — A-085 lost a whole server-side check to exactly
+            that, and a locator that names what it wants cannot drift. */}
+        <div data-day-axis="gutter" className="relative" style={{ height }}>
+          {model.ticks.map((tick) => (
+            <span
+              key={tick.label + tick.top}
+              className="absolute right-1 -translate-y-1/2 text-caption text-ink-muted numeric"
+              style={{ top: tick.top * PX_PER_MINUTE }}
+            >
+              {tick.label}
+            </span>
+          ))}
+        </div>
       </div>
 
       {model.columns.map((column) => (
@@ -71,12 +110,16 @@ export function DayGrid({ model }: { model: GridModel }) {
 function Column({ column, model, height }: { column: GridColumn; model: GridModel; height: number }) {
   return (
     <section
-      className="min-w-52 flex-1"
+      className="row-span-2 grid grid-rows-subgrid"
       aria-label={`${column.providerName}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
     >
+      {/* ROW ONE — everything above the day. Wrapped, so that however much of
+          it a column happens to have, its box below still starts where every
+          other column's does. */}
+      <div>
       <h2 className="text-sm font-semibold">
         {column.providerName}
-        {column.closed ? <span className="ml-2 font-normal text-zinc-600 dark:text-zinc-400">off today</span> : null}
+        {column.closed ? <span className="ml-2 font-normal text-ink-muted">off today</span> : null}
         {/* A-042 — the way INTO the booking panel that does not depend on
             there being a gap. Until this link, the only per-stylist door was a
             gap chip, so a fully booked column could not be booked into at all
@@ -84,7 +127,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
             the panel lists the day's real times, refusals and all. */}
         <Link
           href={`/staff/book?provider=${column.providerId}&day=${model.day}`}
-          className="ml-2 font-normal text-zinc-600 underline underline-offset-4 dark:text-zinc-400"
+          className="ml-2 font-normal text-ink-muted underline underline-offset-4"
         >
           Book with {column.providerName}
         </Link>
@@ -100,15 +143,25 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           pushFrom={column.pushFrom}
         />
       )}
+      </div>
 
-      <div className="relative rounded-md border border-zinc-200 dark:border-zinc-800" style={{ height }}>
+      {/* ROW TWO — the day itself, on the shared axis. */}
+      <div
+        data-day-axis={column.providerId}
+        className="relative rounded-control border border-line-hairline"
+        style={{ height }}
+      >
         {/* Working hours, shaded. Decorative: the same information is in every
             item's accessible name and in the column's own label. */}
         {column.windows.map((window, i) => (
           <div
             key={i}
             aria-hidden="true"
-            className="absolute inset-x-0 bg-zinc-50 dark:bg-zinc-900/50"
+            // A FILL *AND* AN EDGE. `--ground-sunken` is deliberately near
+            // the page ground in dark (depth is drawn with the hairline there,
+            // not with a fill — see the token header), so a band relying on the
+            // fill alone would simply vanish on the tablet under the window.
+            className="absolute inset-x-0 border-y border-line-hairline bg-ground-sunken"
             style={{ top: window.top * PX_PER_MINUTE, height: window.minutes * PX_PER_MINUTE }}
           />
         ))}
@@ -117,7 +170,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           <div
             key={tick.top}
             aria-hidden="true"
-            className="absolute inset-x-0 border-t border-zinc-100 dark:border-zinc-800/60"
+            className="absolute inset-x-0 border-t border-line-hairline"
             style={{ top: tick.top * PX_PER_MINUTE }}
           />
         ))}
@@ -133,7 +186,11 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
 
         {model.nowTop !== null ? (
           <div
-            className="pointer-events-none absolute inset-x-0 z-20 border-t-2 border-red-500"
+            // `--intent-danger-line` for its VALUE and its checked 3:1, not
+            // for its meaning: a now-line is red in every calendar anyone at
+            // the desk has ever used. A `--now-line` token would be one fact
+            // under two names (A-088's own rule) with exactly one caller.
+            className="pointer-events-none absolute inset-x-0 z-20 border-t-2 border-danger-line"
             style={{ top: model.nowTop * PX_PER_MINUTE }}
           >
             <span className="sr-only">Now</span>
@@ -146,189 +203,53 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
 
 function Item({ item }: { item: GridItem }) {
   const style = { top: item.top * PX_PER_MINUTE, height: Math.max(item.minutes * PX_PER_MINUTE, 18) };
-  const shell = 'absolute inset-x-1 overflow-hidden rounded-sm px-2 py-1 text-xs';
 
-  if (item.kind !== 'appointment') {
-    const body = (
-      <>
-        <span className="font-medium">{item.title}</span>
-        {item.detail ? <span className="ml-1 text-zinc-600 dark:text-zinc-400">{item.detail}</span> : null}
-      </>
-    );
-    return (
-      // A-030: a gap can now fall INSIDE an appointment — a colour's
-      // developing time is real bookable provider time — so gaps paint above
-      // appointment chips rather than under them. Without this the one gap the
-      // desk most wants to click is the one hidden behind the colour.
-      <li className={`${shell} ${item.kind === 'gap' ? 'z-10 ' : ''}${DECORATION[item.kind]}`} style={style}>
-        {/* A-017 gave gaps somewhere to go, so they are links now. Breaks and
-            absences stay plain text: there is nothing to do with a lunch
-            break, and a focusable element that does nothing when activated is
-            worse than no target at all. */}
-        {item.href ? (
-          <Link href={item.href} className="block h-full focus:outline-2 focus:outline-offset-2" aria-label={item.label}>
-            {body}
-          </Link>
-        ) : (
-          <span aria-label={item.label}>{body}</span>
-        )}
-      </li>
-    );
-  }
+  // A-090 — the appointment chip is its own component, drawn as a full state
+  // matrix on `/staff/design`. Everything else on the grid is a band of time
+  // with a label on it and has no states to speak of.
+  if (item.kind === 'appointment') return <AppointmentChip item={item} style={style} />;
 
   const body = (
     <>
-      <span className="block truncate font-medium">
-        {item.time} {item.title}
-      </span>
-      {/* NO `opacity-*` ON TEXT — checkpoint 7. This line carried `opacity-80`
-          and failed WCAG AA on a `completed` chip in BOTH schemes (4.33:1
-          light, 4.18:1 dark, at 12px): that status paints a darker ground AND
-          a lighter ink, and multiplying the ink by 0.8 on top of it is a third
-          decision nothing checked. A-088's contrast test proves the TOKEN, and
-          an opacity is the same fact written again under another name — the
-          product it renders is a colour no test can see. The title above is
-          `font-medium`; weight is what separates the two lines, not alpha. */}
-      {item.detail ? <span className="block truncate">{item.detail}</span> : null}
-      {/* APPT-03's projected start, BESIDE the scheduled time rather than
-          instead of it: she was booked for 14:00 and her confirmation still
-          says so. */}
-      {item.projected ? (
-        <span className="block truncate font-medium text-amber-900 dark:text-amber-200">→ likely {item.projected}</span>
-      ) : null}
-      {item.pinnedNote ? (
-        // CLIENT-03's safety surface. Marked, not merely present: the front
-        // desk has to be able to spot it without reading every chip.
-        <span className="block truncate font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</span>
-      ) : null}
-      {item.missed ? (
-        <span className="block truncate font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</span>
-      ) : null}
-      {/* A-070. VISUALLY DISTINCT from the pinned note above: ✎ and no amber,
-          because this is about today rather than a safety line about her. The
-          glyph is what carries that, not an alpha (see the detail line above).
-          Truncated here and whole in the accessible name, exactly as
-          `pinnedNote` already is. */}
-      {item.visitNote ? <span className="block truncate">✎ {item.visitNote}</span> : null}
-      {item.isOverride ? <span className="block text-[10px] uppercase tracking-wide">override</span> : null}
-      {/* A-069. She never came, and the rest of her slot is back on the market
-          — so the bookable gap chip painting over this one is deliberate, not
-          a double-booking. Her chip stays at its BOOKED extent because "who
-          was due at ten?" is what the desk is looking for. */}
-      {item.released ? (
-        <span className="block truncate text-[10px] uppercase tracking-wide">time back from {item.released}</span>
-      ) : null}
+      <span className="font-medium">{item.title}</span>
+      {item.detail ? <span className="ml-1 text-ink-muted">{item.detail}</span> : null}
     </>
   );
 
-  const className = `${shell} border ${STATUS_COLOUR[item.status ?? 'booked']}`;
-
-  /**
-   * A-035 — THE ONE BUTTON THE CHIP HAS ROOM FOR.
-   *
-   * Check-in is the most frequent action in the salon and it cost four
-   * interactions and two page loads; this makes it one tap on the surface the
-   * desk is already looking at. It is `available[0]` — the next step through
-   * the visit, from the §7 table — never a hardcoded status, so a chip already
-   * checked in offers "Start" and one in the chair offers "Finish".
-   *
-   * WHY ONE AND NOT FOUR: this chip is `minutes * 1.5` pixels tall, and the
-   * seeded fringe trim is ten minutes. A row of four buttons does not fit and
-   * a chip taller than its duration would overlap the next client. The
-   * stylist's own list has no such constraint and carries the whole set; the
-   * link below still leads to the panel that carries everything.
-   *
-   * The height test is a geometry fact, not a rule about appointments: under
-   * it, the chip is the link alone. Nothing becomes unreachable — it becomes
-   * one tap further away, which is where every one of them was yesterday.
-   */
-  // Every line on a chip is truncated to exactly one line, so the space a
-  // button needs is countable rather than guessable: the title line, plus one
-  // per extra line already claimed. A chip clips what does not fit, and a
-  // CLIPPED BUTTON is worse than an absent one — invisible to the eye and
-  // still in the tab order.
-  const linesInUse = [
-    item.detail,
-    item.projected,
-    item.pinnedNote,
-    item.missed,
-    item.visitNote,
-    item.isOverride,
-    item.released,
-  ].filter(Boolean).length;
-  const roomForAButton = item.minutes >= ONE_LINE_AND_A_BUTTON + linesInUse * MINUTES_PER_LINE;
-
-  const controls =
-    item.appointmentId && item.status && item.available?.length && roomForAButton ? (
-      <StatusActions
-        appointmentId={item.appointmentId}
-        status={item.status}
-        moves={item.available.slice(0, 1)}
-        className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px]"
-        buttonClassName="rounded-sm border border-current px-1.5 py-0.5 font-medium disabled:opacity-60"
-      />
-    ) : null;
-
   return (
-    <li className={className} style={style}>
-      {/* The button is a SIBLING of the link, never inside it: a button nested
-          in an anchor is invalid, and it is the accessibility footgun A-033
-          named when it declined to put a second control on this chip. */}
+    // A-030: a gap can now fall INSIDE an appointment — a colour's developing
+    // time is real bookable provider time — so gaps paint above appointment
+    // chips rather than under them. Without this the one gap the desk most
+    // wants to click is the one hidden behind the colour.
+    <li className={`${CHIP_SHELL} ${item.kind === 'gap' ? 'z-10 ' : ''}${DECORATION[item.kind]}`} style={style}>
+      {/* A-017 gave gaps somewhere to go, so they are links now. Breaks and
+          absences stay plain text: there is nothing to do with a lunch break,
+          and a focusable element that does nothing when activated is worse
+          than no target at all. */}
       {item.href ? (
-        <Link
-          href={item.href}
-          className={`block focus:outline-2 focus:outline-offset-2 ${controls ? '' : 'h-full'}`}
-          aria-label={item.label}
-        >
+        <Link href={item.href} className="block h-full" aria-label={item.label}>
           {body}
         </Link>
       ) : (
         <span aria-label={item.label}>{body}</span>
       )}
-      {controls}
     </li>
   );
 }
 
-/**
- * Chip geometry, in MINUTES because that is the unit the chip is measured in:
- * 30 minutes is 45 pixels at the scale above, which holds one line of text and
- * a control; each further line costs about ten more.
- */
-const ONE_LINE_AND_A_BUTTON = 30;
-const MINUTES_PER_LINE = 10;
-
-/**
- * Status colours, as a TOTAL map — a ninth status is a compile error here
- * rather than an invisible chip on a Saturday.
- *
- * Colour is never the only signal: the status word is in every chip's
- * accessible name, and cancelled chips are struck through as well as faded, so
- * the grid does not depend on colour vision (WCAG 1.4.1).
- */
-const STATUS_COLOUR = {
-  booked: 'border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900',
-  confirmed: 'border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950',
-  checked_in: 'border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-950',
-  in_progress: 'border-sky-500 bg-sky-100 dark:border-sky-600 dark:bg-sky-900',
-  completed: 'border-zinc-300 bg-zinc-100 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
-  no_show: 'border-amber-500 bg-amber-50 dark:border-amber-700 dark:bg-amber-950',
-  cancelled: 'border-zinc-300 bg-white text-zinc-600 line-through dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400',
-  cancelled_late: 'border-zinc-300 bg-white text-zinc-600 line-through dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400',
-} satisfies Record<keyof typeof STATUS_WORDS, string>;
-
 const DECORATION: Record<Exclude<GridItem['kind'], 'appointment'>, string> = {
-  gap: 'border border-dashed border-zinc-400 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800',
-  break: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
-  absence: 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+  gap: 'border border-dashed border-line-control text-ink-muted hover:bg-ground-sunken',
+  break: 'bg-ground-sunken text-ink-muted',
+  absence: 'bg-ground-sunken text-ink-secondary',
 };
 
 /** Re-reads the server component on a timer. An interval is a subscription to
  *  an external system (the clock), which is what effects are for. */
-function useAutoRefresh() {
+function useAutoRefresh(live: boolean) {
   const router = useRouter();
   useEffect(() => {
+    if (!live) return;
     const timer = setInterval(() => router.refresh(), REFRESH_MS);
     return () => clearInterval(timer);
-  }, [router]);
+  }, [router, live]);
 }

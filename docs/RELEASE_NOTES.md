@@ -2770,3 +2770,37 @@ And naming the client before offering times — which lets her keep the chair sh
 ### What it could not walk
 
 The demo data has no waiting list in it. So the entire "someone cancelled — who wants it?" workflow renders an empty screen on a fresh install, on a book with 453 appointments. Two of the four stylists also have no future appointments at all. Both are now scheduled work: a demo that cannot demonstrate the revenue feature is a gap in the demo, not in the feature, but it is a gap that hides real defects — the previous checkpoint's entire finding needed a busy room to exist.
+
+## The day grid, drawn properly
+
+### The columns were never lined up
+
+A salon's day screen is four columns side by side with the hours running down the left. Its whole purpose is that you read *across* it: who is free at two, which chair is empty, can we fit her in at half past.
+
+The columns were not aligned with each other. Each one drew its own heading and its own controls first, and only then started the day underneath — so the day started wherever that column's heading happened to end. And the heading's height depends on what is in the column: a stylist who is running late grows a whole panel of people to ring, a stylist with an empty afternoon has no "push everything back" button to show, a stylist who is off has no controls at all.
+
+Measured on a real book, on an ordinary day with nothing running late: the hour labels were sixty-seven minutes above the rows they labelled, and two of the four stylists were drawn twenty-eight minutes above the other two — because they were the two with quieter columns.
+
+So a chip at 2pm in one column and a chip at 2pm in the next did not sit at the same height, and the amount they disagreed by changed with how busy each stylist was. That is the day grid failing at the one thing a grid is for.
+
+It is fixed structurally rather than by a measurement someone has to keep updating: the whole thing is now one grid whose top row holds every column's heading and whose second row holds every column's day. The top row is as tall as the tallest heading, so all four days start on the same pixel — and a column that grows a new control can no longer move its own starting point, because it no longer owns it. The chair strip below had the same problem for the same reason and got the same fix.
+
+There is now a test that sets one column running late so its heading is genuinely taller than its neighbours', and then asserts every column starts on the same pixel. Every fixture in the suite before today had one stylist, or four with identical headings — which is exactly why nobody had seen it.
+
+### "Likely to start" was only shown to some of the people it applies to
+
+When a stylist is running behind, each appointment ahead of her shows both times: the one on the client's confirmation, and the one she is realistically likely to be seen at.
+
+It was only being shown for clients who had not confirmed. A client who *had* confirmed appeared on the front desk's own call-round list as "booked for two, likely twenty to three" while her appointment on the screen beside it showed two o'clock and nothing else. Two answers to the same question, three inches apart.
+
+There are three genuinely different questions here and now three named lists that nest inside each other: who is worth ringing, who gets a projected time, and whose appointment a "push everything back" would actually move. A client sitting in the waiting room is not rung — the desk tells her to her face — but she still gets a projected time. A client already in the chair gets neither, because a projected *start* on a visit that has started is not late, it is wrong.
+
+### Colour is no longer the only thing telling the statuses apart
+
+Four of the eight appointment states were distinguished by their colour alone, and two of those — "she's arrived" and "she's in the chair" — by two barely different shades of the same blue. Every state now carries a word as well, and the word survives a narrow column: it stays on screen while the client's name shortens, because knowing that someone never turned up matters more than the last four letters of a surname.
+
+The one exception is an ordinary booked appointment, which carries no word at all. It is most of every column, and a marker on everything is a marker on nothing.
+
+### Every appointment state, on one page
+
+There is an internal page that draws every state of every component side by side. It now carries all eight appointment states, six variations on top of them, and four whole days: four stylists, one stylist, a column running forty minutes late, and a day with a stylist off. They are built from fixed examples rather than from the live book, because the live book does not contain three of those four situations — and a design review that can only see the situations that happen to exist today is how the last several defects survived.
