@@ -2488,7 +2488,7 @@ What D-49 adds beyond the answer is the thing that makes (b) different from the 
 
 ## A-087 — demo checkpoint 7, the walk through the new shell
 
-**Commit:** `TBD`
+**Commit:** `662983a`
 
 **Full transcript and the four scenes walked: `docs/reviews/18-demo-checkpoint-7.md`.**
 
