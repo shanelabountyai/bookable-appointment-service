@@ -2838,3 +2838,33 @@ Five sentences said "her" or "she" about whoever the row happened to name: a dro
 The screen that sells freed time has five kinds of row on it — cancelled, shortened, moved, handed to another stylist, and time given back after a no-show — and each one is a different phone call. The internal design page now draws all five at once, with one of them already carrying two calls that have been made about it.
 
 The live book cannot produce that picture: a fresh install has no record of any call ever having been made, so the half of that row that stops the desk ringing somebody twice appears on nobody's screen. It is drawn from fixed examples for the same reason the day compositions are.
+
+## The phone number on a screen that is nothing but phone calls
+
+There is one screen in this product that a person works *down*: the list of clients who have stopped coming in. It is thirty rows long, and every row is a phone call somebody has to make.
+
+On that screen, the thing you tap to make the call was sixteen pixels tall and sat four pixels from a link that navigates away. Measured on a tablet at the real length, the list is six and a half screens tall — so a fat finger did not cost a tap, it cost your place in the list, and you came back to the top of it with no memory of which of the thirty names you had reached. The bar for a touch target on a shared desk tablet is forty-four pixels.
+
+### It was written eight times, and the note about it said three
+
+The same phone link exists on eight staff screens, each written by hand with its own styling. The previous piece of work fixed one of them and left a note listing the ones it had not reached — the note said three. A search says eight. The list of known copies had itself been written from memory, which is the same mistake one level up, and it is why seven screens kept the small target, including the one the front desk uses while a client is running late.
+
+It is one component now, used in all eight places, and there is a rule that fails the build if a ninth is written by hand. The rule also checks that something still uses it — a rule pointing at a component nobody calls passes forever.
+
+The links were also broken in a way nobody had noticed: a number typed with brackets and spaces was pasted straight into the dial link, so it dialled nothing. The public website has stripped that since it was built. The staff screens, where the calls are actually made, never did.
+
+### The screen was failing contrast in dark mode, and its own test could not see it
+
+The salon's tablet sits under a window and the desk switches between light and dark. The test that checks this screen for accessibility had only ever run in light — and it seeded a list with one client on it and no calls yet made, so the part of the row that only appears once somebody has *started* working the list had never been checked at all. It now runs both colour schemes over a list with a fresh call and a stale one on it, and it checks those are actually on the screen before it looks.
+
+### A hundred and fifty buttons that all said the same five words
+
+Thirty rows, each with five buttons — no answer, left a message, thinking about it, took it, and undo. To a screen reader they were a hundred and fifty controls drawn from a vocabulary of five words, with nothing to say which client each belonged to. They now name the client. The visible label stays the bare word, because the four answers have to fit across a tablet.
+
+### An unrelated test was failing on the clock, and the reason was a real gap
+
+A booking test failed on the day this work happened and would have failed for anyone running the suite that morning. Its subject is what happens when a client says she does not mind which stylist, and the one the flow picked for her becomes unavailable while she is typing her phone number: she should be offered the same time with somebody else, not sent back to start again.
+
+It failed because the first time available that morning was noon, and noon is the only slot of the day that exactly one stylist can take — the other three are on their lunch break, and a forty-five minute cut runs into it. So there genuinely was nobody else, the product refused correctly, and the test was measuring the clock. It now picks a time every stylist can take.
+
+What that exposed is worth naming: when there really is nobody else free at that moment, a client who said she had no preference is shown the vanished stylist's empty day rather than everybody's. That is now written down as work to do.

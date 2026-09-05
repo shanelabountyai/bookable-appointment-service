@@ -9,6 +9,7 @@ import {
   keepFlagged,
   reassignConflicting,
 } from '@/lib/availability/impact-actions';
+import { PhoneLink } from '@/components/ui/phone-link';
 
 const initial: ImpactState = {};
 const small = 'rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium dark:border-zinc-600';
@@ -64,9 +65,7 @@ export function ConflictList({
                   these is a call, and a list you have to click nine times to
                   use is a list the front desk copies onto paper. */}
               {conflict.clientPhone ? (
-                <a href={`tel:${conflict.clientPhone}`} className="text-sm underline underline-offset-4">
-                  {conflict.clientPhone}
-                </a>
+                <PhoneLink phone={conflict.clientPhone} />
               ) : null}
             </div>
 

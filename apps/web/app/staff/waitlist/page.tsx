@@ -11,6 +11,7 @@ import { EntryForm } from './entry-form';
 import { EntryStatusButton } from './entry-status-button';
 import { recordOffer } from '@/lib/waitlist/offer-actions';
 import { CallMarkButtons } from '@/components/call-mark-buttons';
+import { PhoneLink } from '@/components/ui/phone-link';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,9 +80,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                     {/* A-043: the resolution to this list is a phone call, so
                         the number is dialable, same as every other staff list. */}
                     {entry.clientPhone ? (
-                      <a href={`tel:${entry.clientPhone}`} className="text-zinc-500 underline underline-offset-4">
-                        {entry.clientPhone}
-                      </a>
+                      <PhoneLink phone={entry.clientPhone} />
                     ) : null}
                   </span>
                   <span className="flex items-center gap-2">
@@ -109,6 +108,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                         }}
                         action={recordOffer}
                         undoLabel="Not asked"
+                        about={entry.clientName ?? 'No name'}
                       />
                       {offerFor(entry.clientId) ? (
                         <span className="mt-1 block text-xs text-zinc-600 dark:text-zinc-400">

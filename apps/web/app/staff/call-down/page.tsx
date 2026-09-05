@@ -10,6 +10,7 @@ import { ConfirmButton } from './confirm-button';
 import { ATTEMPT_WORDS } from '@/lib/appointments/attempt-words';
 import { recordAttempt } from '@/lib/appointments/call-down-actions';
 import { CallMarkButtons } from '@/components/call-mark-buttons';
+import { PhoneLink } from '@/components/ui/phone-link';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,9 +100,7 @@ export default async function CallDownPage() {
                   {appointment.serviceNames.join(' + ')} · {appointment.providerName}
                 </span>
                 {appointment.clientPhone ? (
-                  <a href={`tel:${appointment.clientPhone}`} className="underline underline-offset-4">
-                    {appointment.clientPhone}
-                  </a>
+                  <PhoneLink phone={appointment.clientPhone} />
                 ) : null}
                 {/* What tomorrow loses if she does not turn up. On the row
                     rather than in the sort, so the desk chooses. */}
@@ -133,6 +132,7 @@ export default async function CallDownPage() {
                   hidden={{ appointmentId: appointment.id }}
                   action={recordAttempt}
                   undoLabel="Not rung"
+                  about={appointment.clientName ?? 'Walk-in, no name'}
                 />
                 <ConfirmButton appointmentId={appointment.id} />
                 <Link

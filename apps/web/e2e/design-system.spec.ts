@@ -239,3 +239,57 @@ test('the mark that stands is aria-pressed, and it is the only one', async ({ pa
   const unmarked = page.locator('form').filter({ hasText: 'Thinking about it' }).first();
   await expect(unmarked.getByRole('button')).toHaveCount(4);
 });
+
+/* ===========================================================================
+ * A-092 — `/staff/dashboard/lapsed` composed, at the length it is worked at
+ * (§8.6a).
+ * ======================================================================== */
+
+test('the lapsed list is drawn at thirty rows, and the number is a 44px target at both ends', async ({
+  page,
+}) => {
+  const list = page.getByRole('list').filter({ hasText: 'Marguerite Okonkwo-Ferreira' }).last();
+  const rows = list.getByRole('listitem');
+  // A COUNT GUARD FIRST. §8.6a's whole ask is the LENGTH — "it will be thirty
+  // rows long; the row needs to survive that" — so a gallery that quietly drew
+  // three would pass every assertion below it and prove nothing.
+  await expect(rows).toHaveCount(30);
+
+  // §4's 44px desk bar, MEASURED, on the control this screen exists for. It
+  // was 16px here and on six other staff surfaces; A-091 had fixed the
+  // seventh. The LAST row as well as the first, because the defect this
+  // replaces was a target that only survived where somebody had looked.
+  for (const row of [rows.first(), rows.last()]) {
+    const phone = row.getByRole('link', { name: /^512 555/ });
+    const box = await phone.boundingBox();
+    expect(box?.height, `${await phone.textContent()} is under the 44px bar`).toBeGreaterThanOrEqual(44);
+  }
+
+  // …and it does not sit on top of the link that navigates AWAY from a list
+  // this long. Measured before the fix: 3.9px apart, both 16px tall, and the
+  // mis-tap costs the reader their place in 6.6 screens of rows.
+  const first = rows.first();
+  const name = await first.getByRole('link', { name: 'Marguerite Okonkwo-Ferreira' }).boundingBox();
+  const phone = await first.getByRole('link', { name: /^512 555/ }).boundingBox();
+  expect(phone!.y, 'the number shares a line with the client record link').toBeGreaterThanOrEqual(
+    name!.y + name!.height,
+  );
+
+  // The six states that lead the list, asserted by what the row SAYS.
+  await expect(list).toContainText('No number on the record');
+  await expect(list).toContainText('worth ringing again');
+  await expect(list).toContainText('Thinking about it — Priya');
+  await expect(list.getByRole('link', { name: 'No name' })).toBeVisible();
+});
+
+test('a call mark says who it is about, in the accessibility tree', async ({ page }) => {
+  // Thirty rows × five buttons drawn from a vocabulary of five words: without
+  // the subject, a screen reader hears "Left a message, button" thirty times
+  // with nothing to tell them apart. A-091 put the pressed STATE in the tree
+  // one item ago; this is the SUBJECT, and the visible label stays the bare
+  // word because the four outcomes need the width on a tablet.
+  const row = page.getByRole('listitem').filter({ hasText: 'Bea Nakamura' }).last();
+  await expect(row.getByRole('button', { name: 'Left a message — Bea Nakamura', pressed: true })).toBeVisible();
+  await expect(row.getByRole('button', { name: 'No answer — Bea Nakamura', pressed: false })).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Not asked — Bea Nakamura' })).toBeVisible();
+});

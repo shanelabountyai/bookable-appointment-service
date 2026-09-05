@@ -57,6 +57,7 @@ export function CallMarkButtons<Outcome extends string>({
   hidden,
   action,
   undoLabel,
+  about,
 }: {
   /** The outcomes in the desk's own words, TOTAL over the outcome enum — so a
    *  fifth is a compile error at the caller rather than a raw value here. */
@@ -69,6 +70,21 @@ export function CallMarkButtons<Outcome extends string>({
   action: (state: CallMarkState, formData: FormData) => Promise<CallMarkState>;
   /** "Not asked" / "Not rung" — the undo, in the surface's own words. */
   undoLabel: string;
+  /**
+   * A-092 — WHO this group of buttons is about, for the accessibility tree.
+   *
+   * Every caller is a LIST: the waitlist matcher, the call-down, and the lapsed
+   * report at thirty rows — where five buttons drawn from a vocabulary of five
+   * words repeat 150 times, so a screen reader hears "Left a message, button"
+   * thirty times over with nothing to tell them apart. That is A-091's own
+   * finding on this component one layer up: the pressed STATE was missing from
+   * the tree, and so is the SUBJECT.
+   *
+   * The visible label stays the bare word — the name is already the first thing
+   * on the row for somebody reading it, and repeating it inside every button
+   * would cost the width the four outcomes need on a tablet.
+   */
+  about?: string;
 }) {
   // A form per row, like `ConfirmButton` beside it: `useActionState` is one
   // hook per component instance, and a shared one would show row three's
@@ -91,6 +107,7 @@ export function CallMarkButtons<Outcome extends string>({
           // and it is the same "selected" signal the tabs and the day nav use.
           variant={current === outcome ? 'primary' : 'secondary'}
           aria-pressed={current === outcome}
+          aria-label={about ? `${words[outcome]} — ${about}` : undefined}
           pending={pending}
         >
           {words[outcome]}
@@ -102,7 +119,14 @@ export function CallMarkButtons<Outcome extends string>({
           inverted — so it has to be reversible by the same hand, at the same
           size as the thing it reverses. */}
       {current ? (
-        <Button name="outcome" value="clear" type="submit" variant="quiet" pending={pending}>
+        <Button
+          name="outcome"
+          value="clear"
+          type="submit"
+          variant="quiet"
+          pending={pending}
+          aria-label={about ? `${undoLabel} — ${about}` : undefined}
+        >
           {undoLabel}
         </Button>
       ) : null}

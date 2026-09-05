@@ -14,7 +14,9 @@ import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
 import { AppointmentChip } from '../day/appointment-chip';
 import { DayGrid } from '../day/day-grid';
 import { FreedSlotRow } from '../opened/freed-slot-row';
+import { LapsedRow } from '../dashboard/lapsed/lapsed-row';
 import { FIXTURE_ZONE, FREED_SLOTS } from './opened-fixtures';
+import { LAPSED_NOW, LAPSED_ROWS, LAPSED_WINDOW_WEEKS, LAPSED_ZONE } from './lapsed-fixtures';
 import {
   A_STYLIST_OFF,
   FOUR_STYLISTS,
@@ -251,6 +253,34 @@ export default async function DesignPage() {
             undoLabel="Not rung"
           />
         </div>
+      </section>
+
+      {/* ==================================================================
+          A-092 — §8.6a.
+          ================================================================== */}
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-section font-semibold">Not been in for a while &mdash; thirty rows</h2>
+        <p className="text-body text-ink-muted">
+          The only screen in the product somebody works <em>down</em>, at the length it is actually worked
+          at (&sect;8.6a). Six states lead: never rung, rung this week, a call that has gone stale on the
+          report&rsquo;s own window, one still deciding, one with no number at all, and one with neither a
+          name nor a caller on the mark. The remaining twenty-four are filler at the same shape, because
+          the height of the list is itself the thing under test &mdash; the number is a 44px target at the
+          bottom of it as well as at the top.
+        </p>
+        <ul className="flex flex-col gap-3">
+          {LAPSED_ROWS.map(({ row, mark }, i) => (
+            <LapsedRow
+              key={i}
+              row={row}
+              mark={mark}
+              now={LAPSED_NOW}
+              weeks={LAPSED_WINDOW_WEEKS}
+              timezone={LAPSED_ZONE}
+            />
+          ))}
+        </ul>
       </section>
 
       {DAYS.map(({ heading, note, model }) => (

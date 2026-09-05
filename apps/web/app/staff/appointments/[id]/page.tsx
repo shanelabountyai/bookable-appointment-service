@@ -26,6 +26,7 @@ import { VisitPanel } from './visit-panel';
 import { WhoWasThis } from './who-was-this';
 import { StatusControls } from './status-controls';
 import { VisitNote } from './visit-note';
+import { PhoneLink } from '@/components/ui/phone-link';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,9 +171,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
           {readableInstant(detail.startAt, business.timezone)} · {detail.providerName}
         </p>
         {detail.clientPhone ? (
-          <a href={`tel:${detail.clientPhone}`} className="text-sm underline underline-offset-4">
-            {detail.clientPhone}
-          </a>
+          <PhoneLink phone={detail.clientPhone} />
         ) : null}
         {/* Guarded on the SENTENCE, not on the client: an empty link is
             invisible to the eye and announced as a link with no name. */}

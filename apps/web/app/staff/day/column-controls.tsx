@@ -11,6 +11,7 @@ import {
   toggleToldAbout,
 } from '@/lib/day/actions';
 import type { CallRow } from '@/lib/day/view-model';
+import { PhoneLink } from '@/components/ui/phone-link';
 
 const initial: DayActionState = {};
 const field = 'w-16 rounded-md border border-zinc-400 bg-transparent px-2 py-1 text-sm dark:border-zinc-600';
@@ -287,9 +288,7 @@ function RingRound({
             </a>
 
             {call.phone ? (
-              <a href={`tel:${call.phone}`} className="underline underline-offset-4">
-                {call.phone}
-              </a>
+              <PhoneLink phone={call.phone} />
             ) : (
               // Said out loud rather than left blank: "no number" is the fact
               // that decides she cannot be rung at all, and a gap where a

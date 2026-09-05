@@ -217,7 +217,22 @@ test.describe('booking with no preference (A-056)', () => {
     await page.getByRole('button', { name: /^Cut 45 min/ }).click();
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByRole('button', { name: /No preference/ }).click();
-    await firstOption(page).click();
+    // THE SECOND DAY, NOT THE FIRST, AND THE REASON IS THIS TEST'S OWN
+    // PRECONDITION. What A-071 re-offers is "the same time with SOMEBODY ELSE",
+    // so the time this picks has to be one that more than one stylist can take.
+    // Today's list is truncated by the booking lead time, and on a sweep begun
+    // at 09:56 the first slot left was 12:00 — which only Tess can take,
+    // because the other three have a 12:00–13:00 break and a 45-minute Cut runs
+    // into it. Blocking Tess then leaves nobody, the product refuses correctly,
+    // and the test fails on the CLOCK rather than on the behaviour. The second
+    // day is a whole open day, so its first slot is 09:00 and every qualified
+    // stylist is free at it whatever time of day the sweep runs.
+    //
+    // What the failure exposed on the product side is NOT covered by this test
+    // and is its own backlog row (A-097): when nobody else is free at that
+    // instant, a client who said "no preference" is shown the vanished
+    // stylist's empty day rather than everybody's.
+    await page.locator('fieldset ul > li > button').nth(1).click();
     await expect(page.getByRole('group')).toContainText('What time on');
     await firstOption(page).click();
 

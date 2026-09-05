@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { OpenedSlot } from '@bookable/db/appointments';
 import type { CallMark } from '@bookable/db/clients';
 import { LinkButton } from '@/components/ui/button';
+import { PhoneLink } from '@/components/ui/phone-link';
 import { readableInstant } from '@/lib/customer-format';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
 import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
@@ -56,14 +57,7 @@ export function FreedSlotRow({
             another time?" is the other half of this errand, and it is the
             wrong sentence for four of the five ways a span gets here (A-067). */}
         <span className="text-ink-secondary">{freedWords(slot, timezone)}</span>
-        {slot.clientPhone ? (
-          <a
-            href={`tel:${slot.clientPhone}`}
-            className="numeric inline-flex min-h-11 items-center self-start text-ink-primary underline underline-offset-4"
-          >
-            {slot.clientPhone}
-          </a>
-        ) : null}
+        {slot.clientPhone ? <PhoneLink phone={slot.clientPhone} /> : null}
 
         {/* A-072. A RECORD, not a hold — the slot below stays sellable to
             anybody throughout. This only stops the second person at the desk

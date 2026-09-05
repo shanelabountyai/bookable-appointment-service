@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import type { ProviderRow } from '@bookable/db/settings';
 import { type FormState, type ProviderToggleState, addProvider, toggleProviderActive } from '@/lib/settings/actions';
+import { PhoneLink } from '@/components/ui/phone-link';
 
 const initial: FormState = {};
 const initialToggle: ProviderToggleState = {};
@@ -83,9 +84,7 @@ export function ProviderRowItem({ provider }: { provider: ProviderRow }) {
                   <li key={row.id}>
                     {row.when} — {row.clientName ?? 'No name'}{' '}
                     {row.clientPhone && (
-                      <a href={`tel:${row.clientPhone}`} className="underline underline-offset-4">
-                        {row.clientPhone}
-                      </a>
+                      <PhoneLink phone={row.clientPhone} />
                     )}{' '}
                     · {row.services}
                   </li>

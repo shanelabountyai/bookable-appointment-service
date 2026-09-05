@@ -259,10 +259,81 @@ test.describe('the clients who have stopped coming (A-073)', () => {
     await expect(page.getByText(/worth ringing again/)).toBeVisible();
   });
 
-  test('has no accessibility violations', async ({ page }) => {
-    await lapsedClient('Olive Gone', 30);
+  /**
+   * A-092 — IN BOTH SCHEMES, ON ROWS SOMEBODY HAS ALREADY WORKED.
+   *
+   * The version this replaces seeded ONE client with NO call mark and ran axe
+   * in Playwright's default light scheme — so it measured the half of the row
+   * that exists before anybody starts ringing, on the one of two palettes the
+   * salon's tablet is not necessarily on. Both halves of that were wrong here:
+   * `text-zinc-500` on the back link is **4.1:1 on #0a0a0a** (checkpoint 7's
+   * value, this page's turn), and the mark line — including the stale one,
+   * which is the only place this screen uses an intent ink — had never been
+   * rendered under axe at all.
+   *
+   * RELOADED between schemes, not just `emulateMedia`'d: switching the media
+   * query on a live page samples every control mid-`transition-colors`, which
+   * is 583 nodes of blended colour and not a palette anybody ships.
+   */
+  test('has no accessibility violations, in both schemes, on a list already worked', async ({ page }) => {
+    const fresh = await lapsedClient('Olive Gone', 30);
+    const staleId = await lapsedClient('Rowan Stale', 40);
+
     await page.goto('/staff/dashboard/lapsed');
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    // A mark made just now, and one older than the report's own window — the
+    // two states of A-077's staleness rule, on the screen at the same time.
+    await page
+      .getByRole('button', { name: 'Left a message — Olive Gone' })
+      .click();
+    await expect(page.getByText('Noted.')).toBeVisible();
+    await page.getByRole('button', { name: 'No answer — Rowan Stale' }).click();
+    await expect(page.getByText('Noted.').first()).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      await prisma.clientCallMark.updateMany({
+        where: { clientId: staleId, subject: 'lapsed' },
+        data: { updatedAt: toDate(instant(fromDate(new Date()) - 20 * 7 * 24 * 60 * 60_000)) },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+    expect(fresh).toBeTruthy();
+
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.reload();
+      // The states are actually on the screen before axe looks at them: a
+      // green run over a row that never rendered its mark is what this test
+      // used to be.
+      await expect(page.getByText(/worth ringing again/)).toBeVisible();
+      await expect(page.getByText(/Left a message —/)).toBeVisible();
+      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      expect(results.violations, `${colorScheme} scheme`).toEqual([]);
+    }
+  });
+
+  /**
+   * A-092 — §4's 44px desk target, on the control every row exists for.
+   *
+   * Measured on this screen before the fix: the number was **16px tall and
+   * 3.9px from the client-record link**, on a list that measured 5044px — 6.6
+   * screens on a 1024×768 tablet — so the mis-tap navigated away and lost the
+   * reader's place in it. Seven of the eight staff `tel:` links were that size;
+   * `PhoneLink` is the one component they are all built from now, and
+   * `packages/design/phone-link.test.ts` is what stops a ninth being written.
+   */
+  test('the number is a 44px target and does not share a line with the client record', async ({ page }) => {
+    await lapsedClient('Olive Gone', 30);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/staff/dashboard/lapsed');
+
+    const row = page.getByRole('listitem').filter({ hasText: 'Olive Gone' });
+    const phone = row.getByRole('link', { name: '5125550188' });
+    const box = await phone.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+
+    const name = await row.getByRole('link', { name: 'Olive Gone' }).boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
   });
 });
