@@ -2460,7 +2460,7 @@ What D-49 adds beyond the answer is the thing that makes (b) different from the 
 
 ## A-085 — the staff shell, named at four phase closes and built once
 
-**Commit:** `PENDING`
+**Commit:** `e8eabdb`
 
 **What it built.** `app/staff/staff-nav.tsx` and a rewritten `app/staff/layout.tsx`: one persistent nav row on every staff screen — Day, Opened up, Still open, Waitlist, Call-down, Conflicts, Messages, a client search box, then a rule and the owner tier (Dashboard, Setup). `/staff` stops being the landing page and becomes the configuration index. Sign-in lands on `/staff/day`. Eleven `← Staff` back-links deleted. The desk switcher is restyled onto A-088's tokens and A-089's primitives and keeps its `<details>`.
 
