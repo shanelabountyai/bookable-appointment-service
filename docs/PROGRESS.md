@@ -2582,7 +2582,7 @@ The hour labels were **100px — 67 minutes — above the rows they label**. Mar
 
 ## A-092 — the number on a screen that is nothing but phone calls
 
-**Commit:** `TBD`
+**Commit:** `326cbac`
 
 **What it built.** `/staff/dashboard/lapsed` retired onto A-088's tokens, with `LapsedRow` in its own file; `PhoneLink` (`components/ui/phone-link.tsx`) — the seventh primitive, and the first one that exists because eight screens had written the same control by hand; §8.6a's composition on `/staff/design`, thirty rows drawn from fixtures; and `packages/design/phone-link.test.ts`.
 
