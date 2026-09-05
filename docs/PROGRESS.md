@@ -2560,7 +2560,7 @@ The hour labels were **100px — 67 minutes — above the rows they label**. Mar
 
 ## A-091 — the most-tapped control in the product, at 26 pixels
 
-**Commit:** _pending_
+**Commit:** `26be80d`
 
 **What it built.** `CallMarkButtons` (`components/call-mark-buttons.tsx`) — §5.4.9's "one component, three surfaces" as one component for the first time; `FreedSlotRow` in its own file with `/staff/opened` retired onto A-088's tokens (177 lines → 76); and §8.6's composition on `/staff/design` — all five `freedBy` kinds at once, one carrying two call marks — plus the call-mark state matrix, five states of the four-outcome control and the two-outcome sibling beside it. Three files deleted (`offer-buttons.tsx`, `attempt-buttons.tsx`, `call-buttons.tsx`); the three pages call the one component directly.
 
