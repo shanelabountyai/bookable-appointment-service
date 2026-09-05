@@ -276,7 +276,11 @@ function RingRound({
             {/* Scheduled STRUCK THROUGH and the projected time beside it, both
                 present: her confirmation still says the first one, and the
                 desk opens the call with "you're booked for two". */}
-            <span className="font-mono line-through opacity-60">{call.scheduled}</span>
+            {/* `line-through` carries this, not an alpha — checkpoint 7: an
+                opacity on text is a colour no contrast test can see, and this
+                one is 12px mono on a card nobody has ever run axe over with a
+                late column on it. */}
+            <span className="font-mono line-through">{call.scheduled}</span>
             <span className="font-mono font-semibold">→ {call.projected}</span>
             <a href={call.href} className="font-medium underline underline-offset-4">
               {call.clientName}

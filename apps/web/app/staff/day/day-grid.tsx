@@ -76,7 +76,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
     >
       <h2 className="text-sm font-semibold">
         {column.providerName}
-        {column.closed ? <span className="ml-2 font-normal text-zinc-500">off today</span> : null}
+        {column.closed ? <span className="ml-2 font-normal text-zinc-600 dark:text-zinc-400">off today</span> : null}
         {/* A-042 — the way INTO the booking panel that does not depend on
             there being a gap. Until this link, the only per-stylist door was a
             gap chip, so a fully booked column could not be booked into at all
@@ -181,7 +181,15 @@ function Item({ item }: { item: GridItem }) {
       <span className="block truncate font-medium">
         {item.time} {item.title}
       </span>
-      {item.detail ? <span className="block truncate opacity-80">{item.detail}</span> : null}
+      {/* NO `opacity-*` ON TEXT — checkpoint 7. This line carried `opacity-80`
+          and failed WCAG AA on a `completed` chip in BOTH schemes (4.33:1
+          light, 4.18:1 dark, at 12px): that status paints a darker ground AND
+          a lighter ink, and multiplying the ink by 0.8 on top of it is a third
+          decision nothing checked. A-088's contrast test proves the TOKEN, and
+          an opacity is the same fact written again under another name — the
+          product it renders is a colour no test can see. The title above is
+          `font-medium`; weight is what separates the two lines, not alpha. */}
+      {item.detail ? <span className="block truncate">{item.detail}</span> : null}
       {/* APPT-03's projected start, BESIDE the scheduled time rather than
           instead of it: she was booked for 14:00 and her confirmation still
           says so. */}
@@ -196,11 +204,12 @@ function Item({ item }: { item: GridItem }) {
       {item.missed ? (
         <span className="block truncate font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</span>
       ) : null}
-      {/* A-070. VISUALLY DISTINCT from the pinned note above, and quieter on
-          purpose: ✎ and no amber, because this is about today rather than a
-          safety line about her. Truncated here and whole in the accessible
-          name, exactly as `pinnedNote` already is. */}
-      {item.visitNote ? <span className="block truncate opacity-80">✎ {item.visitNote}</span> : null}
+      {/* A-070. VISUALLY DISTINCT from the pinned note above: ✎ and no amber,
+          because this is about today rather than a safety line about her. The
+          glyph is what carries that, not an alpha (see the detail line above).
+          Truncated here and whole in the accessible name, exactly as
+          `pinnedNote` already is. */}
+      {item.visitNote ? <span className="block truncate">✎ {item.visitNote}</span> : null}
       {item.isOverride ? <span className="block text-[10px] uppercase tracking-wide">override</span> : null}
       {/* A-069. She never came, and the rest of her slot is back on the market
           — so the bookable gap chip painting over this one is deliberate, not

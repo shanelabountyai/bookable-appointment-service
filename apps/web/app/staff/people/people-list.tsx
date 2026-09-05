@@ -68,7 +68,10 @@ function PersonRow({
   return (
     <li
       className={`flex flex-col gap-2 rounded-md border p-4 ${
-        person.active ? 'border-zinc-300 dark:border-zinc-700' : 'border-zinc-200 opacity-60 dark:border-zinc-800'
+        // Inactive is drawn by the border and by the words on the row, never
+        // by an alpha over the whole card: checkpoint 7 — `opacity-*` dims the
+        // text with it, and a dimmed name is a contrast number nothing checks.
+        person.active ? 'border-zinc-300 dark:border-zinc-700' : 'border-zinc-200 dark:border-zinc-800'
       }`}
     >
       {/* The name AS TEXT, not only inside the field that edits it — this is

@@ -2728,3 +2728,45 @@ It now asks for the form belonging to the field it is filling in. A test that na
 ### What did not change
 
 Every configuration screen kept exactly the permissions it had. It would have been easy, while moving them behind a "Setup" link, to make that link owner-only and quietly take away a stylist's ability to check the service list. Hiding a link has never been a permission, and the change stops at the navigation.
+
+## Checkpoint 7 — walking the product through the new navigation
+
+Every few weeks the whole product gets walked through end to end on a realistic book, rather than tested. Six of those walks have now found something a green test suite could not, and this was the seventh.
+
+### The thing the tests were looking at was empty
+
+The day screen has an automated accessibility check. It passes. On a real salon's book it fails — on every appointment the desk has already closed out, in both light and dark, on the phone number and service line the front desk reads all day.
+
+The reason is worth explaining, because it is not carelessness. Three separate decisions were each individually right. A finished appointment gets a slightly grey background. It also gets slightly grey text. And the second line of the chip was set to 80% opacity to sit quietly under the client's name. Any two of those are fine. All three together produce a colour that is legally too faint to read — and, critically, a colour that **exists nowhere in the code**. It is produced by the browser at the moment of drawing, from three values that were each checked separately and never checked together.
+
+The automated check could not see it because the test book had one appointment in it, and it had not happened yet. A finished appointment had never been drawn under the check. So the test was measuring an empty screen.
+
+Ten minutes later the same thing turned up in a different place: the client record's section headings fail the same standard, and the accessibility check for that page opens a client who has never been in — so the headings do not appear at all.
+
+### What was actually fixed
+
+The opacity is gone, everywhere it dimmed text. There is now a rule enforced automatically: no staff screen may fade text with transparency, because transparency produces a colour nothing can check. Fading a *disabled button* is still allowed — the standard itself exempts those.
+
+More importantly, both accessibility checks now run against a screen with something on it. The day check draws one appointment of every kind that changes the chip's colour. The client check gives her a visit behind her and a visit ahead.
+
+### Half the colours had never been looked at
+
+The product supports light and dark. Every automated accessibility check in the suite ran in light, because that is the default and nobody had said otherwise. So one of the two palettes had never been measured anywhere.
+
+It is now measured on the day screen, and the number for the rest is written down rather than guessed: a hundred and twenty-four failures on one screen, all of them the same single grey repeated, which the ongoing design pass is already scheduled to replace.
+
+### Two doors that were shut
+
+The desk gets a phone call about a client whose appointment is on screen. Tapping her appointment showed her name as a heading — and the only way through to her record was a warning flag that appears **only if she has missed appointments before**. A client in good standing had no link at all; you had to retype a name the screen was already showing you. Her name is the link now.
+
+And an owner's appointment browser, opened without a date range, said "0 appointments — nothing matches this filter" on a full book. It now says "pick a week", which is what its sibling screen has always said.
+
+### What the walk confirmed was right
+
+Two hundred and one appointment times were offered and then immediately booked, with nothing else running, on a book deliberately shuffled until the chairs were fragmented. **None** was refused. That is the property the previous checkpoint existed to fix, holding on a real book rather than a two-chair fixture.
+
+And naming the client before offering times — which lets her keep the chair she is already sitting in — widened the offer by three real slots and narrowed it by none. Three add-ons a salon can sell that an anonymous question turns away.
+
+### What it could not walk
+
+The demo data has no waiting list in it. So the entire "someone cancelled — who wants it?" workflow renders an empty screen on a fresh install, on a book with 453 appointments. Two of the four stylists also have no future appointments at all. Both are now scheduled work: a demo that cannot demonstrate the revenue feature is a gap in the demo, not in the feature, but it is a gap that hides real defects — the previous checkpoint's entire finding needed a busy room to exist.

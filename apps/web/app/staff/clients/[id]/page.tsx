@@ -170,7 +170,12 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
                 so "what's coming up" doesn't require reading every status. */}
             {upcoming.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Upcoming</h3>
+                {/* zinc-600/400, not zinc-400 — demo checkpoint 7. These two
+                    headings measured 2.62:1 on white at 12px, a live AA
+                    failure in the DEFAULT scheme, and the axe run on this very
+                    page was green because it opens a client with no history:
+                    neither heading renders until she has an upcoming visit. */}
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">Upcoming</h3>
                 <ul className="flex flex-col gap-2">
                   {upcoming.map((visit) => (
                     <HistoryRow key={visit.appointmentId} visit={visit} timezone={business.timezone} />
@@ -180,7 +185,7 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
             ) : null}
             {past.length > 0 ? (
               <div className="flex flex-col gap-2">
-                {upcoming.length > 0 ? <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Past</h3> : null}
+                {upcoming.length > 0 ? <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">Past</h3> : null}
                 <ul className="flex flex-col gap-2">
                   {past.map((visit) => (
                     <HistoryRow key={visit.appointmentId} visit={visit} timezone={business.timezone} />

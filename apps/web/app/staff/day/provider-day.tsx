@@ -6,6 +6,14 @@ import { StatusActions } from './status-actions';
 /**
  * ONE STYLIST'S OWN DAY, as a list (A-016).
  *
+ * The quiet text here is `text-zinc-600 dark:text-zinc-400`, never a bare
+ * `text-zinc-500` — demo checkpoint 7. That one value is 4.6:1 on white and
+ * **4.1:1** on the dark ground, so it passes in the scheme every axe run in
+ * this suite had ever rendered and fails in the other. The day surfaces are
+ * swept because `day-grid.spec.ts` now measures both; the rest of the staff
+ * app still carries it and A-090 onwards is what retires it onto the tokens.
+ *
+ *
  * The same data as the grid, in the shape a phone can hold: Dana between
  * clients wants to know who is next, not to pinch-zoom a four-column
  * timetable. A list also needs no absolute positioning, so it reflows at any
@@ -17,11 +25,11 @@ import { StatusActions } from './status-actions';
  */
 export function ProviderDay({ column }: { column: GridColumn }) {
   if (column.closed) {
-    return <p className="text-zinc-500">{column.providerName} is not working today.</p>;
+    return <p className="text-zinc-600 dark:text-zinc-400">{column.providerName} is not working today.</p>;
   }
 
   if (column.items.length === 0) {
-    return <p className="text-zinc-500">Nothing in the book yet.</p>;
+    return <p className="text-zinc-600 dark:text-zinc-400">Nothing in the book yet.</p>;
   }
 
   return (
@@ -32,7 +40,7 @@ export function ProviderDay({ column }: { column: GridColumn }) {
           className={`flex flex-wrap items-baseline gap-x-3 rounded-md border px-4 py-3 ${
             item.kind === 'appointment'
               ? 'border-zinc-300 dark:border-zinc-700'
-              : 'border-dashed border-zinc-300 text-zinc-500 dark:border-zinc-700'
+              : 'border-dashed border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400'
           }`}
         >
           <span className="w-28 shrink-0 font-mono text-sm">{item.time}</span>
@@ -45,7 +53,7 @@ export function ProviderDay({ column }: { column: GridColumn }) {
             <span className="font-medium">{item.title}</span>
           )}
 
-          {item.detail ? <span className="text-sm text-zinc-500">{item.detail}</span> : null}
+          {item.detail ? <span className="text-sm text-zinc-600 dark:text-zinc-400">{item.detail}</span> : null}
 
           {item.isOverride ? (
             <span className="rounded-sm border border-zinc-400 px-1 text-[10px] uppercase tracking-wide">override</span>

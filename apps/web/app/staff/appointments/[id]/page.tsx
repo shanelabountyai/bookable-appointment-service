@@ -150,8 +150,21 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         <Link href={`/staff/day?day=${day}`} className="text-sm text-zinc-500 hover:underline">
           ← The day
         </Link>
+        {/* HER NAME IS THE DOOR TO HER RECORD — demo checkpoint 7.
+            "It's Mrs Kerr, can I move Thursday" starts on the day grid and the
+            desk taps her chip; the only link to `/staff/clients/[id]` on this
+            page was the reliability flag below, which renders only when she
+            has a black mark against her. So the client with nothing on her
+            record — most of them — had no door at all, and the way through was
+            to retype a name the screen was already showing. */}
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {detail.clientName ?? 'Walk-in, no name'}
+          {detail.clientId ? (
+            <Link href={`/staff/clients/${detail.clientId}`} className="hover:underline underline-offset-4">
+              {detail.clientName ?? 'No name'}
+            </Link>
+          ) : (
+            'Walk-in, no name'
+          )}
         </h1>
         <p className="mt-1 text-zinc-600 dark:text-zinc-400">
           {readableInstant(detail.startAt, business.timezone)} · {detail.providerName}

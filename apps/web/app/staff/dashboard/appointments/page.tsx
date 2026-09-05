@@ -49,11 +49,20 @@ export default async function DashboardAppointmentsPage({ searchParams }: PagePr
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           {statuses.length ? statuses.map((s) => STATUS_WORDS[s]).join(', ') : 'All appointments'}
         </h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{rows.length} appointment{rows.length === 1 ? '' : 's'}</p>
+        {fromDay && toDay ? (
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{rows.length} appointment{rows.length === 1 ? '' : 's'}</p>
+        ) : null}
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-zinc-500">Nothing matches this filter.</p>
+        /* NO RANGE IS NOT AN EMPTY RESULT — demo checkpoint 7. Reached bare
+           (the nav has no link to it; a bookmark or a typed URL does), this
+           said "0 appointments · Nothing matches this filter" on a full book,
+           which reads as a salon with no appointments in it. `overruled` next
+           door already words the same state correctly. */
+        <p className="text-zinc-500">
+          {fromDay && toDay ? 'Nothing matches this filter.' : 'Pick a week from the dashboard.'}
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (

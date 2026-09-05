@@ -283,16 +283,66 @@ test.describe('the staff day grid (A-016)', () => {
     await expect(page.getByText('Checked in')).toBeVisible();
   });
 
+  /**
+   * ONE CHIP OF EVERY STATUS THAT REPAINTS THE CHIP, not one chip.
+   *
+   * Demo checkpoint 7: this test seeded a single `booked` appointment and was
+   * green while the same page, on a real book, failed AA on every chip the
+   * desk had closed out. `booked` sits on `bg-white`, where the detail line's
+   * old `opacity-80` landed on 4.66:1 and passed by a hundredth. `completed`
+   * and `cancelled` are the two statuses that repaint BOTH the ground and the
+   * ink, and on `completed` the same alpha gave 4.33:1 light / 4.18:1 dark.
+   *
+   * So the fixture is the finding: an evening's book is mostly closed-out
+   * chips, and until now no fixture had ever rendered one under axe. Every
+   * status whose entry in `STATUS_COLOUR` changes the ground belongs here.
+   */
   test('has no accessibility violations', async ({ page }) => {
     await seedAppointment({
       start: '2026-06-09T10:00:00-05:00',
       end: '2026-06-09T10:45:00-05:00',
       clientNotes: 'Allergic to PPD.',
     });
+    await seedAppointment({
+      start: '2026-06-09T11:00:00-05:00',
+      end: '2026-06-09T11:45:00-05:00',
+      status: 'completed',
+    });
+    await seedAppointment({
+      start: '2026-06-09T12:00:00-05:00',
+      end: '2026-06-09T12:45:00-05:00',
+      status: 'cancelled',
+    });
+    await seedAppointment({
+      start: '2026-06-09T13:00:00-05:00',
+      end: '2026-06-09T13:45:00-05:00',
+      status: 'no_show',
+    });
     await page.goto(`/staff/day?day=${DAY}`);
+    // The chip whose ground the violation needed — asserted present, so a
+    // fixture that silently stops rendering it cannot make this test pass for
+    // the wrong reason.
+    await expect(page.getByText('Cut · 5125550101').first()).toBeVisible();
 
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(results.violations).toEqual([]);
+
+    // AND IN THE OTHER SCHEME. Every axe run in this suite had only ever seen
+    // the light one — Playwright's default — so half of a palette that flips
+    // with `prefers-color-scheme` had never been measured at all. The chip's
+    // old alpha failed in both (4.33:1 light, 4.18:1 dark) and the light run
+    // was the one that could not see it, since `booked` sits on white where
+    // the same 0.8 scraped past at 4.66:1.
+    // RELOAD, not just `emulateMedia`. Switching the media query on a live page
+    // leaves every control mid-`transition-colors` (A-089's primitives animate
+    // on purpose), and axe then samples the blend — 583 nodes of colours that
+    // exist for 150ms and belong to neither scheme. A reload renders the dark
+    // page from the start, with nothing in flight.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.reload();
+    await expect(page.getByText('Cut · 5125550101').first()).toBeVisible();
+    const dark = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(dark.violations).toEqual([]);
   });
 });
 

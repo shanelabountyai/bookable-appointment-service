@@ -91,7 +91,7 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">{model.dayLabel}</h1>
-            {day === today ? null : <p className="text-sm text-zinc-500">Not today.</p>}
+            {day === today ? null : <p className="text-sm text-zinc-600 dark:text-zinc-400">Not today.</p>}
           </div>
 
           <nav aria-label="Day" className="flex items-center gap-3 text-sm">
@@ -185,7 +185,7 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
       ) : (
         <div className="flex flex-col gap-6">
           {model.columns.length === 0 ? (
-            <p className="text-zinc-500">No providers yet. Add one in Providers.</p>
+            <p className="text-zinc-600 dark:text-zinc-400">No providers yet. Add one in Providers.</p>
           ) : column ? (
             <ProviderDay column={column} />
           ) : (

@@ -13,6 +13,7 @@ import {
   addDays,
   calendarDay,
   fromDate,
+  instant,
   instantFromIso,
   resolve,
   toDate,
@@ -347,10 +348,69 @@ test.describe('the client record (A-015)', () => {
     await expect(page).toHaveURL(/\/staff\/appointments\//);
   });
 
+  /**
+   * A RECORD WITH A HISTORY ON IT, not an empty one — demo checkpoint 7.
+   *
+   * This test opened a client who had never been in, and was green while the
+   * same page failed AA at 2.62:1 on a real record: the "Upcoming" and "Past"
+   * headings are `text-zinc-400`, and NEITHER renders until she has a future
+   * visit (`Past` is guarded on `upcoming.length > 0`). An axe run over a
+   * screen with no data on it is an axe run over the chrome.
+   *
+   * The sibling instance is `day-grid.spec.ts`'s, which seeded one `booked`
+   * appointment and never rendered a chip anybody had closed out. One rule,
+   * found twice in one walk.
+   */
   test('has no accessibility violations', async ({ page }) => {
+    await visits('Ada Chen');
     await search(page, 'Ada');
     await page.getByRole('link', { name: /Ada Chen/ }).click();
+    await expect(page.getByRole('heading', { name: 'Upcoming' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Past' })).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(results.violations).toEqual([]);
   });
 });
+
+/** One visit behind her and one ahead of her, which is what makes the record's
+ *  two section headings render at all (demo checkpoint 7). Written straight to
+ *  the database: the booking path has its own suite and refuses the past. */
+async function visits(name: string) {
+  const prisma = new PrismaClient();
+  try {
+    const business = await prisma.business.findFirstOrThrow();
+    const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+    const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+    const client = await prisma.client.findFirstOrThrow({ where: { name } });
+    const zone = zoneId(business.timezone);
+    // Through the time module, never `toISOString().slice(0,10)` — the lint ban
+    // is repo-wide and applies here for the reason CLAUDE.md gives.
+    const today = toLabel(fromDate(new Date()), zone).day;
+    for (const [offsetDays, status] of [[-30, 'completed'], [30, 'booked']] as const) {
+      const day = addDays(today, offsetDays);
+      const resolved = resolve(day, wallTime('10:00'), zone);
+      if (resolved.kind !== 'unique') throw new Error(`ambiguous fixture day ${day}`);
+      const start = toDate(resolved.at);
+      const end = toDate(instant(resolved.at + 45 * 60_000));
+      await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          clientId: client.id,
+          startAt: start,
+          endAt: end,
+          blockedStart: start,
+          blockedEnd: end,
+          startDay: day,
+          startWallTime: '10:00',
+          status,
+          lines: {
+            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          },
+        },
+      });
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+}
