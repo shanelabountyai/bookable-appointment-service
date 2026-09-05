@@ -24,7 +24,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
 /** One outbox row in whatever state the test is about. */
@@ -78,9 +78,11 @@ test.describe('messages that did not go out (A-051)', () => {
     await signIn(page);
     await page.goto('/staff/messages');
     await expect(page.getByText(/Everything has gone out/)).toBeVisible();
-    // And the landing page carries no count to act on.
-    await page.goto('/staff');
-    await expect(page.getByRole('link', { name: 'Messages' })).toBeVisible();
+    // And the shell carries no count to act on. `exact: true` is what asserts
+    // that: without it, "Messages 1" matches too and the test passes for the
+    // one reason it exists to rule out. No navigation needed — the shell is on
+    // this page as well, which is the point of A-085.
+    await expect(page.getByRole('link', { name: 'Messages', exact: true })).toBeVisible();
   });
 
   /**
@@ -97,10 +99,12 @@ test.describe('messages that did not go out (A-051)', () => {
     });
 
     await signIn(page);
-    // The count is on the landing page — a screen about messages nobody was
-    // told about is only as useful as the reason to open it.
-    await expect(page.getByRole('link', { name: /Messages — 1 not sent/ })).toBeVisible();
-    await page.getByRole('link', { name: /Messages/ }).click();
+    // The count is in the SHELL — a screen about messages nobody was told
+    // about is only as useful as the reason to open it, and since A-085 that
+    // reason is on every staff screen rather than on a landing page the desk
+    // no longer passes through. This assertion runs on the day grid.
+    await expect(page.getByRole('link', { name: 'Messages 1' })).toBeVisible();
+    await page.getByRole('link', { name: 'Messages 1' }).click();
 
     await expect(page.getByRole('heading', { name: /Nobody was told/ })).toBeVisible();
     await expect(page.getByText('invalid_recipient: the number is not in service')).toBeVisible();
@@ -128,8 +132,8 @@ test.describe('messages that did not go out (A-051)', () => {
     await expect(page.getByRole('heading', { name: /Still trying/ })).toBeVisible();
     await expect(page.getByText('server_error: the provider had a bad minute')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send it again' })).toHaveCount(0);
-    // And it is NOT counted as something to act on.
-    await page.goto('/staff');
+    // And it is NOT counted as something to act on — a row still working
+    // through its backoff is not a number anybody should act on.
     await expect(page.getByRole('link', { name: 'Messages', exact: true })).toBeVisible();
   });
 

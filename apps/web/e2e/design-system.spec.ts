@@ -24,7 +24,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -115,14 +115,28 @@ test('keyboard focus draws a visible ring', async ({ page }) => {
   expect(first.style).not.toBe('none');
   expect(first.width).toBe('2px');
 
-  // And the next stop is the first Button on the page.
-  await page.keyboard.press('Tab');
-  const second = await page.evaluate(() => {
-    const el = document.activeElement as HTMLElement | null;
-    const style = el ? getComputedStyle(el) : null;
-    return { name: el?.textContent?.trim(), style: style?.outlineStyle, width: style?.outlineWidth };
-  });
-  expect(second.name).toBe('rest primary');
-  expect(second.style).not.toBe('none');
-  expect(second.width).toBe('2px');
+  // And a Button is REACHABLE by keyboard and rings when it gets there.
+  //
+  // Tabbed to rather than asserted as "the second stop": the first draft did
+  // assert the position, and A-085's shell inserted eight nav stops above the
+  // page and broke it. The tab ORDER of the whole application is not what this
+  // test is about — that a keyboard can reach a Button, and sees it when it
+  // does, is.
+  let button: { name?: string; style?: string; width?: string } | null = null;
+  for (let i = 0; i < 40 && button === null; i += 1) {
+    await page.keyboard.press('Tab');
+    const active = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      const style = el ? getComputedStyle(el) : null;
+      return {
+        name: el?.textContent?.trim(),
+        style: style?.outlineStyle,
+        width: style?.outlineWidth,
+      };
+    });
+    if (active.name === 'rest primary') button = active;
+  }
+  expect(button, 'a keyboard never reached the first Button on the page').not.toBeNull();
+  expect(button?.style).not.toBe('none');
+  expect(button?.width).toBe('2px');
 });

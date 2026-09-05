@@ -1,89 +1,66 @@
-import Link from 'next/link';
-import { prisma } from '@bookable/db';
-import { countFailedNotifications } from '@bookable/db/notifications';
 import { requireStaff } from '@/lib/auth/session';
 import { logout } from '@/lib/auth/actions';
+import { Button, LinkButton } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 
 /**
- * The staff landing page. Its only job in A-005 is to be a route that is
- * genuinely unreachable without a session — the day grid it eventually
- * becomes is A-016.
+ * A-085 (D-49) — `/staff` IS THE SETUP INDEX NOW, not the landing page.
  *
- * `requireStaff()` is the first statement, and it throws (via redirect) when
- * there is no session, so nothing below it can render for an anonymous
- * visitor.
+ * It used to be a column of twelve links that named twelve of twenty-three
+ * staff routes, and it was where signing in landed you — one hop from the day
+ * grid the desk actually works in. The shell carries the desk routes on every
+ * screen now, so the only thing left that needs an index is CONFIGURATION: the
+ * screens somebody opens on a Tuesday to change how the salon runs, not the
+ * ones the front desk taps forty times a day.
+ *
+ * NOT `requireOwner`. Every route listed here is `requireStaff` today and this
+ * item does not change a guard — a stylist can already open Services and
+ * Availability, and quietly taking that away behind a navigation change is not
+ * a navigation change. The tier is drawn by POSITION in the shell (after the
+ * rule, quieter), which is what §5.5 asks for. `requireOwner` redirects here
+ * too, so guarding this page with it would loop.
  */
-export default async function StaffHome() {
-  const staff = await requireStaff();
+export const dynamic = 'force-dynamic';
 
-  // A-051. The COUNT, not just the link: a screen about messages nobody was
-  // told about is only as useful as the reason somebody has to open it. Only
-  // the given-up rows are counted — a message still working through its
-  // backoff is not a number anybody should act on, and counting it would
-  // train the desk to ignore the badge.
-  const notTold = await countFailedNotifications(prisma, staff.businessId);
+const SETUP = [
+  { href: '/staff/availability', label: 'Availability', hint: 'Weekly hours, and one-off days.' },
+  { href: '/staff/providers', label: 'Providers', hint: 'Who takes appointments.' },
+  { href: '/staff/people', label: 'Who works here', hint: 'The roster, and who has a desk PIN.' },
+  { href: '/staff/services', label: 'Services', hint: 'Durations, buffers and develop gaps.' },
+  { href: '/staff/resources', label: 'The room', hint: 'Chairs, basins and anything shared.' },
+  { href: '/staff/settings', label: 'Settings', hint: 'Lead time, cancellation cutoff, horizon.' },
+] as const;
+
+export default async function StaffSetup() {
+  await requireStaff();
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Staff</h1>
-        <p className="mt-1 text-zinc-500">
-          At the desk: <span className="font-medium text-zinc-700 dark:text-zinc-300">{staff.name}</span>
-        </p>
+        <h1 className="text-page-title font-semibold tracking-tight">Setup</h1>
+        {/* This page USED to repeat "At the desk: Dana" under its heading. The
+            shell says it on every screen now, and two renderings of one fact is
+            how they come to disagree — so the duplicate goes rather than being
+            restyled. */}
+        <EmptyState className="mt-1">How the salon runs. Changes here affect every day.</EmptyState>
       </div>
 
-      <nav className="flex flex-col gap-2">
-        <Link href="/staff/day" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Today
-        </Link>
-        <Link href="/staff/settings" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Settings
-        </Link>
-        <Link href="/staff/people" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Who works here
-        </Link>
-        <Link href="/staff/providers" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Providers
-        </Link>
-        <Link href="/staff/services" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Services
-        </Link>
-        <Link href="/staff/resources" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          The room
-        </Link>
-        <Link href="/staff/availability" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Availability
-        </Link>
-        <Link href="/staff/clients" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Clients
-        </Link>
-        <Link href="/staff/call-down" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Call-down
-        </Link>
-        <Link href="/staff/waitlist" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Waitlist
-        </Link>
-        <Link href="/staff/messages" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-          Messages{notTold > 0 ? ` — ${notTold} not sent` : ''}
-        </Link>
-        {/* A-050 (D-36). Hidden for a stylist, and REFUSED by the route as
-            well — hiding a link hides nothing from anybody who has seen the
-            URL once, so the guard on the page is the control and this is the
-            courtesy that stops it being a dead end anybody taps. */}
-        {staff.role === 'owner' ? (
-          <Link href="/staff/dashboard" className="text-zinc-900 underline underline-offset-4 dark:text-zinc-100">
-            Dashboard
-          </Link>
-        ) : null}
-      </nav>
+      <ul className="flex flex-col gap-2">
+        {SETUP.map((item) => (
+          <li key={item.href}>
+            <LinkButton
+              href={item.href}
+              className="w-full flex-col items-start gap-0 px-4 py-3 text-left"
+            >
+              <span className="font-medium text-ink-primary">{item.label}</span>
+              <span className="text-caption font-normal text-ink-muted">{item.hint}</span>
+            </LinkButton>
+          </li>
+        ))}
+      </ul>
 
       <form action={logout}>
-        <button
-          type="submit"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          Sign out
-        </button>
+        <Button type="submit">Sign out</Button>
       </form>
     </main>
   );

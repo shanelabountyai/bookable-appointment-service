@@ -18,11 +18,13 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
-/** The bar is a native `<details>`; the `/staff` page also says "At the desk:"
- *  in its own paragraph, so the summary has to be named explicitly. */
+/** The bar is a native `<details>`, and since A-085 it is the ONLY thing in
+ *  the product that says who is at the desk — the `/staff` page's own copy of
+ *  that line went with the shell. Scoped to the summary all the same: the
+ *  expanded form contains the switcher, not the current name. */
 function deskBar(page: Page) {
   return page.locator('summary').filter({ hasText: 'At the desk:' });
 }
@@ -74,8 +76,12 @@ test.describe('named staff identity', () => {
     const prisma = new PrismaClient();
     try {
       const priya = await prisma.staffUser.findFirstOrThrow({ where: { name: 'Priya' } });
-      await page.goto('/staff');
-      await expect(page.getByRole('main').getByText('Priya')).toBeVisible();
+      // A-085: who is acting is the SHELL's fact now, on every screen, rather
+      // than a line `/staff` happened to render. Asserted on the desk bar for
+      // that reason — the old `main`-scoped version was scoped that way only to
+      // avoid matching the bar it has now become the source of truth for.
+      await page.goto('/staff/day');
+      await expect(deskBar(page)).toContainText('Priya');
       expect(priya.pinHash).not.toBe('4821');
       // A roster identity is not an account: no email, so no way to sign in.
       expect(priya.email).toBeNull();
@@ -97,7 +103,7 @@ test.describe('named staff identity', () => {
     await expect(page.getByText('That name and PIN do not match.')).toBeVisible();
     // Still whoever it was — a failed switch must not silently hand the desk
     // over, or the log would name the wrong person for the rest of the shift.
-    await expect(page.getByRole('main').getByText('Front desk')).toBeVisible();
+    await expect(deskBar(page)).toContainText('Front desk');
   });
 
   /** Off-boarding takes somebody off the switcher and ends their session,

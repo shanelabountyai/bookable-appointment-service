@@ -46,12 +46,20 @@ test.describe('staff session', () => {
     await page.getByLabel('Password').fill(STAFF_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    await expect(page).toHaveURL(/\/staff$/);
-    await expect(page.getByRole('heading', { name: 'Staff' })).toBeVisible();
-    // A-037: the page names the person at the desk, not the account's email.
-    // Scoped to <main> because the desk-switcher bar says the same name.
-    await expect(page.getByRole('main').getByText('Front desk')).toBeVisible();
+    // A-085 (D-49): sign-in lands on the DAY GRID, the screen the desk works
+    // in, rather than on an index one hop away from it.
+    await expect(page).toHaveURL(/\/staff\/day/);
+    await expect(page.getByRole('navigation', { name: 'Staff' })).toBeVisible();
+    // A-037: who is at the desk is named, not the account's email. Asserted on
+    // the desk bar rather than inside `<main>`: the bar is the only thing that
+    // says it now, on every screen, and `/staff`'s own copy went with the shell.
+    await expect(page.locator('summary').filter({ hasText: 'At the desk:' })).toContainText(
+      'Front desk',
+    );
 
+    // Signing out is a deliberate, rare action and lives on Setup — not in the
+    // chrome the desk taps forty times a day.
+    await page.goto('/staff');
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/staff\/login$/);
 
@@ -65,7 +73,7 @@ test.describe('staff session', () => {
     await page.getByLabel('Email').fill(STAFF_EMAIL);
     await page.getByLabel('Password').fill(STAFF_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/staff$/);
+    await expect(page).toHaveURL(/\/staff\/day/);
 
     const cookie = (await context.cookies()).find((c) => c.name === 'bookable_staff_session');
     expect(cookie).toBeDefined();
@@ -143,7 +151,7 @@ test.describe('staff roles (A-050)', () => {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/staff$/);
+    await expect(page).toHaveURL(/\/staff\/day/);
   }
 
   test('a stylist signs in as herself and cannot reach the money', async ({ page }) => {
@@ -151,20 +159,22 @@ test.describe('staff roles (A-050)', () => {
     await signInAs(page, PRIYA_EMAIL, PRIYA_PASSWORD);
 
     // Her own name on the desk, from her own credential — not the shared one.
-    await expect(page.getByRole('main').getByText('Priya')).toBeVisible();
+    // On the desk bar since A-085: it is the one place that says who is acting,
+    // and it says it on every screen rather than on a landing page.
+    await expect(page.locator('summary').filter({ hasText: 'At the desk:' })).toContainText('Priya');
     await expect(page.getByRole('link', { name: 'Dashboard' })).toHaveCount(0);
 
     // THE CONTROL, not the hidden link: typed straight in, and refused by the
     // route rather than merely undrawn.
     await page.goto('/staff/dashboard');
-    await expect(page).toHaveURL(/\/staff$/);
+    await expect(page).toHaveURL(/\/staff\/day/);
     await expect(page.getByRole('heading', { name: /This week/ })).toHaveCount(0);
 
     // The drill-down behind it is its own route and needs its own guard —
     // a screen reachable by a link the guarded page draws is still reachable
     // by anybody who has seen the URL once.
     await page.goto('/staff/dashboard/appointments?from=2026-06-08&to=2026-06-14');
-    await expect(page).toHaveURL(/\/staff$/);
+    await expect(page).toHaveURL(/\/staff\/day/);
   });
 
   test('an owner still sees it', async ({ page }) => {
@@ -202,7 +212,7 @@ test.describe('staff roles (A-050)', () => {
     await expect(page.getByText('Priya is at the desk.')).toBeVisible();
 
     await page.goto('/staff/dashboard');
-    await expect(page).toHaveURL(/\/staff$/);
+    await expect(page).toHaveURL(/\/staff\/day/);
   });
 
   /**

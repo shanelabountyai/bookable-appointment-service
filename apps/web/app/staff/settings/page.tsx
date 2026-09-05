@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { getBusinessSettings } from '@bookable/db/settings';
 import { requireStaff } from '@/lib/auth/session';
@@ -19,10 +18,7 @@ export default async function SettingsPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-8">
       <div>
-        <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
-          ← Staff
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
       </div>
       <SettingsForm settings={settings} />
     </main>

@@ -40,7 +40,10 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   if (!staff) return { error: GENERIC };
 
   await startStaffSession(staff.id);
-  redirect('/staff');
+  // A-085 (D-49): the DAY GRID is the home screen, not `/staff` — which is now
+  // the setup index. Signing in at 8:45 and landing one hop from the thing the
+  // desk works in was the shape §5.5 called out.
+  redirect('/staff/day');
 }
 
 export interface SwitchState {

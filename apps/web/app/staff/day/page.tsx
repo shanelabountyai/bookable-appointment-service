@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { loadDayView } from '@bookable/db/day';
-import { countUnfinished, listOpenedSlots } from '@bookable/db/appointments';
 import { clientReliability } from '@bookable/db/clients';
 import { resolveStaffNames } from '@bookable/db/auth';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
@@ -43,14 +42,13 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
 
   const view = await loadDayView(prisma, { businessId: staff.businessId, day, now });
 
-  // A-043: derived, never stored — and NOT scoped to the day being viewed.
-  // What opened up is a fact about the weeks ahead, so paging to last Tuesday
-  // must not empty the tab.
-  const opened = await listOpenedSlots(prisma, { businessId: staff.businessId, now });
-  // A-076. The COUNT, not just the link — the same reasoning A-043 gave for
-  // "Opened up (N)": a door nobody knows to walk through is a door nobody walks
-  // through, and eleven unclosed appointments are invisible by definition.
-  const unfinished = await countUnfinished(prisma, { businessId: staff.businessId, now });
+  // A-085 (D-49). "Opened up" and "Still open" USED TO BE COMPUTED HERE, for a
+  // pair of links in the toolbar below. Both moved to the shell, which is the
+  // point of the shell: §5.5 wants those counts visible from anywhere, and a
+  // count computed in two places is two answers to one question the first time
+  // the derivation changes. `listOpenedSlots` in particular is not a COUNT(*)
+  // — it re-derives whether each freed span is still empty — so a second,
+  // cheaper copy here would be the checkpoint-6 defect exactly.
 
   // CLIENT-04, one grouped query for the whole day rather than one per chip.
   // Counted against TODAY, not the day being viewed: the window is "the last
@@ -92,10 +90,7 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
       <div className="flex flex-col gap-6 print:hidden">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
-              ← Staff
-            </Link>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">{model.dayLabel}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{model.dayLabel}</h1>
             {day === today ? null : <p className="text-sm text-zinc-500">Not today.</p>}
           </div>
 
@@ -141,14 +136,17 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
           Anyone
         </Link>
         {/* AVAIL-05. One tap from the day, because the morning somebody calls
-            in sick is the morning this has to be findable. */}
+            in sick is the morning this has to be findable.
+
+            A-085 RENAMED IT rather than deleting it. The shell now carries a
+            "Conflicts" link too, and that one shows TODAY's — `/staff/conflicts`
+            defaults to today when no `?day=` is given. Two links with the same
+            name pointing at two different days on one page is a worse screen
+            than either, and the longer name is the honest one: this is the day
+            you are looking at, not the day it is. Call-down left the toolbar
+            entirely, because the shell's link is the identical URL. */}
         <Link href={`/staff/conflicts?day=${day}`} className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
-          Conflicts
-        </Link>
-        {/* APPT-02: the desk's other daily errand — who tomorrow hasn't said
-            yes yet. */}
-        <Link href="/staff/call-down" className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600">
-          Call-down
+          Conflicts on this day
         </Link>
         {/* A-062. The 8:45 errand: one column per page, pinned at each
             station, and the thing that still works when the broadband does
@@ -159,28 +157,10 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
         >
           Print sheet
         </Link>
-        {/* A-043 (WAIT-02). A cancellation that arrives on a Saturday for next
-            Thursday shows on the grid only on Thursday, which the desk has no
-            reason to open. The count is the whole point of the tab: a door
-            nobody knows to walk through is the gap this row closes. */}
-        <Link
-          href="/staff/opened"
-          className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
-        >
-          Opened up{opened.length > 0 ? ` (${opened.length})` : ''}
-        </Link>
-        {/* A-076 (D-46). The six-o'clock errand, on the screen the desk is
-            already on. Hidden at zero like the count above: a permanent link to
-            an empty list is a link that stops being read, and this one is only
-            worth a tap when there is something behind it. */}
-        {unfinished > 0 ? (
-          <Link
-            href="/staff/unfinished"
-            className="rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600"
-          >
-            Still open ({unfinished})
-          </Link>
-        ) : null}
+        {/* A-085: "Opened up" and "Still open" are in the shell now, on every
+            screen, with the door permanent and the badge hiding at zero (D-50).
+            This toolbar keeps only what is DAY-SCOPED — the things that carry
+            `?day=` and mean nothing without it. */}
       </div>
 
       {/* A-089. The same links, the same `aria-current`, through the primitive

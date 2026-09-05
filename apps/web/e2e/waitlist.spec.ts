@@ -26,7 +26,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
 /** Books Dana's 10:00 Cut, which the test then cancels. */

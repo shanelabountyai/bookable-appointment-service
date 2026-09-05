@@ -2,6 +2,8 @@
 
 import { useActionState } from 'react';
 import { type SwitchState, switchStaff } from '@/lib/auth/actions';
+import { Button } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
 import type { StaffOption } from '@bookable/db/auth';
 
 const initial: SwitchState = {};
@@ -22,23 +24,27 @@ export function DeskBar({ currentName, options }: { currentName: string; options
   const [state, action, pending] = useActionState(switchStaff, initial);
 
   return (
-    <div className="border-b border-zinc-200 bg-zinc-50 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="border-b border-line-hairline bg-ground-sunken text-body print:hidden">
       <details className="mx-auto w-full max-w-5xl px-4 py-2">
         <summary className="cursor-pointer">
           At the desk: <span className="font-medium">{currentName}</span>
         </summary>
 
         {options.length === 0 ? (
-          <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-            Nobody else has a desk PIN yet. Add one under Settings → Who works here.
+          <p className="mt-2 text-ink-muted">
+            Nobody else has a desk PIN yet. Add one under Setup → Who works here.
           </p>
         ) : (
           <form action={action} className="mt-2 flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1">
+            {/* A-085 restyles this onto A-088's tokens and A-089's primitives.
+                The `<select>` stays a hand-written native element: §5.3 defers
+                a `Select` primitive until a second caller exists, and this is
+                still the only one. */}
+            <label className="flex flex-col gap-1 text-caption font-medium text-ink-secondary">
               Who
               <select
                 name="staffUserId"
-                className="rounded-md border border-zinc-400 bg-transparent px-2 py-1 dark:border-zinc-600"
+                className="min-h-11 rounded-control border border-line-control bg-transparent px-3 py-2 text-body text-ink-primary"
               >
                 {options.map((option) => (
                   <option key={option.id} value={option.id}>
@@ -47,24 +53,22 @@ export function DeskBar({ currentName, options }: { currentName: string; options
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1">
-              PIN
-              <input
-                name="pin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                className="w-24 rounded-md border border-zinc-400 bg-transparent px-2 py-1 dark:border-zinc-600"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-md border border-zinc-400 px-2 py-1 font-medium disabled:opacity-60 dark:border-zinc-600"
-            >
+            <Field id="desk-pin" label="PIN">
+              {(control) => (
+                <Input
+                  {...control}
+                  name="pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="w-24"
+                />
+              )}
+            </Field>
+            <Button type="submit" pending={pending}>
               {pending ? 'Switching…' : 'That’s me'}
-            </button>
-            <p aria-live="polite" className="text-zinc-700 dark:text-zinc-300">
+            </Button>
+            <p aria-live="polite" className="text-ink-secondary">
               {state.error ?? state.message ?? ''}
             </p>
           </form>

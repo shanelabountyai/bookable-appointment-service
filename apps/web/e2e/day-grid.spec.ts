@@ -25,7 +25,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
 /** Books straight into the database — the write path has its own suite, and
@@ -430,7 +430,7 @@ test.describe('what is still open (A-076)', () => {
     await page.goto(`/staff/day?day=${DAY}`);
     // The COUNT is the point: eleven unclosed appointments are invisible by
     // definition, so a door nobody knows about is a door nobody walks through.
-    await page.getByRole('link', { name: 'Still open (1)' }).click();
+    await page.getByRole('link', { name: 'Still open 1' }).click();
 
     await expect(page).toHaveURL(/\/staff\/unfinished$/);
     await expect(page.getByRole('link', { name: 'Olive Open' })).toBeVisible();
@@ -460,12 +460,24 @@ test.describe('what is still open (A-076)', () => {
     expect((await statusOf(appointment.id)).status).toBe('no_show');
   });
 
-  /** The badge disappears at zero, so it never becomes a permanent piece of
-   *  furniture the desk stops reading. */
-  test('the tab is not there when nothing is open', async ({ page }) => {
+  /**
+   * A-085 / D-50 INVERTED HALF OF THIS TEST, deliberately.
+   *
+   * A-076 hid the whole link at zero, so that it never became a permanent piece
+   * of furniture the desk stops reading. D-49 then recorded what that cost:
+   * Phase 8's headline screen had exactly ONE door, and a desk that had never
+   * had an unfinished appointment could not know the screen existed.
+   *
+   * The shell settles it by splitting the two things apart. The DOOR is
+   * navigation and is always there; the NUMBER is an errand and appears only
+   * when there is one. `exact: true` is what asserts the second half — a link
+   * named exactly "Still open" is a link with no badge on it.
+   */
+  test('the door is there at zero, and the badge is not', async ({ page }) => {
     await page.goto(`/staff/day?day=${DAY}`);
 
-    await expect(page.getByRole('link', { name: /Still open/ })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Still open', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Still open \d/ })).toHaveCount(0);
   });
 
   /**
@@ -495,9 +507,11 @@ test.describe('what is still open (A-076)', () => {
     await expect(page.getByText('Showing the last 60 days.')).toBeVisible();
 
     // The badge stays on the 21-day errand — a forty-day-old row is not a thing
-    // the desk is closing out tonight.
+    // the desk is closing out tonight. The DOOR is still there (D-50); it is
+    // the NUMBER that must not follow the box.
     await page.goto(`/staff/day?day=${DAY}`);
-    await expect(page.getByRole('link', { name: /Still open/ })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Still open', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Still open \d/ })).toHaveCount(0);
   });
 
   test('has no accessibility violations', async ({ page }) => {

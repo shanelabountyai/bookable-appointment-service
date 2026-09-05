@@ -8,7 +8,7 @@ async function signIn(page: import('@playwright/test').Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
 test.describe('business settings & providers (A-025)', () => {
@@ -160,11 +160,18 @@ test.describe('business settings & providers (A-025)', () => {
     await signIn(page);
     await page.goto('/staff/providers');
     // Bypass the browser's `required` so the SERVER-side check is what runs.
+    //
+    // Reached through the FIELD'S OWN `.form`, not `querySelector('form')`.
+    // The old version meant "the first form in the document", which was this
+    // one right up until A-085 put a client search box in the shell above every
+    // staff screen — and then it silently marked the wrong form, `required`
+    // blocked the submit, and the server-side check this test exists for never
+    // ran. A locator that names what it wants cannot drift like that.
     await page.getByLabel('Add a provider').fill('x');
     await page.getByLabel('Add a provider').fill('');
-    await page.evaluate(() => {
-      document.querySelector('form')?.setAttribute('novalidate', 'true');
-    });
+    await page
+      .getByLabel('Add a provider')
+      .evaluate((el) => (el as HTMLInputElement).form?.setAttribute('novalidate', 'true'));
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.getByText('A provider needs a name.')).toBeVisible();
   });

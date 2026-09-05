@@ -144,14 +144,17 @@ export async function requireDesk(
  * every colleague's no-show count. Taking the desk therefore hands the money
  * back, and the owner takes it again with her own PIN or her own sign-in.
  *
- * Redirects to `/staff`, never to the login page: they ARE signed in, and
+ * Redirects to `/staff/day`, never to the login page: they ARE signed in, and
  * throwing a legitimately-authenticated person at a sign-in form is how a
- * front desk concludes the system is broken. The link is hidden from
- * non-owners too, so reaching this at all means a typed URL or a stale tab.
+ * front desk concludes the system is broken. A-085 moved this from `/staff`
+ * to the day grid — the home screen — so a stylist who taps a stale owner tab
+ * lands on the screen she actually works in rather than on the setup index.
+ * The link is hidden from non-owners too, so reaching this at all means a
+ * typed URL or a stale tab.
  */
 export async function requireOwner(now = Date.now()): Promise<StaffIdentity> {
   const staff = await requireStaff(now);
-  if (staff.role !== 'owner') redirect('/staff');
+  if (staff.role !== 'owner') redirect('/staff/day');
   return staff;
 }
 

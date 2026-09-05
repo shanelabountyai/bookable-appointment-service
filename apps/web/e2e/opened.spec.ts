@@ -45,7 +45,7 @@ async function signIn(page: Page) {
   await page.getByLabel('Email').fill(STAFF_EMAIL);
   await page.getByLabel('Password').fill(STAFF_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page).toHaveURL(/\/staff\/day/);
 }
 
 /**
@@ -183,7 +183,7 @@ test.describe("what's opened up (A-043)", () => {
     // TODAY's grid — never the Tuesday the slot is on. That is the whole
     // finding: the hole is drawn on Thursday, and nobody opens Thursday.
     await page.goto('/staff/day');
-    const tab = page.getByRole('link', { name: 'Opened up (1)' });
+    const tab = page.getByRole('link', { name: 'Opened up 1' });
     await expect(tab).toBeVisible();
     await tab.click();
 
@@ -211,7 +211,7 @@ test.describe("what's opened up (A-043)", () => {
     await shortenedColour({ day: DAY, time: '10:00' });
 
     await page.goto('/staff/day');
-    await page.getByRole('link', { name: 'Opened up (1)' }).click();
+    await page.getByRole('link', { name: 'Opened up 1' }).click();
 
     await expect(page).toHaveURL(/\/staff\/opened$/);
     // 10:55 to 13:05 — what she let go of, buffer and all, not the 120

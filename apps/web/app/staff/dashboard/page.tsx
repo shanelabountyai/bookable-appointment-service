@@ -49,10 +49,7 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
-          ← Staff
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <div className="mt-1 flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
           <Link href={`/staff/dashboard?week=${addDays(calendarDay(summary.fromDay), -7)}`} className="underline underline-offset-4">
             ← Previous week

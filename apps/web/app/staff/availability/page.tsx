@@ -69,10 +69,7 @@ export default async function AvailabilityPage({
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-8">
       <div>
-        <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
-          ← Staff
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Availability</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Availability</h1>
       </div>
 
       <nav aria-label="Whose availability" className="flex flex-wrap gap-2">

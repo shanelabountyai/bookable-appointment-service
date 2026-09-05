@@ -2688,3 +2688,43 @@ They are 44 now, and a test measures the rendered pixels rather than checking th
 The old code wrote its greys by hand roughly two hundred times, each with a second copy for dark mode. The new colour system removes the need for the second copy entirely. A test now reads the new components and fails if any of them reaches past the system back to a hand-written colour — because such a value quietly stops adapting to dark mode, stops being covered by the contrast checks, and stops flattening correctly when the page is printed.
 
 It was broken on purpose to confirm it fires.
+
+---
+
+## The screen the front desk could not find
+
+Some features are hard because the logic is hard. This one was hard because it was easy, and kept losing to things that were on fire.
+
+The salon's most useful end-of-day screen — the list of appointments that have been and gone with nobody having said whether the client turned up — had exactly **one** way in. It was a button on the day view that appeared only when the list had something in it. Which is a sound instinct: a permanent link to an empty list becomes furniture, and furniture stops being read.
+
+It also means a salon that has never fallen behind never sees the button, and therefore never learns the screen exists. The feature was, for those people, invisible by construction.
+
+### Both instincts were right, so the fix keeps both
+
+The door is now always there. The number on it is not.
+
+Navigation should be stable — you learn where things are once. An alert should be rare — if it is always lit, it stops meaning anything. Those are two different jobs, and putting them on one button forced a choice between them. Separating them means the screen can be discovered on a quiet Tuesday and still shout on a busy Saturday.
+
+### And a search box, because the phone never stops
+
+"It's Mrs Kerr, can I move Thursday?" used to be: leave the day view, go to the index, find Clients, search — while she waits on the line. It is now typing her name into the bar that is on every screen.
+
+That single gap had been written down twice in operator reviews before it was fixed. Reading it back, the reason it kept losing is instructive: it was never the most broken thing in the building, and there was always something genuinely more broken.
+
+### One number, one place
+
+Three counts follow you around the application now — what has opened up, what is still open, what failed to send. Two of them used to be calculated by the day screen for its own buttons.
+
+Moving them was not tidying. "What has opened up" is not a row count; it is the answer to *is this freed time still actually free*, worked out slot by slot. A second, cheaper version of that question in the badge would eventually disagree with the screen it points at — and a badge that says three above a list of one is a badge nobody believes again. So the question is asked once, in one place, and the day screen no longer asks it at all. There is a test whose entire job is to fail if that copy ever comes back.
+
+### Three tests broke, and one of them mattered
+
+Moving navigation broke three tests, and each had made the same mistake: it had written down *where* something was rather than *what* it was.
+
+Two were cosmetic. The third was not. A test that checks the server rejects a blank name has to switch off the browser's own validation first, and it did that by reaching for "the first form on the page" — which was the right form until a search box appeared above it. From then on it would have disabled validation on the wrong form, the browser would have blocked the submission, and the server-side check the test exists to prove would simply never have run. The test would have gone on passing for a while, then failed for a reason unrelated to its subject.
+
+It now asks for the form belonging to the field it is filling in. A test that names what it wants cannot drift like that.
+
+### What did not change
+
+Every configuration screen kept exactly the permissions it had. It would have been easy, while moving them behind a "Setup" link, to make that link owner-only and quietly take away a stylist's ability to check the service list. Hiding a link has never been a permission, and the change stops at the navigation.

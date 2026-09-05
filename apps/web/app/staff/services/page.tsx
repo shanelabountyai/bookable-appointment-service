@@ -24,10 +24,7 @@ export default async function ServicesPage() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-8">
       <div>
-        <Link href="/staff" className="text-sm text-zinc-500 hover:underline">
-          ← Staff
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Services</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Services</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Deactivating a service stops it being offered for new bookings. It never deletes it, and never touches
           appointments already in the book. &ldquo;Needs&rdquo; is what a client occupies for the whole visit — set the
