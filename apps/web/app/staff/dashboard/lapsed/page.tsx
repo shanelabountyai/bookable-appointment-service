@@ -5,7 +5,8 @@ import { listCallMarks } from '@bookable/db/clients';
 import { requireOwner } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
-import { LapsedCallButtons } from './call-buttons';
+import { recordOffer } from '@/lib/waitlist/offer-actions';
+import { CallMarkButtons } from '@/components/call-mark-buttons';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,10 +133,16 @@ export default async function LapsedPage({ searchParams }: PageProps<'/staff/das
                   {/* A-072's marks, reused. Thirty calls do not happen in one
                       sitting, and a list that forgets is a list that gets
                       copied onto paper. */}
-                  <LapsedCallButtons
-                    clientId={row.clientId}
-                    appointmentId={row.lastAppointmentId}
-                    mark={mark}
+                  {/* `subject: lapsed` rather than a freed slot's key, and her last
+                      completed visit is the mark's FK — the visit the call is
+                      about. That SUBJECT is the only thing that differs from
+                      the waitlist matcher's use of this control (§5.4.9). */}
+                  <CallMarkButtons
+                    words={OFFER_WORDS}
+                    current={mark?.outcome}
+                    hidden={{ subject: 'lapsed', appointmentId: row.lastAppointmentId, clientId: row.clientId }}
+                    action={recordOffer}
+                    undoLabel="Not asked"
                   />
                   {/* A-077. WHEN, not only what and who. A-072's marks were
                       designed for a freed slot that dies on Thursday at 2; the

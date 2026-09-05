@@ -15,10 +15,16 @@ import type { CallMarkOutcome } from '@bookable/db/clients';
  *
  * TOTAL over the enum, so a fifth outcome is a compile error rather than a raw
  * value on a screen — the discipline `STATUS_ACTION_LABELS` uses.
+ *
+ * A-091: "She took it" is now "Took it". These four words are read on the
+ * lapsed report and the waitlist matcher about whoever the row names, and the
+ * client record has no gender field to consult — the same correction the freed
+ * row's own sentences got. The brief wrote the phrase about Mrs Patel; the
+ * screen renders it about everybody.
  */
 export const OFFER_WORDS = {
   no_answer: 'No answer',
   left_message: 'Left a message',
   thinking: 'Thinking about it',
-  took_it: 'She took it',
+  took_it: 'Took it',
 } satisfies Record<CallMarkOutcome, string>;

@@ -8,7 +8,8 @@ import { flagSentence } from '@/components/client-flag';
 import { listCallDown } from '@/lib/appointments/call-down-actions';
 import { ConfirmButton } from './confirm-button';
 import { ATTEMPT_WORDS } from '@/lib/appointments/attempt-words';
-import { AttemptButtons } from './attempt-buttons';
+import { recordAttempt } from '@/lib/appointments/call-down-actions';
+import { CallMarkButtons } from '@/components/call-mark-buttons';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,7 +125,15 @@ export default async function CallDownPage() {
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <AttemptButtons appointmentId={appointment.id} attempt={appointment.attempt} />
+                {/* A-091 — the two-outcome sibling of the waitlist's four, and now
+                    literally the same component (§5.4.9). */}
+                <CallMarkButtons
+                  words={ATTEMPT_WORDS}
+                  current={appointment.attempt?.outcome}
+                  hidden={{ appointmentId: appointment.id }}
+                  action={recordAttempt}
+                  undoLabel="Not rung"
+                />
                 <ConfirmButton appointmentId={appointment.id} />
                 <Link
                   href={`/staff/appointments/${appointment.id}`}

@@ -702,7 +702,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
     await page.goto(`/staff/appointments/${appointment.id}`);
 
     // Offered where the desk already is, not a screen away.
-    await expect(page.getByText(/minutes of her slot are still blocked/)).toBeVisible();
+    await expect(page.getByText(/minutes of this slot are still blocked/)).toBeVisible();
     // Its own label, because A-068's client correction has a reason box on
     // this same page — two fields called "Why" are ambiguous to a screen
     // reader long before they are ambiguous to a locator.
@@ -720,7 +720,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
 
     // …and it reaches the one screen whose job is selling it (A-067).
     await page.goto('/staff/opened');
-    await expect(page.getByText('Ada Chen never came — the rest of her time was put back')).toBeVisible();
+    await expect(page.getByText('Ada Chen never came — the rest of the time was put back')).toBeVisible();
   });
 
   test('changes no status, so her no-show still counts (D-7)', async ({ page }) => {
@@ -763,7 +763,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
     // The SETTLED state, not the toast: the action revalidates this panel, so
     // the transient message is replaced before it can be read. The offer being
     // on the table again IS the assertion — the time is hers.
-    await expect(page.getByText(/minutes of her slot are still blocked/)).toBeVisible();
+    await expect(page.getByText(/minutes of this slot are still blocked/)).toBeVisible();
     await page.reload();
     await expect(page.getByText(/Her time was put back on the book by Front desk/)).toBeVisible();
   });

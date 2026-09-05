@@ -194,7 +194,9 @@ function ReleasePanel({
     <form action={action} className="flex flex-col gap-2 rounded-md border border-dashed border-zinc-400 p-4 dark:border-zinc-600">
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <p className="text-sm">
-        <span className="font-medium">She never came, and {release.minutes} minutes of her slot are still blocked.</span>{' '}
+        {/* A-091 took the pronoun out here too: the record has no gender field,
+            and this sentence renders about whoever the appointment names. */}
+        <span className="font-medium">Nobody came, and {release.minutes} minutes of this slot are still blocked.</span>{' '}
         Give them back and the walk-in at the door can have them — with no override, because the time really is
         free.
       </p>

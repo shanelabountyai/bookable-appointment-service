@@ -197,7 +197,10 @@ test.describe('the waitlist, staff half (A-023)', () => {
 
     // THE SECOND PERSON AT THE DESK, arriving at the list from the other door.
     await page.goto('/staff/opened');
-    await expect(page.getByText(/Already asked: Beth Waits — thinking about it/)).toBeVisible();
+    // A-091 gave the marks their own labelled list rather than one joined
+    // line, because §8.6's composition puts two of them on one row.
+    await expect(page.getByText('Already asked')).toBeVisible();
+    await expect(page.getByText('Beth Waits — thinking about it')).toBeVisible();
 
     // …and it is a RECORD, not a hold: the slot is still on offer to anybody.
     await expect(page.getByRole('link', { name: 'Who wants this slot?' })).toBeVisible();
@@ -205,7 +208,7 @@ test.describe('the waitlist, staff half (A-023)', () => {
     // A mis-tap on a shared screen has to be reversible by the same hand.
     await page.getByRole('link', { name: 'Who wants this slot?' }).click();
     await page.getByRole('button', { name: 'Not asked' }).click();
-    await expect(page.getByText('Cleared — she has not been asked.')).toBeVisible();
+    await expect(page.getByText('Cleared — nobody has been asked.')).toBeVisible();
 
     // D-41's line, held: a note about a phone call sends nothing, ever.
     expect(await countOutbox()).toBe(outboxBefore);

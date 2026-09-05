@@ -2804,3 +2804,37 @@ The one exception is an ordinary booked appointment, which carries no word at al
 ### Every appointment state, on one page
 
 There is an internal page that draws every state of every component side by side. It now carries all eight appointment states, six variations on top of them, and four whole days: four stylists, one stylist, a column running forty minutes late, and a day with a stylist off. They are built from fixed examples rather than from the live book, because the live book does not contain three of those four situations — and a design review that can only see the situations that happen to exist today is how the last several defects survived.
+
+## The button the front desk presses more than any other
+
+### It was twenty-six pixels tall
+
+When the desk rings a client — about a slot that just opened up, or because she has not been in since April — it presses one of four buttons: no answer, left a message, thinking about it, took it. That is the most-pressed control in the whole product.
+
+On a tablet, a control you tap needs to be about 44 pixels across. This one was 26. The undo beside it — the thing you press when you have marked the wrong client — was smaller still, an underlined line of text.
+
+That matters more than a missed tap. The screen is shared, and the whole point of these marks is so the second person at the desk at four o'clock does not ring somebody who was already rung at two. Marking the *wrong* client as rung does not produce an error; it quietly removes her from the list, which is exactly the thing the buttons exist to prevent, inverted.
+
+Every one of them is now full size, the undo included, and there is a test that measures the rendered button rather than checking the code that styles it. Nothing in the automated accessibility suite could have caught this: the 44-pixel bar is an AAA-level guideline, and the AA rule that does exist asks for 24 pixels — which 26 passes.
+
+### A screen reader could not tell which one was pressed
+
+The button that had been pressed was shown by inverting it. That is all — there was nothing in the page telling assistive software which of the four was the current answer.
+
+Both copies of the control carried a comment explaining that this could not be fixed, for a reason that turns out not to be true. It is one attribute, it is now there, and there is a test that the one standing answer is marked and the other three are not.
+
+### There were two copies of it, which is why both problems were in two places
+
+The design brief has always described this as one component used on three screens. It was written once for the call-down list, written again from scratch for the waitlist, and then wrapped a third time for the lapsed-client report. So a single fix had to be made twice, and a single wrong comment was believed twice.
+
+It is one component now. The three screens differ in three things — how many outcomes there are, what the call is about, and what the undo is called — and those are the three things you pass it.
+
+### The product stopped assuming every client is a woman
+
+Five sentences said "her" or "she" about whoever the row happened to name: a dropped colour, time put back after a no-show, the outcome on the lapsed report, the release panel, and the confirmation after an undo. There is no gender on a client record, the salon has male clients, and these are sentences the desk reads out down the phone.
+
+### Every way a slot can open up, on one page
+
+The screen that sells freed time has five kinds of row on it — cancelled, shortened, moved, handed to another stylist, and time given back after a no-show — and each one is a different phone call. The internal design page now draws all five at once, with one of them already carrying two calls that have been made about it.
+
+The live book cannot produce that picture: a fresh install has no record of any call ever having been made, so the half of that row that stops the desk ringing somebody twice appears on nobody's screen. It is drawn from fixed examples for the same reason the day compositions are.

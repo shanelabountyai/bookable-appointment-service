@@ -43,7 +43,9 @@ export async function recordOffer(_previous: OfferState, formData: FormData): Pr
     // A-073 reuses this action for the lapsed list, so it revalidates there
     // too — one writer, and every reader of it told.
     revalidatePath('/staff/dashboard/lapsed');
-    return { ok: true, message: 'Cleared — she has not been asked.' };
+    // A-091: no pronoun. The record has no gender field and this line
+    // renders about whoever the row names.
+    return { ok: true, message: 'Cleared — nobody has been asked.' };
   }
 
   if (!(OUTCOMES as readonly string[]).includes(outcome)) {

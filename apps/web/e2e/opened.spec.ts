@@ -219,7 +219,7 @@ test.describe("what's opened up (A-043)", () => {
     await expect(page.getByText(/10:55 · 130 min/)).toBeVisible();
     // WHAT freed it, because the phone call is a different call: you do not
     // offer Mrs Hall another time, she is still coming.
-    await expect(page.getByText('Mrs Hall dropped her Colour')).toBeVisible();
+    await expect(page.getByText('Mrs Hall dropped the Colour')).toBeVisible();
     await expect(page.getByRole('link', { name: '5125550188' })).toHaveAttribute('href', 'tel:5125550188');
 
     // …and the service to ring the waitlist about is the one she DROPPED.

@@ -175,3 +175,67 @@ test('keyboard focus draws a visible ring', async ({ page }) => {
   expect(button?.style).not.toBe('none');
   expect(button?.width).toBe('2px');
 });
+
+/* ===========================================================================
+ * A-091 — `/staff/opened` composed (§8.6) and `CallMarkButtons` (§5.4.9).
+ * ======================================================================== */
+
+test('the five freed kinds are drawn, and one of them carries two call marks', async ({ page }) => {
+  // Five kinds, five different phone calls — the sentence is the row's point,
+  // and each one is asserted by what it SAYS rather than by a `data-` hook.
+  for (const sentence of [
+    'Cancelled late by Ada Chen',
+    'Mrs Hall dropped the Colour and Blow-dry',
+    'Tomas Reyes went to Marcus',
+    'a walk-in with no name never came — the rest of the time was put back',
+  ]) {
+    await expect(page.getByText(sentence)).toBeVisible();
+  }
+  await expect(page.getByText(/^Nadia Okafor moved to /)).toBeVisible();
+
+  // §8.6's "one of them already carrying two call marks" — the composition the
+  // demo book cannot produce (checkpoint 7 found zero marks on a fresh
+  // install, A-095), and the reason this row is drawn from a fixture.
+  const asked = page.getByRole('list').filter({ hasText: 'Mrs Patel' }).last();
+  await expect(asked.getByRole('listitem')).toHaveCount(2);
+  await expect(asked).toContainText('Mrs Patel — thinking about it (Priya)');
+  await expect(asked).toContainText('Jo Hart — took it (Dana)');
+});
+
+test('every call-mark button is a 44px desk target, undo included', async ({ page }) => {
+  // §4's bar, MEASURED — and the reason this test exists: both copies of this
+  // control shipped at `px-2 py-1 text-xs`, which is 26px, on the control the
+  // desk taps more than any other in the product. A mis-tap on a shared screen
+  // marks the WRONG client as rung and silently skips her.
+  const form = page.locator('form').filter({ hasText: 'Not asked' }).first();
+  const buttons = form.getByRole('button');
+  // Four outcomes plus the undo — a count guard, so a form that rendered one
+  // button cannot pass this vacuously.
+  await expect(buttons).toHaveCount(5);
+  for (const button of await buttons.all()) {
+    const box = await button.boundingBox();
+    expect(box?.height, `${await button.textContent()} is under the 44px bar`).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('the mark that stands is aria-pressed, and it is the only one', async ({ page }) => {
+  // Both copies of this control carried a comment claiming `aria-pressed` "is
+  // not available on a submit button that is also the form's payload". It is:
+  // a `<button type="submit">` has role `button`, and role `button` supports
+  // it. Until now the pressed state was an inverted ground and nothing else,
+  // which is colour alone in the accessibility tree as well as on the screen.
+  const form = page.locator('form').filter({ hasText: 'Not asked' }).first();
+  await expect(form.locator('[aria-pressed="true"]')).toHaveCount(1);
+  await expect(form.getByRole('button', { name: 'No answer', pressed: true })).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Took it', pressed: false })).toBeVisible();
+
+  // The two-outcome sibling is the same component, not a copy of it (§5.4.9).
+  const callDown = page.locator('form').filter({ hasText: 'Not rung' });
+  await expect(callDown.getByRole('button')).toHaveCount(3);
+  await expect(callDown.getByRole('button', { name: 'Left a message', pressed: true })).toBeVisible();
+
+  // The undo appears only where something stands: the unmarked row has four
+  // buttons and no fifth.
+  const unmarked = page.locator('form').filter({ hasText: 'Thinking about it' }).first();
+  await expect(unmarked.getByRole('button')).toHaveCount(4);
+});

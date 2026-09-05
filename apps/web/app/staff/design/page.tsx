@@ -6,8 +6,15 @@ import { Field, Input } from '@/components/ui/field';
 import { Tab, Tabs } from '@/components/ui/tabs';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridItem } from '@/lib/day/view-model';
+import { CallMarkButtons } from '@/components/call-mark-buttons';
+import { ATTEMPT_WORDS } from '@/lib/appointments/attempt-words';
+import { recordAttempt } from '@/lib/appointments/call-down-actions';
+import { recordOffer } from '@/lib/waitlist/offer-actions';
+import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
 import { AppointmentChip } from '../day/appointment-chip';
 import { DayGrid } from '../day/day-grid';
+import { FreedSlotRow } from '../opened/freed-slot-row';
+import { FIXTURE_ZONE, FREED_SLOTS } from './opened-fixtures';
 import {
   A_STYLIST_OFF,
   FOUR_STYLISTS,
@@ -187,6 +194,62 @@ export default async function DesignPage() {
               <ChipBox item={item} />
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ==================================================================
+          A-091 — §8.6 and §5.4.9.
+          ================================================================== */}
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-section font-semibold">What&rsquo;s opened up &mdash; all five kinds</h2>
+        <p className="text-body text-ink-muted">
+          Five ways a span becomes sellable and five different phone calls. The first row carries the two
+          call marks &sect;8.6 asks for; the last has no client name, no number and no seed service, which
+          is the row a walk-in leaves behind.
+        </p>
+        <ul className="flex flex-col gap-3">
+          {FREED_SLOTS.map(({ slot, marks }) => (
+            <FreedSlotRow key={slot.key} slot={slot} marks={marks} timezone={FIXTURE_ZONE} />
+          ))}
+        </ul>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-section font-semibold">Call marks &mdash; four outcomes, and the two-outcome sibling</h2>
+        <p className="text-body text-ink-muted">
+          The most-tapped control in the product (&sect;5.4.9). Every outcome stays live on a marked row, so a
+          mis-press is corrected by pressing the right one; the undo appears only once something stands.
+          Each button is 44px (&sect;4) and the pressed one is <code>aria-pressed</code> as well as inverted.
+        </p>
+        {/* The hidden payload is EMPTY on purpose, so a press on the workbench
+            cannot write a mark: `recordOffer` refuses a blank subject and says
+            so in its live region, which is also this page's only drawing of
+            that message. The data says the row is not real — the same reason
+            A-090's fixtures carry no `appointmentId`. */}
+        {(['—', ...(Object.keys(OFFER_WORDS) as (keyof typeof OFFER_WORDS)[])] as const).map((outcome) => (
+          <div key={outcome} className="flex flex-wrap items-center gap-3">
+            <span className="w-28 shrink-0 text-caption text-ink-muted">
+              {outcome === '—' ? 'nothing yet' : OFFER_WORDS[outcome].toLowerCase()}
+            </span>
+            <CallMarkButtons
+              words={OFFER_WORDS}
+              current={outcome === '—' ? undefined : outcome}
+              hidden={{ subject: '', appointmentId: '', clientId: '' }}
+              action={recordOffer}
+              undoLabel="Not asked"
+            />
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="w-28 shrink-0 text-caption text-ink-muted">call-down</span>
+          <CallMarkButtons
+            words={ATTEMPT_WORDS}
+            current="left_message"
+            hidden={{ appointmentId: '' }}
+            action={recordAttempt}
+            undoLabel="Not rung"
+          />
         </div>
       </section>
 

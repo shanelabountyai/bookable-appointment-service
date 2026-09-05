@@ -9,7 +9,8 @@ import { readableDay, readableInstant } from '@/lib/customer-format';
 import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
 import { EntryForm } from './entry-form';
 import { EntryStatusButton } from './entry-status-button';
-import { OfferButtons } from './offer-buttons';
+import { recordOffer } from '@/lib/waitlist/offer-actions';
+import { CallMarkButtons } from '@/components/call-mark-buttons';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,11 +99,16 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                       above stays live for anybody throughout. */}
                   {freed.key && freed.appointmentId && entry.clientId ? (
                     <span className="w-full">
-                      <OfferButtons
-                        subject={subject!}
-                        appointmentId={freed.appointmentId}
-                        clientId={entry.clientId}
-                        offer={offerFor(entry.clientId)}
+                      <CallMarkButtons
+                        words={OFFER_WORDS}
+                        current={offerFor(entry.clientId)?.outcome}
+                        hidden={{
+                          subject: subject!,
+                          appointmentId: freed.appointmentId,
+                          clientId: entry.clientId,
+                        }}
+                        action={recordOffer}
+                        undoLabel="Not asked"
                       />
                       {offerFor(entry.clientId) ? (
                         <span className="mt-1 block text-xs text-zinc-600 dark:text-zinc-400">
