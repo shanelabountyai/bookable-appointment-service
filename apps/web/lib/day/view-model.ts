@@ -80,6 +80,17 @@ export interface GridItem {
    */
   available?: AppointmentStatus[];
   isOverride?: boolean;
+  /**
+   * A-093 — WHY a human booked over the rules, in their words.
+   *
+   * The chip has no room for it and does not show it; the printed sheet has a
+   * whole cell and is read where nothing can be clicked to find out. §5.4.11
+   * calls the marker the most important visual in the product precisely
+   * because somebody typed a reason — and on paper, two clients at 09:30 with
+   * no sentence beside them reads as a broken system rather than as a
+   * decision.
+   */
+  overrideReason?: string;
   /** APPT-03's projected start: what time this is REALLY likely to begin,
    *  given how far behind she is. Shown beside the scheduled time, never
    *  instead of it — the client was booked for 14:00 and her confirmation
@@ -140,6 +151,15 @@ export interface GridColumn {
   items: GridItem[];
   /** Where this provider's working hours sit, for shading the column. */
   windows: { top: number; minutes: number }[];
+  /**
+   * A-093 — the same hours IN WORDS, for the page that has no shading.
+   *
+   * On screen the working day is a lighter band behind the column and needs no
+   * caption. On paper there is no band: "nothing until two" and "she is not in
+   * until two" are the same blank inches, and one of them is time the desk
+   * should be selling.
+   */
+  hours: string[];
 }
 
 /** A-046. One chair, as a track down the same day the columns run down. */
@@ -360,6 +380,7 @@ function toColumn(
           // the detail panel, where the reason they require can be typed.
         }),
         isOverride: appointment.isOverride,
+        ...(appointment.overrideReason ? { overrideReason: appointment.overrideReason } : {}),
         // A-069. The gap chip painting over her is the released time, and it
         // is clickable — this is the sentence that makes that legible instead
         // of alarming.
@@ -452,6 +473,7 @@ function toColumn(
       top: f.minutesFrom(w.start),
       minutes: (w.end.getTime() - w.start.getTime()) / MIN,
     })),
+    hours: column.windows.map((w) => f.range(w.start, w.end)),
   };
 }
 

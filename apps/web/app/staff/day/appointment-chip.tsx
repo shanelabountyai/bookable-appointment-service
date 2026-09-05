@@ -201,3 +201,18 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
 /** The eight, in the order the visit actually walks through them — for the
  *  gallery, so the matrix cannot fall out of step with the map above. */
 export const CHIP_STATUSES = Object.keys(STATUS_STYLE) as (keyof typeof STATUS_STYLE)[];
+
+/**
+ * A-093 — THE WORD, for the OTHER renderer of this model.
+ *
+ * The printed sheet says "no-show" in the same word the tablet does, and it
+ * says it because it reads this map rather than typing a ninth copy of the
+ * status list. Three copies already existed (`STATUS_STYLE` here,
+ * `STATUS_WORDS` in the view model for the accessible name, and the transition
+ * table); a fourth on the paper is the "a status enum is never one edit" trap
+ * with a printer attached. `booked` keeps its deliberate `null` — the majority
+ * of every column, and a word on all of them is a word on none.
+ */
+export function statusWord(status: NonNullable<GridItem['status']>): string | null {
+  return STATUS_STYLE[status].word;
+}

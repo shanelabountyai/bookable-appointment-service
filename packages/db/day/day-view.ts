@@ -37,7 +37,11 @@ export interface DayAppointment {
   startAt: Date;
   endAt: Date;
   /** Where it sits in the column — the D-16 effective range, so an override
-   *  occupies its true span rather than the zero-width one. */
+   *  occupies its true span rather than the zero-width one, and the OUTER
+   *  edges of a segmented one (A-093): a colour is two worked blocks with the
+   *  develop time between them, and this is first-start to last-end. The
+   *  develop time itself comes back as a `gap`, which is what makes it
+   *  sellable, and the grid draws that gap over the chip. */
   occupiesStart: Date;
   occupiesEnd: Date;
   status: string;
@@ -279,7 +283,33 @@ async function loadColumn(
 
   // The two reads meet here: the raw one knows which range each appointment
   // OCCUPIES (D-16), the Prisma one knows what to write on the chip.
-  const occupied = new Map(busy.map((b) => [b.id, b]));
+  //
+  // A-093 — ONE APPOINTMENT IS N ROWS, and this is the join that has to know
+  // it. `findBusyAppointments` reads `AppointmentBlock`, ONE ROW PER WORKED
+  // SPAN (D-29/A-030, and its own header says so), keyed by the APPOINTMENT's
+  // id — so `new Map(busy.map((b) => [b.id, b]))` was last-wins, and a colour
+  // arrived here as its SECOND half only. The chip for a 09:00–11:00 colour
+  // was drawn at 10:25, 55 minutes tall, and the hour Dana actually spends
+  // applying it showed as empty column.
+  //
+  // WHY NOTHING SAW IT. The collapse keeps the LAST block, so the range still
+  // ENDS in the right place: the gaps (subtracted from the busy spans, not
+  // from this) stayed correct, the sheet's own Time and Mins columns read
+  // `startAt`/`endAt` and stayed correct, and the engine never reads this at
+  // all. Only the START moved, and only on a SEGMENTED service — which no
+  // fixture in the suite had, and which is the salon's most valuable service.
+  // Found by the printed sheet, where the two are sorted rather than
+  // positioned: a 09:30 override printed ABOVE the 09:00 colour it overlaps.
+  const occupied = new Map<string, { start: Date; end: Date }>();
+  for (const block of busy) {
+    const seen = occupied.get(block.id);
+    occupied.set(
+      block.id,
+      seen
+        ? { start: seen.start < block.start ? seen.start : block.start, end: seen.end > block.end ? seen.end : block.end }
+        : { start: block.start, end: block.end },
+    );
+  }
   const appointments: DayAppointment[] = rows
     .filter((row) => belongsHere(row.startAt, row.endAt))
     .filter((row) => occupied.has(row.id) || !isActive(row.status))

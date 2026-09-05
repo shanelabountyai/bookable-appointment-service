@@ -2868,3 +2868,51 @@ A booking test failed on the day this work happened and would have failed for an
 It failed because the first time available that morning was noon, and noon is the only slot of the day that exactly one stylist can take — the other three are on their lunch break, and a forty-five minute cut runs into it. So there genuinely was nobody else, the product refused correctly, and the test was measuring the clock. It now picks a time every stylist can take.
 
 What that exposed is worth naming: when there really is nobody else free at that moment, a client who said she had no preference is shown the vanished stylist's empty day rather than everybody's. That is now written down as work to do.
+
+## The day, printed — and an hour of the salon's most expensive service that the screen drew nowhere
+
+Every morning the front desk prints the day: one page per stylist, pinned at her station. It is the copy of the book that still works when the broadband does not.
+
+Redrawing that page for print turned up something that was not about printing at all.
+
+### A colour is two jobs with a wait in the middle, and the screen only drew the second one
+
+A colour is applied, then it develops for half an hour while the stylist does something else, then it is finished. The product models that on purpose — the develop time is time the salon can sell to somebody else, and it does sell it.
+
+The day screen was drawing only the second half. A colour booked from nine to eleven appeared on the screen at twenty-five past ten, an hour and a half late and a third of its true height, and the hour the stylist actually spends applying it showed as an empty column. Ask that screen who is with a client at quarter past nine and it answered wrong.
+
+Nothing caught it because everything downstream stayed right: the free time was offered correctly, the booking engine never reads that number, and the printed times were right. Only the *position* moved, and only on a service that is split into parts — which is a colour, and which no test in the suite had ever created.
+
+What found it was the paper. A page is a list, so where the screen shows time with a position, the printed sheet has to show it with a sort order — and it printed a half-past-nine appointment above the nine o'clock one it overlaps. A stylist reads that page top to bottom and works the day in the order it comes out of the printer.
+
+### Two clients in one hour, on a page that can only show one thing after another
+
+There is exactly one way two clients end up in one stylist's hour: somebody at the desk deliberately books over the rules and types a reason. On screen the two appointments visibly overlap, which is unmistakable. On paper they are two rows one after another, which is what "one thing then the next" looks like.
+
+So the page now says it: the appointment is marked as an override, and the reason somebody typed is printed beside it. Without that, a stylist reads two clients at half past nine as a broken computer and rings the desk to ask.
+
+### The page called itself "who is coming" and printed the one person who is not
+
+When a client does not turn up, her hour is still gone — the product keeps it blocked, deliberately, because the stylist really did wait. But on the printed sheet she looked exactly like everybody else who *is* coming. And once the desk gives that time back and sells it, the person who bought it prints against the same hour with nothing to tell the two apart.
+
+The page now says who never came, and says when her time went back on the market.
+
+### Everything the screen learned in the last six months, the paper never did
+
+Three separate pieces of work each added a fact to the day: a client's no-show status, the mark on an override, and the note that time had been released. Each one updated the screen. None updated the printer — every time, because the screen is what you look at while you work.
+
+There is now a rule that fails the build when the two drift: anything the screen shows has to be on the paper, or written down with the reason it is not.
+
+### Page two had no name and no date on it
+
+A stylist with a full day does not fit on one page. The comment in the code promised the date is on every page, in full, including the year — because yesterday's sheet in the bin looks exactly like today's, and working from the wrong one is worse than working from none.
+
+It was not true. Printing the real book proved it: fourteen clients, a page break mid-afternoon, and page two arrived with the column headings and nothing else. Browsers repeat a table's heading row on every printed page and repeat nothing else, so the stylist's name and the date are now inside that heading row. Page two opens with her name.
+
+### Small things a printer notices
+
+A stylist who is not in today and a stylist with a completely empty day printed the same eight words. One of those is a day the desk should be selling. They are different sentences now, and the working hours are on the page — on screen the hours are a shaded band, and on paper there is no shading.
+
+The blank column for writing in was headed "Notes", while the actual notes printed in the column next to it. It says "Space to write".
+
+And the lines on the page were hand-set to black, which is invisible on the dark tablet the desk uses to check the sheet before spending the paper on it.

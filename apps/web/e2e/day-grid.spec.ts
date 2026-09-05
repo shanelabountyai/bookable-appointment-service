@@ -37,6 +37,9 @@ async function seedAppointment(options: {
   clientNotes?: string;
   /** A-070 — the note about TODAY, as opposed to the note about her. */
   visitNote?: string;
+  /** A-093 — `[worked, gap, worked]` in minutes. The trigger cuts one block
+   *  per worked part, which is how a colour's develop time stays sellable. */
+  segmentPattern?: number[];
 }) {
   const prisma = new PrismaClient();
   try {
@@ -66,6 +69,7 @@ async function seedAppointment(options: {
         startWallTime: '10:00',
         notes: options.visitNote ?? null,
         ...(options.status ? { status: options.status as 'booked' } : {}),
+        ...(options.segmentPattern ? { segmentPattern: options.segmentPattern } : {}),
         lines: {
           create: {
             businessId: business.id,
@@ -623,5 +627,44 @@ test.describe('what is still open (A-076)', () => {
     await page.goto('/staff/unfinished');
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(results.violations).toEqual([]);
+  });
+});
+
+/**
+ * A-093 — A SEGMENTED VISIT IS ONE CHIP, DRAWN OVER ALL OF IT.
+ *
+ * `findBusyAppointments` returns one row per WORKED block keyed by the
+ * appointment's id (D-29), and the day view built its lookup with a last-wins
+ * `Map` — so a colour reached the grid as its SECOND half. Measured on the
+ * seeded book before the fix: Tom Byrne's 09:00–11:00 colour was drawn at
+ * 10:25 and 55 minutes tall, and Dana's column showed EMPTY for the hour she
+ * spends applying it. "Who is with a client at quarter past nine?" is read off
+ * this grid, and it answered wrong.
+ *
+ * The assertion is geometric because the defect was geometric: the chip's box
+ * must CONTAIN the develop gap's box. Asserting the chip's top alone would
+ * pass on a one-block fixture, which is every other fixture in this file.
+ */
+test.describe('a colour on the grid (A-093)', () => {
+  test('is one chip that spans its own develop time', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T09:00:00-05:00',
+      end: '2026-06-09T10:00:00-05:00',
+      // 20 applying, 25 developing, 15 finishing.
+      segmentPattern: [20, 25, 15],
+    });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const chip = page.locator('li').filter({ hasText: 'Ada Chen' }).first();
+    // The develop time comes back as a bookable gap — that is the point of
+    // segments — and it is the box the chip has to be drawn around.
+    const gap = page.getByRole('link', { name: /Book 25 minutes free/ }).first();
+
+    const chipBox = await chip.boundingBox();
+    const gapBox = await gap.boundingBox();
+    expect(chipBox).not.toBeNull();
+    expect(gapBox).not.toBeNull();
+    expect(chipBox!.y).toBeLessThan(gapBox!.y);
+    expect(chipBox!.y + chipBox!.height).toBeGreaterThan(gapBox!.y + gapBox!.height);
   });
 });

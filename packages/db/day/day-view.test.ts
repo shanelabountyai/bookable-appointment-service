@@ -207,6 +207,44 @@ describe('the appointments', () => {
   });
 
   /**
+   * A-093 — A SEGMENTED SERVICE IS TWO BLOCKS, AND THE COLUMN IS ONE CHIP.
+   *
+   * `findBusyAppointments` reads `AppointmentBlock`, one row per WORKED span
+   * (D-29/A-030), keyed by the appointment's id. The day view built its lookup
+   * with `new Map(busy.map((b) => [b.id, b]))` — last-wins — so a colour
+   * arrived as its SECOND half only: a 10:00–12:00 colour drawn at 11:25, 35
+   * minutes tall, with the hour Dana spends applying it showing as empty
+   * column.
+   *
+   * WHY IT SURVIVED THREE CHECKPOINTS. The collapse keeps the LAST block, so
+   * the range still ENDS in the right place — the gaps are subtracted from the
+   * busy spans rather than from this, the sheet's Time and Mins columns read
+   * `startAt`/`endAt`, and the engine never reads this at all. Only the START
+   * moved, and only on a segmented service. Asserting BOTH edges is the point:
+   * an assertion on the end passes against the bug.
+   */
+  it('occupies a segmented service END TO END, not just its last block', async () => {
+    await prisma.serviceSegment.createMany({
+      data: [
+        { businessId, serviceId, ordinal: 0, durationMinutes: 20, isGap: false },
+        { businessId, serviceId, ordinal: 1, durationMinutes: 25, isGap: true },
+        { businessId, serviceId, ordinal: 2, durationMinutes: 15, isGap: false },
+      ],
+    });
+    const appointment = await book({ startAt: at('2026-06-09T10:00:00-05:00') });
+    expect(await prisma.appointmentBlock.count({ where: { appointmentId: appointment.id } })).toBe(2);
+
+    const dana = await columnFor(danaId);
+    const colour = dana.appointments.find((a) => a.id === appointment.id)!;
+    expect(hhmm(colour.occupiesStart)).toBe('15:00'); // 10:00 CDT — the FIRST block
+    expect(hhmm(colour.occupiesEnd)).toBe('16:15'); // 11:00 CDT + the 15-minute buffer
+
+    // And the develop time comes back as a gap, which is the whole point of
+    // segments: it is sellable, and the grid draws it over the chip.
+    expect(dana.gaps.map((g) => [hhmm(g.start), hhmm(g.end)])).toContainEqual(['15:20', '15:45']);
+  });
+
+  /**
    * THE DEMO CHECKPOINT 2 REGRESSION.
    *
    * The queries behind a column deliberately span local midnight ±24h — the

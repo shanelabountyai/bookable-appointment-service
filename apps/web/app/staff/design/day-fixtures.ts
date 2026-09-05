@@ -33,6 +33,8 @@ const HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '1
 
 const ticks = HOURS.map((label, i) => ({ top: i * 60, label }));
 const windows = [{ top: 0, minutes: 540 }];
+/** A-093 — the same hours in words, the way the printed sheet says them. */
+const hours = ['09:00–18:00'];
 
 let seq = 0;
 
@@ -69,6 +71,7 @@ function column(over: Partial<GridModel['columns'][number]> & { providerName: st
     pushFrom: null,
     items: [],
     windows,
+    hours,
     ...over,
   };
 }
