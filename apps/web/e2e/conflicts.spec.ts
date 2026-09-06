@@ -4,7 +4,7 @@
  * The whole spec is one scenario: Dana calls in sick with clients booked, and
  * nothing may happen to them that a person did not choose.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -269,7 +269,6 @@ test.describe('the impact workflow (A-019)', () => {
   test('has no accessibility violations', async ({ page }) => {
     await danaCallsInSick(['10:00']);
     await page.goto(`/staff/conflicts?day=${DAY}`);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

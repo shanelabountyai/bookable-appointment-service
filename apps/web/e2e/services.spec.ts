@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 async function signIn(page: import('@playwright/test').Page) {
@@ -113,8 +113,6 @@ test.describe('service catalog (A-006)', () => {
     await signIn(page);
     await page.goto('/staff/services');
     await page.getByText('Add a service').click(); // exercise the form open too
-    const results = await new AxeBuilder({ page }).analyze();
-    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-    expect(serious).toEqual([]);
+    await expectNoAxeViolations(page, { tags: null, impacts: SERIOUS });
   });
 });

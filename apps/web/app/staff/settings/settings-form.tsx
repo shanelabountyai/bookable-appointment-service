@@ -28,7 +28,7 @@ function Field({
       </label>
       {children}
       {hint && (
-        <p id={hintId} className="text-xs text-zinc-500">
+        <p id={hintId} className="text-xs text-ink-muted">
           {hint}
         </p>
       )}
@@ -56,7 +56,7 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
   return (
     <form action={formAction} className="flex flex-col gap-6">
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">The business</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">The business</h2>
         <Field label="Name" name="name" error={err('name')}>
           <input
             id="name"
@@ -85,7 +85,7 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Booking policy</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Booking policy</h2>
 
         <Field label="Slot interval (minutes)" name="slotIntervalMinutes" hint="How far apart offered start times are." error={err('slotIntervalMinutes')}>
           <input id="slotIntervalMinutes" name="slotIntervalMinutes" type="number" min={1} defaultValue={settings.slotIntervalMinutes}
@@ -119,13 +119,13 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Slot policy</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Slot policy</h2>
 
         <div className="flex items-start gap-2">
           <input id="bufferMayOverlapBreak" name="bufferMayOverlapBreak" type="checkbox" defaultChecked={settings.bufferMayOverlapBreak} className="mt-1" />
           <label htmlFor="bufferMayOverlapBreak" className="text-sm">
             A service&apos;s buffer may overlap a break
-            <span className="block text-xs text-zinc-500">Tidying up can run into the lunch hour.</span>
+            <span className="block text-xs text-ink-muted">Tidying up can run into the lunch hour.</span>
           </label>
         </div>
 
@@ -133,7 +133,7 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
           <input id="bufferMayExtendPastClose" name="bufferMayExtendPastClose" type="checkbox" defaultChecked={settings.bufferMayExtendPastClose} className="mt-1" />
           <label htmlFor="bufferMayExtendPastClose" className="text-sm">
             A service&apos;s buffer may extend past closing
-            <span className="block text-xs text-zinc-500">The last client of the day still gets booked.</span>
+            <span className="block text-xs text-ink-muted">The last client of the day still gets booked.</span>
           </label>
         </div>
 

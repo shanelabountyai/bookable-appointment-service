@@ -56,7 +56,7 @@ export default async function CallDownPage() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href="/staff/day" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/staff/day" className="text-sm text-ink-muted hover:underline">
           ← Today
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Call-down: {readableDay(tomorrow)}</h1>
@@ -87,7 +87,7 @@ export default async function CallDownPage() {
                 // unconfirmed, and a row that vanished on "no answer" would
                 // lose the client the desk most needs to try again.
                 appointment.attempt
-                  ? 'border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500'
+                  ? 'border-zinc-200 bg-zinc-50 text-ink-muted dark:border-zinc-800 dark:bg-zinc-900'
                   : 'border-zinc-300 dark:border-zinc-700',
               ].join(' ')}
             >
@@ -137,7 +137,7 @@ export default async function CallDownPage() {
                 <ConfirmButton appointmentId={appointment.id} />
                 <Link
                   href={`/staff/appointments/${appointment.id}`}
-                  className="text-xs text-zinc-500 underline underline-offset-4"
+                  className="text-xs text-ink-muted underline underline-offset-4"
                 >
                   Details
                 </Link>

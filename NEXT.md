@@ -1,31 +1,39 @@
 # Next
 
-**A-096 — dark-scheme axe across the rest of the staff app.** Next ⬜ in
-`docs/prds/06-backlog.md`, row 98. Measured at checkpoint 7 on the seeded book:
-**124 nodes on `/staff/clients/[id]`**, 2 on the appointment detail, 2 on the
-dashboard drill-down — one value repeated, `text-zinc-500`, 4.6:1 on white and
-**4.1:1** on `#0a0a0a`. Playwright's default colour scheme is light and no spec
-outside `day-grid.spec.ts` had ever changed it.
+**A-097 — "no preference" dead-ends her after all.** Next ⬜ in
+`docs/prds/06-backlog.md`, row 99. Size S, no dependencies.
 
-**Two things carry over into it.** `emulateMedia` alone is not enough — it flips
-the media query on a live page and axe then samples every control
-mid-`transition-colors` (583 nodes of blended colours). **Reload.** And the
-A-094 backlog note still stands: `cn` was fixed so tailwind-merge stops
-discarding A-088's type roles, which means every `Button`, `Field` label,
-`EmptyState` and `Tab` in the staff app changed from 16px to A-088's 14/12px and
-nobody has *looked* at those screens since. A-096 is the pass that puts eyes on
-them.
+A-071's whole point is that a client who said she does not mind is never sent
+back to the time list. It re-offers the same time with somebody else — and when
+there is nobody else, **it falls back to the vanished stylist's day, which is
+empty by construction: she is off.** Proved on 2026-09-05 at 09:56: the flow
+picked Tess at 12:00 (the only slot one stylist can take that day, the other
+three being on their 12:00–13:00 break), Tess was taken out from under the page,
+and the screen answered *"No appointments available that day. Please choose
+another day."* on a Saturday with three stylists free from 13:00 and an empty
+book. **She said no preference and was shown one person's empty column** — the
+fallback carries a provider she never chose.
 
-**A-095 just made those screens worth looking at.** They are no longer empty.
-The seeded book now fills all four columns from today onwards, the room axis
-actually binds (0 → 39 `no-resource-free` over the same sweep), and `/staff/
-waitlist`, `/staff/opened` → "Who wants this slot?", the call-down and
-`/staff/dashboard/lapsed` all carry real rows for the first time. An axe run
-over a screen with rows on it sees a different screen — which is exactly the
-defect checkpoint 7 found twice.
+Found by A-092 because `booking.spec.ts`'s A-071 case was failing on the clock.
+That spec is now pinned to a whole open day, so **nothing covers this path** —
+the fixture is part of the item.
 
-**Also open:** A-097 (row 99, S) — "no preference" falls back to the vanished
-stylist's empty column when nobody else is free at that instant. Independent of
-A-096.
+**What A-096 just changed underneath it.** Every axe assertion in the suite now
+goes through `apps/web/e2e/axe.ts` and runs **both colour schemes**; `eslint`
+refuses a spec that imports `AxeBuilder` directly (`no-restricted-imports` in
+`apps/web/eslint.config.mjs`). So a new spec gets dark for free and must not
+hand-roll one. `text-zinc-500` is gone from `app/staff` and `app/manage` — use
+`text-ink-muted`.
 
-Read `docs/START-HERE.md` and `CLAUDE.md` first, as always.
+**Two things A-096 deliberately left open**, both recorded in `PROGRESS.md`:
+
+- **`/staff/dashboard/overruled` has no e2e spec at all.** Its colour was fixed
+  with the rest, but nothing guards it. Not papered over here: the route renders
+  an empty list without `from`/`to`, and scanning an empty list is scanning the
+  chrome — the fixture needs a genuinely overruled cancellation.
+- **`/staff/design` returns 50 axe `incomplete` results** in both schemes (41
+  `aria-prohibited-attr`). `incomplete` is not `violation`, nothing asserts on
+  it, and it appears on no real staff route — gallery-only.
+
+Read `docs/START-HERE.md` and `CLAUDE.md` first, as always. CLAUDE.md gained
+A-096's rule under "Traps that only fail at runtime".

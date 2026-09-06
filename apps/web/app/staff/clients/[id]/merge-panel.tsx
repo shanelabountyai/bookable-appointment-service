@@ -32,8 +32,8 @@ export function MergePanel({ survivorId, survivorName }: { survivorId: string; s
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Merge a duplicate</h2>
-      <p className="text-sm text-zinc-500">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Merge a duplicate</h2>
+      <p className="text-sm text-ink-muted">
         Find the duplicate record. Its appointments and notes move into {survivorName}, and its phone number keeps
         finding this record afterwards.
       </p>
@@ -50,13 +50,13 @@ export function MergePanel({ survivorId, survivorName }: { survivorId: string; s
       />
 
       {searching ? (
-        <p className="text-sm text-zinc-500">Looking…</p>
+        <p className="text-sm text-ink-muted">Looking…</p>
       ) : candidates.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {candidates.map((candidate) => (
             <li key={candidate.id} className="flex items-center justify-between gap-3">
               <span className="text-sm">
-                {candidate.name ?? 'No name'} <span className="text-zinc-500">{candidate.phone ?? ''}</span>
+                {candidate.name ?? 'No name'} <span className="text-ink-muted">{candidate.phone ?? ''}</span>
               </span>
               <form action={formAction}>
                 <input type="hidden" name="survivorId" value={survivorId} />

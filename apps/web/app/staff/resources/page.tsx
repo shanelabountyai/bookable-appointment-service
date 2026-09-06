@@ -23,7 +23,7 @@ export default async function ResourcesPage() {
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">The room</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-ink-muted">
           Chairs, basins, rooms — whatever a client occupies that is not a person. A client holds one for her whole
           visit including any developing time, so a colour keeps its chair through the hour her stylist is with somebody
           else. Which services need one is set on each service.
@@ -33,7 +33,7 @@ export default async function ResourcesPage() {
       <AddResourceTypeForm />
 
       {types.length === 0 ? (
-        <p className="text-zinc-500">
+        <p className="text-ink-muted">
           Nothing defined yet, so no service can require anything and the room never limits a booking.
         </p>
       ) : (
@@ -41,7 +41,7 @@ export default async function ResourcesPage() {
           <section key={type.id} className="flex flex-col gap-3">
             <div>
               <h2 className="text-lg font-semibold">{type.name}</h2>
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-ink-muted">
                 {type.capacity} in service.{' '}
                 {type.requiringServices.length === 0
                   ? 'No service requires one, so this does not limit anything yet.'
@@ -61,7 +61,7 @@ export default async function ResourcesPage() {
             <AddResourceForm resourceTypeId={type.id} typeName={type.name} />
 
             {type.resources.length === 0 ? (
-              <p className="text-zinc-500">None yet.</p>
+              <p className="text-ink-muted">None yet.</p>
             ) : (
               <ul className="flex flex-col">
                 {type.resources.map((resource) => (

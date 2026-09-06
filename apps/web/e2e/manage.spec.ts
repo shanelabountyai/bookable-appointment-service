@@ -7,7 +7,7 @@
  * have passed for the entire time the confirmation carried the string
  * `token-placeholder`.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -274,7 +274,6 @@ test.describe('the manage link (A-013)', () => {
 
   test('has no accessibility violations', async ({ page }) => {
     await page.goto(await bookAndTakeTheLink(page));
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

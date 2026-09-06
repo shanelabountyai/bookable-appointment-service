@@ -148,7 +148,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
       <div>
-        <Link href={`/staff/day?day=${day}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/staff/day?day=${day}`} className="text-sm text-ink-muted hover:underline">
           ← The day
         </Link>
         {/* HER NAME IS THE DOOR TO HER RECORD — demo checkpoint 7.

@@ -5,7 +5,7 @@
  * pushing a column rewrites `startAt`, and a past day would be refused for the
  * same reason booking one is.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -312,8 +312,7 @@ test.describe('pushing the column (A-018)', () => {
     await dana.getByRole('button', { name: 'Set' }).click();
     await expect(page.getByText('+30 min')).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 
@@ -477,8 +476,7 @@ test.describe('the ring-round (A-059)', () => {
     await dana.getByRole('button', { name: 'Set' }).click();
     await expect(page.getByRole('region', { name: 'Still to ring for Dana' })).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 

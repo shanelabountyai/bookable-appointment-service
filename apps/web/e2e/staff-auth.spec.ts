@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { saveStaffMember, verifyStaffPin } from '@bookable/db/auth';
@@ -106,9 +106,7 @@ test.describe('staff session', () => {
 
   test('the sign-in page has no serious accessibility violations', async ({ page }) => {
     await page.goto('/staff/login');
-    const results = await new AxeBuilder({ page }).analyze();
-    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-    expect(serious).toEqual([]);
+    await expectNoAxeViolations(page, { tags: null, impacts: SERIOUS });
   });
 });
 

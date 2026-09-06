@@ -115,7 +115,7 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
         </p>
       ) : null}
 
-      <p className="text-xs text-zinc-500">This link stays open until a day after your appointment.</p>
+      <p className="text-xs text-ink-muted">This link stays open until a day after your appointment.</p>
     </Shell>
   );
 }
@@ -149,7 +149,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
-      <dt className="w-16 shrink-0 text-zinc-500">{label}</dt>
+      <dt className="w-16 shrink-0 text-ink-muted">{label}</dt>
       <dd className="font-medium">{children}</dd>
     </div>
   );

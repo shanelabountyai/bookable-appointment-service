@@ -12,7 +12,7 @@
  * in `packages/db/notifications`, where it can be asserted in milliseconds
  * instead of driven through a browser.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -176,7 +176,6 @@ test.describe('messages that did not go out (A-051)', () => {
     await signIn(page);
     await page.goto('/staff/messages');
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

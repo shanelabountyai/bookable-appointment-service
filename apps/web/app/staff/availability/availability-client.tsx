@@ -81,29 +81,29 @@ export function WeeklyHours({ providerId, windows }: { providerId: string; windo
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
         {providerId === '' ? 'Business hours' : 'Weekly hours'}
       </h2>
 
       {windows.length === 0 ? (
-        <p className="text-sm text-zinc-500">No hours set — this {providerId === '' ? 'business' : 'provider'} is closed all week.</p>
+        <p className="text-sm text-ink-muted">No hours set — this {providerId === '' ? 'business' : 'provider'} is closed all week.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {windows.map((w) => (
             <li key={w.id} className="flex items-center gap-3 text-sm">
-              <span className="w-24 text-zinc-500">{WEEKDAYS[w.weekday]}</span>
+              <span className="w-24 text-ink-muted">{WEEKDAYS[w.weekday]}</span>
               <span>
                 {w.open.trim()}–{w.close.trim()}
-                {w.endsNextDay && <span className="text-zinc-500"> (next day)</span>}
+                {w.endsNextDay && <span className="text-ink-muted"> (next day)</span>}
               </span>
               {w.breaks.length > 0 && (
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-ink-muted">
                   break {w.breaks.map((b) => `${b.open.trim()}–${b.close.trim()}`).join(', ')}
                 </span>
               )}
               {/* R-8: "the book said she worked till 5, why did the system
                   stop offering 4:30?" — this is that answer. */}
-              {w.who && <span className="text-xs text-zinc-500">set by {w.who}</span>}
+              {w.who && <span className="text-xs text-ink-muted">set by {w.who}</span>}
               <form action={removeAction}>
                 <input type="hidden" name="windowId" value={w.id} />
                 <button type="submit" className={ghost}>
@@ -184,8 +184,8 @@ export function DateOverrides({ providerId, overrides }: { providerId: string; o
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Specific dates</h2>
-      <p className="text-xs text-zinc-500">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Specific dates</h2>
+      <p className="text-xs text-ink-muted">
         An override <strong>replaces</strong> that day&apos;s usual hours — it never adds to them.
       </p>
 
@@ -193,10 +193,10 @@ export function DateOverrides({ providerId, overrides }: { providerId: string; o
         <ul className="flex flex-col gap-1">
           {overrides.map((o) => (
             <li key={o.id} className="flex items-center gap-3 text-sm">
-              <span className="w-28 text-zinc-500">{o.day.trim()}</span>
+              <span className="w-28 text-ink-muted">{o.day.trim()}</span>
               <span>{o.isClosed ? 'Closed' : o.windows.map((w) => `${w.open.trim()}–${w.close.trim()}`).join(', ')}</span>
-              {o.reason && <span className="text-xs text-zinc-500">{o.reason}</span>}
-              {o.who && <span className="text-xs text-zinc-500">set by {o.who}</span>}
+              {o.reason && <span className="text-xs text-ink-muted">{o.reason}</span>}
+              {o.who && <span className="text-xs text-ink-muted">set by {o.who}</span>}
               <form action={removeAction}>
                 <input type="hidden" name="overrideId" value={o.id} />
                 <button type="submit" className={ghost}>
@@ -267,8 +267,8 @@ export function Absences({ providerId, absences }: { providerId: string; absence
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Time off &amp; blocks</h2>
-      <p className="text-xs text-zinc-500">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Time off &amp; blocks</h2>
+      <p className="text-xs text-ink-muted">
         Recording time off always succeeds, even over existing appointments — nothing is ever silently cancelled. Which
         appointments it strands is shown for a person to resolve.
       </p>
@@ -277,12 +277,12 @@ export function Absences({ providerId, absences }: { providerId: string; absence
         <ul className="flex flex-col gap-1">
           {absences.map((a) => (
             <li key={a.id} className="flex items-center gap-3 text-sm">
-              <span className="text-zinc-500">{a.kind === 'time_off' ? 'Time off' : 'Block'}</span>
+              <span className="text-ink-muted">{a.kind === 'time_off' ? 'Time off' : 'Block'}</span>
               <span>
                 {a.startAt} → {a.endAt}
               </span>
-              {a.reason && <span className="text-xs text-zinc-500">{a.reason}</span>}
-              {a.who && <span className="text-xs text-zinc-500">blocked by {a.who}</span>}
+              {a.reason && <span className="text-xs text-ink-muted">{a.reason}</span>}
+              {a.who && <span className="text-xs text-ink-muted">blocked by {a.who}</span>}
               {a.kind === 'time_off' && (
                 <form action={removeAction}>
                   <input type="hidden" name="timeOffId" value={a.id} />

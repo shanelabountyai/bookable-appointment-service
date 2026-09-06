@@ -6,7 +6,7 @@
  * NOT a login: it acts inside a session already opened with a real credential,
  * and decides only whose name goes on the next thing that happens.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import type { BrowserContext, Page } from '@playwright/test';
 import { SESSION_TTL_MS, signSession } from '@bookable/core/auth';
 import { PrismaClient } from '@bookable/db';
@@ -137,9 +137,7 @@ test.describe('named staff identity', () => {
     await addPriya(page);
     await page.goto('/staff/people');
 
-    const results = await new AxeBuilder({ page }).analyze();
-    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-    expect(serious).toEqual([]);
+    await expectNoAxeViolations(page, { tags: null, impacts: SERIOUS });
   });
 
   /**

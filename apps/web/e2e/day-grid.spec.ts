@@ -8,7 +8,7 @@
  * The day is pinned by `?day=`, never left to "today" — a grid spec that
  * depends on the wall clock passes on a Tuesday and fails on a Sunday.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -382,25 +382,14 @@ test.describe('the staff day grid (A-016)', () => {
     // the wrong reason.
     await expect(page.getByText('Cut · 5125550101').first()).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
-
-    // AND IN THE OTHER SCHEME. Every axe run in this suite had only ever seen
-    // the light one — Playwright's default — so half of a palette that flips
-    // with `prefers-color-scheme` had never been measured at all. The chip's
-    // old alpha failed in both (4.33:1 light, 4.18:1 dark) and the light run
-    // was the one that could not see it, since `booked` sits on white where
-    // the same 0.8 scraped past at 4.66:1.
-    // RELOAD, not just `emulateMedia`. Switching the media query on a live page
-    // leaves every control mid-`transition-colors` (A-089's primitives animate
-    // on purpose), and axe then samples the blend — 583 nodes of colours that
-    // exist for 150ms and belong to neither scheme. A reload renders the dark
-    // page from the start, with nothing in flight.
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.reload();
-    await expect(page.getByText('Cut · 5125550101').first()).toBeVisible();
-    const dark = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(dark.violations).toEqual([]);
+    // BOTH SCHEMES — the helper runs light AND dark, because half of a palette
+    // that flips with `prefers-color-scheme` had never been measured at all
+    // until this test. The chip's old alpha failed in both (4.33:1 light,
+    // 4.18:1 dark) and the LIGHT run was the one that could not see it, since
+    // `booked` sits on white where the same 0.8 scraped past at 4.66:1.
+    // A-096 moved the scheme loop into `expectNoAxeViolations` so a spec
+    // cannot go back to measuring one of the two.
+    await expectNoAxeViolations(page);
   });
 });
 
@@ -625,8 +614,7 @@ test.describe('what is still open (A-076)', () => {
   test('has no accessibility violations', async ({ page }) => {
     await unclosed('Olive Open');
     await page.goto('/staff/unfinished');
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 

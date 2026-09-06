@@ -15,7 +15,7 @@
  *    link name is the whole reason `Badge` has no name of its own; a badge
  *    that drifts outside the control announces a bare "3".
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
@@ -33,11 +33,8 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Primitives' })).toBeVisible();
 });
 
-const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
-
 test('the state matrix has no accessibility violations', async ({ page }) => {
-  const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  expect(results.violations).toEqual([]);
+  await expectNoAxeViolations(page);
 });
 
 /**
@@ -62,17 +59,9 @@ test('the chip matrix and the four days have no accessibility violations, in bot
     await expect(page.getByText(word, { exact: true }).first()).toBeVisible();
   }
 
-  const light = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  expect(light.violations).toEqual([]);
-
-  // Reload rather than only `emulateMedia` — see `day-grid.spec.ts`: switching
-  // the query on a live page leaves every control mid-transition and axe then
-  // samples the blend.
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'The day — a stylist off' })).toBeVisible();
-  const dark = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  expect(dark.violations).toEqual([]);
+  // Both schemes: `expectNoAxeViolations` owns that loop since A-096, along
+  // with the mid-transition sampling this used to reload around.
+  await expectNoAxeViolations(page);
 });
 
 test('a pending button is disabled and says so in the accessibility tree', async ({ page }) => {

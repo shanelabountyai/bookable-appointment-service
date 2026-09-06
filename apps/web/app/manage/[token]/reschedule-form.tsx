@@ -39,7 +39,7 @@ export function RescheduleForm({ token, days }: { token: string; days: OpenDay[]
   }
 
   if (days.length === 0) {
-    return <p className="text-sm text-zinc-500">There is nothing free in the next few weeks — please call us.</p>;
+    return <p className="text-sm text-ink-muted">There is nothing free in the next few weeks — please call us.</p>;
   }
 
   return (
@@ -69,9 +69,9 @@ export function RescheduleForm({ token, days }: { token: string; days: OpenDay[]
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium">What time?</legend>
           {loading ? (
-            <p className="text-sm text-zinc-500">Looking…</p>
+            <p className="text-sm text-ink-muted">Looking…</p>
           ) : times.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nothing free that day. Try another.</p>
+            <p className="text-sm text-ink-muted">Nothing free that day. Try another.</p>
           ) : (
             <ul className="flex flex-wrap gap-2">
               {times.map((time) => (
@@ -79,7 +79,7 @@ export function RescheduleForm({ token, days }: { token: string; days: OpenDay[]
                   <label className="flex cursor-pointer items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm has-[:checked]:border-zinc-900 dark:border-zinc-700 dark:has-[:checked]:border-zinc-100">
                     <input type="radio" name="at" value={time.at} required />
                     {time.label}
-                    {time.qualifier ? <span className="text-zinc-500">{time.qualifier}</span> : null}
+                    {time.qualifier ? <span className="text-ink-muted">{time.qualifier}</span> : null}
                   </label>
                 </li>
               ))}

@@ -11,7 +11,7 @@
  * the phone ringing, and gets to a named client in one hop. That is §5.5's
  * headline gap and the operator review has named it twice.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -144,8 +144,5 @@ test('finds a client from the day grid in one hop, while she waits', async ({ pa
 test('the shell has no accessibility violations', async ({ page }) => {
   await signIn(page);
   await page.goto('/staff/day');
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectNoAxeViolations(page);
 });

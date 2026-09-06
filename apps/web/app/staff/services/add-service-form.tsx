@@ -10,7 +10,7 @@ export function AddServiceForm({ resourceTypes }: { resourceTypes: { id: string;
   const [state, formAction, pending] = useActionState(addService, initial);
   return (
     <details className="rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
-      <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-ink-muted">
         Add a service
       </summary>
       <form action={formAction} className="mt-4 flex flex-col gap-4">

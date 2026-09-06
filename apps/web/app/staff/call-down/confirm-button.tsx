@@ -30,7 +30,7 @@ export function ConfirmButton({ appointmentId }: { appointmentId: string }) {
       >
         {pending ? 'Confirming…' : 'Confirmed'}
       </button>
-      {state.message ? <span className="text-xs text-zinc-500">{state.message}</span> : null}
+      {state.message ? <span className="text-xs text-ink-muted">{state.message}</span> : null}
     </form>
   );
 }

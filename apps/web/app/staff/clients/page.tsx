@@ -74,7 +74,7 @@ export default async function ClientsPage({ searchParams }: PageProps<'/staff/cl
                 className="flex flex-col rounded-md border border-zinc-300 px-4 py-3 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
               >
                 <span className="font-medium">{client.name ?? 'No name'}</span>
-                <span className="text-sm text-zinc-500">{client.phone ?? 'No number'}</span>
+                <span className="text-sm text-ink-muted">{client.phone ?? 'No number'}</span>
                 <ClientFlag reliability={flags.get(client.id)} />
                 {client.reachedByOldNumber ? (
                   <span className="text-sm text-amber-700 dark:text-amber-500">

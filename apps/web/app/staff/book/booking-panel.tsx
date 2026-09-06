@@ -408,7 +408,7 @@ export function BookingPanel({
                           called "14:00with Dana". */}
                       <span className="ml-2 text-zinc-600 dark:text-zinc-400"> with {time.providerName}</span>
                       {time.freeCount > 1 ? (
-                        <span className="ml-2 text-xs text-zinc-500"> ({time.freeCount} free)</span>
+                        <span className="ml-2 text-xs text-ink-muted"> ({time.freeCount} free)</span>
                       ) : null}
                     </button>
                   </li>

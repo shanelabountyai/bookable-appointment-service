@@ -14,7 +14,7 @@
  * same thing the reload was buying there — nothing mid-`transition-colors` at
  * the moment axe samples it — and buys it for every step, not just the first.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -67,10 +67,7 @@ test.describe('the booking flow on a phone, at night (A-094)', () => {
    */
   test('has no accessibility violations on any screen, in the dark scheme', async ({ page }) => {
     await eachStep(page, async (where) => {
-      const { violations } = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-        .analyze();
-      expect(violations.map((v) => v.id), where).toEqual([]);
+      await expectNoAxeViolations(page, { where });
     });
   });
 

@@ -2994,3 +2994,37 @@ Correctly, and silently. And here is the part worth keeping: **counting the rows
 A client counts as lapsed if her last visit is old **and she has nothing booked**. The demo has eight clients and books hundreds of appointments among them, so every one of them has something coming up. More appointments make this worse, not better — the report was empty on a book of seven hundred, and a thirty-row screen built the week before had never displayed a single row.
 
 So the lapsed clients are now five people the generated book cannot reach: one visit each, months ago, and nothing since. Their gaps are measured against the report's own threshold rather than typed in, so raising that threshold cannot quietly empty the screen again.
+
+---
+
+## Half of every screen in the staff app had never been looked at
+
+The salon's tablet, like most screens, can be set to a dark colour scheme. The application was built to handle that: there is a named set of colours, each of which swaps itself when the device does, so a screen written once works in both.
+
+Whether it *actually* worked in both had never been checked. Automated accessibility testing tools run in a light scheme unless somebody tells them otherwise, and across forty-one accessibility checks covering the whole product, nobody ever had. So one of the two ways every screen can be rendered was verified continuously, and the other was never verified at all.
+
+Checking it found **275 failures across twelve screens**, and all 275 were the same colour.
+
+### One grey, used in ninety-one places
+
+A mid-grey that is perfectly legible on white — it passes comfortably — sits at 4.1:1 against the near-black background, where the standard asks for 4.5:1. It was the "quiet" text on almost every screen: the back links, the section headings, the phone numbers, the service durations, the hint under every settings field, the client's own visit history.
+
+The client record alone had 194 failures. Services had 27, the availability editor 23, settings 12. Every one of those screens passed in light. Every one failed in dark.
+
+The colour fix was a single substitution — the named colour set already had exactly the right entry, defined precisely because this problem was expected. It just had not been spent everywhere yet.
+
+### The failure was not the colour, it was that nothing could see it
+
+That is the part worth keeping. This exact problem had already been found twice — once on the printed-list screen, once on the mobile booking flow — and each time it was fixed *on that screen*, by that screen's test. But a test that only checks the light scheme is not a mistake somebody made on one screen. It is the shape the check takes if you write it the obvious way. Fixing the three screens that happened to notice leaves the other thirty-eight to be written the same way tomorrow.
+
+So the check moved. There is now one way to run an accessibility scan in this codebase, it runs both colour schemes every time, and the build refuses a test that tries to build its own. The next screen anybody adds gets both schemes without its author having to know any of this.
+
+### The measurement that came back perfect, and was worthless
+
+The first sweep reported all forty-six screens clean in both schemes. It was measuring the login page forty-six times: the automated sign-in had quietly failed and every screen request had bounced back to it.
+
+Which is the same defect the whole item is about, one level up — an accessibility check that passes because it is looking at something other than what you think it is looking at. It was caught by printing which page had actually been measured next to each result. The same instinct applies to the fix itself: after the colour was replaced, the new colour was confirmed against the compiled stylesheet rather than inferred from the failures disappearing — because a colour name that does not exist would also have made them disappear, by silently rendering quiet text at full strength.
+
+### And a first look at a change nobody had seen
+
+The previous item found that five rounds of design work had never reached the screen, and fixed it. That fix changed the size of every button, form label and empty-state message in the staff application at once, and no one had looked at the result. Walked here, in both schemes, on a full demo book. It reads as intended, and the minimum touch size for the desk's controls was never at risk — it is set as a floor in pixels, independently of the text size.

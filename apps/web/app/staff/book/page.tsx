@@ -102,7 +102,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href={`/staff/day?day=${day}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/staff/day?day=${day}`} className="text-sm text-ink-muted hover:underline">
           ← {readableDay(day)}
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -118,11 +118,11 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
       </div>
 
       {!walkIn && !anyone && !provider ? (
-        <p className="text-zinc-500">
+        <p className="text-ink-muted">
           That stylist is not on today. <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
         </p>
       ) : services.length === 0 ? (
-        <p className="text-zinc-500">No services are set up for this stylist yet.</p>
+        <p className="text-ink-muted">No services are set up for this stylist yet.</p>
       ) : (
         <BookingPanel
           day={day}

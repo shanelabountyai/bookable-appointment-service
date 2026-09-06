@@ -43,7 +43,7 @@ export default async function DashboardAppointmentsPage({ searchParams }: PagePr
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href={`/staff/dashboard?week=${fromDay}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/staff/dashboard?week=${fromDay}`} className="text-sm text-ink-muted hover:underline">
           ← Dashboard
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -60,7 +60,7 @@ export default async function DashboardAppointmentsPage({ searchParams }: PagePr
            said "0 appointments · Nothing matches this filter" on a full book,
            which reads as a salon with no appointments in it. `overruled` next
            door already words the same state correctly. */
-        <p className="text-zinc-500">
+        <p className="text-ink-muted">
           {fromDay && toDay ? 'Nothing matches this filter.' : 'Pick a week from the dashboard.'}
         </p>
       ) : (

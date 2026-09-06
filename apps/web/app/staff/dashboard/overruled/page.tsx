@@ -41,7 +41,7 @@ export default async function OverruledPage({ searchParams }: PageProps<'/staff/
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href={`/staff/dashboard?week=${fromDay}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/staff/dashboard?week=${fromDay}`} className="text-sm text-ink-muted hover:underline">
           ← Dashboard
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Let off the late count</h1>

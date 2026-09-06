@@ -39,11 +39,11 @@ export function SegmentEditor({
 
   return (
     <details>
-      <summary className="mt-2 cursor-pointer text-sm text-zinc-500">
+      <summary className="mt-2 cursor-pointer text-sm text-ink-muted">
         Parts ({rows.length === 0 ? `one, ${durationMinutes} min` : `${rows.length}, ${gapTotal} min of it a gap`})
       </summary>
 
-      <p className="mt-2 text-xs text-zinc-500">
+      <p className="mt-2 text-xs text-ink-muted">
         A <strong>gap</strong> is time the client is here but you are not needed — colour developing. Splitting a
         service does not change how it is booked yet; it makes the free minutes visible on the day so the desk can use
         them.
@@ -69,7 +69,7 @@ export function SegmentEditor({
               onChange={(e) => update(i, { durationMinutes: Number(e.target.value) })}
               className="w-20 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950"
             />
-            <span className="text-xs text-zinc-500">min</span>
+            <span className="text-xs text-ink-muted">min</span>
             <input type="hidden" name="segmentIsGap" value={row.isGap ? 'true' : 'false'} />
             <label className="flex items-center gap-1.5 text-sm">
               <input

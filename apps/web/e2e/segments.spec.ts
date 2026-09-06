@@ -10,7 +10,7 @@
  * developing time is offered as an ordinary slot and the last test here books
  * into it.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -230,8 +230,7 @@ test.describe('segmented durations (A-029, A-030)', () => {
     await bookDanasColour();
     for (const url of ['/staff/services', `/staff/day?day=${DAY}`]) {
       await page.goto(url);
-      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-      expect(results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+      await expectNoAxeViolations(page, { impacts: SERIOUS });
     }
   });
 });

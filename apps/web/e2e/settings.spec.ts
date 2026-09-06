@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import { PrismaClient } from '@bookable/db';
 import { addDays, calendarDay, fromDate, resolve, toDate, toLabel, wallTime, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
@@ -180,9 +180,7 @@ test.describe('business settings & providers (A-025)', () => {
     await signIn(page);
     for (const path of ['/staff/settings', '/staff/providers']) {
       await page.goto(path);
-      const results = await new AxeBuilder({ page }).analyze();
-      const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-      expect(serious, `${path} has serious axe violations`).toEqual([]);
+      await expectNoAxeViolations(page, { where: path, tags: null, impacts: SERIOUS });
     }
   });
 });

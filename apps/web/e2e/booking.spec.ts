@@ -9,7 +9,7 @@
  * open days from today in the salon's zone", so the spec picks the first one
  * offered — pinning it would mean the suite passes in June and fails in July.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -122,8 +122,7 @@ test.describe('customer booking flow (A-010)', () => {
   test('has no accessibility violations on any screen', async ({ page }) => {
     await page.goto('/book');
     const scan = async (where: string) => {
-      const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
-      expect(violations.map((v) => v.id), where).toEqual([]);
+      await expectNoAxeViolations(page, { where });
     };
 
     await scan('service');

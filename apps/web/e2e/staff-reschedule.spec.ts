@@ -9,7 +9,7 @@
  * A future refactor that quietly routes this through cancel-then-book would
  * pass every other test in the repo and fail here.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -203,7 +203,6 @@ test.describe('staff reschedule (A-033)', () => {
     await page.getByLabel('Move to which day?').fill(TARGET_DAY);
     await expect(page.locator('#move input[type="radio"]').first()).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

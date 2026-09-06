@@ -5,7 +5,7 @@
  * the log in plain language, the pinned note on every render, the override
  * marker WITH its reason, and "was she actually told?".
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -315,8 +315,7 @@ test.describe('the appointment detail panel (A-027)', () => {
     const appointment = await bookOne({ override: true, clientNotes: 'Allergic to PPD.' });
     await page.goto(`/staff/appointments/${appointment.id}`);
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 
@@ -477,8 +476,7 @@ test.describe('changing what she is having (A-055)', () => {
     const appointment = await bookOne();
     await detail(page, appointment.id);
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 
@@ -637,8 +635,7 @@ test.describe('who was this? (A-068)', () => {
   test('has no accessibility violations', async ({ page }) => {
     const appointment = await bookWalkIn();
     await page.goto(`/staff/appointments/${appointment.id}`);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 
@@ -771,7 +768,6 @@ test.describe("a no-show's time, given back (A-069)", () => {
   test('has no accessibility violations', async ({ page }) => {
     const appointment = await pastNoShow();
     await page.goto(`/staff/appointments/${appointment.id}`);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

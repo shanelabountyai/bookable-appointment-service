@@ -7,7 +7,7 @@ import { StatusActions } from './status-actions';
  * ONE STYLIST'S OWN DAY, as a list (A-016).
  *
  * The quiet text here is `text-zinc-600 dark:text-zinc-400`, never a bare
- * `text-zinc-500` — demo checkpoint 7. That one value is 4.6:1 on white and
+ * `text-ink-muted` — demo checkpoint 7. That one value is 4.6:1 on white and
  * **4.1:1** on the dark ground, so it passes in the scheme every axe run in
  * this suite had ever rendered and fails in the other. The day surfaces are
  * swept because `day-grid.spec.ts` now measures both; the rest of the staff

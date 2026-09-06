@@ -52,12 +52,12 @@ export function EntryForm({ services, providers }: { services: Service[]; provid
 
   return (
     <form action={formAction} className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Add to the waitlist</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Add to the waitlist</h2>
 
       {client ? (
         <p className="text-sm">
           For <span className="font-medium">{client.name ?? 'No name'}</span>{' '}
-          <span className="text-zinc-500">{client.phone ?? ''}</span>{' '}
+          <span className="text-ink-muted">{client.phone ?? ''}</span>{' '}
           <button type="button" onClick={() => setClient(null)} className="text-xs underline underline-offset-4">
             change
           </button>
@@ -73,7 +73,7 @@ export function EntryForm({ services, providers }: { services: Service[]; provid
             className={field}
           />
           {searching ? (
-            <span className="text-xs text-zinc-500">Looking…</span>
+            <span className="text-xs text-ink-muted">Looking…</span>
           ) : candidates.length > 0 ? (
             <ul className="flex flex-col gap-1">
               {candidates.map((candidate) => (
@@ -86,7 +86,7 @@ export function EntryForm({ services, providers }: { services: Service[]; provid
                     }}
                     className="text-sm underline underline-offset-4"
                   >
-                    {candidate.name ?? 'No name'} <span className="text-zinc-500">{candidate.phone ?? ''}</span>
+                    {candidate.name ?? 'No name'} <span className="text-ink-muted">{candidate.phone ?? ''}</span>
                   </button>
                 </li>
               ))}

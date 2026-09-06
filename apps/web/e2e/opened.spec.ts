@@ -11,7 +11,7 @@
  * frees time. The last scenario below is the one A-055's row claimed came for
  * free, and did not.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { changeVisitServices } from '@bookable/db/appointments';
@@ -230,7 +230,6 @@ test.describe("what's opened up (A-043)", () => {
   test('has no accessibility violations', async ({ page }) => {
     await cancelledCut({ day: DAY, time: '10:00' });
     await page.goto('/staff/opened');
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

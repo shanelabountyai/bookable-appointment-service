@@ -11,7 +11,7 @@
  * this exercises the FIRST seed run — the configuration every real install
  * starts in, and the one checkpoint 3's dormant resource layer hid in.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -150,8 +150,7 @@ test.describe('/staff/resources — the room the operator owns', () => {
 
   test('has no axe violations', async ({ page }) => {
     await page.goto('/staff/resources');
-    const results = await new AxeBuilder({ page }).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page, { tags: null });
   });
 });
 
@@ -173,8 +172,7 @@ test.describe('the chair, where it binds', () => {
   test('the day page with an occupied room has no axe violations', async ({ page }) => {
     await seedSeatedAppointment();
     await page.goto(`/staff/day?day=${DAY}`);
-    const results = await new AxeBuilder({ page }).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page, { tags: null });
   });
 
   test('the appointment detail says which chair she is in', async ({ page }) => {

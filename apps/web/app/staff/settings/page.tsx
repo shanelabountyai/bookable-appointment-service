@@ -10,7 +10,7 @@ export default async function SettingsPage() {
   if (!settings) {
     return (
       <main className="mx-auto w-full max-w-2xl p-8">
-        <p className="text-zinc-500">This staff account is not attached to a business.</p>
+        <p className="text-ink-muted">This staff account is not attached to a business.</p>
       </main>
     );
   }

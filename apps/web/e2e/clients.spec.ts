@@ -5,7 +5,7 @@
  * interface failures: a lookup that silently collapses a household into one
  * person, or a merge whose direction is guessed from which page you opened.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -367,8 +367,7 @@ test.describe('the client record (A-015)', () => {
     await page.getByRole('link', { name: /Ada Chen/ }).click();
     await expect(page.getByRole('heading', { name: 'Upcoming' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Past' })).toBeVisible();
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 

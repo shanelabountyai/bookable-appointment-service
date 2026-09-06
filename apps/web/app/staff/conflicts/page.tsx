@@ -43,7 +43,7 @@ export default async function ConflictsPage({ searchParams }: PageProps<'/staff/
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href={`/staff/day?day=${day}`} className="text-sm text-zinc-500 hover:underline">
+        <Link href={`/staff/day?day=${day}`} className="text-sm text-ink-muted hover:underline">
           ← {readableDay(day)}
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Conflicts</h1>

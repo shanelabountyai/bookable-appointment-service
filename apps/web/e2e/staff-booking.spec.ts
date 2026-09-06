@@ -4,7 +4,7 @@
  * The day is pinned by `?day=` everywhere except the walk-in, which is about
  * "now" by definition and therefore uses today.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -560,8 +560,7 @@ test.describe('staff booking (A-017)', () => {
     await page.getByRole('link', { name: /Book \d+ minutes free/ }).first().click();
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 

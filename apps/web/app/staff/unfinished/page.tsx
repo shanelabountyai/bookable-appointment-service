@@ -69,7 +69,7 @@ export default async function UnfinishedPage({ searchParams }: PageProps<'/staff
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
       <div>
-        <Link href="/staff/day" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/staff/day" className="text-sm text-ink-muted hover:underline">
           ← Today
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Still open</h1>

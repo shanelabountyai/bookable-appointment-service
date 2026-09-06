@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures';
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import { PrismaClient } from '@bookable/db';
 import { resetDatabase } from '@bookable/db/testing';
 import { seedSetup } from '@bookable/db/settings';
@@ -131,8 +131,6 @@ test('the front door answers on an install with no salon at all', async ({ page 
 test('the site pages have no serious accessibility violations', async ({ page }) => {
   for (const path of ['/services', '/stylists', '/visit']) {
     await page.goto(path);
-    const results = await new AxeBuilder({ page }).analyze();
-    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-    expect(serious, `${path} has serious axe violations`).toEqual([]);
+    await expectNoAxeViolations(page, { where: path, tags: null, impacts: SERIOUS });
   }
 });

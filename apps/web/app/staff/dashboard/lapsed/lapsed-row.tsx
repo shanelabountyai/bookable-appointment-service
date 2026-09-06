@@ -28,7 +28,7 @@ import { recordOffer } from '@/lib/waitlist/offer-actions';
  *    6.6-screen list and returns you to the top of it. Fixed in `PhoneLink`,
  *    which is where the other seven copies of the same 16px link were.
  *  - **The report was dark-scheme AA-failing, and its axe test could not see
- *    it.** `text-zinc-500` on the back link is 4.1:1 on #0a0a0a (checkpoint 7's
+ *    it.** `text-ink-muted` on the back link is 4.1:1 on #0a0a0a (checkpoint 7's
  *    value, this page's turn); the spec had never run axe in dark and seeded
  *    one row with NO call mark, so the mark line — the half of the row that is
  *    only drawn once somebody has started working the list — had never been

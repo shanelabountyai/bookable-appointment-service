@@ -6,7 +6,7 @@
  * this spec is about the screen — the tiles show the right numbers and every
  * one of them actually drills to the list it claims to.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -117,10 +117,25 @@ test.describe('the owner dashboard (A-024)', () => {
     await expect(page.getByText('1 appointment', { exact: true })).toBeVisible();
   });
 
-  test('has no accessibility violations', async ({ page }) => {
+  /**
+   * THE TILES *AND* THE SCREEN BEHIND THEM.
+   *
+   * A-096 measured the drill-down separately from the dashboard and found it
+   * failing on its own: two nodes, `text-zinc-500` at 4.1:1 on #0a0a0a, on a
+   * route no axe assertion in the suite had ever visited. The tile page was
+   * covered; the page every tile LINKS TO was not — and a report whose
+   * headline number is legible and whose list of names is not is the half a
+   * person actually reads.
+   */
+  test('has no accessibility violations, on the tiles and on the list a tile drills to', async ({ page }) => {
     await page.goto(`/staff/dashboard?week=${DAY}`);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page, { where: 'the tiles' });
+
+    await page.getByRole('link', { name: 'Priya: 1', exact: true }).click();
+    // The list is on the screen before axe looks at it: an empty drill-down is
+    // an axe run over the chrome (checkpoint 7's rule, and A-092's).
+    await expect(page.getByText('Ada Chen')).toBeVisible();
+    await expectNoAxeViolations(page, { where: 'the no-show drill-down' });
   });
 });
 
@@ -271,9 +286,10 @@ test.describe('the clients who have stopped coming (A-073)', () => {
    * which is the only place this screen uses an intent ink — had never been
    * rendered under axe at all.
    *
-   * RELOADED between schemes, not just `emulateMedia`'d: switching the media
-   * query on a live page samples every control mid-`transition-colors`, which
-   * is 583 nodes of blended colour and not a palette anybody ships.
+   * BOTH SCHEMES via `expectNoAxeViolations`, which is where that loop lives
+   * since A-096 — and where the mid-`transition-colors` problem is handled, so
+   * axe never samples the 583 nodes of blended colour a bare scheme flip
+   * produces.
    */
   test('has no accessibility violations, in both schemes, on a list already worked', async ({ page }) => {
     const fresh = await lapsedClient('Olive Gone', 30);
@@ -300,17 +316,19 @@ test.describe('the clients who have stopped coming (A-073)', () => {
     }
     expect(fresh).toBeTruthy();
 
-    for (const colorScheme of ['light', 'dark'] as const) {
-      await page.emulateMedia({ colorScheme });
-      await page.reload();
-      // The states are actually on the screen before axe looks at them: a
-      // green run over a row that never rendered its mark is what this test
-      // used to be.
-      await expect(page.getByText(/worth ringing again/)).toBeVisible();
-      await expect(page.getByText(/Left a message —/)).toBeVisible();
-      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-      expect(results.violations, `${colorScheme} scheme`).toEqual([]);
-    }
+    // ONE reload, and it is not the colour scheme's — the staleness above was
+    // written straight to the database, so the row only says "worth ringing
+    // again" on a re-render. A-096's helper does not reload between schemes,
+    // which is why this one has to be explicit: the two are different reasons
+    // and only one of them survived that change.
+    await page.reload();
+    // The states are actually on the screen before axe looks at them: a green
+    // run over a row that never rendered its mark is what this test used to
+    // be. Asserted ONCE rather than once per scheme, because the helper leaves
+    // the page standing between the light pass and the dark one.
+    await expect(page.getByText(/worth ringing again/)).toBeVisible();
+    await expect(page.getByText(/Left a message —/)).toBeVisible();
+    await expectNoAxeViolations(page);
   });
 
   /**

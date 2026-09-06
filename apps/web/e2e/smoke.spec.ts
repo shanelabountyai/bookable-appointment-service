@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures';
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 
@@ -17,7 +17,5 @@ test('home page loads and has no serious accessibility violations', async ({ pag
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('nobody double-booked');
 
-  const results = await new AxeBuilder({ page }).analyze();
-  const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-  expect(serious).toEqual([]);
+  await expectNoAxeViolations(page, { tags: null, impacts: SERIOUS });
 });

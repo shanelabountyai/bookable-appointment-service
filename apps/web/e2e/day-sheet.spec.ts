@@ -13,7 +13,7 @@
  * here could see an override, a no-show, a stylist who is off, or a stylist
  * with more than a page of clients.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -199,8 +199,7 @@ test.describe('the printable day sheet (A-062)', () => {
     await page.goto(`/staff/day?day=${DAY}&sheet=1`);
     await expect(page.getByText('Ada Chen')).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page, { tags: null });
   });
 });
 
@@ -391,7 +390,6 @@ test.describe('the day sheet as a document (A-093)', () => {
       overrideReason: 'squeezing her in before the wedding',
     });
 
-    const tags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
     await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}&sheet=1`);
     // Asserted present, so a fixture that stops rendering the interesting half
     // cannot make this pass for the wrong reason.
@@ -400,14 +398,8 @@ test.describe('the day sheet as a document (A-093)', () => {
     // marked a no-show has "1 no-show in the last 12 months" against her name
     // in the same cell, and the two are different facts.
     await expect(page.getByText('— No-show')).toBeVisible();
-    expect((await new AxeBuilder({ page }).withTags(tags).analyze()).violations).toEqual([]);
-
-    // RELOAD, not just `emulateMedia` — switching the media query on a live
-    // page leaves the primitives mid-`transition-colors` and axe samples the
-    // blend.
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.reload();
-    await expect(page.getByText('— No-show')).toBeVisible();
-    expect((await new AxeBuilder({ page }).withTags(tags).analyze()).violations).toEqual([]);
+    // Both schemes; A-096's helper owns that loop and the mid-transition
+    // sampling problem that used to make it need a reload.
+    await expectNoAxeViolations(page);
   });
 });

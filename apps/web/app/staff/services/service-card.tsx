@@ -90,7 +90,7 @@ export function ServiceCard({ service, providers, resourceTypes, qualifications,
       )}
 
       <details>
-        <summary className="cursor-pointer text-sm text-zinc-500">Edit</summary>
+        <summary className="cursor-pointer text-sm text-ink-muted">Edit</summary>
         <form action={editAction} className="mt-3 flex flex-col gap-4">
           <input type="hidden" name="serviceId" value={service.id} />
           <ServiceFormFields
@@ -122,7 +122,7 @@ export function ServiceCard({ service, providers, resourceTypes, qualifications,
       />
 
       <details>
-        <summary className="mt-2 cursor-pointer text-sm text-zinc-500">
+        <summary className="mt-2 cursor-pointer text-sm text-ink-muted">
           Qualified providers ({qualifications.length}/{providers.length})
         </summary>
         <ul className="mt-3 flex flex-col gap-2">
@@ -204,7 +204,7 @@ function QualificationRow({
         </p>
       ))}
       {qualified && (
-        <p className="pl-24 text-xs text-zinc-500">
+        <p className="pl-24 text-xs text-ink-muted">
           {qualification!.durationOverrideMinutes !== null && `${qualification!.durationOverrideMinutes} min`}
           {qualification!.durationOverrideMinutes !== null && qualification!.priceOverrideCents !== null && ' · '}
           {qualification!.priceOverrideCents !== null && `${qualification!.priceOverrideCents}¢`}

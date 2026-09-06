@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations, SERIOUS } from './axe';
 import { PrismaClient } from '@bookable/db';
 import { createWeeklyWindow } from '@bookable/db/availability';
 import { addDays, calendarDay, fromDate, instant, instantFromIso, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
@@ -411,11 +411,9 @@ test.describe('availability (A-007)', () => {
     await signIn(page);
     await addProvider(page, 'Dana');
     await page.goto('/staff/availability');
-    const businessScan = await new AxeBuilder({ page }).analyze();
-    expect(businessScan.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+    await expectNoAxeViolations(page, { where: 'business hours', tags: null, impacts: SERIOUS });
 
     await page.getByRole('link', { name: 'Dana' }).click();
-    const providerScan = await new AxeBuilder({ page }).analyze();
-    expect(providerScan.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+    await expectNoAxeViolations(page, { where: "a provider's week", tags: null, impacts: SERIOUS });
   });
 });

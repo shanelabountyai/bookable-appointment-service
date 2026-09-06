@@ -6,7 +6,7 @@
  * of the last twelve months in March 2027 and this whole spec would quietly
  * stop testing the block while still passing the parts that do not need it.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -210,8 +210,7 @@ test.describe('the flag on the staff surfaces (CLIENT-04)', () => {
     await page.goto(`/staff/clients/${clientId}`);
     await expect(page.getByRole('region', { name: 'Missed appointments' })).toBeVisible();
 
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });
 

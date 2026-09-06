@@ -15,10 +15,10 @@ export function NotesForm({ clientId, notes }: { clientId: string; notes: string
   return (
     <form action={formAction} className="flex flex-col gap-2">
       <input type="hidden" name="clientId" value={clientId} />
-      <label htmlFor="notes" className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <label htmlFor="notes" className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
         Pinned note
       </label>
-      <p className="text-sm text-zinc-500">Shown on every appointment for this client. Formula, allergies, anything that must not be missed.</p>
+      <p className="text-sm text-ink-muted">Shown on every appointment for this client. Formula, allergies, anything that must not be missed.</p>
       <textarea
         id="notes"
         name="notes"

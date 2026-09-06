@@ -4,7 +4,7 @@
  * Seeded relative to TODAY, same reason as A-020's no-show spec: "tomorrow"
  * is the window, and a fixed date would eventually stop being tomorrow.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -116,7 +116,6 @@ test.describe('the call-down list (A-021)', () => {
 
     await page.goto('/staff/call-down');
     await expect(page.getByText('Ada Chen')).toBeVisible();
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

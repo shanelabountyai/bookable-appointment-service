@@ -58,11 +58,11 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-8">
       <div>
-        <Link href="/staff/clients" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/staff/clients" className="text-sm text-ink-muted hover:underline">
           ← Clients
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{client.name ?? 'No name'}</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-ink-muted">
           {client.phone ?? 'No number'}
           {client.email ? ` · ${client.email}` : ''}
         </p>
@@ -114,7 +114,7 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
 
       {rebook ? (
         <section className="flex flex-col gap-2 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Rebook last visit</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Rebook last visit</h2>
           <p className="text-sm">
             {rebook.serviceNames.join(' + ')} with {rebook.providerName}. Last in on{' '}
             {readableDay(rebook.lastVisitDay)} — she comes about every {rebook.intervalDays} days, so this starts on{' '}
@@ -156,11 +156,11 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
           landmarks, and by a test that means "in the history" now that a
           no-show legitimately appears twice on this page. */}
       <section aria-labelledby="history-heading" className="flex flex-col gap-3">
-        <h2 id="history-heading" className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+        <h2 id="history-heading" className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
           History
         </h2>
         {history.length === 0 ? (
-          <p className="text-zinc-500">No appointments yet.</p>
+          <p className="text-ink-muted">No appointments yet.</p>
         ) : (
           <>
             {/* A-039: Mrs. Hall rings to move an appointment she can see right
@@ -208,17 +208,17 @@ function HistoryRow({ visit, timezone }: { visit: ClientVisit; timezone: string 
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-x-4 rounded-md border border-zinc-300 px-4 py-3 dark:border-zinc-700">
       <span className="font-medium">{readableInstant(visit.startAt, timezone)}</span>
-      <span className="text-sm text-zinc-500">
+      <span className="text-sm text-ink-muted">
         {visit.services.join(' + ')} · {visit.providerName} · {money(visit.priceCents)}
       </span>
       {/* No-shows and late cancels are shown, not hidden (CLIENT-02): they
           are what the counter in A-020 is built from. */}
       <span className="text-sm font-medium">{visit.status.replace('_', ' ')}</span>
       {/* A-039: this used to be plain text with nowhere to click. */}
-      <Link href={`/staff/appointments/${visit.appointmentId}`} className="text-xs text-zinc-500 underline underline-offset-4">
+      <Link href={`/staff/appointments/${visit.appointmentId}`} className="text-xs text-ink-muted underline underline-offset-4">
         Details
       </Link>
-      {visit.notes ? <p className="w-full text-sm text-zinc-500">{visit.notes}</p> : null}
+      {visit.notes ? <p className="w-full text-sm text-ink-muted">{visit.notes}</p> : null}
     </li>
   );
 }

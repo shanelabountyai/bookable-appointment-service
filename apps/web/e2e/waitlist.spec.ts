@@ -5,7 +5,7 @@
  * Tuesday; Dana's Tuesday Cut cancels; the front desk opens "who wants this
  * slot?" from the appointment, sees her, books her, and closes the entry out.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
@@ -225,7 +225,6 @@ test.describe('the waitlist, staff half (A-023)', () => {
 
   test('has no accessibility violations', async ({ page }) => {
     await page.goto('/staff/waitlist');
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-    expect(results.violations).toEqual([]);
+    await expectNoAxeViolations(page);
   });
 });

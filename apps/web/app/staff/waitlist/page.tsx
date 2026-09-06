@@ -67,7 +67,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
             {freed.serviceName} with {freed.providerName}, {readableInstant(toDate(instantFromIso(freed.at)), business.timezone)}.
           </p>
           {matches && matches.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nobody on the waitlist fits this one.</p>
+            <p className="text-sm text-ink-muted">Nobody on the waitlist fits this one.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {matches?.map((entry) => (
@@ -134,7 +134,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
           Waiting ({entries.length})
         </h2>
         {entries.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nobody is waiting on anything right now.</p>
+          <p className="text-sm text-ink-muted">Nobody is waiting on anything right now.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {entries.map((entry) => {
@@ -148,7 +148,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                 >
                   <div>
                     <p className="font-medium">
-                      {entry.clientName ?? 'No name'} <span className="font-normal text-zinc-500">{entry.clientPhone ?? ''}</span>
+                      {entry.clientName ?? 'No name'} <span className="font-normal text-ink-muted">{entry.clientPhone ?? ''}</span>
                     </p>
                     <p className="text-zinc-600 dark:text-zinc-400">
                       {entry.serviceName} · {providerNames} · {readableDay(entry.fromDay)}–{readableDay(entry.toDay)}

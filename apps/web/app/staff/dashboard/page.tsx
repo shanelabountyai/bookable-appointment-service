@@ -65,12 +65,12 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href={drill({})} className={tileClass}>
-          <span className="text-sm text-zinc-500">Bookings</span>
+          <span className="text-sm text-ink-muted">Bookings</span>
           <span className={numberClass}>{summary.bookings}</span>
         </Link>
 
         <Link href={drill({ status: ['cancelled', 'cancelled_late'] })} className={tileClass}>
-          <span className="text-sm text-zinc-500">Cancellations</span>
+          <span className="text-sm text-ink-muted">Cancellations</span>
           <span className={numberClass}>{summary.cancels.normal + summary.cancels.late}</span>
           <span className="text-sm text-zinc-600 dark:text-zinc-400">
             {summary.cancels.normal} on time · {summary.cancels.late} late
@@ -78,7 +78,7 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
         </Link>
 
         <div className={tileClass}>
-          <span className="text-sm text-zinc-500">No-shows by provider</span>
+          <span className="text-sm text-ink-muted">No-shows by provider</span>
           {summary.noShowsByProvider.length === 0 ? (
             <span className="text-sm text-zinc-600 dark:text-zinc-400">None this week.</span>
           ) : (
@@ -95,7 +95,7 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
         </div>
 
         <div className={tileClass}>
-          <span className="text-sm text-zinc-500">Utilization</span>
+          <span className="text-sm text-ink-muted">Utilization</span>
           <ul className="flex flex-col gap-1">
             {summary.utilizationByProvider.map((p) => (
               <li key={p.providerId}>
