@@ -2954,3 +2954,43 @@ A tool in the build combines style rules and, when two of them conflict, keeps t
 So for five rounds of work, buttons, labels and empty-state text across the entire staff application were rendering at the browser's default size rather than the sizes that had been carefully chosen for them. Nothing looked broken — the default is a perfectly plausible size — and nothing could have caught it: the code says the right thing, the compiler sees two valid names, and the contrast checker measures colour, not size.
 
 It is one line to fix. What is worth keeping is how it was found — by writing a check and then deliberately breaking the thing it checks, to confirm the check can actually fail. There is now a test that reads the five names out of the stylesheet and proves each one survives, so a sixth added later cannot be quietly dropped the same way.
+
+---
+
+## A demo book with four hundred appointments in it, and six features that had never been seen working
+
+The sample salon ships with a generated book — hundreds of appointments across four stylists, a busy column and a quiet one, two daylight-saving days, a client with a no-show history. It exists so the product can be walked through, and so the tests run against something that looks like a real week rather than three hand-typed rows.
+
+An earlier round of work had already caught one version of this problem: the whole book was anchored to fixed dates in June, so twelve weeks later every screen that shows *today* was empty on a fresh install. That was fixed by adding a second book that moves with the calendar.
+
+This round found the same trap one level down, and it is a more interesting one. **A screen can be full of appointments and still be completely empty of the thing it is actually for.**
+
+### Two of the four stylists had nothing booked, ever
+
+The moving book filled two columns and not the other two. From today onwards, Marcus and Tess had zero appointments between them — on a book of four hundred and eleven.
+
+That is visible, and somebody would eventually have noticed. What was not visible is what it did to the room.
+
+### The salon has four chairs, and they never once ran out
+
+A client having colour applied holds a chair through the developing hour while her stylist takes somebody else. So four stylists can need more than four chairs, and the system has a whole layer that decides whether there is a chair free for a visit start to finish — the piece of engineering that a previous review found to be answering a subtly weaker question than the one that actually matters, and offering times the salon then could not seat.
+
+With only two columns filled, **the number of chairs in use never exceeded the number of stylists working.** A read-only sweep of ten days across every stylist and every service produced 2,937 offers of time and not one refusal for want of a chair. The most interesting constraint in the product was, on the demo book, unreachable — and would have stayed unreachable however many appointments got written into two columns.
+
+Filling the other two stylists' columns was one line. It took the sweep from zero chair refusals to thirty-nine. They cluster exactly where an owner would expect: on the short services. A ten-minute fringe trim fits in the stylist's gap, and there is no chair to put the client in.
+
+### The waitlist screen that said "nobody fits" — with a waitlist entry sitting in the table
+
+The seeded book had no waitlist entries, no records of phone calls made, and no clients flagged as overdue for a visit. Six features rendered their empty state on a full book. Nobody had ever seen any of them carrying a row.
+
+Seeding them turned up the sharpest finding of the item. The first attempt added a waitlist entry built from a slot that had just opened up — and the screen still said *"Nobody on the waitlist fits this one."*
+
+The freed-time screen lists two kinds of thing: appointments that were cancelled outright, and the **tail** of an appointment where a client did not turn up and the desk gave the rest of her time back. That tail is twenty-five minutes of what was a two-hour colour. The entry was built from the colour, so the system correctly refused to match a two-and-a-half-hour service into a twenty-five-minute hole.
+
+Correctly, and silently. And here is the part worth keeping: **counting the rows in the table passes against that bug.** There was one entry. There was a list on screen. It said nobody fits — which is character-for-character what it said when the table was empty. The entry is now derived from the cancelled row, the one case where the freed time is guaranteed by arithmetic to be exactly the size of the service, and the test asserts *what the screen says* rather than what the table holds.
+
+### The report that could not have data by accident
+
+A client counts as lapsed if her last visit is old **and she has nothing booked**. The demo has eight clients and books hundreds of appointments among them, so every one of them has something coming up. More appointments make this worse, not better — the report was empty on a book of seven hundred, and a thirty-row screen built the week before had never displayed a single row.
+
+So the lapsed clients are now five people the generated book cannot reach: one visit each, months ago, and nothing since. Their gaps are measured against the report's own threshold rather than typed in, so raising that threshold cannot quietly empty the screen again.

@@ -30,9 +30,30 @@
  */
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
-import { releaseNoShowTime, transitionAppointment } from '../appointments';
+import {
+  listOpenedSlots,
+  listUnconfirmedTomorrow,
+  recordCallAttempt,
+  releaseNoShowTime,
+  transitionAppointment,
+} from '../appointments';
+import { recordCallMark } from '../clients';
+import { LAPSED_WEEKS, listLapsedClients } from '../reports';
+import { createWaitlistEntry } from '../waitlist';
 import { staffActor } from '../../core/auth';
-import { addDays, calendarDay, fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
+import {
+  type ZoneId,
+  addDays,
+  calendarDay,
+  fromDate,
+  instant,
+  instantFromIso,
+  resolve,
+  toDate,
+  toLabel,
+  wallTime,
+  zoneId,
+} from '../../core/time';
 import type { PrismaClient } from '../generated/client/index.js';
 import { upsertDateOverride } from '../availability';
 
@@ -84,6 +105,15 @@ export interface DensitySeedResult {
    *  can assert `/staff/unfinished` has something on it rather than trusting
    *  the modulo. */
   leftUnfinished: number;
+  /** A-095 — the four tables that were empty on a book with hundreds of
+   *  appointments in it. Returned as counts for the same reason
+   *  `leftUnfinished` is: whether the demo has anything on these screens is
+   *  the property this half of the seed exists to guarantee, and a caller
+   *  must be able to assert it rather than trust a loop. */
+  waitlistEntries: number;
+  callMarks: number;
+  callDownAttempts: number;
+  lapsedClients: number;
 }
 
 export async function seedDensity(
@@ -360,9 +390,27 @@ export async function seedDensity(
     if (!reserved.has(day)) recentDays.push(day);
   }
 
+  // ALL FOUR COLUMNS, and A-095 is the item that noticed only two were here.
+  //
+  // The fixed book fills every provider; this one filled Dana and Priya, so
+  // from today onwards Marcus and Tess were EMPTY — two of four columns blank
+  // on every screen anybody demos, and, less visibly, THE ROOM NEVER BOUND.
+  // Measured before this line existed: peak 2 concurrent chair holds in the
+  // future book against 4 chairs, and a read-only sweep of ten future days ×
+  // four providers × eight services returned 2,937 offers and NOT ONE
+  // `no-resource-free`. Checkpoint 6's entire finding — the read model that
+  // predicts the chair chooser's answer — is unreachable on a book where the
+  // number of chairs in use never exceeds the number of stylists working.
+  //
+  // Four different fractions, for §9's reason: the columns must look DIFFERENT
+  // or the day view is being demonstrated against a uniform book. Tess is the
+  // busy one here (she is the one with no midday break) rather than Dana, so
+  // the moving book is not simply the fixed book's shape again.
   for (const day of recentDays) {
     await fill(dana.id, day, 0.7, 'recent-dana');
     await fill(priya.id, day, 0.4, 'recent-priya');
+    await fill(marcus.id, day, 0.55, 'recent-marcus');
+    await fill(tess.id, day, 0.85, 'recent-tess');
   }
 
   // WHAT THE DESK ACTUALLY LEFT BEHIND. A real book does not end the week
@@ -453,15 +501,287 @@ export async function seedDensity(
     });
   }
 
+  // ── A-095 — THE FOUR EMPTY TABLES ──────────────────────────────────────
+  //
+  // A-081 gave the book a moving half so the date-relative SCREENS stopped
+  // rendering their empty state. This is the same trap one layer down: a
+  // screen can be full of appointments and still be empty of the thing it is
+  // FOR. Checkpoint 7 walked a seeded book of 453 appointments and this item
+  // re-measured one of 411 at the seed tests' frozen `now`; both carried zero
+  // waitlist entries, zero call marks, zero call-down attempts and zero
+  // lapsed clients. So WAIT-01–04, A-021, A-023, A-043, A-072, A-073 and
+  // `/staff/opened`'s "Who wants this slot?" all rendered *"Nobody on the
+  // waitlist fits this one"* on a full book, and nobody had ever seen any of
+  // them with a row on it.
+  //
+  // Everything here that CAN go in through its real write path does, for the
+  // same reason the appointments do: the seed then proves the path, and any
+  // row it produces is one a person at the desk could actually have made. The
+  // one exception is `seedLapsedHistory`, whose rows are deliberately in the
+  // past — see its own header for why that cannot use the write path.
+  const lapsedClients = await seedLapsedHistory(prisma, business.id, now, zone, reserved, providers, services);
+
+  // The waitlist is DERIVED FROM THE ROW THAT WAS CANCELLED, and getting that
+  // wrong once is why this comment is long.
+  //
+  // `matchFreedSlot` is a conjunction — same service, this provider acceptable,
+  // the day in range, EVERY day-part tag satisfied, and the service's whole
+  // FOOTPRINT inside the freed minutes — so an entry invented independently of
+  // the book matches nothing and the screen renders the same empty state it
+  // did with no entries at all. That failure is INVISIBLE: the list is there,
+  // it simply says nobody fits.
+  //
+  // Deriving it from "whichever span opened up" is not enough either, and that
+  // version was written and measured before this one: `/staff/opened` carries
+  // A-069's RELEASED TAIL as well as A-043's cancellation, and a tail is
+  // twenty-five minutes of a two-hour colour. Its `primaryServiceId` is still
+  // the colour, whose footprint is 150 minutes, so the last line of
+  // `matchFreedSlot` refuses it — correctly, and silently, and the demo's
+  // first click lands on "Nobody on the waitlist fits this one" exactly as it
+  // did before the entry existed.
+  //
+  // THE CANCELLED ROW IS THE ONE SPAN WHOSE FREED MINUTES ARE THE WHOLE
+  // FOOTPRINT, by construction: `blockedEnd - blockedStart` is buffers plus
+  // the effective duration, which is what the footprint sums. So the match is
+  // guaranteed by arithmetic rather than by whichever service `fill` happened
+  // to pick — and `density-seed.test.ts`'s "puts a name against a slot that
+  // actually opened up" asserts it by RUNNING `matchFreedSlot` against the
+  // seed, rather than by trusting this paragraph or counting the rows.
+  const freed = await listOpenedSlots(prisma, { businessId: business.id, now });
+  let waitlistEntries = 0;
+  let callMarks = 0;
+
+  const wants = freed.find((slot) => slot.appointmentId === toCancel?.id && slot.primaryServiceId !== null);
+  if (wants) {
+    // NOT the client whose appointment freed it — she is the one who dropped
+    // the slot, and offering it back to her is the one call the desk would
+    // never make. `OpenedSlot` carries her NAME rather than her id (it is a
+    // list built to be phoned from), so that is what this compares. Picked by
+    // position from a fixed list, never off the PRNG: whether the demo's first
+    // click finds a match is not a coin toss.
+    const hopeful = clients.find((client) => client.name !== wants.clientName) ?? clients[1]!;
+    const entry = await createWaitlistEntry(prisma, {
+      businessId: business.id,
+      clientId: hopeful.id,
+      serviceId: wants.primaryServiceId!,
+      // Any qualified stylist, no day-part preference: the entry that MUST
+      // match, so the freed slot always has at least one name against it.
+      providerIds: [],
+      fromDay: recentDays[0]!,
+      toDay: recentDays[recentDays.length - 1]!,
+      dayParts: [],
+    });
+    waitlistEntries += 1;
+
+    // A-072/A-073 — SHE HAS ALREADY BEEN RUNG, AND SHE IS THINKING ABOUT IT.
+    // The whole reason that table exists is the second person at the desk
+    // opening the same list at 4pm; a list where nobody has been rung yet
+    // demonstrates the screen without demonstrating the point of it.
+    if (
+      await recordCallMark(prisma, {
+        businessId: business.id,
+        subject: `freed:${wants.key}`,
+        appointmentId: wants.appointmentId,
+        clientId: entry.clientId,
+        outcome: 'thinking',
+        actor: staffActor('seed'),
+      })
+    ) {
+      callMarks += 1;
+    }
+  }
+
+  // Two more that do NOT match that slot, because a list with one row on it
+  // never shows the desk that entries are filtered rather than merely listed:
+  // one narrowed to a single stylist, one to Saturday mornings.
+  const saturdayHopeful = clients[4]!;
+  const pickyHopeful = clients[5]!;
+  for (const [clientId, providerIds, dayParts] of [
+    [saturdayHopeful.id, [] as string[], ['saturday', 'morning']],
+    [pickyHopeful.id, [dana.id], ['afternoon']],
+  ] as const) {
+    await createWaitlistEntry(prisma, {
+      businessId: business.id,
+      clientId,
+      // The salon's signature service, and the one worth ringing about.
+      serviceId: services.find((service) => service.name === 'Colour')?.id ?? services[0]!.id,
+      providerIds: [...providerIds],
+      fromDay: recentDays[0]!,
+      toDay: addDays(calendarDay(recentDays[recentDays.length - 1]!), 21),
+      dayParts: [...dayParts],
+    });
+    waitlistEntries += 1;
+  }
+
+  // A-073's second errand for the same table. One row so `/staff/dashboard/
+  // lapsed` renders a rung client beside un-rung ones — A-092 measured that
+  // screen at thirty rows and its axe test could only ever see the half of the
+  // row that exists before anybody starts working the list.
+  const lapsed = await listLapsedClients(prisma, { businessId: business.id, now });
+  const rung = lapsed[0];
+  if (
+    rung &&
+    (await recordCallMark(prisma, {
+      businessId: business.id,
+      subject: 'lapsed',
+      appointmentId: rung.lastAppointmentId,
+      clientId: rung.clientId,
+      outcome: 'left_message',
+      actor: staffActor('seed'),
+    }))
+  ) {
+    callMarks += 1;
+  }
+
+  // A-021/A-061 — tomorrow's call-down, part-worked. Two attempts with
+  // DIFFERENT outcomes: "no answer" and "left a message" are the two things
+  // the row can say, and a fixture that only ever writes one of them leaves
+  // half the screen unrendered on every walk-through.
+  const tomorrow = addDays(today, 1);
+  const unconfirmed = await listUnconfirmedTomorrow(prisma, { businessId: business.id, tomorrow });
+  let callDownAttempts = 0;
+  for (const [index, outcome] of ([[0, 'no_answer'], [2, 'left_message']] as const)) {
+    const row = unconfirmed[index];
+    if (!row) continue;
+    if (
+      await recordCallAttempt(prisma, {
+        businessId: business.id,
+        appointmentId: row.id,
+        outcome,
+        actor: staffActor('seed'),
+      })
+    ) {
+      callDownAttempts += 1;
+    }
+  }
+
   return {
     appointmentsCreated,
-    clientsCreated: clients.length,
+    clientsCreated: clients.length + lapsedClients,
     byProvider,
     springForwardCount,
     fallBackCount,
     recentDays,
     leftUnfinished,
+    waitlistEntries,
+    callMarks,
+    callDownAttempts,
+    lapsedClients,
   };
+}
+
+/**
+ * A-095 — CLIENTS WHO HAVE NOT BEEN IN, for `/staff/dashboard/lapsed` (§8.6a).
+ *
+ * The report's own definition is why the seed could never produce one by
+ * accident: a lapsed client has a completed visit older than `LAPSED_WEEKS`
+ * AND NOTHING BOOKED AHEAD OF HER. The density seed has eight clients and
+ * books hundreds of appointments among them, so by construction every one of
+ * them has something in the future — measured, zero lapsed clients on a book
+ * of 713 appointments. A-092 built a thirty-row screen that nobody had ever
+ * seen carry a row.
+ *
+ * So these are people the moving book cannot reach: created here, kept out of
+ * the pool `fill` draws from, and given one completed visit each and nothing
+ * since.
+ *
+ * RAW INSERTS, like `seedNoShowHistory` next door and for the same reason —
+ * the write path refuses a booking in the past by design, and time-travelling
+ * a clock the seed does not own is the more expensive lie. The triggers still
+ * write `blockedStart`/`blockedEnd` and the chair hold, so the constraint sees
+ * these rows exactly as it sees every other one.
+ */
+async function seedLapsedHistory(
+  prisma: PrismaClient,
+  businessId: string,
+  now: Date,
+  zone: ZoneId,
+  reserved: ReadonlySet<string>,
+  providers: { id: string }[],
+  services: { id: string; durationMinutes: number; priceCents: number }[],
+): Promise<number> {
+  const WEEK_MS = 7 * 86_400_000;
+  // MEASURED FROM `LAPSED_WEEKS`, never hand-typed. The report's threshold is
+  // a constant somebody may raise; a seed that hard-coded "20 weeks ago" would
+  // then stop producing lapsed clients and the screen would go quietly empty
+  // again, which is the exact defect this function exists to close.
+  const people = [
+    ['Bea Lindqvist', '+15125550111', LAPSED_WEEKS + 8],
+    ['Corinne Adeyemi', '+15125550112', LAPSED_WEEKS + 14],
+    ['Harriet Vance', '+15125550113', LAPSED_WEEKS + 21],
+    ['Joyce Tabora', '+15125550114', LAPSED_WEEKS + 29],
+    ['Nell Fairweather', '+15125550115', LAPSED_WEEKS + 40],
+  ] as const;
+
+  let created = 0;
+  for (const [index, [name, phone, weeksAgo]] of people.entries()) {
+    // THE SAME COLLISION GUARD THE MOVING BOOK USES. `weeksAgo` is measured
+    // back from `now`, which is the real clock in a demo — so on some future
+    // October "twenty weeks ago" lands squarely on `DEMO_WEEK`, the raw insert
+    // meets the exclusion constraint, and the seed dies on a date nobody chose.
+    // `reserved` already holds every fixed fixture day ± 3; walk back off it.
+    let day = toLabel(instant(fromDate(now) - weeksAgo * WEEK_MS), zone).day;
+    for (let guard = 0; reserved.has(day) && guard < 10; guard += 1) day = addDays(day, -1);
+    if (reserved.has(day)) continue;
+
+    const client = await prisma.client.upsert({
+      where: { id: `seed-lapsed-${index}` },
+      create: {
+        id: `seed-lapsed-${index}`,
+        businessId,
+        name,
+        phone,
+        email: `${name.split(' ')[0]!.toLowerCase()}@example.test`,
+      },
+      update: {},
+      select: { id: true },
+    });
+
+    // A DIFFERENT PROVIDER AND A DIFFERENT HOUR each, so five history rows can
+    // never overlap one another whichever day the guard above settled on.
+    const provider = providers[index % providers.length]!;
+    const service = services[index % services.length]!;
+    const startWall = wallTime(`${String(9 + (index % 4)).padStart(2, '0')}:00`);
+    // THE CONVERSION MODULE, not a hardcoded `-05:00`. The neighbouring
+    // no-show fixture can interpolate an offset because its days are fixed
+    // constants somebody checked; these days are derived from `now`, so half
+    // the year they are CST and an assumed CDT would file the visit an hour
+    // off its own wall label. 09:00-12:00 is never a DST transition, so
+    // `earlier` and `unique` are the same instant — taking `earlier` is what
+    // makes that true by construction rather than by assumption.
+    const resolved = resolve(day, startWall, zone);
+    const startAt = toDate(resolved.kind === 'unique' ? resolved.at : resolved.earlier);
+
+    const id = `seed-lapsed-visit-${index}`;
+    created += await prisma.$executeRawUnsafe(
+      `INSERT INTO "Appointment"
+         (id,"businessId","providerId","clientId",status,"startAt","endAt",
+          "bufferBeforeMinutes","bufferAfterMinutes","isOverride","blockedStart","blockedEnd",
+          "startDay","startWallTime","updatedAt")
+       VALUES ($1,$2,$3,$4,'completed',$5::timestamptz,$5::timestamptz + ($6 || ' minutes')::interval,
+               0,0,false,'epoch','epoch',$7,$8, now())
+       ON CONFLICT (id) DO NOTHING`,
+      id,
+      businessId,
+      provider.id,
+      client.id,
+      startAt.toISOString(),
+      String(service.durationMinutes),
+      day,
+      startWall,
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "AppointmentServiceLine" (id,"businessId","appointmentId","serviceId",ordinal,"priceCents","durationMinutes","updatedAt")
+       VALUES ($1,$2,$3,$4,0,$5,$6, now()) ON CONFLICT (id) DO NOTHING`,
+      `${id}-line`,
+      businessId,
+      id,
+      service.id,
+      service.priceCents,
+      service.durationMinutes,
+    );
+  }
+  return created;
 }
 
 async function seedClients(prisma: PrismaClient, businessId: string) {

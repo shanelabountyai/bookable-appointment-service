@@ -9,9 +9,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
-import { calendarDay, daysBetween, fromDate, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
+import { addDays, calendarDay, daysBetween, fromDate, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
 import { computeDaySlots } from '../scheduling';
-import { countUnfinished, listOpenedSlots, listUnfinished } from '../appointments';
+import { countUnfinished, listOpenedSlots, listUnconfirmedTomorrow, listUnfinished } from '../appointments';
+import { listLapsedClients } from '../reports';
+import { listWaitlistEntries, matchFreedSlot } from '../waitlist';
 import { DEMO_WEEK, FALL_BACK_DAY, SPRING_FORWARD_DAY, seedDensity } from './density-seed';
 import { seedSetup } from './setup-seed';
 
@@ -283,6 +285,210 @@ describe('determinism and safety', () => {
       // And it did not skip everything: a window that reserved its way to
       // nothing would make every assertion above pass on an empty set.
       expect(shared.recentDays.length).toBeGreaterThan(10);
+    });
+  });
+
+  /**
+   * A-095 — THE DARK CORNERS CHECKPOINT 7 COULD NOT WALK.
+   *
+   * A-081's assertions above are the same idea one layer up: they caught
+   * SCREENS rendering their empty state on a full book. These catch a screen
+   * that is full of appointments and still empty of the thing it is FOR.
+   *
+   * Every number quoted here was measured on the seed as it stood before this
+   * item, at this same frozen `now`.
+   */
+  describe('A-095 — the dark corners', () => {
+    /**
+     * MEASURED BY THE MINIMUM ACROSS PROVIDERS, never by a total or by "some
+     * provider has some". The book held 411 appointments and Marcus and Tess
+     * had ZERO between them from today onwards — a sum, an average and an
+     * any-provider assertion all pass on that book, and two of four columns
+     * are blank on every screen anybody demos.
+     */
+    it('gives every provider a future column, not just two', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const providers = await prisma.provider.findMany({
+        where: { businessId: business.id, active: true },
+        orderBy: { displayOrder: 'asc' },
+      });
+      const futureCounts = await Promise.all(
+        providers.map((provider) =>
+          prisma.appointment.count({
+            where: {
+              businessId: business.id,
+              providerId: provider.id,
+              startAt: { gt: SEED_NOW },
+              status: { notIn: ['cancelled', 'cancelled_late'] },
+            },
+          }),
+        ),
+      );
+      const empty = providers.filter((_, index) => futureCounts[index] === 0).map((p) => p.displayName);
+      expect(empty, 'every stylist needs a future column').toEqual([]);
+      expect(Math.min(...futureCounts)).toBeGreaterThan(0);
+    });
+
+    /**
+     * THE ROOM AXIS HAS TO BIND SOMEWHERE, or checkpoint 6's entire finding is
+     * unreachable on the demo book.
+     *
+     * With only two of four columns filled, the number of chairs in use never
+     * exceeded the number of stylists working: peak 2 concurrent holds against
+     * 4 chairs, and this exact sweep returned 2,937 offers and NOT ONE
+     * `no-resource-free`. A read model that predicts the chair chooser's
+     * answer cannot be demonstrated — or caught being wrong — on a room that
+     * never fills.
+     *
+     * Asserted on the REASON, not on a count of offers: an absence assertion
+     * here passes for a dozen wrong reasons, including a sweep that threw.
+     */
+    it('fills the room hard enough that the chair axis actually refuses', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const zone = zoneId(business.timezone);
+      const today = toLabel(fromDate(SEED_NOW), zone).day;
+      const providers = await prisma.provider.findMany({
+        where: { businessId: business.id, active: true },
+        orderBy: { displayOrder: 'asc' },
+      });
+      // The SHORT services are where this shows up, and that is the operator's
+      // case rather than an artefact: a ten-minute fringe trim fits in the
+      // stylist's gap and there is no chair to put her in. "She is free, the
+      // room is not."
+      const services = await prisma.service.findMany({
+        where: { businessId: business.id, active: true, durationMinutes: { lte: 45 } },
+        orderBy: { displayOrder: 'asc' },
+      });
+
+      const roomRefusals: string[] = [];
+      for (let offset = 0; offset <= 9; offset += 1) {
+        const day = addDays(calendarDay(today), offset);
+        for (const provider of providers) {
+          for (const service of services) {
+            const result = await computeDaySlots(prisma, {
+              businessId: business.id,
+              providerId: provider.id,
+              serviceIds: [service.id],
+              day,
+              now: SEED_NOW,
+              audience: 'staff',
+            }).catch(() => null);
+            if (!result) continue;
+            for (const exclusion of result.excluded) {
+              if (exclusion.reasons.includes('no-resource-free')) {
+                roomRefusals.push(`${day} ${provider.displayName} ${service.name} @${exclusion.label}`);
+              }
+            }
+          }
+        }
+      }
+      expect(roomRefusals.length, 'the four chairs must bind somewhere in the future book').toBeGreaterThan(0);
+    }, SEED_TIMEOUT);
+
+    /**
+     * WHAT THE SCREEN SAYS, not what the table holds — and the distinction is
+     * the whole of this test rather than a flourish.
+     *
+     * `matchFreedSlot` is a conjunction of five conditions, and an entry that
+     * fails any of them leaves `/staff/opened` → "Who wants this slot?"
+     * rendering *"Nobody on the waitlist fits this one"* — WHICH IS EXACTLY
+     * WHAT IT RENDERED WITH NO ENTRIES AT ALL. `waitlistEntry.count() > 0`
+     * passes against that. The first version of this seed's entry was built
+     * from A-069's RELEASED TAIL, whose 25 freed minutes cannot hold the
+     * 150-minute colour its `primaryServiceId` names; it counted 1 and matched
+     * nobody.
+     */
+    it('puts a name against a slot that actually opened up', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const zone = zoneId(business.timezone);
+      expect(shared.waitlistEntries).toBeGreaterThan(0);
+
+      const entries = await listWaitlistEntries(prisma, business.id);
+      expect(entries.length).toBe(shared.waitlistEntries);
+
+      const opened = await listOpenedSlots(prisma, { businessId: business.id, now: SEED_NOW });
+      const matched = new Map<string, string[]>();
+      for (const slot of opened) {
+        if (!slot.primaryServiceId) continue;
+        const label = toLabel(fromDate(slot.startAt), zone);
+        const who = await matchFreedSlot(prisma, {
+          businessId: business.id,
+          providerId: slot.providerId,
+          serviceId: slot.primaryServiceId,
+          day: label.day,
+          time: label.time,
+          freedMinutes: slot.freedMinutes,
+        });
+        if (who.length > 0) matched.set(slot.key, who.map((entry) => entry.clientName ?? '(no name)'));
+      }
+      expect([...matched.values()].flat().length, 'a freed slot with nobody against it is the empty state again').toBeGreaterThan(0);
+    });
+
+    /**
+     * A-023/WAIT-03/04 — the list must be FILTERED, not merely listed. One
+     * entry that matches everything demonstrates a list; the narrower ones are
+     * what show the desk that "Saturday mornings, Dana only" is a real
+     * constraint the screen applies.
+     */
+    it('seeds narrower entries too, so the filters have something to exclude', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const entries = await listWaitlistEntries(prisma, business.id);
+      expect(entries.some((entry) => entry.dayParts.length > 0)).toBe(true);
+      expect(entries.some((entry) => entry.providerIds.length > 0)).toBe(true);
+      expect(entries.some((entry) => entry.dayParts.length === 0 && entry.providerIds.length === 0)).toBe(true);
+    });
+
+    /**
+     * BOTH SUBJECTS. `ClientCallMark` serves two screens through one table
+     * (A-073), and a fixture that only ever writes one of them leaves the
+     * other exactly as dark as it was.
+     */
+    it('records call marks against both of the subjects that exist', async () => {
+      const subjects = await prisma.clientCallMark.findMany({ select: { subject: true } });
+      expect(shared.callMarks).toBe(subjects.length);
+      expect(subjects.some((row) => row.subject.startsWith('freed:'))).toBe(true);
+      expect(subjects.some((row) => row.subject === 'lapsed')).toBe(true);
+    });
+
+    /**
+     * A-092's screen, which had never carried a row. Every one of the eight
+     * demo clients is booked somewhere in the moving window, and "nothing
+     * booked ahead of her" is half the report's definition — so the seed could
+     * not produce a lapsed client by accident however many appointments it
+     * wrote. Measured: 0 lapsed on a book of 713.
+     */
+    it('leaves clients who have not been in, for the lapsed report', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      expect(shared.lapsedClients).toBeGreaterThan(0);
+      const rows = await listLapsedClients(prisma, { businessId: business.id, now: SEED_NOW });
+      expect(rows.length).toBeGreaterThan(0);
+      // The ROW, not just the count: A-092's list renders her stylist, her
+      // services and what she spent, and a history row with no service line
+      // is dropped by the report entirely rather than rendered blank.
+      expect(rows[0]!.lastServiceNames.length).toBeGreaterThan(0);
+      expect(rows[0]!.lastSpendCents).toBeGreaterThan(0);
+      expect(rows[0]!.weeksSince).toBeGreaterThan(12);
+    });
+
+    /**
+     * A-021/A-061 — tomorrow's call-down, PART-WORKED and with BOTH outcomes.
+     *
+     * A list where nobody has been rung shows the screen without showing what
+     * it is for, and one outcome leaves half the row unrendered on every walk
+     * and under every axe run — which is the sibling of the defect checkpoint
+     * 7 found twice.
+     */
+    it('leaves tomorrow\'s call-down part-worked, in both outcomes', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const zone = zoneId(business.timezone);
+      const tomorrow = addDays(calendarDay(toLabel(fromDate(SEED_NOW), zone).day), 1);
+      const rows = await listUnconfirmedTomorrow(prisma, { businessId: business.id, tomorrow });
+      const attempts = rows.flatMap((row) => (row.attempt ? [row.attempt.outcome] : []));
+      expect(attempts.length).toBe(shared.callDownAttempts);
+      expect(new Set(attempts)).toEqual(new Set(['no_answer', 'left_message']));
+      // PART-worked: a list where every row has been rung is a finished errand,
+      // and the screen's whole job is the ones still to do.
+      expect(rows.length).toBeGreaterThan(attempts.length);
     });
   });
 

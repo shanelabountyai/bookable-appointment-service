@@ -2685,3 +2685,47 @@ Which is every primitive A-089 built. `Button`'s size string carries `text-body`
 **Fixed once, in `cn`**, with `extendTailwindMerge` naming the five roles — the shared function every caller already routes through, rather than a `text-[0.875rem]` at each call site. `packages/design/type-scale.test.ts` is the guard, and its shape is the point: the roles are **read out of `globals.css`** and each is asserted to survive `cn` beside a colour token, so a sixth role added to the scale and forgotten in `cn` fails here instead of rendering at the inherited size for another five items. `cn` cannot read the stylesheet — it ships in the browser bundle — so it carries its own copy of the names, and a copy nobody compares is the defect this repo has now found in four disguises (A-086's status list, A-078's constraint names, A-069's `bodyStart`, A-093's last-wins `Map`). Verified by mutation: dropping `caption` from `cn`'s list fails on `expected 'text-ink-primary' to contain 'text-caption'`.
 
 **Left behind.** `/manage/[token]` — the link she gets by text, opened on the same phone, containing its own day and time lists — is untouched and still on raw zinc with `dark:` twins; it is not §8.8's "booking flow" and it carries its *own* `OpenDay` interface, a second copy of the same shape that this item deliberately did not merge. The `cn` fix changes the rendered size of every `Button` and every `Field` label across the staff app from 16px to A-088's 14/12; the full 278-test sweep is green, but nobody has *looked* at those screens since, and A-096's dark-scheme axe pass over the rest of the staff app is the item that will. The public flow's "selected" state is still a border and a fill — `aria-pressed` and the composed-visit line carry it for AT and in words, but there is no glyph. And no spec runs WebKit: `test.use` sets a 390px viewport in Chromium, which is what tests the layout, not Safari — the iOS zoom rule above is asserted as a font-size, not observed as a zoom.
+
+---
+
+## A-095 — the demo book's dark corners: a book full of appointments and empty of the thing each screen is for
+
+**Commit:** `PENDING`
+
+**The measurement is the item again, and every number below came off the real seed before anything changed.** A throwaway probe reset the test database, ran `seedSetup` + `seedDensity` at the frozen `now` the seed tests already use, and then asked the product's own read paths what they could see.
+
+- **Two of four columns were empty from today onwards.** `seedDensity`'s moving book (A-081) filled Dana and Priya; Marcus and Tess had **0 future appointments each** on a book of 411.
+- **The room axis never bound.** Peak concurrent chair holds in the future book: **2, against 4 chairs.** A read-only sweep of ten future days × four providers × eight services returned **2,937 offers and not one `no-resource-free`**.
+- **Four tables were empty**: 0 waitlist entries, 0 call marks, 0 call-down attempts — and, not named in the backlog row but found by the same probe, **0 lapsed clients**.
+
+**A-081's trap, one layer down, and that framing is the item.** A-081 caught *screens* rendering their empty state on a full book. This is a screen that is full of appointments and still empty of the thing it exists **for**. WAIT-01–04, A-021, A-023, A-043, A-072, A-073 and `/staff/opened`'s "Who wants this slot?" all rendered *"Nobody on the waitlist fits this one"* on a book with hundreds of rows in it, and A-092's thirty-row lapsed report — built one item earlier — had never carried a single row.
+
+### The room axis was one line, and the line was the whole finding
+
+Adding Marcus and Tess to the moving book (four different fractions, Tess busiest because she is the one with no midday break) moved the future book from 2 concurrent chair holds to 4 and the sweep from **0 `no-resource-free` to 39**. Nothing else changed. **The room could not bind because the number of chairs in use never exceeded the number of stylists working** — checkpoint 6's entire finding, the read model that must ask the chair chooser's question rather than a weaker one, was unreachable on the demo book, and would have stayed unreachable however many appointments the seed wrote into two columns.
+
+Where it binds is the operator's own case rather than an artefact: the refusals cluster on the **short** services. A ten-minute fringe trim fits in the stylist's gap and there is no chair to put the client in — `scheduling-words.ts`'s "she is free, the room is not", now reachable from the seeded book.
+
+### The waitlist entry that counted 1 and matched nobody
+
+`matchFreedSlot` is a conjunction of five conditions, and the last one is that the service's whole **footprint** fits inside the freed minutes. The first version of this seed derived its entry from "whichever span opened up" — and `/staff/opened` carries **A-069's released tail** as well as A-043's cancellation. A tail is twenty-five minutes of a two-hour colour; its `primaryServiceId` is still the colour, whose footprint is 150 minutes, so the match was refused. Correctly, and silently.
+
+**`waitlistEntry.count() > 0` passes against that**, and so does every screen-level smoke test: the list is there, it simply says nobody fits — which is character-for-character what it said with no entries at all. Measured before the fix: 3 entries seeded, `matchFreedSlot` returning `[]` on both freed slots.
+
+The fix is to derive the entry from **the row that is cancelled**, which is the one span whose freed minutes are the whole footprint by construction (`blockedEnd - blockedStart` is buffers plus effective duration, which is what the footprint sums). The match is then guaranteed by arithmetic rather than by whichever service `fill` happened to pick that run. And the test asserts **what the screen says** — `matchFreedSlot` returns a name — not what the table holds.
+
+### Lapsed clients could not exist by accident, however big the book got
+
+The report's definition is a conjunction too: a completed visit older than `LAPSED_WEEKS` **and nothing booked ahead of her**. The seed has eight clients and books hundreds of appointments among them, so by construction every one of them has something in the future. **More appointments make this worse, not better.** So the five lapsed clients are people the moving book cannot reach — created in `seedLapsedHistory`, kept out of the pool `fill` draws from, one completed visit each and nothing since. Their gaps are measured as `LAPSED_WEEKS + n` rather than hand-typed, so raising the report's threshold cannot quietly empty the screen again.
+
+Two details in there are load-bearing. Their days are derived from `now`, so they get **the same `reserved` collision guard the moving book uses** — otherwise on some future October "twenty weeks ago" lands on `DEMO_WEEK`, the raw insert meets the exclusion constraint, and the seed dies on a date nobody chose. And the wall time goes through `resolve()` rather than the neighbouring no-show fixture's interpolated `-05:00`: that fixture may assume CDT because its days are fixed constants somebody checked, and these are not.
+
+### What else it seeds, and why each is two things rather than one
+
+- **Three waitlist entries**, not one: the guaranteed match, plus one narrowed to Saturday mornings and one to a single stylist. A list with one row on it never shows the desk that entries are **filtered** rather than merely listed.
+- **Call marks on both subjects.** `ClientCallMark` serves two screens through one table (A-073), and a fixture writing only `freed:` leaves the lapsed half exactly as dark as before.
+- **Two call-down attempts with different outcomes.** "No answer" and "left a message" are the two things the row can say, and one of them leaves half the row unrendered on every walk and under every axe run — the sibling of the defect checkpoint 7 found twice in two files.
+
+**A-024's frozen utilization constant is untouched at `1290/2100`,** and that was the main risk. Everything added runs strictly after the fixed book in the PRNG stream, so the June week the constant measures cannot move. Verified rather than reasoned: the constant test and the every-row determinism test both pass, and two consecutive seeds produced identical books.
+
+**Left behind.** The seed is now ~15–18s rather than ~5–9s (677 appointments against 411 at the pinned `randomSeed`), which the 120s test timeouts absorb but which is a real cost on every file that seeds density. `/staff/opened` still carries only two freed spans — the cancellation and the release — so the screen is demonstrated rather than stress-tested at the fortnight of cancellations `listCallMarks`'s header describes. The waitlist's guaranteed match lands on Alice Hall, who is also the seeded no-show offender, so the reliability flag rides along on that row; honest, but not chosen. And the room binds only on the short services — a colour that cannot be seated is the more expensive version of the same refusal and no seeded day produces one.

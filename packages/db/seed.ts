@@ -21,7 +21,13 @@ async function main(): Promise<void> {
       `[seed] ${setup.providerIds.length} providers, ${setup.serviceIds.length} services, ` +
         `${density.appointmentsCreated} appointments, ${density.clientsCreated} clients ` +
         `(spring-forward ${density.springForwardCount}, fall-back ${density.fallBackCount}; ` +
-        `${density.recentDays.length} days around today, ${density.leftUnfinished} left open)`,
+        `${density.recentDays.length} days around today, ${density.leftUnfinished} left open; ` +
+        // A-095. Every one of these was ZERO on a book of 411 appointments, and
+        // the log said nothing about it — the same silence that let the total
+        // under-report itself by three. A number that is printed is a number
+        // somebody can notice going to zero.
+        `${density.waitlistEntries} on the waitlist, ${density.callMarks} call marks, ` +
+        `${density.callDownAttempts} call-down attempts, ${density.lapsedClients} lapsed)`,
     );
   } finally {
     await prisma.$disconnect();
