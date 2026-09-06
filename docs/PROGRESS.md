@@ -2734,7 +2734,7 @@ Two details in there are load-bearing. Their days are derived from `now`, so the
 
 ## A-096 — half a palette nobody had ever measured, and the reason forty green axe runs could not say so
 
-**Commit:** `PENDING`
+**Commit:** `3fbf0f5`
 
 **What it built.** `apps/web/e2e/axe.ts` — one `expectNoAxeViolations(page, …)` that every one of the suite's **41** axe assertions now goes through, and which runs **light AND dark** on every call; a `no-restricted-imports` rule in `apps/web/eslint.config.mjs` banning `@axe-core/playwright` from `e2e/**/*.spec.ts`, so a spec cannot re-grow the light-only version; the substitution of A-088's `--ink-muted` for `text-zinc-500` across **30 files** of `app/staff` and `app/manage`; and an axe assertion on the dashboard **drill-down**, which no spec in the suite had ever visited.
 
