@@ -2651,7 +2651,7 @@ Marcy Dunn, Colour, 13:00–15:00  chip drawn at 14:25, 55 minutes
 
 ## A-094 — the flow on the only device it is used on, and a type scale that never reached the page
 
-**Commit:** `PENDING`
+**Commit:** `b08807e`
 
 **The measurement is the item, and it happened before anything changed.** A throwaway probe walked all five steps at 390×844 and dumped every interactive element's `boundingBox` and the document's scroll width, then walked them again in a dark context with axe on each. Four numbers came back and they are what this item is:
 
