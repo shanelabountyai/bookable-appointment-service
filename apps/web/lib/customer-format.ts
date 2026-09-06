@@ -22,13 +22,34 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
-/** "Tuesday 9 June". The weekday comes from the ONE conversion module — a
- *  hand-rolled weekday calculation is the banned `new Date(string)` wearing a
- *  hat. */
-export function readableDay(day: string): string {
+/**
+ * The same day in its two halves — "Tuesday" and "9 June".
+ *
+ * A-094. The phone's day list stacks the weekday over the date so twenty
+ * options fit two to a row instead of one, and the thing she is actually
+ * choosing by ("a Saturday") is the line she reads first. That is a matter of
+ * FORM, so the split belongs here beside the join and not at the call site:
+ * `label.split(' ')` in a component would be a second, weaker copy of this
+ * function that breaks silently the day the format changes.
+ *
+ * The weekday comes from the ONE conversion module — a hand-rolled weekday
+ * calculation is the banned `new Date(string)` wearing a hat.
+ */
+export function readableDayParts(day: string): { weekday: string; date: string } {
   const [, month, dayOfMonth] = day.split('-');
-  const weekday = WEEKDAYS[weekdayOf(calendarDay(day))]!;
-  return `${weekday} ${Number(dayOfMonth)} ${MONTHS[Number(month) - 1]!}`;
+  return {
+    weekday: WEEKDAYS[weekdayOf(calendarDay(day))]!,
+    date: `${Number(dayOfMonth)} ${MONTHS[Number(month) - 1]!}`,
+  };
+}
+
+/** "Tuesday 9 June" — the two halves above, joined. Derived rather than
+ *  re-derived: two functions computing one label from one day is exactly the
+ *  "same fact under a different name" this repo keeps finding one layer down
+ *  (A-086, A-069), and a joined copy would drift from the stacked one. */
+export function readableDay(day: string): string {
+  const { weekday, date } = readableDayParts(day);
+  return `${weekday} ${date}`;
 }
 
 /**

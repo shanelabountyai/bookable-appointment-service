@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
+import { cn } from '@/lib/utils';
 import {
   type ConfirmResult,
   type OfferedTime,
@@ -19,6 +22,37 @@ import {
  *
  * D-10's lexicon throughout: an "appointment", never a "booking" or a "slot".
  * Nothing internal — no id, entity name or status — is ever rendered.
+ *
+ * A-094 — DESIGNED FOR THE PHONE, because that is the only device this screen
+ * is ever seen on. Measured at 390×844 before anything was changed, and the
+ * four things the measurement found are what this item is:
+ *
+ *   1. EVERY SCREEN FAILED axe in dark mode — up to 13 nodes, all one value,
+ *      `text-zinc-500` at 4.1:1 on #0a0a0a (3.67:1 inside a selected card).
+ *      Every price and every duration in the salon's catalogue, and the price
+ *      of her own appointment on the confirm screen. Invisible for the life of
+ *      the flow because Playwright's default colour scheme is light and no
+ *      spec here had ever changed it. Fixed by spending A-088's tokens, whose
+ *      `--ink-muted` is zinc-600 for exactly this reason — and which retires
+ *      the `dark:` twin on every rule, since the token flips by itself.
+ *   2. "Back" WAS 31×20 px, on three of the five screens, and it is the
+ *      control a thumb reaches for most (wrong service, wrong day). WCAG 2.2
+ *      SC 2.5.8 asks 24×24 and it failed on both axes. axe has no rule for
+ *      target size, which is why six green accessibility runs never saw it.
+ *   3. The two buttons the whole flow exists to reach — Continue and Confirm
+ *      appointment — were 36px tall and floated at their text width beside
+ *      other controls. They are `Button` at its 44px size now and full-width
+ *      until `sm`, where a thumb cannot miss them.
+ *   4. Twenty day options × 50px was a thousand pixels of near-identical rows
+ *      on an 844px screen. Two columns, weekday stacked over date, is ~640 —
+ *      and puts the word she is choosing by ("a Saturday") on the first line.
+ *
+ * And the fifth, which no measurement finds because it is about latency: every
+ * tap on a service's Continue, a stylist and a day fires a SERVER ROUND-TRIP,
+ * and the screen used to say nothing at all while it ran. On a phone at night
+ * that is a tap that did not work, so she taps again. Each step's controls now
+ * live inside `<fieldset disabled={pending}>` — one native attribute that
+ * disables every control under it — with `aria-busy` beside it.
  */
 type Step = 'service' | 'who' | 'day' | 'time' | 'details' | 'done';
 
@@ -53,10 +87,21 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const duration = (minutes: number) =>
   minutes % 60 === 0 ? `${minutes / 60} hr` : minutes > 60 ? `${Math.floor(minutes / 60)} hr ${minutes % 60} min` : `${minutes} min`;
 
-const card = 'rounded-md border border-zinc-300 px-4 py-3 text-left hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900';
-const selected = 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-zinc-900';
-const primary =
-  'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900';
+/**
+ * The one tappable card, at the phone's target size.
+ *
+ * `min-h-11` is the 44px floor `Button` carries for the same reason, and it is
+ * a FLOOR rather than a height: a service card is two lines and stands at 70,
+ * a time is one and would otherwise stand at 38.
+ */
+const card =
+  'flex min-h-11 w-full flex-col justify-center rounded-control border border-line-control px-4 py-3 text-left text-ink-primary transition-colors duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-ground-sunken disabled:opacity-60';
+
+/** Selected is a STRONGER LINE, not a tint: `--ground-sunken` is a hair off
+ *  the page ground in dark by design (A-088), so a fill alone would be a
+ *  selection nobody on a tablet at night could see. What the fill does is
+ *  carry the state in light, where the line is dark on dark-on-white. */
+const selected = 'border-line-strong bg-ground-sunken';
 
 /** A-056 — the sentinel for "no preference". Never a provider id: the real
  *  stylist arrives on the TIME she picks, chosen by SVC-02. */
@@ -119,10 +164,16 @@ export function BookingFlow({ services }: { services: Service[] }) {
   /** What she is booking, in one line, everywhere it has to be restated. */
   const visitName = chosen.map((c) => c.name).join(' + ');
 
+  /** Every step's controls sit inside one of these. `disabled` on a
+   *  `<fieldset>` is the native platform's "none of this is live right now"
+   *  and reaches every control under it, including Back — which is what stops
+   *  the second tap on a slow connection turning into a second server action. */
+  const stepProps = { disabled: pending, 'aria-busy': pending || undefined };
+
   return (
     <div className="flex flex-col gap-6">
       {step !== 'done' && (
-        <nav aria-label="Progress" className="text-sm text-zinc-500">
+        <nav aria-label="Progress" className="text-body text-ink-muted">
           Step {stepIndex + 1} of {STEP_ORDER.length}
         </nav>
       )}
@@ -139,9 +190,9 @@ export function BookingFlow({ services }: { services: Service[] }) {
           bought one feature with a screen every single-service client has to
           tap past. */}
       {step === 'service' && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-2 text-lg font-semibold">What would you like booked?</legend>
-          <p className="-mt-2 text-sm text-zinc-500">Pick as many as you like — we&apos;ll book them together.</p>
+        <fieldset {...stepProps} className="flex flex-col gap-3">
+          <legend className="mb-2 text-section font-semibold">What would you like booked?</legend>
+          <p className="-mt-2 text-body text-ink-muted">Pick as many as you like — we&apos;ll book them together.</p>
           {services.map((s) => {
             const index = ids.indexOf(s.id);
             // A-058. Desk-only: present, and saying what to do. Rendered as
@@ -150,15 +201,12 @@ export function BookingFlow({ services }: { services: Service[] }) {
             // beside it is the entire message.
             if (!s.bookableOnline) {
               return (
-                <div
-                  key={s.id}
-                  className="rounded-md border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700"
-                >
-                  <span className="font-medium text-zinc-500">{s.name}</span>
-                  <span className="block text-sm text-zinc-500">
+                <div key={s.id} className="rounded-control border border-dashed border-line-control px-4 py-3">
+                  <span className="font-medium text-ink-muted">{s.name}</span>
+                  <span className="block text-body text-ink-muted">
                     {duration(s.durationMinutes)} · {money(s.priceCents)}
                   </span>
-                  <span className="mt-1 block text-sm text-zinc-600 dark:text-zinc-400">
+                  <span className="mt-1 block text-body text-ink-secondary">
                     Give us a call for this one — it needs a quick chat first.
                   </span>
                 </div>
@@ -169,17 +217,17 @@ export function BookingFlow({ services }: { services: Service[] }) {
                 key={s.id}
                 type="button"
                 aria-pressed={index >= 0}
-                className={`${card} ${index >= 0 ? selected : ''}`}
+                className={cn(card, index >= 0 && selected)}
                 onClick={() => toggle(s)}
               >
                 <span className="font-medium">
                   {/* The number appears only once there are two, so an
                       ordinary single-service booking is not made to look like
                       a list. */}
-                  {index >= 0 && chosen.length > 1 && <span className="mr-1 text-zinc-500">{index + 1}.</span>}
+                  {index >= 0 && chosen.length > 1 && <span className="mr-1 text-ink-muted">{index + 1}.</span>}
                   {s.name}
                 </span>
-                <span className="block text-sm text-zinc-500">
+                <span className="block text-body text-ink-muted">
                   {duration(s.durationMinutes)} · {money(s.priceCents)}
                 </span>
               </button>
@@ -187,11 +235,15 @@ export function BookingFlow({ services }: { services: Service[] }) {
           })}
 
           {chosen.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={pending}
-                className={primary}
+            // COLUMN ON THE PHONE, row from `sm`. The composed visit is what
+            // she is agreeing to, so it reads directly above the button that
+            // agrees to it rather than off to its right where a 390px screen
+            // would have wrapped it anyway.
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <Button
+                variant="primary"
+                className="w-full sm:w-auto"
+                pending={pending}
                 onClick={() =>
                   startTransition(async () => {
                     setProviders(await listProvidersFor(ids));
@@ -200,10 +252,10 @@ export function BookingFlow({ services }: { services: Service[] }) {
                 }
               >
                 Continue
-              </button>
+              </Button>
               {/* The COMPOSED visit (VISIT-01), not a line per service: what
                   she needs to know is how long she is here and what it costs. */}
-              <p className="text-sm text-zinc-500">
+              <p className="text-body text-ink-muted">
                 {visitName} · {duration(visit.durationMinutes)} · {money(visit.priceCents)}
               </p>
             </div>
@@ -212,8 +264,8 @@ export function BookingFlow({ services }: { services: Service[] }) {
       )}
 
       {step === 'who' && chosen.length > 0 && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-2 text-lg font-semibold">Who would you like to see?</legend>
+        <fieldset {...stepProps} className="flex flex-col gap-3">
+          <legend className="mb-2 text-section font-semibold">Who would you like to see?</legend>
           {/* A-056 (SVC-02) — FIRST, and that position is the point. A client
               who has never been here has no opinion about Dana or Priya, and a
               forced choice is answered by picking the top name or leaving.
@@ -221,7 +273,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
               every new client while the junior sits at 40%. */}
           <button
             type="button"
-            className={`${card} ${provider?.id === ANYONE ? selected : ''}`}
+            className={cn(card, provider?.id === ANYONE && selected)}
             onClick={() => {
               setProvider({ id: ANYONE, name: 'No preference' });
               startTransition(async () => {
@@ -231,13 +283,13 @@ export function BookingFlow({ services }: { services: Service[] }) {
             }}
           >
             <span className="font-medium">No preference</span>
-            <span className="block text-sm text-zinc-500">Whoever is free — we&apos;ll match you up</span>
+            <span className="block text-body text-ink-muted">Whoever is free — we&apos;ll match you up</span>
           </button>
           {providers.map((p) => (
             <button
               key={p.id}
               type="button"
-              className={`${card} ${provider?.id === p.id ? selected : ''}`}
+              className={cn(card, provider?.id === p.id && selected)}
               onClick={() => {
                 setProvider(p);
                 startTransition(async () => {
@@ -254,30 +306,38 @@ export function BookingFlow({ services }: { services: Service[] }) {
       )}
 
       {step === 'day' && chosen.length > 0 && provider && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-2 text-lg font-semibold">Which day suits you?</legend>
+        <fieldset {...stepProps} className="flex flex-col gap-3">
+          <legend className="mb-2 text-section font-semibold">Which day suits you?</legend>
           {openDays.length === 0 ? (
-            <p className="text-zinc-500">No appointments available in the next few weeks. Please call us.</p>
+            <p className="text-ink-muted">No appointments available in the next few weeks. Please call us.</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            // TWO COLUMNS, weekday over date. The list is up to twenty days
+            // and was a thousand pixels of "Tuesday 8 September" rows on a
+            // screen 844 tall; stacked and paired it is a little over one
+            // screenful. The weekday leads because that is what she is
+            // choosing by — the date is how she confirms it, not how she finds
+            // it. Both halves come from the server's one formatter
+            // (`readableDayParts`); the browser never derives a weekday.
+            <ul className="grid grid-cols-2 gap-2">
               {openDays.map((d) => (
                 <li key={d.day}>
                   <button
                     type="button"
-                    className={`${card} w-full ${day?.day === d.day ? selected : ''}`}
+                    className={cn(card, 'px-3', day?.day === d.day && selected)}
                     onClick={() => {
                       setDay(d);
                       startTransition(async () => {
                         setTimes(
-                    provider.id === ANYONE
-                      ? await listAnyProviderTimes(ids, d.day)
-                      : await listTimesOn(ids, provider.id, d.day),
-                  );
+                          provider.id === ANYONE
+                            ? await listAnyProviderTimes(ids, d.day)
+                            : await listTimesOn(ids, provider.id, d.day),
+                        );
                         setStep('time');
                       });
                     }}
                   >
-                    {d.label}
+                    <span className="font-medium">{d.weekday}</span>
+                    <span className="block text-body text-ink-muted">{d.date}</span>
                   </button>
                 </li>
               ))}
@@ -288,19 +348,25 @@ export function BookingFlow({ services }: { services: Service[] }) {
       )}
 
       {step === 'time' && chosen.length > 0 && provider && day && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-2 text-lg font-semibold">What time on {day.label}?</legend>
+        <fieldset {...stepProps} className="flex flex-col gap-3">
+          <legend className="mb-2 text-section font-semibold">What time on {day.label}?</legend>
           {times.length === 0 ? (
-            <p className="text-zinc-500">No appointments left that day. Please choose another.</p>
+            <p className="text-ink-muted">No appointments left that day. Please choose another.</p>
           ) : (
             // Plain buttons in a list: keyboard operable natively, in DOM
             // order, with no roving-tabindex machinery to get wrong.
-            <ul className="flex flex-wrap gap-2">
+            //
+            // A GRID OF EQUAL COLUMNS, not `flex-wrap`. Wrapping sized every
+            // button to its own label, so a column of times came out ragged
+            // and the last row half-empty; three equal columns also leave room
+            // for the FB-5 qualifier ("01:30 CDT") without the label wrapping
+            // inside the button.
+            <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {times.map((t) => (
                 <li key={t.at}>
                   <button
                     type="button"
-                    className={`${card} ${time?.at === t.at ? selected : ''}`}
+                    className={cn(card, 'items-center px-2 text-center', time?.at === t.at && selected)}
                     onClick={() => {
                       setTime(t);
                       setStep('details');
@@ -309,7 +375,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
                     {t.label}
                     {/* FB-5: on the day the clocks go back the same label
                         happens twice — show which one this is. */}
-                    {t.qualifier && <span className="ml-1 text-xs text-zinc-500">{t.qualifier}</span>}
+                    {t.qualifier && <span className="ml-1 text-caption text-ink-muted">{t.qualifier}</span>}
                   </button>
                 </li>
               ))}
@@ -358,7 +424,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
             });
           }}
         >
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-section font-semibold">
             {/* A-071. On the "no preference" path the person is whoever the
                 TIME carries — SVC-02 chose her when the list was built, and
                 she changes if the first one is taken while the client is
@@ -366,39 +432,55 @@ export function BookingFlow({ services }: { services: Service[] }) {
                 sentence anybody wanted to read either. */}
             {visitName} with {time.providerName ?? provider.name}
           </h2>
-          <p className="text-zinc-500">
+          <p className="text-ink-muted">
             {day.label} at {time.label}
             {time.qualifier ? ` ${time.qualifier}` : ''} · {duration(visit.durationMinutes)} ·{' '}
             {money(visit.priceCents)}
           </p>
 
-          <Field label="Your name" name="name" required error={result?.fieldErrors?.name} autoComplete="name" />
-          <Field label="Phone" name="phone" required type="tel" error={result?.fieldErrors?.phone} autoComplete="tel" />
-          <Field label="Email (optional)" name="email" type="email" autoComplete="email" />
+          {/* A-089's `Field`, and the `?? ''` is the point of it: an
+              `aria-live` region must EXIST before its text arrives, or the
+              announcement is silent. This form used to render the error
+              element only once there was an error — so every server-side
+              refusal appeared on screen and said nothing at all to a screen
+              reader. */}
+          <Field id="name" label="Your name" error={result?.fieldErrors?.name ?? ''}>
+            {(control) => <Input {...control} name="name" required autoComplete="name" />}
+          </Field>
+          <Field id="phone" label="Phone" error={result?.fieldErrors?.phone ?? ''}>
+            {(control) => <Input {...control} name="phone" type="tel" required autoComplete="tel" />}
+          </Field>
+          <Field id="email" label="Email (optional)">
+            {(control) => <Input {...control} name="email" type="email" autoComplete="email" />}
+          </Field>
 
           {result && !result.ok && result.message && (
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            <p role="alert" className="text-body font-medium text-danger-ink">
               {result.message}
             </p>
           )}
 
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={pending} className={primary}>
+          {/* The button she came here to press is full width and first in the
+              column, with Back beneath it — reversed from the desk's row, and
+              on a phone the two are never side by side where a thumb can take
+              the wrong one. */}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+            <Button type="submit" variant="primary" className="w-full sm:w-auto" pending={pending}>
               {pending ? 'Confirming…' : 'Confirm appointment'}
-            </button>
-            <BackButton onClick={() => setStep('time')} />
+            </Button>
+            <BackButton onClick={() => setStep('time')} disabled={pending} />
           </div>
         </form>
       )}
 
       {step === 'done' && chosen.length > 0 && provider && day && time && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold">Your appointment is confirmed</h2>
-          <p className="text-zinc-600 dark:text-zinc-400">
+          <h2 className="text-page-title font-semibold">Your appointment is confirmed</h2>
+          <p className="text-ink-secondary">
             {visitName} with {provider.name}, {day.label} at {time.label}
             {time.qualifier ? ` ${time.qualifier}` : ''}.
           </p>
-          <p className="text-sm text-zinc-500">
+          <p className="text-body text-ink-muted">
             We&apos;ve sent you a confirmation with a link you can use to change or cancel it.
           </p>
         </div>
@@ -407,50 +489,21 @@ export function BookingFlow({ services }: { services: Service[] }) {
   );
 }
 
-function BackButton({ onClick }: { onClick: () => void }) {
+/**
+ * A-094. This was 31×20 CSS pixels — an underlined `text-sm` with no padding —
+ * on three of the five screens, and it is the control a thumb reaches for
+ * whenever the last tap was wrong. WCAG 2.2 SC 2.5.8 asks for 24×24 and it
+ * missed on BOTH axes; axe carries no target-size rule, so six green
+ * accessibility runs over this flow never mentioned it.
+ *
+ * `Button variant="quiet"` is the same visual weight — text, no border — at
+ * the 44px height every other control here now has, and `self-start` keeps it
+ * from spanning the column like a second primary action.
+ */
+function BackButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className="self-start text-sm text-zinc-500 underline underline-offset-4">
+    <Button type="button" variant="quiet" onClick={onClick} disabled={disabled} className="self-start px-3">
       Back
-    </button>
+    </Button>
   );
 }
-
-function Field({
-  label,
-  name,
-  required,
-  type = 'text',
-  error,
-  autoComplete,
-}: {
-  label: string;
-  name: string;
-  required?: boolean;
-  type?: string;
-  error?: string;
-  autoComplete?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={name} className="text-sm font-medium">
-        {label}
-      </label>
-      <input
-        id={name}
-        name={name}
-        type={type}
-        required={required}
-        autoComplete={autoComplete}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${name}-error` : undefined}
-        className="rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950"
-      />
-      {error && (
-        <p id={`${name}-error`} className="text-sm text-red-600 dark:text-red-400">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-

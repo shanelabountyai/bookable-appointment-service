@@ -31,8 +31,8 @@ export default async function BookPage() {
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-8 p-6 sm:p-10">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Book an appointment</h1>
-        <p className="mt-1 text-zinc-500">A few taps — no account needed.</p>
+        <h1 className="text-page-title font-semibold tracking-tight">Book an appointment</h1>
+        <p className="mt-1 text-body text-ink-muted">A few taps — no account needed.</p>
       </header>
       <BookingFlow services={services} />
     </main>

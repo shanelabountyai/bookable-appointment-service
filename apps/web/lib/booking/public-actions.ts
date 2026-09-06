@@ -14,7 +14,7 @@
  * must echo back.
  */
 import { type CalendarDay, addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
-import { readableDay } from '@/lib/customer-format';
+import { readableDay, readableDayParts } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
 import {
   NoResourceFree,
@@ -128,6 +128,14 @@ export interface OpenDay {
    *  waiting to be written by hand instead. The one conversion module already
    *  does it correctly, and it runs here. */
   label: string;
+  /** A-094 — the SAME label in its two halves, for the phone's two-column day
+   *  list, which stacks them. Both come from `readableDayParts`, which
+   *  `readableDay` itself is built on, so the stacked day and the joined one
+   *  can never disagree about which weekday "2026-06-09" is. `label` stays
+   *  because it is the accessible name the flow restates on every later
+   *  screen ("Tuesday 9 June at 10:00"). */
+  weekday: string;
+  date: string;
 }
 
 /**
@@ -158,7 +166,7 @@ export async function listDaysWithOpenings(serviceIds: string[], providerId: str
     fromDay: start,
     toDay: addDays(start, DAYS_AHEAD),
   });
-  return days.map((day) => ({ day, label: readableDay(day) }));
+  return days.map((day) => ({ day, label: readableDay(day), ...readableDayParts(day) }));
 }
 
 
@@ -204,7 +212,7 @@ export async function listAnyProviderDays(serviceIds: string[]): Promise<OpenDay
     now,
     audience: 'public',
   });
-  return days.map((day) => ({ day, label: readableDay(day) }));
+  return days.map((day) => ({ day, label: readableDay(day), ...readableDayParts(day) }));
 }
 
 /** A-056 — every time anyone could take it that day, one row per time, each

@@ -2916,3 +2916,41 @@ A stylist who is not in today and a stylist with a completely empty day printed 
 The blank column for writing in was headed "Notes", while the actual notes printed in the column next to it. It says "Space to write".
 
 And the lines on the page were hand-set to black, which is invisible on the dark tablet the desk uses to check the sheet before spending the paper on it.
+
+## The one screen that is only ever seen on a phone, in bed, at eleven at night
+
+A client books a salon appointment on her phone, once, and she will not see the screen again for six weeks. Every automated check this flow had ever run measured it at desktop size in a light colour scheme, because that is what the testing tool does unless somebody says otherwise, and nobody had.
+
+Measuring it as it is actually used found four things.
+
+### Every screen of it failed a contrast check in dark mode
+
+Most phones are set to switch to a dark scheme at night, which is when people book. In that scheme every price and every duration in the salon's price list, the step counter, the Back link and — on the last screen — the cost of her own appointment were all rendering in a grey too pale to read against black. Six previous accessibility runs had passed this page, all of them looking at the light version.
+
+The fix was not a new colour. The staff app had already been through this exact problem and had solved it with a named set of colours that swap themselves when the phone does. The booking flow was still using hand-written greys from before that work. It uses the named ones now, and thirty-nine failures went at once.
+
+### Back was thirty-one pixels wide and twenty tall
+
+The accessibility standard asks for twenty-four in both directions, and this missed on both. It appears on three of the five screens and it is the thing a thumb reaches for whenever the last tap was wrong. No automated tool flags target size, so nothing had ever mentioned it.
+
+The two buttons the whole flow exists to reach — Continue, and Confirm appointment — were thirty-six pixels tall and floated at the width of their own text next to other controls. They are full width now, at the size a thumb expects, and on the last screen Back sits *below* Confirm rather than beside it, so the two cannot be confused.
+
+### Choosing a day was three screenfuls of scrolling
+
+Twenty available days, each one a full-width row reading "Tuesday 8 September". They are two to a row now, with the weekday on its own line above the date — because the weekday is what she is choosing by, and the date is how she confirms it.
+
+### A tap that appeared to do nothing
+
+Choosing a service, a stylist or a day each asks the server a question, and the screen used to sit there silently while it did. On a phone on a slow connection that reads as a tap that did not register, so she taps again — and a second request goes out. The controls now visibly hold while the answer is on its way.
+
+Two smaller things came out of it: a form error that appeared on screen but was never announced to a screen reader, now fixed; and the text fields, which were one pixel under the size at which an iPhone zooms the whole page in when you tap into them.
+
+### And a design system that had not actually been applied
+
+Checking that last fix properly meant breaking it on purpose to see the test fail. It did not fail. The size was never being applied in the first place.
+
+A tool in the build combines style rules and, when two of them conflict, keeps the winner. It ships knowing the standard set of style names. The team had defined five of its own — display, page title, section, body, caption — measured against what this product actually renders. The tool did not recognise them, assumed each was a colour instead of a size, and discarded it whenever a real colour was set alongside. Which is every button in the product.
+
+So for five rounds of work, buttons, labels and empty-state text across the entire staff application were rendering at the browser's default size rather than the sizes that had been carefully chosen for them. Nothing looked broken — the default is a perfectly plausible size — and nothing could have caught it: the code says the right thing, the compiler sees two valid names, and the contrast checker measures colour, not size.
+
+It is one line to fix. What is worth keeping is how it was found — by writing a check and then deliberately breaking the thing it checks, to confirm the check can actually fail. There is now a test that reads the five names out of the stylesheet and proves each one survives, so a sixth added later cannot be quietly dropped the same way.

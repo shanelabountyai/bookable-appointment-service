@@ -91,13 +91,23 @@ export function Field({
  *
  * The red border is never the message: `Field` renders the error text beside
  * it (§4, never colour alone).
+ *
+ * THE 16px IS A PLATFORM CONSTRAINT, NOT A SIZE OFF A-088's SCALE, which is
+ * why it is `text-base` and not one of the five roles. iOS Safari — the
+ * salon's tablet at the desk as much as the client's phone — ZOOMS THE
+ * VIEWPORT when a focused input's font-size is below 16px, and this shipped at
+ * `text-body` (14px). The page then sits scrolled and magnified for the rest
+ * of the form, with the submit button off the right edge. The other fix is a
+ * `maximum-scale=1` viewport meta, which is a WCAG 1.4.4 failure and is not
+ * available to us. Every other control on the page keeps the 14px scale: this
+ * is the one element whose size the browser reacts to.
  */
 export function Input({ className, ...props }: React.ComponentProps<'input'>) {
   return (
     <input
       {...props}
       className={cn(
-        'min-h-11 rounded-control border border-line-control bg-transparent px-3 py-2 text-body text-ink-primary placeholder:text-ink-muted aria-[invalid=true]:border-danger-line',
+        'min-h-11 rounded-control border border-line-control bg-transparent px-3 py-2 text-base text-ink-primary placeholder:text-ink-muted aria-[invalid=true]:border-danger-line',
         className,
       )}
     />
