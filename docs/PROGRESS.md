@@ -2690,7 +2690,7 @@ Which is every primitive A-089 built. `Button`'s size string carries `text-body`
 
 ## A-095 — the demo book's dark corners: a book full of appointments and empty of the thing each screen is for
 
-**Commit:** `PENDING`
+**Commit:** `ca5ffa8`
 
 **The measurement is the item again, and every number below came off the real seed before anything changed.** A throwaway probe reset the test database, ran `seedSetup` + `seedDensity` at the frozen `now` the seed tests already use, and then asked the product's own read paths what they could see.
 
