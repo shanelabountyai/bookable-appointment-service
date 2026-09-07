@@ -3066,3 +3066,71 @@ While verifying this, an unrelated part of the test suite began timing out, and 
 It was the wrong conclusion. A different project on the same machine was running its own full test sweep; the database and the CPU were shared. Re-measured once that finished, the same file ran in 77 seconds rather than 118 — comfortably inside the existing budget, which was left alone. Raising it would have hidden the next real regression behind a bigger number.
 
 Checking what else was connected to the database took about ten seconds, and is the difference between a diagnosis and a guess.
+
+---
+
+## The checkpoint where the thing that broke was a screen telling the truth about a question nobody asked
+
+Every few milestones this project stops building and walks the product the way a
+front desk would, on a database seeded to look like a real salon. Seven of those
+walks have now found a defect sitting inside work already marked finished, and
+invisible from inside the work that introduced it. This was the eighth.
+
+**Three of the things it checked came back clean, and that is half the result.**
+The most important one: *every time the screen offers must be a time the system
+will actually accept.* That property had been asserted before, but never on a
+book where the room could run out of chairs — the previous walk measured 21,184
+offers and found the chairs never once became the binding constraint, so the
+test had nothing to bite on. A seed fix in the previous phase changed that. Run
+again: **1,609 offers, none of them without a chair**, with 44 candidates
+correctly refused because the room was full. Along with it, every screen in the
+staff app measured for accessibility in **both** the light and dark palettes —
+fifty page-loads, zero violations — and the sell-a-cancelled-slot workflow
+walked end to end for the first time, because the demo data finally had a
+waitlist in it.
+
+**What broke was subtler and, in a product people trust with money, worse.**
+Three screens answer a question nobody asked them, and all three answer
+reassuringly. The owner's dashboard reports **0.0% utilization on a week with
+157 bookings on the same card**. A cancellations screen reached without a date
+says "pick a week" and then, in the next line, "none that week". A booking
+screen says "that stylist is not on today" when you have not named a stylist.
+
+The utilization one is the interesting one, because **nothing is broken**. The
+formula is frozen in the spec, implemented exactly, and asserted by two tests
+written on purpose. It counts hours the salon actually *worked* — so any week
+that has not happened yet is 0%, and the dashboard opens on the current week.
+The number sits directly above a link reading *"who to ring to fill a quiet
+Tuesday"* — an action about the future, under the one figure guaranteed to say
+nothing about it. One of the tests is even called *"0%, not n/a — those are
+different facts"*, and the product then renders both facts identically. **A
+correct implementation of an under-specified requirement is still a screen that
+lies to its owner**, and no test could catch it because the only week ever
+asserted is a fixed week in the *past*, the one kind where the answer is right.
+
+**The most expensive finding came from somewhere else entirely.** Alongside the
+walk, the same product was reviewed by a simulated twenty-two-year salon
+operator, asked to judge everything by "would this survive a Saturday". It found
+what no click-through reaches: **untick a departing stylist — the one action the
+product offers for "she has left" — and her entire future book vanishes from
+every screen in the salon, while her clients keep getting reminders telling them
+to come.** On the demo book that is 106 appointments and $2,870, with their
+chairs still held and the conflicts screen reporting nothing wrong. Four
+different pieces of code filter her out; each is individually correct, and two
+carry comments explaining why. She gets her reminder, taps the link to move her
+appointment, and is shown an empty calendar forever.
+
+The fix is not new thinking — **the same question was answered correctly one
+axis over, months ago.** When a chair is retired from the room, the code keeps
+it on screen until its last booking ends, and the confirmation dialog says so in
+words. A retired stylist should work the same way: still visible, still
+closeable, still sellable — just never bookable again.
+
+**A note on the walk's own honesty.** Its first automated pass reported that the
+"who wants this slot?" button did nothing — which would have been the most
+valuable finding of the day, a dead button on the one screen whose entire job is
+recovering lost revenue. It was the test script, not the product. Fetching the
+link directly worked perfectly. That correction is written into the checkpoint
+alongside the real findings, because a review that reports a false alarm costs
+more than one that misses something: the next real finding is the one nobody
+believes.
