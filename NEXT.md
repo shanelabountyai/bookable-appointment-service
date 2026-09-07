@@ -1,39 +1,48 @@
 # Next
 
-**A-097 — "no preference" dead-ends her after all.** Next ⬜ in
-`docs/prds/06-backlog.md`, row 99. Size S, no dependencies.
+**The backlog is empty.** `grep "⬜ A-" docs/prds/06-backlog.md` returns **0** —
+A-097 was row 99 and the last one. That is not "done", it is the state
+A-045's session met and it means the next session's job is a **scoping pass,
+not a build**.
 
-A-071's whole point is that a client who said she does not mind is never sent
-back to the time list. It re-offers the same time with somebody else — and when
-there is nobody else, **it falls back to the vanished stylist's day, which is
-empty by construction: she is off.** Proved on 2026-09-05 at 09:56: the flow
-picked Tess at 12:00 (the only slot one stylist can take that day, the other
-three being on their 12:00–13:00 break), Tess was taken out from under the page,
-and the screen answered *"No appointments available that day. Please choose
-another day."* on a Saturday with three stylists free from 13:00 and an empty
-book. **She said no preference and was shown one person's empty column** — the
-fallback carries a provider she never chose.
+**Phase 10 just closed** (A-095, A-096, A-097). `docs/START-HERE.md` is
+explicit that the demo checkpoint gets walked when its milestone closes, not
+when convenient — the rental build's checkpoint found four defects, all in
+items already marked ✅, all invisible from inside the item that introduced
+them. **Checkpoint 8 is the move**, and the seeded book can finally carry it:
+A-095 gave Marcus and Tess future columns, so the room axis binds (39
+`no-resource-free` refusals where there were 0), and the waitlist, call marks
+and call-down screens have rows for the first time.
 
-Found by A-092 because `booking.spec.ts`'s A-071 case was failing on the clock.
-That spec is now pinned to a whole open day, so **nothing covers this path** —
-the fixture is part of the item.
+Run the `salon-operator` agent against `docs/PROGRESS.md` and the built
+product, then write what it finds into the backlog as new `A-` rows.
 
-**What A-096 just changed underneath it.** Every axe assertion in the suite now
-goes through `apps/web/e2e/axe.ts` and runs **both colour schemes**; `eslint`
-refuses a spec that imports `AxeBuilder` directly (`no-restricted-imports` in
-`apps/web/eslint.config.mjs`). So a new spec gets dark for free and must not
-hand-roll one. `text-zinc-500` is gone from `app/staff` and `app/manage` — use
-`text-ink-muted`.
+**Three things already known to be open**, worth checking against whatever the
+checkpoint turns up rather than scoping blind:
 
-**Two things A-096 deliberately left open**, both recorded in `PROGRESS.md`:
+- **`/staff/dashboard/overruled` has no e2e spec at all** (A-096). Its colour
+  was fixed with the rest; nothing guards it. The route renders an empty list
+  without `from`/`to`, and scanning an empty list is scanning the chrome — the
+  fixture needs a genuinely overruled cancellation.
+- **`sameTimeWithSomebodyElse` asks the room's question anonymously** (A-097).
+  `confirmAppointment` has resolved the client five lines above and passes no
+  `holderKey`. It is the strict direction, so it can only offer *fewer* times
+  than the write would accept — but it is exactly the A-083 shape, and the
+  public flow is the caller A-083 did not reach.
+- **`/staff/design` returns 50 axe `incomplete` results** in both schemes
+  (A-096). Not violations, nothing asserts on them, gallery-only route.
 
-- **`/staff/dashboard/overruled` has no e2e spec at all.** Its colour was fixed
-  with the rest, but nothing guards it. Not papered over here: the route renders
-  an empty list without `from`/`to`, and scanning an empty list is scanning the
-  chrome — the fixture needs a genuinely overruled cancellation.
-- **`/staff/design` returns 50 axe `incomplete` results** in both schemes (41
-  `aria-prohibited-attr`). `incomplete` is not `violation`, nothing asserts on
-  it, and it appears on no real staff route — gallery-only.
+**Also worth one line in PROGRESS when somebody next touches the seed:**
+A-095's note records the density seed at "~15–18s". A-097 measured
+`density-seed.test.ts` at **76.9s for the whole file** (three seeds) on a
+quiet machine. Nobody has re-measured the seed alone; the 120s hook budget
+was left where it is, deliberately.
+
+**And the environment lesson A-097 paid for:** three consecutive gate runs
+failed in that one file and the cause was a *different project* mid-sweep
+(`countertop_test`, eleven connections, load 28.9). Check
+`psql -c "SELECT datname, count(*) FROM pg_stat_activity GROUP BY datname"`
+and `uptime` **before** reading a stack trace.
 
 Read `docs/START-HERE.md` and `CLAUDE.md` first, as always. CLAUDE.md gained
-A-096's rule under "Traps that only fail at runtime".
+A-097's rule under "Traps that only fail at runtime".
