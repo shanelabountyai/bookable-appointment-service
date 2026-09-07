@@ -2756,7 +2756,7 @@ Two details in there are load-bearing. Their days are derived from `now`, so the
 
 ## A-097 — the fallback carried a stylist she never chose
 
-**Commit:** `PENDING`
+**Commit:** `9b1f206`
 
 **What it built.** Three lines of product change and a fixture that is most of the item. `confirmAppointment`'s last-resort branch in `apps/web/lib/booking/public-actions.ts` now asks the "anyone" question when she said anyone; the confirmation screen in `apps/web/app/book/booking-flow.tsx` names the stylist the TIME carries rather than the sentinel; and `booking.spec.ts` gained the case that had nothing covering it.
 
