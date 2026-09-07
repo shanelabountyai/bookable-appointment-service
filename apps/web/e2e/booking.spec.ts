@@ -13,7 +13,23 @@ import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { instant, toDate } from '@bookable/core/time';
+import {
+  addDays,
+  calendarDay,
+  fromDate,
+  instant,
+  resolve,
+  toDate,
+  toLabel,
+  wallTime,
+  weekdayOf,
+  zoneId,
+} from '@bookable/core/time';
+// Relative, not `@/lib/…`: this is the app's ONE customer-facing day
+// formatter, and the spec clicks the day the fixture built by the name the
+// page gives it. A hand-rolled "15 September" here would be a second copy of
+// `readableDayParts` that goes quietly wrong the day the format changes.
+import { readableDayParts } from '../lib/customer-format';
 import { expect, test } from './fixtures';
 
 test.beforeEach(async () => {
@@ -284,6 +300,138 @@ test.describe('booking with no preference (A-056)', () => {
       expect(appointment.isOverride).toBe(false);
     } finally {
       await after.$disconnect();
+    }
+  });
+
+  /**
+   * A-097 — AND WHEN THERE IS NOBODY ELSE AT THAT INSTANT.
+   *
+   * A-071's re-offer is `null` exactly when no other qualified stylist is free
+   * at the instant she was promised, and the flow then falls through to "here
+   * are the other times". Those other times were the VANISHED STYLIST'S — a
+   * person she never chose, whose column is empty by construction, because
+   * what made her vanish is that she has gone. So a client who said she does
+   * not mind who was shown one person's empty day and told to pick another,
+   * on an open Tuesday with three stylists free from ten o'clock.
+   *
+   * THE FIXTURE IS THE ITEM, and it needs a room interesting enough for the
+   * two answers to differ: an instant exactly ONE stylist can take, on a day
+   * where the others can take plenty. The three seniors start late that
+   * Tuesday, so 09:00 is Tess's alone and 10:00 onwards is everybody's — then
+   * Tess goes, and the two questions ("what else can TESS do today" / "what
+   * else can ANYONE do today") answer nothing and eight hours respectively.
+   *
+   * Built on a fixed weekday rather than the first day the list offers, for
+   * the reason the test above carries in full: an hour-of-day-dependent
+   * fixture fails on the CLOCK and says nothing about the product.
+   */
+  test('falls back to everybody\'s other times, not the vanished stylist\'s empty day', async ({ page }) => {
+    const setup = new PrismaClient();
+    let day: string;
+    let zone: string;
+    try {
+      const business = await setup.business.findFirstOrThrow();
+      zone = business.timezone;
+      // The next Tuesday: a whole open day on the seeded roster, far enough
+      // ahead that D-25's two-hour lead time cannot reach it.
+      let target = calendarDay(toLabel(fromDate(new Date()), zoneId(zone)).day);
+      do {
+        target = addDays(target, 1);
+      } while (weekdayOf(target) !== 2);
+      day = target;
+
+      const at = (time: string) => {
+        const resolution = resolve(calendarDay(day), wallTime(time), zoneId(zone));
+        if (resolution.kind !== 'unique') throw new Error(`${day} ${time} is not unique in ${zone}`);
+        return toDate(resolution.at);
+      };
+
+      // The three seniors start at ten. A 45-minute Cut plus its 10-minute
+      // after-buffer cannot fit before it, so the 09:00 the page offers is
+      // Tess's and only Tess's — and every time from 10:00 is theirs.
+      for (const displayName of ['Dana', 'Priya', 'Marcus']) {
+        const provider = await setup.provider.findFirstOrThrow({ where: { displayName } });
+        await setup.timeOff.create({
+          data: {
+            businessId: business.id,
+            providerId: provider.id,
+            startAt: at('09:00'),
+            endAt: at('10:00'),
+            reason: 'late start',
+          },
+        });
+      }
+    } finally {
+      await setup.$disconnect();
+    }
+
+    const { weekday, date } = readableDayParts(day);
+
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: /No preference/ }).click();
+    await page.getByRole('button', { name: `${weekday} ${date}` }).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await page.getByRole('button', { name: '09:00', exact: true }).click();
+
+    // THE PRECONDITION, asserted rather than assumed: nine o'clock is the one
+    // time on this day that exactly one stylist can take. If the fixture ever
+    // stops producing that, this test stops being about A-097 and must fail
+    // saying so — not pass for the wrong reason.
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('with Tess');
+
+    await page.getByLabel('Your name').fill('Ada Chen');
+    await page.getByLabel('Phone').fill('(512) 555-0101');
+
+    // …and Tess goes home sick while she is typing.
+    const sick = new PrismaClient();
+    try {
+      const business = await sick.business.findFirstOrThrow();
+      const tess = await sick.provider.findFirstOrThrow({ where: { displayName: 'Tess' } });
+      await sick.timeOff.create({
+        data: {
+          businessId: business.id,
+          providerId: tess.id,
+          startAt: toDate(instant(Date.now() - 60 * 60_000)),
+          endAt: toDate(instant(Date.now() + 365 * 24 * 60 * 60_000)),
+          reason: 'off sick',
+        },
+      });
+    } finally {
+      await sick.$disconnect();
+    }
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+    // Back on the time list — and it is the SALON's day, not Tess's. Before
+    // A-097 this said "No appointments left that day. Please choose another."
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await expect(page.getByText('No appointments left that day.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '10:00', exact: true })).toBeVisible();
+    // And 09:00 is gone for the RIGHT reason — the whole salon is unavailable
+    // at it now, not merely the one stylist the page had named.
+    await expect(page.getByRole('button', { name: '09:00', exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: '10:00', exact: true }).click();
+    await page.getByLabel('Your name').fill('Ada Chen');
+    await page.getByLabel('Phone').fill('(512) 555-0101');
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+    // A-097's second half: the confirmation names the person she is actually
+    // seeing. `provider.name` on this path is the sentinel — "Cut with No
+    // preference" is what she used to be sent away with.
+    await expect(page.getByText(/Cut with (Dana|Priya|Marcus),/)).toBeVisible();
+
+    const booked = new PrismaClient();
+    try {
+      const appointment = await booked.appointment.findFirstOrThrow({ include: { provider: true } });
+      expect(appointment.provider.displayName).not.toBe('Tess');
+      expect(appointment.status).toBe('booked');
+      expect(appointment.isOverride).toBe(false);
+    } finally {
+      await booked.$disconnect();
     }
   });
 });

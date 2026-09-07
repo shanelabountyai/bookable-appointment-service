@@ -440,7 +440,26 @@ export async function confirmAppointment(input: {
       }
     }
     if (error instanceof SlotTaken || error instanceof SlotNotOffered || error instanceof NoResourceFree) {
-      const alternatives = await listTimesOn(input.serviceIds, input.providerId, input.day).catch(() => []);
+      // A-097 — THE OTHER TIMES ARE WHOSE TIMES?
+      //
+      // `input.providerId` on the "no preference" path is a stylist SVC-02
+      // picked for her, never one she chose — so falling back to that one
+      // person's day is showing her a column she never asked for, and when
+      // the reason `instead` came back null is that she has GONE (time off,
+      // taken off the rota) that column is empty BY CONSTRUCTION. Proved on
+      // 2026-09-05: three stylists free from 13:00, an empty book, and the
+      // screen said "No appointments available that day. Please choose
+      // another day." on a Saturday.
+      //
+      // The same question the whole path has been asking since the day list:
+      // she said anyone, so the other times are ANYONE's. Each row carries
+      // the stylist SVC-02 assigned it (`providerId`/`providerName`), which
+      // is what the flow posts back — so a time picked out of this list books
+      // exactly like one picked out of the original list.
+      const alternatives = await (input.anyProvider
+        ? listAnyProviderTimes(input.serviceIds, input.day)
+        : listTimesOn(input.serviceIds, input.providerId, input.day)
+      ).catch(() => []);
       return {
         ok: false,
         message: 'Sorry — that time has just been taken. Here are the other times still free.',

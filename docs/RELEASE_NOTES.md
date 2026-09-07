@@ -3028,3 +3028,41 @@ Which is the same defect the whole item is about, one level up — an accessibil
 ### And a first look at a change nobody had seen
 
 The previous item found that five rounds of design work had never reached the screen, and fixed it. That fix changed the size of every button, form label and empty-state message in the staff application at once, and no one had looked at the result. Walked here, in both schemes, on a full demo book. It reads as intended, and the minimum touch size for the desk's controls was never at risk — it is set as a floor in pixels, independently of the text size.
+
+---
+
+## "I don't mind who" — and the dead end at the end of it
+
+The most common thing a client says when she has never been to your salon is that she does not mind which stylist she gets. She has not heard of any of them. Making her choose is how you lose her, so the booking flow offers "No preference" first, picks the least-booked qualified stylist for her, and shows the name on the time she taps.
+
+Which creates a problem the moment somebody else books that stylist while she is typing her phone number. An earlier item solved that: she said she does not mind, so the honest answer is not "that time is gone", it is *"Priya is free at the same time — shall we book that?"* Same time, different name, one button.
+
+### The half that was still a dead end
+
+That re-offer needs somebody to re-offer. When nobody qualified is free at that exact instant, it comes back empty and the flow falls through to the ordinary answer — here are the other times that day.
+
+**Whose other times?** The code asked for the day belonging to the stylist it had just failed to book. But on this path, that is a person the client never picked; the software chose her, and the client had never heard the name until two screens ago. And the usual reason nobody else is free at that instant is that this stylist has *gone* — off sick, off the rota — which makes her day empty by definition.
+
+So a client who explicitly said she had no preference was shown one absent person's empty column and told to choose another day. Observed on a Saturday with three stylists free from one o'clock and nothing in the book.
+
+### Why no test caught it, and what the new one does differently
+
+Every earlier test ran against a day where all four stylists work the same hours. On such a day "what else can *this* stylist do" and "what else can *anyone* do" return the same list, so the wrong question and the right one are indistinguishable. The test that should have caught this had in fact been *deliberately pinned* to such a day, to stop it failing for an unrelated reason.
+
+The new test builds a day where the two questions cannot agree: three stylists start an hour late, so nine o'clock belongs to exactly one person and everything after ten belongs to the other three. Then that one person goes off sick mid-form. One question now answers "nothing"; the other answers "seven hours".
+
+It also asserts its own setup — that the nine o'clock really was a one-stylist slot — so that if the fixture ever stops producing the situation, the test says so instead of passing for the wrong reason.
+
+### The line on the confirmation screen
+
+The same fix had been applied to the heading one screen earlier and not to the confirmation itself, which still read the client's *original* answer rather than the stylist she actually got. Every client who ever booked this way was told, on the one screen she keeps:
+
+> Cut with No preference
+
+### A note on reading a failure correctly
+
+While verifying this, an unrelated part of the test suite began timing out, and the seed it depends on measured thirty times slower than its recorded speed. The obvious conclusion was that a recent change had outgrown its budget, and raising the budget was a one-line fix.
+
+It was the wrong conclusion. A different project on the same machine was running its own full test sweep; the database and the CPU were shared. Re-measured once that finished, the same file ran in 77 seconds rather than 118 — comfortably inside the existing budget, which was left alone. Raising it would have hidden the next real regression behind a bigger number.
+
+Checking what else was connected to the database took about ten seconds, and is the difference between a diagnosis and a guess.

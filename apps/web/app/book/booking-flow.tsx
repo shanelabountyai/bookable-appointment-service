@@ -477,7 +477,12 @@ export function BookingFlow({ services }: { services: Service[] }) {
         <div className="flex flex-col gap-3">
           <h2 className="text-page-title font-semibold">Your appointment is confirmed</h2>
           <p className="text-ink-secondary">
-            {visitName} with {provider.name}, {day.label} at {time.label}
+            {/* A-097. The SAME reader the details heading is — the person is
+                whoever the TIME carries, and on the "no preference" path
+                `provider.name` is the sentinel's label. A-071 fixed the
+                heading one screen up and left this copy saying "Cut with No
+                preference" on the one screen she keeps. */}
+            {visitName} with {time.providerName ?? provider.name}, {day.label} at {time.label}
             {time.qualifier ? ` ${time.qualifier}` : ''}.
           </p>
           <p className="text-body text-ink-muted">
