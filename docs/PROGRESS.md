@@ -2776,7 +2776,7 @@ Two details in there are load-bearing. Their days are derived from `now`, so the
 
 ## Demo checkpoint 8 and the Phase 10 close — a scoping pass, not a build
 
-**Commit:** _(recorded in the follow-up commit)_
+**Commit:** `28b26e9`
 
 **What it produced.** `docs/reviews/19-demo-checkpoint-8.md` (the walk), `docs/reviews/19-operator-review-phase-10-close.md` (the operator review), and **eight new backlog rows, A-098…A-105**, as Phase 11. No product code changed. The backlog had been empty — `grep "⬜ A-"` returned 0 after A-097 — which is the state A-045's session met, and it means the job is scoping. Both review files carry the `19-` prefix, which is the house pattern, not a collision: `18-demo-checkpoint-7.md` and `18-operator-review-phase-9-close.md` already share theirs.
 
