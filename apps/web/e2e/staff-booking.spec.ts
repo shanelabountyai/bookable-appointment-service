@@ -1070,3 +1070,56 @@ test.describe('the walk-in nobody is free for (A-103)', () => {
     await expectNoAxeViolations(page);
   });
 });
+
+/**
+ * A-104 — THREE CASES, AND THE PANEL SAID ONE SENTENCE TO ALL OF THEM.
+ *
+ * "That stylist is not on today" is a claim about a rota this page has never
+ * read: it resolves a provider and nothing else. Said to somebody who named no
+ * stylist at all, it invents one and puts her out; said about a stylist off the
+ * roster (A-098), it is the wrong reason and hides the screen that can act.
+ *
+ * The same shape as `dashboard/overruled` next door: A PARAMETER NOBODY GAVE IS
+ * NOT AN EMPTY RESULT.
+ */
+test.describe('what the booking panel says when it has no stylist (A-104)', () => {
+  const NOT_ON_TODAY = /not on today/;
+
+  test('reached bare, it asks for a stylist instead of putting one out', async ({ page }) => {
+    await page.goto(`/staff/book?day=${DAY}`);
+
+    await expect(page.getByText('Pick a stylist from the day view.')).toBeVisible();
+    // On a Tuesday with all four in, and no stylist named.
+    await expect(page.getByText(NOT_ON_TODAY)).toHaveCount(0);
+    // The heading has nobody to name either, and no dangling "Book ".
+    await expect(page.getByRole('heading', { name: 'Book', exact: true })).toBeVisible();
+  });
+
+  test('names a stylist off the roster, and points at the screen that can act', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let danaId: string;
+    try {
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      danaId = dana.id;
+      await prisma.provider.update({ where: { id: dana.id }, data: { active: false } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/book?provider=${danaId}&day=${DAY}`);
+
+    await expect(page.getByText(/Dana is off the roster/)).toBeVisible();
+    await expect(page.getByText(NOT_ON_TODAY)).toHaveCount(0);
+    // A-098's actionable half: her clients are still booked, and `/staff/
+    // conflicts` is where they get worked.
+    await page.getByRole('link', { name: 'still booked' }).click();
+    await expect(page).toHaveURL(/\/staff\/conflicts/);
+  });
+
+  test('says a link resolves to nobody, rather than inventing an absence', async ({ page }) => {
+    await page.goto(`/staff/book?provider=00000000-0000-4000-8000-000000000000&day=${DAY}`);
+
+    await expect(page.getByText('No stylist here matches that link.')).toBeVisible();
+    await expect(page.getByText(NOT_ON_TODAY)).toHaveCount(0);
+  });
+});

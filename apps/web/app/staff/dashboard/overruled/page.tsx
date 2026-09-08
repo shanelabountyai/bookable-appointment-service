@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listOverruledCancellations } from '@bookable/db/reports';
 import { requireOwner } from '@/lib/auth/session';
+import { EmptyState } from '@/components/ui/empty-state';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 
 export const dynamic = 'force-dynamic';
@@ -45,17 +46,28 @@ export default async function OverruledPage({ searchParams }: PageProps<'/staff/
           ← Dashboard
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Let off the late count</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          {fromDay && toDay
-            ? `Cancellations inside the cutoff that somebody decided not to count as late — ${readableDay(fromDay)} to ${readableDay(toDay)}.`
-            : 'Pick a week from the dashboard.'}
-        </p>
+        {fromDay && toDay ? (
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {`Cancellations inside the cutoff that somebody decided not to count as late — ${readableDay(fromDay)} to ${readableDay(toDay)}.`}
+          </p>
+        ) : null}
       </div>
 
-      {rows.length === 0 ? (
-        <p className="text-zinc-600 dark:text-zinc-400">
-          None that week — every cancellation was classified by the cutoff.
-        </p>
+      {/* NO RANGE IS NOT AN EMPTY RESULT — A-104, and A-087's own fix applied
+          to the room it did not stand in. Reached bare (the dashboard only
+          links here when the count is non-zero, so a bookmark or a typed URL
+          is how you arrive), this said "Pick a week from the dashboard." and
+          then, in the next line, "None that week" — reassurance about a week
+          nobody had chosen, and a claim about a query that was never run.
+
+          THE MISSING PARAMETER IS TESTED FIRST, which is `clients`' shape and
+          the reason that screen has never had this bug: the zero-row sentence
+          then lives on a branch a query has to have RUN to reach, rather than
+          on one that merely found `[]` sitting there. */}
+      {!fromDay || !toDay ? (
+        <EmptyState>Pick a week from the dashboard.</EmptyState>
+      ) : rows.length === 0 ? (
+        <EmptyState>None that week — every cancellation was classified by the cutoff.</EmptyState>
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((row) => (

@@ -5,6 +5,7 @@ import { calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 import { flagSentence } from '@/components/client-flag';
+import { EmptyState } from '@/components/ui/empty-state';
 import { staffSlotsFor } from '@/lib/booking/staff-actions';
 import { BookingPanel } from './booking-panel';
 
@@ -50,11 +51,16 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
     typeof params.services === 'string' ? [params.services] : Array.isArray(params.services) ? params.services : [];
   const requestedClientId = typeof params.client === 'string' ? params.client : null;
 
-  const [provider, services] = await Promise.all([
+  const [providerRow, services] = await Promise.all([
+    // NOT filtered by `active` — A-104. `active` answers exactly one question
+    // since A-098 ("may new work be booked with her"), and asking it in the
+    // WHERE collapses a departed stylist into a row that does not exist, which
+    // is how the refusal below came to say the same wrong sentence to three
+    // different people. Resolved here, decided below.
     providerId
       ? prisma.provider.findFirst({
-          where: { id: providerId, businessId: staff.businessId, active: true },
-          select: { id: true, displayName: true },
+          where: { id: providerId, businessId: staff.businessId },
+          select: { id: true, displayName: true, active: true },
         })
       : null,
     // Only what this provider can actually do, when one is known — offering a
@@ -76,6 +82,9 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
       select: { id: true, name: true, durationMinutes: true, priceCents: true },
     }),
   ]);
+
+  /** Bookable, which is the only thing every surface below this line asks. */
+  const provider = providerRow?.active ? { id: providerRow.id, displayName: providerRow.displayName } : null;
 
   const slotLabel = atIso ? labelFor(atIso, zone) : null;
 
@@ -106,7 +115,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           ← {readableDay(day)}
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {walkIn ? 'Walk-in' : anyone ? 'Book with anyone' : `Book ${provider ? `with ${provider.displayName}` : ''}`}
+          {walkIn ? 'Walk-in' : anyone ? 'Book with anyone' : provider ? `Book with ${provider.displayName}` : 'Book'}
         </h1>
         {slotLabel ? <p className="mt-1 text-zinc-600 dark:text-zinc-400">{slotLabel}</p> : null}
         {droppedServices > 0 ? (
@@ -118,11 +127,36 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
       </div>
 
       {!walkIn && !anyone && !provider ? (
-        <p className="text-ink-muted">
-          That stylist is not on today. <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
-        </p>
+        /* THREE CASES, AND THIS SAID ONE SENTENCE TO ALL OF THEM — A-104, the
+           same shape as `dashboard/overruled` next door. "That stylist is not
+           on today" was a claim about a rota this page never reads: said to
+           somebody who named no stylist at all, on a Tuesday with all four in;
+           said about a departed one, who is not "not on today" either; and
+           said about a link that resolves to nobody, where it invents a
+           stylist to be absent. NO PARAMETER IS NOT AN EMPTY RESULT. */
+        <EmptyState>
+          {!providerId ? (
+            <>
+              Pick a stylist from the day view.{' '}
+              <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
+            </>
+          ) : providerRow ? (
+            /* A-098's wording, and the grid's own link for it: she is still
+               here, her clients are still booked, and the actionable screen is
+               the one that works them — not this one. */
+            <>
+              {providerRow.displayName} is off the roster — no new bookings with her. Her clients are{' '}
+              <Link href={`/staff/conflicts?day=${day}`} className="underline">still booked</Link>.
+            </>
+          ) : (
+            <>
+              No stylist here matches that link.{' '}
+              <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
+            </>
+          )}
+        </EmptyState>
       ) : services.length === 0 ? (
-        <p className="text-ink-muted">No services are set up for this stylist yet.</p>
+        <EmptyState>No services are set up for this stylist yet.</EmptyState>
       ) : (
         <BookingPanel
           day={day}

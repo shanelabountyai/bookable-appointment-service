@@ -3311,6 +3311,51 @@ look at a week that is genuinely ahead, and the report takes the clock as an
 argument instead of reading it — a report that reads the system clock is a
 report whose tests cannot ask it about next week.
 
+## A-104 — the empty state that answers a question nobody asked
+
+An owner types a URL she has bookmarked, or follows a link from an email, and
+lands on the "who did we let off the late-cancellation count" report without a
+week attached. The screen said two things, one under the other:
+
+> *Pick a week from the dashboard.*
+>
+> *None that week — every cancellation was classified by the cutoff.*
+
+The second sentence is a **claim about a query that was never run**. Nobody had
+chosen a week, so nothing had been counted — and the reassuring answer is the
+one that stops the enquiry. The same construction on the booking screen said
+*"That stylist is not on today"* to somebody who had named no stylist at all,
+on a Tuesday with all four of them in.
+
+**Why this is an engineering finding and not a copy edit.** The identical bug
+had been fixed eleven items earlier, one door along, on the screen the person
+fixing it happened to be standing on. It did not travel, because the room next
+door was the only staff route in the product with no browser test — so nothing
+ever opened it. The fix here is therefore three things, in order of how long
+each one lasts:
+
+1. **All four parameter-driven screens are now one construction**, and the
+   construction tests the *missing parameter first*. The zero-row sentence then
+   lives on a branch that a query has to have actually run to reach. The
+   previous version tested the rows first and asked about the parameter inside
+   — correct, and precisely backwards, which is how it grew back.
+2. **The booking screen had three cases behind one sentence.** No stylist
+   named; a stylist who has left; a link that resolves to nobody. The database
+   lookup asked for an *active* stylist in its `WHERE` clause, which collapsed
+   "she has left" into "she does not exist" before the page could tell them
+   apart. Resolving her first and deciding afterwards separates them — and the
+   departed-stylist case now says so in the product's own words and links to
+   the screen that can do something about her forward book, rather than
+   inventing a rota it never read.
+3. **The untested route now has its test**, with a fixture that writes a
+   genuine overrule through the real write path — because a browser test that
+   scans an empty list is a test of the page furniture.
+
+**The rule it leaves behind:** a screen may only say what it actually asked. An
+empty state that says *nothing is here* when the truth is *you have not told me
+where to look* is the most expensive kind of wrong, because it reads as an
+answer and nobody checks an answer.
+
 ## A-103 — the walk-in the software could not book
 
 Somebody walks in on a Saturday and asks if you can fit her in. The book is

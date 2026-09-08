@@ -3,6 +3,7 @@ import { prisma } from '@bookable/db';
 import { listReportAppointments } from '@bookable/db/reports';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
 import { requireOwner } from '@/lib/auth/session';
+import { EmptyState } from '@/components/ui/empty-state';
 import { readableInstant } from '@/lib/customer-format';
 import { STATUS_WORDS } from '@/lib/day/view-model';
 
@@ -54,15 +55,20 @@ export default async function DashboardAppointmentsPage({ searchParams }: PagePr
         ) : null}
       </div>
 
-      {rows.length === 0 ? (
-        /* NO RANGE IS NOT AN EMPTY RESULT — demo checkpoint 7. Reached bare
-           (the nav has no link to it; a bookmark or a typed URL does), this
-           said "0 appointments · Nothing matches this filter" on a full book,
-           which reads as a salon with no appointments in it. `overruled` next
-           door already words the same state correctly. */
-        <p className="text-ink-muted">
-          {fromDay && toDay ? 'Nothing matches this filter.' : 'Pick a week from the dashboard.'}
-        </p>
+      {/* NO RANGE IS NOT AN EMPTY RESULT — demo checkpoint 7. Reached bare
+          (the nav has no link to it; a bookmark or a typed URL does), this
+          said "0 appointments · Nothing matches this filter" on a full book,
+          which reads as a salon with no appointments in it. A-087 believed
+          `overruled` next door already worded this correctly; it did not, and
+          saying so here is what kept the door shut for eleven items. All four
+          parameter-driven zero-row screens are one shape now (A-104) — the
+          missing parameter tested FIRST, so the zero-row sentence cannot be
+          said about a query that never ran — and the claim to check is the
+          SHAPE, not the neighbour. */}
+      {!fromDay || !toDay ? (
+        <EmptyState>Pick a week from the dashboard.</EmptyState>
+      ) : rows.length === 0 ? (
+        <EmptyState>Nothing matches this filter.</EmptyState>
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (

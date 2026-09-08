@@ -3052,6 +3052,77 @@ current week partway through still renders `worked 0.0%`, which is true and now
 sits beside a forward number that makes it readable. If the owner ever wants
 "…so far this week" phrasing, that is where the third state goes.
 
+## A-104 — the empty state that answers a question nobody asked
+
+Commit `PENDING`.
+
+**What it built.** Four staff screens run a query only when a URL parameter
+says what to run it on, and two of them said the zero-row sentence whether or
+not the query had happened. `/staff/dashboard/overruled` reached bare said
+*"Pick a week from the dashboard."* and then, in the next line, *"None that
+week — every cancellation was classified by the cutoff."* — reassurance about a
+week nobody had chosen. `/staff/book` reached without a `provider` said *"That
+stylist is not on today."*, which is a claim about a rota that page has never
+read. Both now answer only about the query they ran.
+
+**The shape, not the two screens.** All four are one construction now, copied
+from `clients` — **the missing parameter is tested FIRST**, so the zero-row
+sentence lives on a branch a query has to have RUN to reach, rather than on one
+that merely found `[]` sitting there:
+
+```tsx
+{!fromDay || !toDay ? (
+  <EmptyState>Pick a week from the dashboard.</EmptyState>
+) : rows.length === 0 ? (
+  <EmptyState>None that week — …</EmptyState>
+) : ( …rows… )}
+```
+
+A-087 wrote the same fix as `{fromDay && toDay ? A : B}` nested inside
+`rows.length === 0`, which is correct and says the precedence backwards; the
+version above is the one that cannot regrow the bug. All four use `EmptyState`
+(A-089) rather than four hand-rolled paragraphs.
+
+**`/staff/book` had THREE cases behind one sentence, and the third was
+invisible.** No `provider` param at all; a stylist off the roster; a link that
+resolves to nobody. The provider lookup carried `active: true` **in its
+WHERE**, which collapsed the second into the third — so a departed stylist and
+a typo produced the same row (`null`) and therefore the same sentence.
+Resolving her without the filter and deciding afterwards
+(`providerRow?.active ? … : null`) separates them, and the off-roster arm now
+says A-098's own words and carries the grid's own link to `/staff/conflicts`,
+which is the screen that can act. `active` answers exactly one question since
+A-098 — *may new work be booked with her* — and asking it in a `WHERE` is how a
+page stops being able to tell "gone" from "never existed".
+
+**What it decided.** The refusal is worded from what the page KNOWS, never from
+what it guesses: the page resolves a provider and reads no rota, so it may not
+say anybody is "not on today". No shared helper was extracted — the four
+sentences have nothing in common but their precedence, and a helper for a
+two-arm ternary is an abstraction with one shape and four bodies.
+
+**The e2e spec the route never had.** `/staff/dashboard/overruled` was the one
+staff route with no spec at all, which is precisely why A-087's fix reached the
+room it was standing in and not the one next door. `e2e/overruled.spec.ts` is
+five tests: the anonymous refusal, the populated list (client, reason, and the
+name of who typed it), and **both** empty states asserted as a pair — the bare
+URL says "pick a week" and does NOT say "none that week", with a genuine
+overrule sitting in the book so the assertion is about the branch and not about
+an empty database. The fixture writes the overrule through
+`transitionAppointment` with `cancellation: 'override'` and `now` half an hour
+before the start, so the cutoff genuinely WOULD have said `cancelled_late` and
+the event carries `overruled: 'cancelled_late'` — an overrule with nothing to
+overrule records nothing, and would have scanned the chrome. Three more in
+`staff-booking.spec.ts` cover the three `/staff/book` cases, each asserting the
+old sentence is absent.
+
+**Left behind.** `/staff/conflicts` defaults `?day=` to today rather than
+refusing, which is the day view's convention and deliberately not changed here
+— a default the product picks and states is not the same defect as a sentence
+about a query nobody ran. The audit's fourth screen, `dashboard/lapsed`, has a
+`weeks` parameter with a default and always runs; it was re-checked and left
+alone.
+
 ## A-103 — the walk-in nobody is free for, and the two things a desk says instead
 
 Commit `f5bfccc`.
