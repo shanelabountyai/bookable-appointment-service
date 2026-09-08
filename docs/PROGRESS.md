@@ -2809,7 +2809,7 @@ So checkpoint 6's property — *a slot on the screen is a slot the write path wi
 
 ## A-098 — a stylist off the roster keeps her book
 
-**Commit:** _(recorded in the follow-up commit)_
+**Commit:** `1a9111c`
 
 **What it built.** `Provider.active` now answers exactly one question — *may new work be booked with her* — and the five surfaces that had been asking it as a proxy for five different questions ask their own. A stylist taken off the roster stays **visible** on the day grid and the printed sheet, her past visits stay **closeable**, her forward book is **stranded** where the desk can work it, the time she gives back is **sellable**, and she is on the week's report for the week she worked. She stops being **bookable**, and only that.
 
