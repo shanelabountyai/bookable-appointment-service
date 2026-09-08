@@ -3054,7 +3054,7 @@ sits beside a forward number that makes it readable. If the owner ever wants
 
 ## A-103 — the walk-in nobody is free for, and the two things a desk says instead
 
-Commit `PENDING`.
+Commit `f5bfccc`.
 
 **What it built.** `/staff/book?walkin=1` had one answer and one dead end: a
 list of who could take her today, and — when that list was empty — *"Nobody is
