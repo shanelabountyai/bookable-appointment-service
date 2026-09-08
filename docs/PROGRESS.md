@@ -2872,7 +2872,7 @@ So the later chip in DOM order painted over the earlier one, opaque, `overflow-h
 
 ## A-100 — an absence is longer than a day, and `?day=` has to mean the day
 
-**Commit:** `PENDING`
+**Commit:** `d51976f`
 
 **What it built.** A date predicate, and a date on the row. `conflictsForDay`'s
 absence axis now asks its question from **this day's appointments outward**
