@@ -3311,6 +3311,63 @@ look at a week that is genuinely ahead, and the report takes the clock as an
 argument instead of reading it — a report that reads the system clock is a
 report whose tests cannot ask it about next week.
 
+## A-103 — the walk-in the software could not book
+
+Somebody walks in on a Saturday and asks if you can fit her in. The book is
+full. Until this item the software's entire answer was:
+
+> *Nobody is free for that today. Book a time from the day view instead.*
+
+That is a sentence about a screen, said to a person standing at the counter with
+cash in her hand. A real front desk has two answers at that moment, and says one
+of them almost every time:
+
+- **"The soonest I can do you is half nine on Wednesday."**
+- **"Actually — we could squeeze you in with Dana, let me ask her."**
+
+Neither existed. So the walk-in went on paper, and **the walk-in that goes on
+paper is the one the reports never see** — she is not in utilization, not in the
+client record, and not in the number the owner uses to decide whether Tuesday
+needs a promotion.
+
+**The next-day answer is a search, not a message.** It walks forward from the
+day asked about and returns the first day anybody qualified can genuinely take
+her, with each stylist's earliest time on it — computed by the same slot engine
+that answers every other question about availability, never by a cheaper guess,
+because a day offered here and empty when opened is worse than a day not
+offered. It walks the calendar rather than adding twenty-four hours, which is a
+different day twice a year.
+
+**The squeeze-in is the interesting half.** The system already had a
+deliberate way to book over a refusal — a manager decision, with a typed reason
+recorded against the appointment forever. It existed on the *time* axis
+("book her at six, we'll stay late") and had never been built on the *person*
+axis, which is the axis a walk-in is actually about: she does not care when, she
+cares whether anybody can take her. So the refusal now lists each stylist with
+her earliest unavailable time and **the system's own reason for refusing it** —
+*she is on time off*, *she already has a client then*, *every chair is taken*.
+The desk taps one, presses Book, gets the ordinary refusal, types why, and books
+it.
+
+That extra step is not friction to be optimised away — it is the whole point.
+There is **no separate "squeeze in" write path**: an override is the ordinary
+booking with a reason attached, and the moment there are two ways to create one,
+the marker on the appointment stops meaning anything to whoever asks about it
+next week.
+
+**One rule made the feature safe, and it is the one worth stating.** The squeeze
+is offered *only* when genuinely nobody is free. Offering to double-book Dana
+while Priya has a ten o'clock is a decision nobody needed to make, and it is
+exactly how an override marker becomes noise. That rule lives with the search
+itself rather than in the screen that calls it, so the next screen that wants
+these lists inherits it instead of having to remember it.
+
+**And the test that would have caught the obvious wrong version.** The salon in
+the test fixture works Tuesdays only, so "the soonest following day" is **a week
+away, not tomorrow**. A search that looked at tomorrow and gave up would pass
+every simple fixture and be wrong for every salon with a rota — which is all of
+them.
+
 ## A-102 — the two hours nobody was ever going to be offered
 
 A client books a colour for ten o'clock and does not turn up. At twenty past,

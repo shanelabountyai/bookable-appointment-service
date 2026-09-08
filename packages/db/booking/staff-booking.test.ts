@@ -15,7 +15,7 @@ import { createTimeOff, createWeeklyWindow } from '../availability';
 import { computeDaySlots } from '../scheduling';
 import { bookAppointment } from './book';
 import { SlotNotOffered, SlotTaken } from './errors';
-import { clientAlreadyBookedAround, walkInOptions } from './walk-in';
+import { clientAlreadyBookedAround, walkInAnswer, walkInOptions } from './walk-in';
 
 const prisma = new PrismaClient();
 const STAMP = { createdByActor: 'staff' as const, actorRef: 'staff-1' };
@@ -269,6 +269,137 @@ describe('BOOK-04 — the walk-in', () => {
     const appointment = await book({ clientId: null });
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     expect(row.clientId).toBeNull();
+  });
+});
+
+/**
+ * A-103 — WHAT THE DESK SAYS WHEN THE ANSWER IS NOBODY.
+ *
+ * The fixture's providers work Tuesdays only, so "the soonest following day"
+ * is a week out rather than tomorrow — which is the case that matters: a
+ * search that only ever looked at `day + 1` passes every one-day fixture and
+ * is wrong for every salon with a rota.
+ */
+describe('A-103 — the walk-in nobody is free for', () => {
+  const NEXT_TUESDAY = '2026-06-16';
+
+  /** Both stylists working, and both away all day. The window stays open, so
+   *  every grid candidate is a REFUSED candidate rather than no candidate at
+   *  all — which is what makes a squeeze-in offerable. */
+  const bothAwayAllDay = async () => {
+    for (const providerId of [danaId, priyaId]) {
+      await createTimeOff(
+        prisma,
+        { businessId, providerId, startAt: at('2026-06-09T09:00:00-05:00'), endAt: at('2026-06-09T17:00:00-05:00'), reason: 'course' },
+        STAMP,
+      );
+    }
+  };
+
+  const ask = (over: Record<string, unknown> = {}) =>
+    walkInAnswer(prisma, {
+      businessId,
+      serviceIds: [cutId],
+      day: DAY,
+      now: at('2026-06-09T09:55:00-05:00'),
+      ...over,
+    });
+
+  it('offers nobody a squeeze-in while somebody is genuinely free', async () => {
+    const answer = await ask();
+
+    expect(answer.options.map((o) => o.providerName)).toEqual(['Dana', 'Priya']);
+    // A-071's rule one axis on: squeezing her in with Dana while Priya has a
+    // ten o'clock is a knowing double-book nobody needed, and it is how the
+    // override marker stops meaning anything.
+    expect(answer.squeeze).toEqual([]);
+    expect(answer.nextDay).toBeNull();
+  });
+
+  it('names the soonest FOLLOWING day when the day asked about is finished', async () => {
+    const answer = await ask({ now: at('2026-06-09T20:00:00-05:00') });
+
+    expect(answer.options).toEqual([]);
+    // A WEEK out, not tomorrow: these two work Tuesdays. A search that walked
+    // one day and gave up would say "nobody" to a salon that can take her.
+    expect(answer.nextDay?.day).toBe(NEXT_TUESDAY);
+    expect(answer.nextDay?.options.map((o) => o.providerName)).toEqual(['Dana', 'Priya']);
+    expect(hhmm(answer.nextDay!.options[0]!.startAt)).toBe('09:00');
+  });
+
+  it('offers each stylist a squeeze-in at her earliest refused candidate, with the reason', async () => {
+    await bothAwayAllDay();
+    const answer = await ask();
+
+    expect(answer.options).toEqual([]);
+    expect(answer.squeeze.map((o) => o.providerName)).toEqual(['Dana', 'Priya']);
+    // 10:00, not 09:55: the same grid the offers come off. An off-grid
+    // override start leaves a sliver nobody can sell.
+    expect(hhmm(answer.squeeze[0]!.startAt)).toBe('10:00');
+    // THE REASON, exactly — an absence assertion passes for a dozen wrong
+    // reasons, and the desk overriding this has to read what it is overriding.
+    expect(answer.squeeze[0]!.reasons).toEqual(['overlaps-time-off']);
+  });
+
+  it('gives BOTH answers at once — the squeeze today and the opening next week', async () => {
+    await bothAwayAllDay();
+    const answer = await ask();
+
+    expect(answer.squeeze).toHaveLength(2);
+    expect(answer.nextDay?.day).toBe(NEXT_TUESDAY);
+  });
+
+  /** The squeeze-in is a genuine BOOK-05 override and nothing else: the
+   *  ordinary write refuses it, and the ordinary override books it. No second
+   *  write path, which is what keeps the marker worth something. */
+  it('refuses a squeeze-in booked without an override, and takes it with one', async () => {
+    await bothAwayAllDay();
+    const { squeeze } = await ask();
+    const startAt = squeeze[0]!.startAt;
+
+    // THE CHIP'S REASON IS THE WRITE'S REASON. The panel prints these words
+    // beside the time and the desk overrides on the strength of them; a chip
+    // that named a different cause than the refusal it produces is an override
+    // typed against the wrong fact. (An occupied time comes back as
+    // `SlotTaken` rather than `SlotNotOffered` — D-24's lock re-runs the
+    // engine against the committed row — and the panel offers the override on
+    // either.)
+    await expect(
+      book({ providerId: squeeze[0]!.providerId, startAt, now: at('2026-06-09T09:55:00-05:00') }),
+    ).rejects.toMatchObject({ reasons: squeeze[0]!.reasons });
+
+    const appointment = await book({
+      providerId: squeeze[0]!.providerId,
+      startAt,
+      now: at('2026-06-09T09:55:00-05:00'),
+      isOverride: true,
+      overrideReason: 'squeezed in, agreed with Dana',
+    });
+    expect(appointment.isOverride).toBe(true);
+  });
+
+  it('says nobody when nobody qualified can take her inside the cap', async () => {
+    // Tuesday-only providers, and the search stops before the next Tuesday.
+    const answer = await ask({ now: at('2026-06-09T20:00:00-05:00'), daysAhead: 3 });
+
+    expect(answer.options).toEqual([]);
+    expect(answer.nextDay).toBeNull();
+    // Nothing to squeeze into either: the day is over, so every candidate is
+    // in the past and a squeeze into a minute that has gone is not an
+    // override, it is a wrong booking with a reason typed against it.
+    expect(answer.squeeze).toEqual([]);
+  });
+
+  /** A-082/A-097's rule: the fallback must ask the SAME question the offer
+   *  asked, holder included — or it is stricter than the write and refuses
+   *  work the salon needs. */
+  it('asks the room about the same holder the offered search does', async () => {
+    await bothAwayAllDay();
+    const anonymous = await ask();
+    const hers = await ask({ holderKey: clientId });
+
+    expect(hers.squeeze.map((o) => o.providerId)).toEqual(anonymous.squeeze.map((o) => o.providerId));
+    expect(hers.nextDay?.day).toBe(anonymous.nextDay?.day);
   });
 });
 

@@ -9,6 +9,7 @@ import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 import { bookAppointment } from '@bookable/db/booking';
+import { createTimeOff } from '@bookable/db/availability';
 import { staffActor } from '@bookable/core/auth';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
@@ -281,10 +282,13 @@ test.describe('staff booking (A-017)', () => {
     // shape of a test about "right now", since whether anybody IS free depends
     // on the wall clock when the suite runs.
     const options = page.getByRole('button', { name: /at \d\d:\d\d$/ });
-    const nobody = page.getByText(/Nobody is free for that today/);
-    await expect(options.first().or(nobody)).toBeVisible();
+    const nobody = page.getByText(/Nobody is free for that on /);
+    // BRANCH ON THE REFUSAL, not on the chips. A-103 gave the refusal chips of
+    // its own — the soonest FOLLOWING day — which are named the same way, so
+    // "there are chips" no longer means "somebody is free today".
+    await expect(options.first().or(nobody).first()).toBeVisible();
 
-    if (await options.count()) {
+    if ((await nobody.count()) === 0) {
       await options.first().click();
       await page.getByRole('button', { name: 'No name' }).click();
       await page.getByRole('button', { name: 'Book', exact: true }).click();
@@ -943,5 +947,126 @@ test.describe('booking with anyone (A-056)', () => {
     await page.goto(`/staff/book?provider=any&day=${DAY}`);
     await page.getByRole('button', { name: /^Cut\d/ }).click();
     await expect(page.getByText(/Nobody can take that on/)).toBeVisible();
+  });
+});
+
+/**
+ * A-103 — THE WALK-IN NOBODY IS FREE FOR.
+ *
+ * The seeded book is wide open, so the only way to reach the refusal
+ * deliberately is to close the day: every stylist off, on a day pinned in the
+ * FUTURE so nothing is `in-the-past` and the two fallbacks are the same
+ * whatever time the suite runs.
+ *
+ * The panel's own walk-in test above is honest about "right now" and therefore
+ * branches; this one is about the screen the desk gets when the answer is
+ * nobody, which must be identical every run.
+ */
+test.describe('the walk-in nobody is free for (A-103)', () => {
+  /** The day after the pinned Tuesday, which the seeded roster also works —
+   *  so "the soonest is Wednesday" is deterministic. */
+  let TOMORROW: string;
+
+  test.beforeEach(async () => {
+    const prisma = new PrismaClient();
+    try {
+      TOMORROW = addDays(calendarDay(DAY), 1);
+      const business = await prisma.business.findFirstOrThrow();
+      const providers = await prisma.provider.findMany({ where: { businessId: business.id, active: true } });
+      // The whole of the pinned day, for everybody. Time off deliberately
+      // leaves the working WINDOW open, so every grid candidate is a REFUSED
+      // candidate rather than no candidate at all — which is precisely what
+      // makes a squeeze-in offerable and an "outside hours" day not.
+      for (const provider of providers) {
+        await createTimeOff(
+          prisma,
+          { businessId: business.id, providerId: provider.id, startAt: at('06:00'), endAt: at('23:00'), reason: 'training day' },
+          { createdByActor: 'staff', actorRef: 'e2e' },
+        );
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('offers the next day and a squeeze-in, and books the squeeze as an override', async ({ page }) => {
+    await page.goto(`/staff/book?walkin=1&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+
+    // The dead end this item replaced. It NAMES the day rather than saying
+    // "today", because the desk can move off it from the offer below.
+    await expect(page.getByText(/Nobody is free for that on /)).toBeVisible();
+
+    // "The soonest we can do you is half nine tomorrow" — answer one.
+    await expect(page.getByText(/^The soonest is /)).toBeVisible();
+    const nextDayOptions = page.getByRole('button', { name: /at \d\d:\d\d$/ });
+    await expect(nextDayOptions.first()).toBeVisible();
+
+    // "We could squeeze you in" — answer two, with the engine's OWN reason on
+    // the chip. An override typed against a reason nobody read is a guess.
+    const squeeze = page.getByRole('button', { name: /she is on time off/ });
+    await expect(squeeze.first()).toBeVisible();
+
+    await squeeze.first().click();
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+
+    // THE ORDINARY REFUSAL, not a special walk-in one: there is no second
+    // write path, and the refusal is what arms BOOK-05's reason box.
+    await expect(page.getByText('That time is not free.')).toBeVisible();
+    // The refusal's OWN sentence, which the panel punctuates — the chips above
+    // carry the same words unpunctuated, and matching loosely would pass on
+    // them while the refusal said something else entirely.
+    await expect(page.getByText('she is on time off.', { exact: true })).toBeVisible();
+
+    await page.getByLabel('Book it anyway').check();
+    await page.getByLabel('Why?').fill('walk-in, agreed with her on the phone');
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+
+    await expect(page.getByText('Booked as an override, and recorded.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow({ where: { isOverride: true } });
+      // On the day the desk was standing on, not the one it was offered.
+      expect(appointment.startDay).toBe(DAY);
+      const event = await prisma.appointmentEvent.findFirstOrThrow({
+        where: { appointmentId: appointment.id, type: 'override_booked' },
+      });
+      expect(event.reason).toBe('walk-in, agreed with her on the phone');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('books the following day’s offer, and it lands on that day', async ({ page }) => {
+    await page.goto(`/staff/book?walkin=1&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+    await expect(page.getByText(/^The soonest is /)).toBeVisible();
+
+    await page.getByRole('button', { name: /at \d\d:\d\d$/ }).first().click();
+    await page.getByRole('button', { name: 'No name' }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+
+    // An ORDINARY booking — the stylist is genuinely free then, so no override
+    // and no reason. Offering the next day through the override path would be
+    // exactly how the marker stops meaning anything.
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow();
+      expect(appointment.startDay).toBe(TOMORROW);
+      expect(appointment.isOverride).toBe(false);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('has no accessibility violations on the refusal', async ({ page }) => {
+    await page.goto(`/staff/book?walkin=1&day=${DAY}`);
+    await page.getByRole('button', { name: /^Cut\d/ }).click();
+    await expect(page.getByText(/^The soonest is /)).toBeVisible();
+    await expectNoAxeViolations(page);
   });
 });

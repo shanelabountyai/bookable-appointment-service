@@ -8,6 +8,7 @@ import {
   type ComposedTime,
   type GridTime,
   type StaffBookingState,
+  type WalkInAnswer,
   type WalkInChoice,
   anyoneTimesFor,
   bookAsStaff,
@@ -77,7 +78,11 @@ export function BookingPanel({
   // the grid to pick again — the URL's day is only where this screen started.
   const [day, setDay] = useState(initialDay);
   const [chosen, setChosen] = useState<string[]>(initialServiceIds);
-  const [options, setOptions] = useState<WalkInChoice[]>([]);
+  // A-103 — the walk-in answer is THREE lists, not one: who is free today,
+  // and — only when that is empty — the soonest following day anybody can take
+  // her plus BOOK-05's squeeze-in. One state, because they are one answer to
+  // one question and two would let the screen show a stale half of it.
+  const [answer, setAnswer] = useState<WalkInAnswer | null>(null);
   // A-056: one row per TIME, each naming who she would get.
   const [anyoneTimes, setAnyoneTimes] = useState<AnyoneChoice[]>([]);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
@@ -162,7 +167,7 @@ export function BookingPanel({
   ) {
     const request = ++latestRequest.current;
     setPick(null);
-    setOptions([]);
+    setAnswer(null);
     setSlots([]);
     setChosenSlot(null);
     // A typed 18:00 belongs to the day it was composed against — carrying it
@@ -183,8 +188,12 @@ export function BookingPanel({
       startLoadingOptions(async () => {
         const found = await findWalkInOptions(nextServices, nextDay, holderOf(nextClient));
         if (request !== latestRequest.current) return;
-        setOptions(found);
-        reselect(found);
+        setAnswer(found);
+        // EVERY row the desk could have tapped, not just the offered ones.
+        // Naming a client after tapping a squeeze row must not disarm the
+        // override it armed (A-083's rule, one axis on) — and naming her can
+        // legitimately move that instant from `squeeze` into `options`.
+        reselect([...found.options, ...(found.nextDay?.options ?? []), ...found.squeeze]);
       });
       return;
     }
@@ -273,6 +282,26 @@ export function BookingPanel({
     // throw the desk's chosen time away for nothing — which is exactly what
     // it did to A-042's override flow: the refused chip it had just tapped.
     if (holderOf(next) !== before && chosen.length > 0) loadFor(day, chosen, next, pick?.at ?? chosenSlot);
+  }
+
+  /** One "Dana at 10:00" chip. `onDay` is set for an offer on a FOLLOWING day
+   *  (A-103) and moves the panel's day with the pick, so the link after
+   *  booking lands where she was actually booked. */
+  function walkInButton(option: WalkInChoice, onDay?: string) {
+    const selected = pick?.providerId === option.providerId && pick?.at === option.at;
+    return (
+      <button
+        type="button"
+        aria-pressed={selected}
+        onClick={() => {
+          setPick({ providerId: option.providerId, at: option.at, label: option.label });
+          if (onDay) setDay(onDay);
+        }}
+        className={`rounded-md border px-3 py-2 text-sm ${selected ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-zinc-400 dark:border-zinc-600'}`}
+      >
+        {option.providerName} at {option.label}
+      </button>
+    );
   }
 
   if (state.ok) {
@@ -543,30 +572,83 @@ export function BookingPanel({
           </legend>
           {chosen.length === 0 ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
-          ) : loadingOptions ? (
+          ) : loadingOptions || !answer ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p>
-          ) : options.length === 0 ? (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Nobody is free for that today. Book a time from the day view instead.
-            </p>
-          ) : (
+          ) : answer.options.length > 0 ? (
             <ul className="flex flex-wrap gap-2">
-              {options.map((option) => {
-                const selected = pick?.providerId === option.providerId && pick?.at === option.at;
-                return (
-                  <li key={option.providerId}>
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => setPick({ providerId: option.providerId, at: option.at, label: option.label })}
-                      className={`rounded-md border px-3 py-2 text-sm ${selected ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-zinc-400 dark:border-zinc-600'}`}
-                    >
-                      {option.providerName} at {option.label}
-                    </button>
-                  </li>
-                );
-              })}
+              {answer.options.map((option) => (
+                <li key={option.providerId}>{walkInButton(option)}</li>
+              ))}
             </ul>
+          ) : (
+            /* A-103 — THE REFUSAL IS A STEP, NOT A DEAD END (D-8), and this
+               was the last flat one on the staff side. "Book a time from the
+               day view instead" is a sentence about a screen, said to a client
+               who is physically in the building; the two answers below are the
+               two a front desk actually gives out loud. */
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Nobody is free for that on {readableDay(answer.day)}.
+              </p>
+
+              {answer.nextDay ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium">The soonest is {readableDay(answer.nextDay.day)}:</p>
+                  <ul className="flex flex-wrap gap-2">
+                    {answer.nextDay.options.map((option) => (
+                      <li key={option.providerId}>
+                        {/* Moves the panel's own day with the pick, so the
+                            "back to the day" link after booking lands on the
+                            day she was actually booked. The day comes from the
+                            SERVER (D-4) — deriving one from the instant here
+                            would read it in the browser's timezone. */}
+                        {walkInButton(option, answer.nextDay!.day)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {answer.squeeze.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium">Or squeeze her in:</p>
+                  <ul className="flex flex-wrap gap-2">
+                    {answer.squeeze.map((option) => {
+                      const selected = pick?.providerId === option.providerId && pick?.at === option.at;
+                      return (
+                        <li key={option.providerId}>
+                          {/* DASHED, like every other refused chip on the staff
+                              side (A-042): this is a time the engine said no
+                              to, and tapping it arms BOOK-05 rather than
+                              booking. The reason is ON the chip — an override
+                              nobody read the reason for is a guess. */}
+                          <button
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setPick({ providerId: option.providerId, at: option.at, label: option.label })}
+                            className={`rounded-md border px-3 py-2 text-left text-sm ${selected ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-dashed border-zinc-400 dark:border-zinc-600'}`}
+                          >
+                            {option.providerName} at {option.label}
+                            <span className="block text-xs text-zinc-600 dark:text-zinc-400">
+                              {option.reasons.map(readableReason).join('; ')}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Press Book and say why — it is recorded against the appointment.
+                  </p>
+                </div>
+              ) : null}
+
+              {!answer.nextDay && answer.squeeze.length === 0 ? (
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Nobody qualified has an opening this week either. Book a time from the day view.
+                </p>
+              ) : null}
+            </div>
           )}
         </fieldset>
       ) : null}

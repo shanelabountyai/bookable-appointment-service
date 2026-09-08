@@ -3052,6 +3052,93 @@ current week partway through still renders `worked 0.0%`, which is true and now
 sits beside a forward number that makes it readable. If the owner ever wants
 "…so far this week" phrasing, that is where the third state goes.
 
+## A-103 — the walk-in nobody is free for, and the two things a desk says instead
+
+Commit `PENDING`.
+
+**What it built.** `/staff/book?walkin=1` had one answer and one dead end: a
+list of who could take her today, and — when that list was empty — *"Nobody is
+free for that today. Book a time from the day view instead."* A sentence about
+a screen, said to somebody physically in the building with cash. It now gives
+the two answers a front desk gives out loud instead.
+
+**"The soonest we can do you is half nine on Wednesday."** `walkInAnswer` walks
+forward from the day asked about, a day at a time on the CALENDAR axis
+(`addDays`), and returns the first following day anybody qualified can take her
+with each stylist's earliest time on it. Sequential with an early exit rather
+than a fan-out: the common answer is "tomorrow", and asking seven days in
+parallel would run providers × 7 engine passes every time to throw six of them
+away. Capped at a week (`NEXT_DAY_CAP`) — the answer stops being useful to
+somebody standing at the desk long before it stops being computable.
+
+**"We could squeeze you in with Dana."** BOOK-05 on the PROVIDER axis, which
+A-042 built only on the TIME axis and recorded as its own left-behind. Each
+qualified stylist's earliest candidate the engine REFUSED, with the engine's
+own reasons on the chip — *"Dana at 10:00 / she is on time off"*, dashed like
+every other refused chip on the staff side. Tapping one and pressing Book
+reaches the ORDINARY refusal, which is what arms BOOK-05's reason box. **No
+second write path**: the squeeze is an ordinary `bookAppointment` with a reason
+typed against it, and the override marker only means something because that
+ceremony stays.
+
+**What it decided.** Both fallbacks are computed inside `walkInAnswer` rather
+than by the caller, and the rule that makes them safe lives there with them:
+**a non-empty `options` returns no squeeze at all.** Offering to knowingly
+double-book Dana while Priya is free at the same time is A-071's defect wearing
+a different hat, and a rule enforced in one server action is a rule the next
+surface that wants these lists will not know about. One function, one place
+that decides.
+
+The day the lists were computed for is carried back on the answer
+(`WalkInSearch.day`) rather than the panel saying "today". The desk can take the
+following-day offer from that screen — the pick moves the panel's own day with
+it, so the "back to the day" link after booking lands where she was actually
+booked — and a sentence hardcoded to "today" is then a lie about a screen the
+desk is still looking at. The day comes from the SERVER on that pick; deriving
+one from the instant in the browser is the axis-crossing this project exists to
+practise not writing (D-4).
+
+**Why `earliestEach` is one pass.** `slots` and `excluded` are two halves of one
+answer about one day, and the first shape of this item asked twice — once
+through `walkInOptions` for the offers, once again for the squeeze. That is the
+"two askers of one question" construction A-102 had just finished removing, so
+it went before it shipped: one engine call per stylist per day, both edges read
+off it.
+
+**Tests.** Seven unit tests in `staff-booking.test.ts` and three e2e. Three
+matter. `offers nobody a squeeze-in while somebody is genuinely free` is the
+A-071 rule, and it is the one a fixture where everybody is busy cannot see.
+`names the soonest FOLLOWING day` uses the fixture's Tuesday-only roster, so the
+answer is **a week out, not tomorrow** — a search that walked one day and gave
+up passes every one-day fixture and is wrong for every salon with a rota. And
+`refuses a squeeze-in booked without an override, and takes it with one`
+asserts the chip's reasons **equal** the write's reasons: the desk overrides on
+the strength of the words on that chip, and a chip naming a different cause than
+the refusal it produces is an override typed against the wrong fact. (An
+occupied time comes back as `SlotTaken` rather than `SlotNotOffered` — D-24's
+advisory lock re-runs the engine against the committed row — and the panel
+offers the override on either, which is why the assertion is on the reasons
+rather than on the error class.)
+
+The e2e pins a FUTURE day and puts every stylist on time off across it. Time off
+deliberately leaves the working WINDOW open, so every grid candidate is a
+refused candidate rather than no candidate at all — which is exactly what makes
+a squeeze-in offerable and an out-of-hours day not. Pinning the day is what
+makes the two fallbacks identical whatever time the suite runs; the existing
+walk-in spec above it is honest about "right now" and therefore branches, and
+**that spec had to change**: A-103 gave the refusal chips of its own, named the
+same way, so "there are chips" no longer means "somebody is free today". It
+branches on the refusal now.
+
+**Left behind.** The cap is a constant, not a setting — a salon shut for a
+fortnight gets the day view, which is the right screen for that. The squeeze
+list is one row per stylist at her EARLIEST refused candidate, not every refused
+time she has: the walk-in's choice is *which stylist*, and the whole column is
+what `staffSlotsFor` is for. A stylist not working that day contributes no
+squeeze row at all, because the engine generates no candidates outside a window
+— "squeeze her in with Dana" when Dana is not in the building is not an answer,
+and the typed-time path (A-042) is where "we will open early for her" lives.
+
 ## A-102 — the button was on one screen and the no-show is markable on three
 
 Commit `f21f316`.

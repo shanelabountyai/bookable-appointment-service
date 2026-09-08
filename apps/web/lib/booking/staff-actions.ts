@@ -27,7 +27,7 @@ import {
   bookAppointment,
   clientAlreadyBookedAround,
   createSeries,
-  walkInOptions,
+  walkInAnswer,
 } from '@bookable/db/booking';
 import { computeDaySlots } from '@bookable/db/scheduling';
 import { clientReliability, searchClients } from '@bookable/db/clients';
@@ -179,14 +179,39 @@ export interface WalkInChoice {
   label: string;
 }
 
-/** BOOK-04's walk-in: who could take this visit, soonest first. */
+/**
+ * A-103 — the walk-in answer, INCLUDING what to say when it is "nobody".
+ *
+ * `options` empty used to be the end of the screen. `walkInAnswer` fills the
+ * other two lists in that case — the soonest FOLLOWING day anybody can take
+ * her, and BOOK-05's squeeze-in on the provider axis — and holds the rule that
+ * neither is offered while somebody is genuinely free. This action only
+ * formats.
+ */
+export interface WalkInAnswer {
+  /** The day the lists were computed for, so the panel can NAME it rather than
+   *  saying "today": the desk can move to the next day from the fallback, and
+   *  a sentence hardcoded to "today" is then a lie about the screen it is
+   *  still looking at. */
+  day: string;
+  options: WalkInChoice[];
+  nextDay: { day: string; options: WalkInChoice[] } | null;
+  /** Times the engine REFUSED, with its reasons. Tapping one and submitting
+   *  reaches the ordinary refusal, which is what arms the override box —
+   *  there is no second write path. STAFF ONLY (spec §1.3); every caller of
+   *  this action is behind `requireStaff()`. */
+  squeeze: (WalkInChoice & { reasons: string[] })[];
+}
+
+/** BOOK-04's walk-in: who could take this visit, soonest first — and A-103's
+ *  two fallbacks when the answer is nobody. */
 export async function findWalkInOptions(
   serviceIds: string[],
   day: string,
   clientId?: string | null,
-): Promise<WalkInChoice[]> {
+): Promise<WalkInAnswer> {
   const staff = await requireStaff();
-  const options = await walkInOptions(prisma, {
+  const answer = await walkInAnswer(prisma, {
     businessId: staff.businessId,
     serviceIds,
     day,
@@ -195,14 +220,27 @@ export async function findWalkInOptions(
     // something else; the stranger at the door is the `null` case.
     holderKey: clientId || null,
   });
-  return Promise.all(
-    options.map(async (option) => ({
-      providerId: option.providerId,
-      providerName: option.providerName,
-      at: option.startAt.toISOString(),
-      label: await clock(staff.businessId, option.startAt),
-    })),
-  );
+
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+  const zone = zoneId(business.timezone);
+  // Formatted in the SALON's zone, server-side — the browser would use the
+  // visitor's.
+  const choice = (option: { providerId: string; providerName: string; startAt: Date }): WalkInChoice => ({
+    providerId: option.providerId,
+    providerName: option.providerName,
+    at: option.startAt.toISOString(),
+    label: toLabel(fromDate(option.startAt), zone).time,
+  });
+
+  return {
+    day: answer.day,
+    options: answer.options.map(choice),
+    nextDay: answer.nextDay ? { day: answer.nextDay.day, options: answer.nextDay.options.map(choice) } : null,
+    squeeze: answer.squeeze.map((row) => ({ ...choice(row), reasons: [...row.reasons] })),
+  };
 }
 
 /**
