@@ -221,7 +221,7 @@ describe('a stylist taken off the roster', () => {
 
     // 5. THE WEEK'S REPORT. Retiring never rewrites history — `room.ts` says
     //    so about a chair, and a report is where it has to be literally true.
-    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: DAY });
+    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: DAY, now: NOW });
     expect(summary.utilizationByProvider.map((p) => p.providerName)).toContain('Tess');
   });
 

@@ -16,11 +16,19 @@ import { staffActor } from '@bookable/core/auth';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
-let DAY: string; // a Tuesday, at least a day out
+/**
+ * A Tuesday in a week STRICTLY AFTER the one containing today — at least
+ * seven days out, so `weekOf(DAY).fromDay > today` whatever weekday the suite
+ * runs on. A-101 (D-51) asserts what the tile says about a week nobody could
+ * have worked yet, and "at least a day out" put DAY inside the CURRENT week
+ * every Monday.
+ */
+let DAY: string;
 let ZONE: string;
 let businessId: string;
 let danaId: string;
 let priyaId: string;
+let marcusId: string;
 let cutId: string;
 let clientId: string;
 
@@ -45,14 +53,13 @@ test.beforeEach(async ({ page }) => {
     businessId = setup.businessId;
     const business = await prisma.business.findFirstOrThrow();
     ZONE = business.timezone;
-    let day = calendarDay(toLabel(fromDate(new Date()), zoneId(ZONE)).day);
-    do {
-      day = addDays(day, 1);
-    } while (weekdayOf(day) !== 2);
+    let day = addDays(calendarDay(toLabel(fromDate(new Date()), zoneId(ZONE)).day), 7);
+    while (weekdayOf(day) !== 2) day = addDays(day, 1);
     DAY = day;
 
     const dana = await prisma.provider.findFirstOrThrow({ where: { businessId, displayName: 'Dana' } });
     const priya = await prisma.provider.findFirstOrThrow({ where: { businessId, displayName: 'Priya' } });
+    marcusId = (await prisma.provider.findFirstOrThrow({ where: { businessId, displayName: 'Marcus' } })).id;
     const cut = await prisma.service.findFirstOrThrow({ where: { businessId, name: 'Cut' } });
     danaId = dana.id;
     priyaId = priya.id;
@@ -81,6 +88,11 @@ test.beforeEach(async ({ page }) => {
     await transitionAppointment(prisma, { appointmentId: cancelledLate.id, to: 'cancelled_late', actor: staffActor('seed'), now });
     const noShow = await book('09:00', priyaId);
     await transitionAppointment(prisma, { appointmentId: noShow.id, to: 'no_show', actor: staffActor('seed'), now: at('18:00') });
+    // A-101 (D-51). Marcus's stays `booked` — nothing has happened to it, on a
+    // week in which nothing CAN have happened yet. He is the row that carries
+    // both halves of the decision at once: no retrospective number to show,
+    // and a forward one worth showing.
+    await book('09:00', marcusId);
   } finally {
     await prisma.$disconnect();
   }
@@ -99,7 +111,7 @@ test.describe('the owner dashboard (A-024)', () => {
     await page.goto(`/staff/dashboard?week=${DAY}`);
 
     await expect(page.getByText('Bookings')).toBeVisible();
-    await expect(page.getByText('3', { exact: true })).toBeVisible(); // 3 booked this week
+    await expect(page.getByText('4', { exact: true })).toBeVisible(); // 4 booked this week
     await expect(page.getByText('0 on time · 1 late')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Priya: 1', exact: true })).toBeVisible();
 
@@ -115,6 +127,47 @@ test.describe('the owner dashboard (A-024)', () => {
     await page.getByRole('link', { name: 'Cancellations' }).click();
     await expect(page.getByRole('heading', { name: 'cancelled, cancelled late' })).toBeVisible();
     await expect(page.getByText('1 appointment', { exact: true })).toBeVisible();
+  });
+
+  /**
+   * A-101 (D-51) — THE WEEK THE DASHBOARD OPENS ON, WHICH NO SPEC EVER ASSERTED.
+   *
+   * Checkpoint 8 found `Bookings 157` and `Dana 0.0% Priya 0.0% Marcus 0.0%
+   * Tess 0.0%` on the same card, for the same seven days, computed by the same
+   * function — because RPT-02's numerator is terminal statuses only, so a week
+   * that has not happened is 0.0% by construction, and the dashboard opens on
+   * the current week. Nothing could see it: every assertion in the product was
+   * made against DEMO_WEEK, a fixed week in the PAST, which is the one kind of
+   * week where a retrospective number is the right answer.
+   *
+   * THREE ROWS, THREE DIFFERENT THINGS, ON ONE FUTURE WEEK:
+   *   * Marcus  — nothing worked, something booked. Both halves of D-51.
+   *   * Tess    — nothing worked, nothing booked. "not yet worked", not 0.0%.
+   *   * Dana    — a closed-out row in a week still ahead. THE NUMBER WINS: the
+   *               wording exists to stop 0.0% meaning two things, not to become
+   *               a third thing that hides a real measurement.
+   */
+  test('a week still ahead says "not yet worked", and shows what is sold instead', async ({ page }) => {
+    await page.goto(`/staff/dashboard?week=${DAY}`);
+
+    // The utilization rows are the only listitems naming these three: the
+    // no-show tile lists Priya alone (it filters to counts above zero).
+    const row = (name: string) => page.getByRole('listitem').filter({ hasText: new RegExp(`^${name}:`) });
+
+    // A Cut is 45 minutes of body, and the three denominators are all
+    // different, which is the point of asserting three rows rather than one:
+    // Dana is 09:00-17:00 Tue-Sat with an hour's break (2100 minutes), Marcus
+    // has the split Thursday whose second window is CLIPPED to the salon's
+    // 18:00 close (2040), and Tess takes no break at all (2400).
+    await expect(row('Marcus')).toHaveText('Marcus: not yet worked · booked 2.2%');
+    await expect(row('Tess')).toHaveText('Tess: not yet worked · booked 0.0%');
+    await expect(row('Dana')).toHaveText('Dana: worked 2.1% · booked 2.1%');
+
+    // RPT-01: the forward number drills to the rows behind it, exactly as the
+    // frozen one does — Marcus's one appointment, which has not happened.
+    await row('Marcus').getByRole('link', { name: 'booked 2.2%' }).click();
+    await expect(page.getByText('1 appointment', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ada Chen')).toBeVisible();
   });
 
   /**

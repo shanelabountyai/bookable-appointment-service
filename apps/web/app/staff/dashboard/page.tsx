@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
-import { dashboardSummary } from '@bookable/db/reports';
+import { type ProviderUtilization, dashboardSummary } from '@bookable/db/reports';
 import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/time';
-import { CONSUMED_STATUSES } from '@bookable/core/scheduling';
+import { ACTIVE_STATUSES, CONSUMED_STATUSES } from '@bookable/core/scheduling';
 import { requireOwner } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 
@@ -11,6 +11,18 @@ export const dynamic = 'force-dynamic';
 const tileClass = 'flex flex-col gap-1 rounded-md border border-zinc-300 p-4 dark:border-zinc-700';
 const numberClass = 'text-3xl font-semibold tracking-tight';
 const percent = (fraction: number | null) => (fraction === null ? 'n/a' : `${(fraction * 100).toFixed(1)}%`);
+
+/**
+ * A-101 (D-51) — the retrospective half of the tile.
+ *
+ * BOTH conditions, deliberately. The calendar says nothing in this week can
+ * have been worked yet; `utilization === 0` says the data agrees. If a
+ * closed-out row somehow lands in a week still ahead, the number wins and the
+ * screen reports it — the wording exists to stop 0.0% meaning two things, not
+ * to become a third thing that hides one of them.
+ */
+const worked = (p: ProviderUtilization, weekIsAhead: boolean) =>
+  weekIsAhead && p.utilization === 0 ? 'not yet worked' : `worked ${percent(p.utilization)}`;
 
 /**
  * A-024 — THE OWNER DASHBOARD (RPT-01, RPT-02, RPT-03).
@@ -32,10 +44,11 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
 
   const business = await prisma.business.findUniqueOrThrow({ where: { id: staff.businessId }, select: { timezone: true } });
   const zone = zoneId(business.timezone);
-  const today = toLabel(fromDate(new Date()), zone).day;
+  const now = new Date();
+  const today = toLabel(fromDate(now), zone).day;
   const anyDayInWeek = typeof params.week === 'string' ? params.week : today;
 
-  const summary = await dashboardSummary(prisma, { businessId: staff.businessId, anyDayInWeek });
+  const summary = await dashboardSummary(prisma, { businessId: staff.businessId, anyDayInWeek, now });
   const range = { from: summary.fromDay, to: summary.toDay };
 
   const drill = (extra: Record<string, string | string[]>) => {
@@ -94,13 +107,25 @@ export default async function DashboardPage({ searchParams }: PageProps<'/staff/
           )}
         </div>
 
+        {/* A-101 (D-51). TWO NUMBERS, because they are two facts and the tile
+            used to render one string for both. "worked" is RPT-02's frozen
+            retrospective fraction; "booked" is the same denominator with
+            everything that still occupies the chair over it — the figure the
+            owner is actually deciding on when they read this on a Tuesday.
+            On a week that has not started, "worked" is not a measurement of
+            anything and says so in words rather than as 0.0%. */}
         <div className={tileClass}>
           <span className="text-sm text-ink-muted">Utilization</span>
           <ul className="flex flex-col gap-1">
             {summary.utilizationByProvider.map((p) => (
-              <li key={p.providerId}>
-                <Link href={drill({ status: [...CONSUMED_STATUSES], provider: p.providerId })} className="text-sm underline underline-offset-4">
-                  {p.providerName}: {percent(p.utilization)}
+              <li key={p.providerId} className="text-sm">
+                {p.providerName}:{' '}
+                <Link href={drill({ status: [...CONSUMED_STATUSES], provider: p.providerId })} className="underline underline-offset-4">
+                  {worked(p, summary.weekIsAhead)}
+                </Link>{' '}
+                ·{' '}
+                <Link href={drill({ status: [...ACTIVE_STATUSES], provider: p.providerId })} className="underline underline-offset-4">
+                  booked {percent(p.booked)}
                 </Link>
               </li>
             ))}

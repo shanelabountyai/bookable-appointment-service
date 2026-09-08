@@ -2967,3 +2967,87 @@ runs past midnight belongs to the day it starts on, on every surface, and an
 absence covering only the small hours of the following day therefore strands it
 on **its own** day and not on the next one. That is deliberate and consistent
 with the other two causes; it is worth knowing it is a choice.
+
+## A-101 — 0% and "not yet" are different facts, and the tile spelled them the same
+
+**Commit:** `PENDING`
+
+**The decision first (D-51), because the row demanded one.** RPT-02's formula is
+frozen and is untouched by this item. What was never specified is **which week
+the tile is shown for** — and the answer taken is **both** halves the checkpoint
+offered: a second, forward number per stylist, *and* wording instead of `0.0%`
+on a week that has not started.
+
+**What it built.**
+
+- `ProviderUtilization.booked` — RPT-02's own denominator with
+  `ACTIVE_STATUSES` over it: *how much of this week is spoken for*, whether or
+  not it has happened. Rendered beside the frozen number and drilling to its own
+  filtered list, so RPT-01's "every tile drills into the underlying list" still
+  holds for both figures.
+- `DashboardSummary.weekIsAhead` — a fact about the **calendar**, in the
+  business's own zone: `fromDay > toLabel(now).day`.
+- `dashboardSummary(db, { …, now })` — `now` is a **parameter** now, the
+  engine's rule one layer out.
+- The surface renders `not yet worked` when `weekIsAhead && utilization === 0`,
+  and `worked N%` otherwise.
+
+**Why the screen was wrong while the code was right.** `/staff/dashboard` on the
+current week read **Bookings 157** and **Dana 0.0% Priya 0.0% Marcus 0.0% Tess
+0.0%** — same card, same function, same seven days — directly above *"who to
+ring to fill a quiet Tuesday →"*, an action about the future. The numerator is
+`CONSUMED_STATUSES` (terminal **and** still occupying, A-086), so a week that
+has not happened is 0.0% for everybody **by construction**; the denominator is
+non-zero, so `utilizationFraction`'s `null` → "n/a" escape never fires. Every
+line of that is the specification working exactly as written. The product was
+using **one string for two facts** — "we had thirty-five hours and sold none of
+them", which is an emergency, and "it is Monday", which is Monday — and the
+number that separates them was sitting four lines above.
+
+**The code already knew they were different, in a test name.**
+`dashboard.test.ts:95` is *"a provider with availability but nothing completed
+reads 0%, not n/a — those are different facts"*. That test is still there and
+still passes; the finding is that the SCREEN had no third thing to say.
+
+**Two numbers, one denominator, and the guards that keep them honest.**
+
+- `CONSUMED_STATUSES ⊂ ACTIVE_STATUSES` — both derived from
+  `SLOT_FREEING_STATUSES` in the status module, neither re-typed at the call
+  site — so `booked >= worked` always. It is now **one** query over
+  `ACTIVE_STATUSES` split into two sums off `row.status`, not two queries.
+- Both fractions are `null` on exactly the same zero denominator. Letting
+  "n/a" grow a second meaning on the forward side would have rebuilt the
+  conflation on the other half of the tile, so a test walks every provider and
+  asserts `booked === null` **iff** `utilization === null`.
+- The wording is guarded by **both** the calendar and the number. If a
+  closed-out row somehow lands in a week still ahead, the figure wins and the
+  screen reports it — the wording exists to stop `0.0%` meaning two things, not
+  to become a third thing that hides a real measurement.
+
+**Why nothing could see it, and what changed about the fixtures.** Every
+assertion the product had ever made about this tile was against **DEMO_WEEK, a
+fixed week in the past** — deliberately, so the frozen constant cannot rot, and
+a past week is the one kind where a retrospective definition is the right one.
+Even that week reads 0.0% for three of the four stylists, and
+`utilization-constant.test.ts` asserts Dana and looks no further. The e2e spec's
+`DAY` was *"a Tuesday, at least a day out"*, which lands inside the **current**
+week every Monday — so it is now at least seven days out and the week is
+strictly ahead whatever weekday the suite runs on. Four new unit tests and one
+e2e test assert a **future** week for the first time: `weekIsAhead` at all four
+boundaries (ahead, current, past, and `now` on the week's own Monday), the
+forward/backward split on a booking two weeks out, the both-null denominator,
+and — on one screen — Marcus (`not yet worked · booked 2.2%`), Tess (`not yet
+worked · booked 0.0%`) and Dana (`worked 2.1% · booked 2.1%`, the number
+winning over the wording). **Three rows, three different denominators**, which
+is why it is three rows and not one: Dana's 2100 minutes, Marcus's 2040 (the
+split Thursday's second window is clipped by the salon's 18:00 close), Tess's
+2400 (she takes no break). The first draft asserted 2.1% for all of them, on
+the assumption the seed is uniform — it is not, deliberately, and a single-row
+assertion would never have said so.
+
+**Left behind.** The `booked` drill-down's heading is the six status words
+joined — `listReportAppointments` names its filter and six names is a long
+heading. `weekIsAhead` is a boolean, not a `past | current | ahead` enum: the
+current week partway through still renders `worked 0.0%`, which is true and now
+sits beside a forward number that makes it readable. If the owner ever wants
+"…so far this week" phrasing, that is where the third state goes.

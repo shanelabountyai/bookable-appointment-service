@@ -136,7 +136,7 @@ describe('A-060 — how many did we overrule, and who', () => {
       reason: 'our fault',
     });
 
-    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09' });
+    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09', now: anHourBefore('2026-06-09') });
     // An overrule is a subset of the NORMAL cancellations, never a third bucket.
     expect(summary.cancels).toEqual({ normal: 1, late: 0, overruled: 1 });
   });

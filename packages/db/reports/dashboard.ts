@@ -9,8 +9,8 @@
  * got from the same decision.
  */
 import { availableMinutesForDay, utilizationFraction, weekOf } from '../../core/reports';
-import { type CalendarDay, type ZoneId, addDays, calendarDay, fromDate, startOfDay, toDate, wallTime, weekdayOf, zoneId } from '../../core/time';
-import { type AppointmentStatus, CONSUMED_STATUSES } from '../../core/scheduling';
+import { type CalendarDay, type ZoneId, addDays, calendarDay, fromDate, startOfDay, toDate, toLabel, wallTime, weekdayOf, zoneId } from '../../core/time';
+import { type AppointmentStatus, ACTIVE_STATUSES, CONSUMED_STATUSES } from '../../core/scheduling';
 import { findAbsences, resolveDayWindows } from '../availability';
 import { countOverruledCancellations } from './overruled';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -26,9 +26,25 @@ export interface ProviderCount {
 export interface ProviderUtilization {
   providerId: string;
   providerName: string;
-  /** RPT-02's fraction, 0..1. `null` is "n/a" — a zero denominator, never
-   *  rendered as 0%. */
+  /** RPT-02's fraction, 0..1 — FROZEN, and backward-looking by construction:
+   *  the numerator is `CONSUMED_STATUSES`, so only a visit that has already
+   *  happened is in it. `null` is "n/a" — a zero denominator, never rendered
+   *  as 0%. */
   utilization: number | null;
+  /**
+   * A-101 (D-51) — THE FORWARD NUMBER, and the reason this interface has two.
+   *
+   * Same denominator, `ACTIVE_STATUSES` for a numerator: how much of the
+   * week's working time is SPOKEN FOR, whether or not it has happened yet.
+   * `CONSUMED_STATUSES ⊂ ACTIVE_STATUSES`, so `booked >= utilization` always,
+   * and both are `null` on exactly the same zero denominator.
+   *
+   * RPT-02 is untouched. What was never specified is which WEEK the tile is
+   * shown for, and the dashboard opens on the current one — the one week the
+   * owner can still do something about, and the one a retrospective formula
+   * can only ever say 0.0% about.
+   */
+  booked: number | null;
 }
 
 export interface DashboardSummary {
@@ -44,16 +60,29 @@ export interface DashboardSummary {
   cancels: { normal: number; late: number; overruled: number };
   noShowsByProvider: ProviderCount[];
   utilizationByProvider: ProviderUtilization[];
+  /**
+   * A-101 (D-51) — the week has not started yet, in the business's own zone.
+   *
+   * A FACT ABOUT THE CALENDAR, not about the data: the surface pairs it with
+   * `utilization === 0` before it says "not yet worked", so a closed-out row
+   * that somehow lands in a future week is still reported as the number it is
+   * rather than papered over by the wording.
+   */
+  weekIsAhead: boolean;
 }
 
 /**
  * `anyDayInWeek` names any day; the summary covers the whole Monday-Sunday
  * week it falls in (`weekOf`). Passing a bare day rather than pre-computed
  * bounds keeps "which week" a one-value URL param at the surface.
+ *
+ * `now` is a PARAMETER (A-101), for the same reason the engine's is: the only
+ * thing it decides is whether the week is still ahead, and a report that reads
+ * the system clock is a report whose tests cannot ask it about next week.
  */
 export async function dashboardSummary(
   db: Db,
-  args: { businessId: string; anyDayInWeek: string },
+  args: { businessId: string; anyDayInWeek: string; now: Date },
 ): Promise<DashboardSummary> {
   const { fromDay, toDay } = weekOf(calendarDay(args.anyDayInWeek));
 
@@ -95,24 +124,32 @@ export async function dashboardSummary(
     _count: { _all: true },
   });
 
-  // The numerator: one query for every provider's completed/no-show minutes
-  // this week, summed in JS — a groupBy cannot sum a computed expression, and
-  // the row count here is small enough that fetching it plainly costs nothing
-  // a raw SQL aggregate would meaningfully save.
+  // BOTH numerators, one query: every provider's minutes this week that still
+  // occupy the chair, summed in JS — a groupBy cannot sum a computed
+  // expression, and the row count here is small enough that fetching it
+  // plainly costs nothing a raw SQL aggregate would meaningfully save.
+  //
+  // A-086. Neither list is re-typed here: the tile and the drill-down link it
+  // opens have to be the same set of rows, and there are two links now.
+  // A-101 widens the QUERY from `CONSUMED_STATUSES` to `ACTIVE_STATUSES` —
+  // which contains it (both are derived from `SLOT_FREEING_STATUSES` in the
+  // status module) — and splits the two sums off `row.status`.
   const occupied = await db.appointment.findMany({
     where: {
       businessId: args.businessId,
       startDay: { gte: fromDay, lte: toDay },
-      // A-086. The list is `CONSUMED_STATUSES`, never re-typed here: the tile
-      // and the drill-down link it opens have to be the same set of rows.
-      status: { in: [...CONSUMED_STATUSES] },
+      status: { in: [...ACTIVE_STATUSES] },
     },
-    select: { providerId: true, startAt: true, endAt: true },
+    select: { providerId: true, status: true, startAt: true, endAt: true },
   });
-  const occupiedMinutesByProvider = new Map<string, number>();
+  const consumedMinutesByProvider = new Map<string, number>();
+  const activeMinutesByProvider = new Map<string, number>();
   for (const row of occupied) {
     const minutes = (fromDate(row.endAt) - fromDate(row.startAt)) / 60_000;
-    occupiedMinutesByProvider.set(row.providerId, (occupiedMinutesByProvider.get(row.providerId) ?? 0) + minutes);
+    activeMinutesByProvider.set(row.providerId, (activeMinutesByProvider.get(row.providerId) ?? 0) + minutes);
+    if ((CONSUMED_STATUSES as readonly string[]).includes(row.status)) {
+      consumedMinutesByProvider.set(row.providerId, (consumedMinutesByProvider.get(row.providerId) ?? 0) + minutes);
+    }
   }
 
   const availableMinutesByProvider = new Map<string, number>();
@@ -146,8 +183,10 @@ export async function dashboardSummary(
     utilizationByProvider: providers.map((p) => ({
       providerId: p.id,
       providerName: p.displayName,
-      utilization: utilizationFraction(occupiedMinutesByProvider.get(p.id) ?? 0, availableMinutesByProvider.get(p.id) ?? 0),
+      utilization: utilizationFraction(consumedMinutesByProvider.get(p.id) ?? 0, availableMinutesByProvider.get(p.id) ?? 0),
+      booked: utilizationFraction(activeMinutesByProvider.get(p.id) ?? 0, availableMinutesByProvider.get(p.id) ?? 0),
     })),
+    weekIsAhead: fromDay > toLabel(fromDate(args.now), zone).day,
   };
 }
 

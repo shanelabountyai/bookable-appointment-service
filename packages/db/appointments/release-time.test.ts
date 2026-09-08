@@ -216,11 +216,11 @@ describe('what it must NOT move (D-44)', () => {
 
   it('leaves utilization exactly where it was — she occupied that time (D-7)', async () => {
     const appointment = await noShow();
-    const before = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09' });
+    const before = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09', now: NOW });
 
     await release(appointment.id);
 
-    const after = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09' });
+    const after = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09', now: NOW });
     expect(after.utilizationByProvider).toEqual(before.utilizationByProvider);
     expect(after.noShowsByProvider).toEqual(before.noShowsByProvider);
   });

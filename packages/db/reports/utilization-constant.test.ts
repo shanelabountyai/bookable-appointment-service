@@ -25,6 +25,10 @@ import { dashboardSummary } from './dashboard';
 
 const prisma = new PrismaClient();
 const SEED_TIMEOUT = 120_000;
+/** The seed's frozen `now`, reused as the report's (A-101). DEMO_WEEK is a
+ *  fixed PAST week relative to it, which is the whole reason the constant
+ *  below can be pinned at all. */
+const NOW = toDate(instantFromIso('2026-09-02T15:30:00-05:00'));
 
 let businessId: string;
 
@@ -37,7 +41,7 @@ beforeAll(async () => {
   // within three of DEMO_WEEK, but the exact constant below is measured over
   // DEMO_WEEK's whole ISO week, so "which days did the moving book take?" must
   // not be a question with a different answer every time this file runs.
-  await seedDensity(prisma, { now: toDate(instantFromIso('2026-09-02T15:30:00-05:00')) });
+  await seedDensity(prisma, { now: NOW });
 }, SEED_TIMEOUT);
 
 afterAll(async () => {
@@ -46,7 +50,7 @@ afterAll(async () => {
 
 describe('the frozen utilization constant (RPT-02)', () => {
   it("Dana's DEMO_WEEK utilization is the exact seeded constant", async () => {
-    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: DEMO_WEEK[0] });
+    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: DEMO_WEEK[0], now: NOW });
     const dana = summary.utilizationByProvider.find((p) => p.providerName === 'Dana');
     expect(dana).toBeDefined();
     expect(dana!.utilization).not.toBeNull();
@@ -61,7 +65,7 @@ describe('the frozen utilization constant (RPT-02)', () => {
   });
 
   it("the late-cancel tile finds Dana's two seeded offenders", async () => {
-    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: DEMO_WEEK[0] });
+    const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: DEMO_WEEK[0], now: NOW });
     expect(summary.cancels.late).toBeGreaterThanOrEqual(2);
 
     const late = await prisma.appointment.findMany({

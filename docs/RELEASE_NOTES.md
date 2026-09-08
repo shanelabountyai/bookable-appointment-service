@@ -3261,3 +3261,52 @@ one-day absence — and on a one-day absence the wrong question and the right on
 return exactly the same list. The test that finds a defect in a *range* is the
 one whose range is longer than a single unit, which here meant a fixture nobody
 had written: one absence, two booked days underneath it.
+
+## A-101 — nought per cent, and "we haven't worked it yet"
+
+The owner opens the dashboard on a Tuesday morning. It says **157 bookings** and
+**0.0% utilization** for all four stylists — the same card, the same function,
+the same seven days — directly above a link reading *"who to ring to fill a
+quiet Tuesday"*.
+
+Nothing was broken. The utilization formula is frozen by specification and was
+implemented exactly: *minutes of appointments that actually happened, over
+working minutes minus breaks minus time off*. Only a completed or no-show visit
+counts in the top half, so **a week that has not happened yet is 0.0% by
+construction** — and the dashboard opens on the current week. The formula is
+retrospective; the screen it lives on is not. Nobody ever specified which week
+the number was for, so nobody ever asked.
+
+**Two facts, one string.** "We had thirty-five hours available and sold none of
+them" is an emergency. "It is Monday" is Monday. They rendered identically, and
+the figure that tells them apart — 157 — was four lines above. The codebase
+already knew the distinction: there is a test named *"a provider with
+availability but nothing completed reads 0%, not n/a — those are different
+facts"*. What the screen lacked was a third thing to say.
+
+**The fix is a decision, not a formula change.** The frozen number stays frozen.
+Beside it now sits a **forward** number over the same denominator — how much of
+the week is *spoken for* — and on a week that has not started the retrospective
+half says **"not yet worked"** rather than `0.0%`. The owner deciding on Tuesday
+whether to run a ring-round finally has a figure about the week they can still
+do something about.
+
+**Three details that are the actual engineering.** The two numbers share one
+denominator and one measure, so they are comparable and *booked* can never fall
+below *worked* — the two status lists are derived from a single source, never
+re-typed, so a ninth appointment state cannot make the halves disagree. Both
+read "n/a" on exactly the same zero denominator, because letting "n/a" grow a
+second meaning would have rebuilt the same conflation on the other side of the
+tile. And the wording is guarded by the calendar **and** the number: if a
+closed-out visit somehow lands in a future week, the figure wins — the phrase
+exists to stop `0.0%` meaning two things, not to become a third thing that hides
+a real measurement.
+
+**Why forty green runs never mentioned it.** Every assertion about this tile had
+been made against a **fixed week in the past** — deliberately, so the exact
+frozen constant cannot drift, and a past week is the one kind where a
+retrospective definition is right. The end-to-end test picked "a Tuesday, at
+least a day out", which lands inside the *current* week every Monday. Both now
+look at a week that is genuinely ahead, and the report takes the clock as an
+argument instead of reading it — a report that reads the system clock is a
+report whose tests cannot ask it about next week.
