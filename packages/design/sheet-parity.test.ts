@@ -79,6 +79,10 @@ describe('the printed sheet against the chip (A-093)', () => {
     expect(sheetFields).toContain('isOverride');
     expect(sheetFields).toContain('released');
     expect(sheetFields).toContain('status');
+    // A-099. The chip says "two people at ten" with GEOMETRY — the two share
+    // the column's width — and paper has none, so the paper says it in words.
+    // A revert to consecutive rows with nothing between them fails here.
+    expect(sheetFields).toContain('concurrent');
   });
 
   it('carries every fact the chip carries, or names the reason it does not', () => {

@@ -15,17 +15,30 @@ import 'server-only';
 import type { DayColumn, DayRoom, DayView } from '@bookable/db/day';
 import { type AppointmentStatus, availableTransitions, isAwaitingStart } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
+import { type Laned, assignLanes, withLanes } from './lanes';
 
 const MIN = 60_000;
 
 export type ItemKind = 'appointment' | 'absence' | 'break' | 'gap';
 
-export interface GridItem {
+export interface GridItem extends Laned {
   key: string;
   kind: ItemKind;
   /** Offset from the top of the grid, in minutes. */
   top: number;
   minutes: number;
+  /**
+   * A-099 — WHO ELSE IS IN THIS HOUR, worded. D-8's zero-width blocked range is
+   * what lets a staff override put two clients on one stylist at one instant,
+   * and its last clause promises the day view renders the collision.
+   *
+   * On the grid the two chips now share the column's width, which says it with
+   * geometry. The printed sheet and the stylist's phone list have no geometry
+   * to say it with — both put the pair on CONSECUTIVE ROWS, which is the shape
+   * of sequence — so they read this. Set by `lanes.ts`, never here: one
+   * predicate for "at once", four readers.
+   */
+  concurrent?: string;
   /** "10:00–11:00" in the salon's zone. */
   time: string;
   /**
@@ -171,7 +184,7 @@ export interface RoomTrack {
   resourceId: string;
   name: string;
   active: boolean;
-  blocks: {
+  blocks: (Laned & {
     key: string;
     top: number;
     minutes: number;
@@ -179,7 +192,7 @@ export interface RoomTrack {
     detail: string;
     href: string;
     label: string;
-  }[];
+  })[];
 }
 
 export interface RoomModel {
@@ -269,7 +282,12 @@ function toRoom(type: DayRoom, f: Formatters, total: number): RoomModel {
       resourceId: resource.id,
       name: resource.name,
       active: resource.active,
-      blocks: resource.holds.flatMap((hold) => {
+      // A-099 — the same last-wins paint, one strip over. A-063 permits two
+      // envelopes to overlap on ONE chair for the same holder (bodies never
+      // do), so a client's back-to-back visits legitimately collide here and
+      // the second was drawn over the first. Laned through the same helper the
+      // columns use rather than a second opinion about "at once".
+      blocks: assignLanes(resource.holds.flatMap((hold) => {
         const top = Math.max(0, f.minutesFrom(hold.start));
         const minutes = Math.min(total, f.minutesFrom(hold.end)) - top;
         if (minutes <= 0) return [];
@@ -289,7 +307,7 @@ function toRoom(type: DayRoom, f: Formatters, total: number): RoomModel {
             label: `${resource.name}, ${f.range(hold.start, hold.end)}, ${who} with ${hold.providerName}${services ? `, ${services}` : ''}`,
           },
         ];
-      }),
+      })),
     })),
   };
 }
@@ -473,7 +491,7 @@ function toColumn(
     // CHRONOLOGICAL DOM ORDER, whatever the visual layering. The items are
     // absolutely positioned, so tab order and screen-reader order come from
     // here — sorting by anything else makes the column read out of sequence.
-    items: items.sort((a, b) => a.top - b.top || a.minutes - b.minutes),
+    items: withLanes(items).sort((a, b) => a.top - b.top || a.minutes - b.minutes),
     windows: column.windows.map((w) => ({
       top: f.minutesFrom(w.start),
       minutes: (w.end.getTime() - w.start.getTime()) / MIN,

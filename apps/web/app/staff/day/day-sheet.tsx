@@ -172,6 +172,18 @@ export function DaySheet({
                         ) : null}
                       </div>
                       {item.detail ? <div>{item.detail}</div> : null}
+                      {/* A-099 — TWO ROWS AT ONE TIME, IN WORDS. Point 2 in the
+                          header above says the grid says this with geometry and
+                          a table cannot; it now says it with geometry, and this
+                          is the paper's half. Consecutive rows are the shape of
+                          SEQUENCE, so "10:00 Ada Chen" printed above "10:00 Ben
+                          Ito" reads as a printing error rather than as the
+                          double-booking somebody deliberately typed a reason
+                          for. Naming her is what makes the pair findable on a
+                          page of fourteen rows. */}
+                      {item.concurrent ? (
+                        <div className='font-semibold'>⇄ At the same time as {item.concurrent}.</div>
+                      ) : null}
                       {/* §5.4.11, on paper at last. A box and a word, never a
                           tint — and the reason beside it, which the chip has
                           no room for and which is the whole point of the

@@ -50,9 +50,21 @@ test('the state matrix has no accessibility violations', async ({ page }) => {
  */
 test('the chip matrix and the four days have no accessibility violations, in both schemes', async ({ page }) => {
   // The compositions §8.5 asks for are all on the page, not just the easy one.
-  for (const heading of ['four stylists', 'one stylist', 'a column forty minutes behind', 'a stylist off']) {
+  for (const heading of [
+    'four stylists',
+    'one stylist',
+    'a column forty minutes behind',
+    'a stylist off',
+    // A-099 — the fifth, and the only composition that can LOSE a client.
+    'two clients in one hour',
+  ]) {
     await expect(page.getByRole('heading', { name: `The day — ${heading}` })).toBeVisible();
   }
+  // Both halves of the pair on screen, which is the whole item: an assertion on
+  // the override alone passes against the defect, because the override is the
+  // chip that survived it.
+  await expect(page.getByText('Mei Chen').first()).toBeVisible();
+  await expect(page.getByText('Ruth Adeyemi').first()).toBeVisible();
   // Eight statuses drawn, seven of them wearing their word (§4, never colour
   // alone). `booked` is the eighth and carries none, on purpose.
   for (const word of ['Confirmed', 'Here', 'In chair', 'Done', 'No-show', 'Cancelled', 'Late cancel']) {

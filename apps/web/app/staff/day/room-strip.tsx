@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { laneStyle } from '@/lib/day/lanes';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridModel, RoomModel } from '@/lib/day/view-model';
 
@@ -116,7 +117,13 @@ function RoomType({ type, ticks, height }: { type: RoomModel; ticks: GridModel['
                     <li
                       key={block.key}
                       className="absolute inset-x-1 overflow-hidden rounded-tight border border-line-hairline bg-ground-sunken px-2 py-1 text-caption"
-                      style={{ top: block.top * PX_PER_MINUTE, height: Math.max(block.minutes * PX_PER_MINUTE, 18) }}
+                      // A-099. Two envelopes may overlap on one chair (A-063),
+                      // and the second was painted over the first.
+                      style={{
+                        top: block.top * PX_PER_MINUTE,
+                        height: Math.max(block.minutes * PX_PER_MINUTE, 18),
+                        ...laneStyle(block),
+                      }}
                     >
                       <Link
                         href={block.href}

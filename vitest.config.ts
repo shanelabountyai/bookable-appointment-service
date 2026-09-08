@@ -2,7 +2,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['packages/**/*.test.ts'],
+    // `apps/web/lib` is in here for A-099's lane geometry: it is pure,
+    // clock-free and has no `@/` imports, and the alternative was either a
+    // second copy of the packing algorithm in a package or shipping the day
+    // grid's only non-trivial layout decision with no unit test at all.
+    include: ['packages/**/*.test.ts', 'apps/web/lib/**/*.test.ts'],
     // The engine suite must pass under ANY process TZ (D-3). CI runs it twice:
     // once under TZ=UTC and once under TZ=Pacific/Kiritimati (A-001 wires this).
     // Locally, run `TZ=Pacific/Kiritimati npm test` before calling A-008 done.

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { laneStyle } from '@/lib/day/lanes';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { AppointmentChip, CHIP_SHELL } from './appointment-chip';
@@ -225,7 +226,15 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
 }
 
 function Item({ item }: { item: GridItem }) {
-  const style = { top: item.top * PX_PER_MINUTE, height: Math.max(item.minutes * PX_PER_MINUTE, 18) };
+  // A-099 — the horizontal share, and the ONLY thing on this file that is not
+  // full width. `laneStyle` emits nothing unless something else is drawn at the
+  // same time, so an ordinary column is unchanged; when it does emit, it wins
+  // over `CHIP_SHELL`'s `inset-x-1` because an inline style beats a class.
+  const style = {
+    top: item.top * PX_PER_MINUTE,
+    height: Math.max(item.minutes * PX_PER_MINUTE, 18),
+    ...laneStyle(item),
+  };
 
   // A-090 — the appointment chip is its own component, drawn as a full state
   // matrix on `/staff/design`. Everything else on the grid is a band of time

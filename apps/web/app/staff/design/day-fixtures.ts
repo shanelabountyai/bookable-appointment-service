@@ -1,3 +1,4 @@
+import { withLanes } from '@/lib/day/lanes';
 import type { GridItem, GridModel } from '@/lib/day/view-model';
 
 /**
@@ -63,7 +64,7 @@ function chip(item: Partial<GridItem> & { top: number; minutes: number; startTim
 }
 
 function column(over: Partial<GridModel['columns'][number]> & { providerName: string }): GridModel['columns'][number] {
-  return {
+  const built = {
     providerId: over.providerName.toLowerCase(),
     closed: false,
     offRoster: false,
@@ -75,6 +76,11 @@ function column(over: Partial<GridModel['columns'][number]> & { providerName: st
     hours,
     ...over,
   };
+  // A-099 — THROUGH THE SAME HELPER THE VIEW MODEL USES, never lane numbers
+  // typed into the fixture. A gallery that hand-wrote its own `lane`/`lanes`
+  // could draw a pair the product draws differently, which is the one thing a
+  // reference page must not be able to do.
+  return { ...built, items: withLanes(built.items) };
 }
 
 function model(over: Partial<GridModel> & { columns: GridModel['columns'] }): GridModel {
@@ -261,6 +267,44 @@ export const A_STYLIST_OFF = model({
       providerName: 'Tess',
       offRoster: true,
       items: [chip({ top: 60, minutes: 90, startTime: '10:00', title: 'Ruth Adeyemi', detail: 'Colour' })],
+    }),
+  ],
+});
+
+/**
+ * A-099 — §5.4.11's most important visual, IN A COLUMN, which is the only place
+ * it can be got wrong.
+ *
+ * The desk rings Dana, Dana says put her in, and BOOK-05 takes the booking with
+ * a typed reason over a zero-width blocked range (D-8). Both chips computed
+ * `top=60 minutes=60`, `CHIP_SHELL` is `inset-x-1` for every chip in the
+ * product, and the later one in DOM order painted over the earlier one — so the
+ * client who was ALREADY in the book vanished, under a chip wearing the
+ * override marker. It read as one deliberate override rather than as two people
+ * at ten o'clock, which is the exact opposite of why the desk overrode.
+ *
+ * The 09:00 and the 12:30 are load-bearing, not scenery: lanes are per
+ * overlapping CLUSTER, and a fixture with nothing but the pair in it cannot
+ * tell a correct implementation from one that halves the whole column.
+ */
+export const A_DOUBLE_BOOKED_HOUR = model({
+  columns: [
+    column({
+      providerName: 'Dana',
+      items: [
+        chip({ top: 0, minutes: 45, startTime: '09:00', title: 'Ada Chen', detail: 'Cut', status: 'completed' }),
+        chip({ top: 60, minutes: 60, startTime: '10:00', title: 'Mei Chen', detail: 'Cut & finish', status: 'confirmed' }),
+        chip({
+          top: 60,
+          minutes: 90,
+          startTime: '10:00',
+          title: 'Ruth Adeyemi',
+          detail: 'Colour',
+          isOverride: true,
+          overrideReason: 'Dana said to squeeze her in — mother of the bride.',
+        }),
+        chip({ top: 210, minutes: 45, startTime: '12:30', title: 'Tom Byrne', detail: 'Root touch-up' }),
+      ],
     }),
   ],
 });

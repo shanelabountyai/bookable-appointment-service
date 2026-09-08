@@ -40,6 +40,14 @@ async function seedAppointment(options: {
   /** A-093 — `[worked, gap, worked]` in minutes. The trigger cuts one block
    *  per worked part, which is how a colour's develop time stays sellable. */
   segmentPattern?: number[];
+  /** A-099 — a second client, because the defect is two of them at once and a
+   *  fixture with one name in it cannot tell which chip survived. */
+  clientName?: string;
+  /** BOOK-05 / D-8. The trigger does the rest: a zero-width blocked range so
+   *  the constraint is satisfied without being weakened, and the TRUE range in
+   *  `overriddenFromRange` for the day view to render the collision from. */
+  isOverride?: boolean;
+  overrideReason?: string;
 }) {
   const prisma = new PrismaClient();
   try {
@@ -49,7 +57,7 @@ async function seedAppointment(options: {
     const client = await prisma.client.create({
       data: {
         businessId: business.id,
-        name: 'Ada Chen',
+        name: options.clientName ?? 'Ada Chen',
         phone: '5125550101',
         notes: options.clientNotes ?? null,
       },
@@ -70,6 +78,9 @@ async function seedAppointment(options: {
         notes: options.visitNote ?? null,
         ...(options.status ? { status: options.status as 'booked' } : {}),
         ...(options.segmentPattern ? { segmentPattern: options.segmentPattern } : {}),
+        ...(options.isOverride
+          ? { isOverride: true, overrideReason: options.overrideReason ?? 'Dana said to squeeze her in.' }
+          : {}),
         lines: {
           create: {
             businessId: business.id,
@@ -654,5 +665,119 @@ test.describe('a colour on the grid (A-093)', () => {
     expect(gapBox).not.toBeNull();
     expect(chipBox!.y).toBeLessThan(gapBox!.y);
     expect(chipBox!.y + chipBox!.height).toBeGreaterThan(gapBox!.y + gapBox!.height);
+  });
+});
+
+/**
+ * A-099 — TWO CLIENTS AT TEN O'CLOCK, AND D-8 PROMISES IN WRITING THAT THE DAY
+ * VIEW DRAWS BOTH.
+ *
+ * D-8's last clause: an override writes a zero-width blocked range plus
+ * `overriddenFromRange` "so the constraint never lies and the day view renders
+ * the true collision". It did not. Both chips computed `top=60 minutes=…`,
+ * `CHIP_SHELL` is `absolute inset-x-1` for EVERY chip in the product, and
+ * `GridItem` carried no lane, no offset and no width at all — so the later one
+ * in DOM order painted over the earlier one, opaque and `overflow-hidden`.
+ * **The client who was already in the book is the one who disappeared**, under
+ * a chip wearing the override marker, which reads as one deliberate override
+ * rather than as two people at ten. The desk overrides IN ORDER to see both.
+ *
+ * THE ASSERTIONS ARE ON BOTH CHIPS, not on the pair. `toBeVisible()` on the
+ * override alone passes against the bug — it is the one that survived. What
+ * fails against it is the earlier client's box existing and not being underneath
+ * the later one's.
+ *
+ * AND ON ALL THREE READERS OF `GridColumn.items`. The grid says it with
+ * geometry; the printed sheet and the stylist's phone list have no geometry and
+ * put the pair on CONSECUTIVE ROWS, which is the shape of a queue rather than
+ * of a collision — so they say it in words, from the same `concurrent` the
+ * view model computes once.
+ */
+test.describe('two clients in one hour (A-099, D-8)', () => {
+  /** 09:00 is not scenery: lanes are per overlapping CLUSTER, and a fixture
+   *  with nothing but the pair in it cannot tell a correct implementation from
+   *  one that halves the whole column. */
+  async function seedTheDoubleBooking() {
+    await seedAppointment({
+      start: '2026-06-09T09:00:00-05:00',
+      end: '2026-06-09T09:45:00-05:00',
+      clientName: 'Ada Chen',
+    });
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T11:00:00-05:00',
+      clientName: 'Mei Chen',
+    });
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T11:30:00-05:00',
+      clientName: 'Ruth Adeyemi',
+      isOverride: true,
+      overrideReason: 'Mother of the bride — Dana said to squeeze her in.',
+    });
+  }
+
+  test('draws both of them, side by side, and neither on top of the other', async ({ page }) => {
+    await seedTheDoubleBooking();
+    // No `provider=`: that tab renders the LIST. The grid is the everyone view.
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const first = page.locator('li').filter({ hasText: 'Mei Chen' }).first();
+    const second = page.locator('li').filter({ hasText: 'Ruth Adeyemi' }).first();
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+
+    const a = (await first.boundingBox())!;
+    const b = (await second.boundingBox())!;
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    // They start at the same instant, so they are drawn at the same height —
+    // which is exactly why one could hide the other.
+    expect(Math.abs(a.y - b.y)).toBeLessThan(2);
+    // The whole item, in one line: no horizontal overlap.
+    const apart = a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1;
+    expect(apart, `chips overlap: ${JSON.stringify({ a, b })}`).toBe(true);
+
+    // ONE double-booked hour must not halve the day around it. Ada's 09:00 is
+    // alone in its cluster and keeps the whole column.
+    const alone = (await page.locator('li').filter({ hasText: 'Ada Chen' }).first().boundingBox())!;
+    expect(alone.width).toBeGreaterThan(a.width * 1.5);
+  });
+
+  test('says it in the accessible name, where there is no geometry to read', async ({ page }) => {
+    await seedTheDoubleBooking();
+    // No `provider=`: that tab renders the LIST. The grid is the everyone view.
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    await expect(page.getByRole('link', { name: /Mei Chen.*at the same time as Ruth Adeyemi/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Ruth Adeyemi.*at the same time as Mei Chen/ })).toBeVisible();
+  });
+
+  test('prints it on the sheet, where consecutive rows would read as a queue', async ({ page }) => {
+    await seedTheDoubleBooking();
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}&sheet=1`);
+
+    await expect(page.getByText('At the same time as Ruth Adeyemi.')).toBeVisible();
+    await expect(page.getByText('At the same time as Mei Chen.')).toBeVisible();
+    // §5.4.11 — and the typed reason beside it, so the paper says a human
+    // decided this rather than that the printer repeated itself.
+    await expect(page.getByText('Mother of the bride — Dana said to squeeze her in.')).toBeVisible();
+    // Ada is alone at 09:00 and must not be told she has company.
+    await expect(page.getByText(/At the same time as Ada Chen/)).toHaveCount(0);
+  });
+
+  test('says it on the stylist’s own list, which is the phone in her pocket', async ({ page }) => {
+    await seedTheDoubleBooking();
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+
+    await expect(page.getByText('At the same time as Ruth Adeyemi')).toBeVisible();
+    await expect(page.getByText('At the same time as Mei Chen')).toBeVisible();
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    await seedTheDoubleBooking();
+    // No `provider=`: that tab renders the LIST. The grid is the everyone view.
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expectNoAxeViolations(page);
   });
 });

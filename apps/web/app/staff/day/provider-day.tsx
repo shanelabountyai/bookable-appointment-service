@@ -76,6 +76,16 @@ export function ProviderDay({ column }: { column: GridColumn }) {
             />
           ) : null}
 
+          {/* A-099 — THE THIRD READER OF THE SAME FACT, and the one holding the
+              phone. This list has no z-order to lose a client behind, so the
+              defect arrives here in its other form: two clients at ten print as
+              two ordinary rows one under the other, which is the shape of a
+              queue. Dana walking to the backwash needs to know they are both
+              hers at once. */}
+          {item.concurrent ? (
+            <p className="w-full text-sm font-medium">⇄ At the same time as {item.concurrent}</p>
+          ) : null}
+
           {item.projected ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
               Running behind — likely {item.projected}

@@ -273,11 +273,24 @@ test.describe('the day sheet as a document (A-093)', () => {
     await seedAppointment({ name: 'Ada Chen' });
 
     await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}&sheet=1`);
-    const row = page.locator('tbody tr').filter({ hasText: 'Tom Byrne' });
+    // BY THE ROW'S OWN TIME, NOT BY A NAME (A-099). These two deliberately
+    // overlap — that is the whole point of the fixture — and the sheet now
+    // prints "at the same time as Tom Byrne" on ADA's row, so filtering rows by
+    // a client's name matches two of them and the locator is ambiguous. The
+    // time cell is the row's own and belongs to nobody else, and asserting the
+    // name INSIDE it is strictly stronger than filtering by it was.
+    const row = page.locator('tbody tr').filter({ hasText: '10:15–10:30' });
+    await expect(row).toContainText('Tom Byrne');
     await expect(row).toContainText('Override');
     await expect(row).toContainText('squeezing him in before the wedding');
     // And it stays RARE: the ordinary booking beside it carries no marker.
-    await expect(page.locator('tbody tr').filter({ hasText: 'Ada Chen' })).not.toContainText('Override');
+    const ordinary = page.locator('tbody tr').filter({ hasText: '10:00–10:45' });
+    await expect(ordinary).toContainText('Ada Chen');
+    await expect(ordinary).not.toContainText('Override');
+    // A-099 — and the pair is legible AS a pair, which is what the paper had no
+    // way to say: two rows at one time read as a queue without it.
+    await expect(row).toContainText('At the same time as Ada Chen.');
+    await expect(ordinary).toContainText('At the same time as Tom Byrne.');
   });
 
   /**

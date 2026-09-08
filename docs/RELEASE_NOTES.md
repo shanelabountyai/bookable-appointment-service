@@ -3177,3 +3177,43 @@ this defect for months and could never have caught it. The new tests ask one
 operational question of every surface at once, on a book where the departing
 stylist and the one who stays are genuinely different people; a book where
 everybody is interchangeable cannot fail any of it.
+
+## Two clients at ten o'clock
+
+A salon's front desk sometimes double-books on purpose. The stylist says *put
+her in, I'll manage* — and the software's job is to take that instruction,
+record who authorised it and why, and then **show both clients**.
+
+This one did the first two and failed the third, silently. The decision log had
+promised in writing that the day view "renders the true collision"; the day view
+rendered one chip. Both clients computed the same position and the same height,
+and nothing in the model carried a horizontal position at all — every chip in
+the product was pinned to the full width of its column. So the second one was
+drawn on top of the first, opaque, and **the client already in the book
+vanished**. What remained wore the "override" badge, which reads as *one
+deliberate booking*, not as *two people at ten*.
+
+**The reason it survived three demo walkthroughs** is that it needs two
+appointments at one instant to appear, and the only way to create that is a
+staff override — so no ordinary seeded day had one.
+
+**The interesting part is that one screen was never the fix.** The same day model
+feeds four surfaces: the tablet grid, the sheet that comes off the printer at
+8:45, the list on the stylist's phone, and the chair strip. Only the grid has
+geometry to lose a client behind. The other three lose her differently, and
+worse in a way that is easy to miss — they print the two clients as consecutive
+rows, which is the universal shape of *a queue*. A stylist reading down that page
+sees ten o'clock and then ten o'clock and assumes the printer repeated itself.
+
+So the fix has two halves that are the same fact in two languages: the chips
+share the column's width, and every surface without geometry says **"at the same
+time as Ruth Adeyemi"** in words — including the accessible name, for the stylist
+using a screen reader. Both come from one function, because the recurring defect
+in this codebase is two parts of the product forming their own opinion about the
+same question.
+
+**It also fixed a screen nobody had reported.** The chair strip could show two
+overlapping bookings on one chair — legitimately, since a client's back-to-back
+visits share buffer time — and had the identical last-wins bug. It was found by
+asking which *other* surfaces draw one thing on top of another, rather than by
+fixing the screen that got noticed.

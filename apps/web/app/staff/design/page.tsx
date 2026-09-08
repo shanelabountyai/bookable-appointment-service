@@ -18,6 +18,7 @@ import { LapsedRow } from '../dashboard/lapsed/lapsed-row';
 import { FIXTURE_ZONE, FREED_SLOTS } from './opened-fixtures';
 import { LAPSED_NOW, LAPSED_ROWS, LAPSED_WINDOW_WEEKS, LAPSED_ZONE } from './lapsed-fixtures';
 import {
+  A_DOUBLE_BOOKED_HOUR,
   A_STYLIST_OFF,
   FOUR_STYLISTS,
   MODIFIER_MATRIX,
@@ -310,7 +311,8 @@ function ChipBox({ item }: { item: GridItem }) {
   );
 }
 
-/** §8.5's four compositions, in the order the brief lists them. */
+/** §8.5's four compositions, in the order the brief lists them — plus A-099's
+ *  fifth, which is §5.4.11's marker in the one place it can be got wrong. */
 const DAYS = [
   {
     heading: 'The day — four stylists',
@@ -331,5 +333,10 @@ const DAYS = [
     heading: 'The day — a stylist off',
     note: 'Her column is still drawn. A missing column reads as a missing stylist rather than a day off — and time off over a working column is drawn as a band, because AVAIL-05 says a collision is surfaced for a human rather than hidden.',
     model: A_STYLIST_OFF,
+  },
+  {
+    heading: 'The day — two clients in one hour',
+    note: 'The only composition that can lose a client. A staff override (BOOK-05, D-8) puts two people on one stylist at one instant; the two chips share the column’s width rather than one painting over the other, and only their own hour is split — the 09:00 and the 12:30 stay whole. Both names are on screen, because the desk overrode in order to see both.',
+    model: A_DOUBLE_BOOKED_HOUR,
   },
 ];
