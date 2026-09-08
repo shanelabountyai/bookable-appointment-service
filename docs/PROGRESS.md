@@ -3054,7 +3054,7 @@ sits beside a forward number that makes it readable. If the owner ever wants
 
 ## A-104 — the empty state that answers a question nobody asked
 
-Commit `PENDING`.
+Commit `f8d2652`.
 
 **What it built.** Four staff screens run a query only when a URL parameter
 says what to run it on, and two of them said the zero-row sentence whether or
