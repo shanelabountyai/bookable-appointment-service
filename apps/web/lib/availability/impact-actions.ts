@@ -54,10 +54,16 @@ export async function listConflicts(day: string): Promise<ConflictRow[]> {
 /**
  * Operator S-2's deactivation preview, moved out of A-025 because no
  * appointment could exist there to test it against — and, per operator P-8,
- * actually WIRED to something now (A-041). `listConflicts` above is scoped to
- * one already-known day, so `shape()`'s `when` is bare time; this spans
- * months, so the day has to be in the label or a Tuesday and a Thursday both
- * read "14:15".
+ * actually WIRED to something now (A-041).
+ *
+ * A-100 DELETED THE SPECIAL CASE THAT USED TO LIVE HERE. It re-labelled every
+ * row with its day because "this one spans months, and `listConflicts` above
+ * is scoped to one already-known day" — and that second half was a claim
+ * about a caller, not a property of `shape()`. It was false for two years of
+ * `?day=` (`conflictsForDay` had no date predicate on its absence axis), and
+ * the rows that leaked in were the ones whose bare `"09:00"` gave the desk no
+ * way to tell it was a different Tuesday. `shape()` names the day for
+ * everybody now, so no caller has to remember to.
  */
 export async function listDeactivationImpact(providerId: string): Promise<ConflictRow[]> {
   const staff = await requireStaff();
@@ -67,10 +73,7 @@ export async function listDeactivationImpact(providerId: string): Promise<Confli
     providerId,
     from: new Date(),
   });
-  return stranded.map((conflict) => {
-    const label = toLabel(fromDate(conflict.startAt), zone);
-    return { ...shape(conflict, zone), when: `${readableDay(label.day)} · ${label.time}` };
-  });
+  return stranded.map((conflict) => shape(conflict, zone));
 }
 
 /** AVAIL-05's "keep-flagged". */
@@ -188,8 +191,14 @@ function shape(conflict: ConflictingAppointment, zone: ReturnType<typeof zoneId>
   const label = toLabel(fromDate(conflict.startAt), zone);
   return {
     id: conflict.id,
-    // Formatted server-side in the salon's zone, always.
-    when: label.time,
+    // Formatted server-side in the salon's zone, always — and ALWAYS with the
+    // day on it (A-100). A conflict row is not safe to label with a bare time
+    // just because its caller believes the list is one day long: "09:00" on
+    // five rows from five different days is a list the desk works twice, and
+    // A-019's acknowledgment cannot reach the four it is not standing on. The
+    // day comes off `startDay`, the stored `CHAR(10)` (A-047), not from
+    // re-labelling `startAt` — so the row cannot disagree with the link.
+    when: `${readableDay(conflict.startDay)} · ${label.time}`,
     providerId: conflict.providerId,
     providerName: conflict.providerName,
     clientName: conflict.clientName,

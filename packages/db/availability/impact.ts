@@ -378,56 +378,85 @@ export async function conflictsForDay(
 
   const perProvider = await Promise.all(
     providers.map(async (provider) => {
+      // THE DAY'S BOOK, ONCE. Every cause below is a question about these
+      // rows; `startDay` is the stored `CHAR(10)` (A-047), the same
+      // membership test the day view and the printed sheet draw a column
+      // from, so a row can never appear here on a day it is not drawn on.
+      const onDay = await db.appointment.findMany({
+        where: {
+          businessId: args.businessId,
+          providerId: provider.id,
+          status: { in: [...ACTIVE_STATUSES] },
+          startDay: args.day,
+        },
+        orderBy: { startAt: 'asc' },
+        select: SELECT,
+      });
+
       // CAUSE 3 — she is off the roster. Everything still in her column that
       // day is stranded, whether or not the hours or the absences say so.
-      const gone = provider.active
-        ? []
-        : (
-            await db.appointment.findMany({
-              where: {
-                businessId: args.businessId,
-                providerId: provider.id,
-                status: { in: [...ACTIVE_STATUSES] },
-                startDay: args.day,
-              },
-              orderBy: { startAt: 'asc' },
-              select: SELECT,
-            })
-          ).map(toConflict);
+      const gone = provider.active ? [] : onDay;
 
-      const [outside, absences] = await Promise.all([
+      const [outside, struck] = await Promise.all([
         appointmentsOutsideHours(db, { businessId: args.businessId, providerId: provider.id, day: args.day }),
-        db.timeOff
-          .findMany({ where: { providerId: provider.id }, select: { startAt: true, endAt: true } })
-          .then(async (timeOff) => [
-            ...timeOff,
-            ...(await db.adHocBlock.findMany({
-              where: { providerId: provider.id },
-              select: { startAt: true, endAt: true },
-            })),
-          ]),
+        // CAUSE 2 — an absence overlaps her body.
+        //
+        // A-100 TURNED THIS QUESTION AROUND, and the direction is the whole
+        // bug. It used to load EVERY `TimeOff` and `AdHocBlock` the provider
+        // had ever had — no date predicate of any kind — and ask each one
+        // "what do you strand?". **An absence spans days**: "Dana is off all
+        // week with flu" is ONE row, so that question answers for the whole
+        // week and puts five other days' clients on today's list, on every
+        // `?day=` in the year, every one of them unacknowledgeable from here
+        // (A-019) because the desk that already rang them was on another day.
+        // Asking it from THIS DAY'S appointments outward can only ever return
+        // rows that belong to this day, and it is one query instead of one
+        // per absence ever recorded.
+        strandedByAbsence(db, { businessId: args.businessId, providerId: provider.id, onDay }),
       ]);
 
-      const overlapping = await Promise.all(
-        absences.map((absence) =>
-          appointmentsInRange(db, {
-            businessId: args.businessId,
-            providerId: provider.id,
-            startAt: absence.startAt,
-            endAt: absence.endAt,
-          }),
-        ),
-      );
-
-      return [...gone, ...outside, ...overlapping.flat()];
+      return [...gone.map(toConflict), ...outside, ...struck];
     }),
   );
 
   // One entry per appointment however many ways it conflicts.
   const byId = new Map(perProvider.flat().map((conflict) => [conflict.id, conflict]));
-  return [...byId.values()]
-    .filter((conflict) => conflict.startAt.toISOString().length > 0)
-    .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  return [...byId.values()].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+}
+
+/**
+ * Which of these appointments an absence sits on top of.
+ *
+ * The absences are fetched by the span of the appointments themselves, so a
+ * fortnight of time off is one row that overlaps the span and a fortnight of
+ * OTHER days' absences are not read at all. Half-open both sides, matching
+ * the exclusion constraint (`[start, end)`) — an absence starting exactly
+ * when an appointment ends is not a conflict.
+ */
+async function strandedByAbsence(
+  db: Db,
+  args: { businessId: string; providerId: string; onDay: Row[] },
+): Promise<ConflictingAppointment[]> {
+  if (args.onDay.length === 0) return [];
+  const from = args.onDay.reduce((min, row) => (row.startAt < min ? row.startAt : min), args.onDay[0]!.startAt);
+  const until = args.onDay.reduce((max, row) => (row.endAt > max ? row.endAt : max), args.onDay[0]!.endAt);
+
+  const where = {
+    businessId: args.businessId,
+    providerId: args.providerId,
+    startAt: { lt: until },
+    endAt: { gt: from },
+  };
+  const select = { startAt: true, endAt: true };
+  const [timeOff, blocks] = await Promise.all([
+    db.timeOff.findMany({ where, select }),
+    db.adHocBlock.findMany({ where, select }),
+  ]);
+  const absences = [...timeOff, ...blocks];
+
+  return args.onDay
+    .filter((row) => absences.some((a) => row.startAt < a.endAt && row.endAt > a.startAt))
+    .map(toConflict);
 }
 
 /**

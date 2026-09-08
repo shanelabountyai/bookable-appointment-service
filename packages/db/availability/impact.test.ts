@@ -169,6 +169,94 @@ describe('AVAIL-05 — the sick day', () => {
   });
 });
 
+/**
+ * A-100 — AN ABSENCE IS LONGER THAN A DAY, AND `?day=` HAS TO SURVIVE THAT.
+ *
+ * "Dana is off all week with flu" is ONE `TimeOff` row. `conflictsForDay` used
+ * to load every absence the provider had ever had — no date predicate of any
+ * kind — and ask each one what it stranded, so one fortnight's row put every
+ * client of that fortnight on EVERY day's list, for ever: on the day it
+ * happened, on days it did not, and a year later. The desk that worked the
+ * list on the second Tuesday re-rang the five already sorted on the first,
+ * and A-019's acknowledgment could not reach them, because it is stored on
+ * the appointment and the appointment was never on this day.
+ *
+ * The fixture has to be a MULTI-DAY absence over TWO days that both hold a
+ * client. On a one-day absence the wrong question and the right one give the
+ * same answer, which is why every test above this one passed against the bug.
+ */
+describe('A-100 — a fortnight off does not put a fortnight on one day', () => {
+  const NEXT_TUESDAY = '2026-06-16';
+
+  /** Off from the Monday before DAY to the Wednesday after NEXT_TUESDAY —
+   *  one row, nine days, two booked Tuesdays underneath it. */
+  const beOffAFortnight = () =>
+    createTimeOff(
+      prisma,
+      {
+        businessId,
+        providerId: danaId,
+        startAt: at('2026-06-08T00:00:00-05:00'),
+        endAt: at('2026-06-17T00:00:00-05:00'),
+        reason: 'flu',
+      },
+      STAMP,
+    );
+
+  it('reports only the clients booked on the day asked for', async () => {
+    const thisWeek = await book('2026-06-09T10:00:00-05:00');
+    const nextWeek = await book('2026-06-16T10:00:00-05:00');
+    await beOffAFortnight();
+
+    expect((await conflictsForDay(prisma, { businessId, day: DAY })).map((c) => c.id)).toEqual([thisWeek.id]);
+    // And the other Tuesday is not LOST — it is stranded on its own day.
+    expect((await conflictsForDay(prisma, { businessId, day: NEXT_TUESDAY })).map((c) => c.id)).toEqual([
+      nextWeek.id,
+    ]);
+  });
+
+  /** Every row that comes back belongs to the day that was asked for. The
+   *  assertion is on `startDay`, the stored `CHAR(10)`, not on a re-labelled
+   *  `startAt` — the column is what the day view draws the column from. */
+  it('never returns a row whose own day is a different day', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    await book('2026-06-09T14:00:00-05:00');
+    await book('2026-06-16T10:00:00-05:00');
+    await beOffAFortnight();
+
+    const conflicts = await conflictsForDay(prisma, { businessId, day: DAY });
+    expect(conflicts).toHaveLength(2);
+    expect(conflicts.every((c) => c.startDay === DAY)).toBe(true);
+  });
+
+  /** The headline symptom: the same five clients on `?day=` a year out. */
+  it('says nothing at all on a day the absence does not reach', async () => {
+    await book('2026-06-09T10:00:00-05:00');
+    await beOffAFortnight();
+
+    expect(await conflictsForDay(prisma, { businessId, day: '2027-03-16' })).toEqual([]);
+  });
+
+  /** Half-open, matching the exclusion constraint: an absence that starts
+   *  exactly when the appointment ends strands nobody. `not.toContain` would
+   *  pass here for a dozen wrong reasons — the whole list is asserted. */
+  it('does not strand an appointment the absence only touches', async () => {
+    await book('2026-06-09T10:00:00-05:00'); // 10:00–11:00
+    await createAdHocBlock(
+      prisma,
+      {
+        businessId,
+        providerId: danaId,
+        startAt: at('2026-06-09T11:00:00-05:00'),
+        endAt: at('2026-06-10T11:00:00-05:00'),
+        reason: 'delivery',
+      },
+      STAMP,
+    );
+    expect(await conflictsForDay(prisma, { businessId, day: DAY })).toEqual([]);
+  });
+});
+
 describe('AVAIL-05 — an hours edit', () => {
   it('reports an appointment the new hours no longer cover', async () => {
     await book('2026-06-09T16:00:00-05:00'); // 16:00–17:00, inside 09:00–17:00

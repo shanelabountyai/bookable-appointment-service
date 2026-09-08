@@ -3217,3 +3217,47 @@ overlapping bookings on one chair — legitimately, since a client's back-to-bac
 visits share buffer time — and had the identical last-wins bug. It was found by
 asking which *other* surfaces draw one thing on top of another, rather than by
 fixing the screen that got noticed.
+
+## A-100 — an absence is longer than a day
+
+The salon's "Dana called in sick" screen lists every client stranded by an
+absence, on the day you ask for. It had no idea what day it was.
+
+A stylist off all week is **one row** in the database, and the screen's absence
+query had no date filter of any kind — it loaded every absence that stylist had
+ever had and asked each one *"who does this strand?"*. Correct answer, wrong
+question: a week-long absence answers for the whole week. Five clients from five
+different days appeared, identically, on every day of the year you could type
+into the URL — including a year out — each labelled with a bare `09:00` and
+nothing to say which day it was.
+
+**The damage was not the extra rows; it was the phone calls.** This workflow is
+built on one deliberate decision: a conflict is *derived* on every page load and
+never stored, because a stored flag goes stale on exactly the day it matters —
+and the single thing that *is* stored is the human acknowledgment, "we rang her,
+she's coming anyway". That acknowledgment exists precisely so the second person
+in on Saturday does not re-ring three clients somebody already sorted. It lives
+on the appointment. So a client shown on the wrong day could be acknowledged
+there and stay unacknowledged on her real one, and vice versa — the one
+mechanism built to prevent a duplicate call was defeated by a route it could not
+see, and the duplicate call is one telling a client something is wrong with an
+appointment that is fine.
+
+The fix turns the question around: ask **this day's book** what absences sit on
+top of it, rather than asking every absence ever what it strands. That can only
+return rows belonging to the day, it needs no date arithmetic to get right, and
+it replaced one database query per absence-ever-recorded with two.
+
+**The second half is the half that gets forgotten.** The row printed a bare time
+because of a comment on the function next door that said, in good faith, "the
+list above is scoped to one already-known day, so bare time is fine". That was a
+claim about a *caller*, not a property of the code — and it had been false for
+two phases. A formatter that is only safe if every caller keeps a promise is not
+safe. It prints the day for everybody now, and the special case that used to
+compensate for it elsewhere was deleted rather than duplicated.
+
+**Why forty green test runs never mentioned it.** Every existing test used a
+one-day absence — and on a one-day absence the wrong question and the right one
+return exactly the same list. The test that finds a defect in a *range* is the
+one whose range is longer than a single unit, which here meant a fixture nobody
+had written: one absence, two booked days underneath it.

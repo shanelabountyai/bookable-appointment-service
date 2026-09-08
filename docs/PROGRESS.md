@@ -2867,3 +2867,103 @@ So the later chip in DOM order painted over the earlier one, opaque, `overflow-h
 **AND THE NEW FACT BROKE AN OLD LOCATOR, WHICH IS THE SAME LESSON FROM THE TEST SIDE.** `day-sheet.spec.ts`'s A-093 override test seeds two deliberately overlapping clients and found its row with `.filter({ hasText: 'Tom Byrne' })`. The moment Ada's row started printing *"at the same time as Tom Byrne"*, that matched **two** rows and Playwright refused it — correctly. A row is now located by its own **time cell**, which belongs to nobody else, with the name asserted inside it: strictly stronger than filtering by the name was. Worth writing down because the failure looks like a regression and is the opposite of one — the assertion was relying on a name appearing exactly once on a page where the product had no way to say two people share an hour.
 
 **Left behind.** An **absence band can still paint over an appointment chip** that starts before it — same class, much lower severity: the band is grey, the chip's name and time are at its top and stay readable, and the collision has its own screen at `/staff/conflicts` (AVAIL-05). Deliberately not fixed here, because giving bands a lane would halve every column with a lunch break in it. Three or more clients in one hour split into three or more lanes and will truncate hard at a 13rem column; that is the honest rendering and the desk has the printed sheet and the phone list, both of which name everybody. And `provider-day.tsx` still does not read `overrideReason` or `released` — noticed while adding `concurrent` to it, not in scope, and the sheet-parity test does not cover that third reader.
+
+---
+
+## A-100 — an absence is longer than a day, and `?day=` has to mean the day
+
+**Commit:** `PENDING`
+
+**What it built.** A date predicate, and a date on the row. `conflictsForDay`'s
+absence axis now asks its question from **this day's appointments outward**
+instead of from the absence list inward, and `shape()` in `impact-actions.ts`
+labels every conflict row with its own calendar day whether or not its caller
+believes the list is one day long.
+
+**THE QUESTION WAS POINTING THE WRONG WAY, AND THAT IS THE WHOLE BUG.** The
+absence half of `conflictsForDay` loaded **every `TimeOff` and `AdHocBlock` the
+provider had ever had — no `businessId`, no date predicate of any kind** — and
+asked each one *"what do you strand?"*:
+
+```ts
+db.timeOff.findMany({ where: { providerId: provider.id }, … })   // every row, ever
+  .then(…)                                                        // + every AdHocBlock, ever
+absences.map((absence) => appointmentsInRange(db, { …absence }))  // one query each
+```
+
+`appointmentsInRange` is an honest instant-overlap predicate and answered
+exactly what it was asked. The caller asked the wrong question. **An absence
+spans days** — "Dana is off all week with flu" is ONE row — so a fortnight's
+absence answers for the fortnight, and every client in it landed on *every*
+`?day=` in the year. Five clients on five different days showed identically on
+`?day=2026-09-09`, `?day=2026-09-11`, `?day=2026-09-15` **and
+`?day=2027-03-15`** — still all five a year later, every one `completed`.
+
+The other two causes were day-scoped all along and had been for two phases:
+`appointmentsOutsideHours` filters `startDay: args.day`, and A-098's
+off-the-roster cause filters `startDay: args.day`. **One of three readers of
+"which day is this" disagreed with the other two, silently, and they are
+fourteen lines apart.**
+
+**THE HARM IS THE ACKNOWLEDGMENT, NOT THE EXTRA ROWS.** A-019's central
+decision is that a conflict is derived and only the human acknowledgment is
+stored — *"so the second person in on Saturday morning does not re-ring three
+clients somebody already sorted"* (`impact.ts`'s own header). `conflictAckAt`
+lives on the appointment. A client from next Tuesday shown on this Tuesday's
+list can be acknowledged here, and the flag is invisible to the desk working
+next Tuesday's list; a client acknowledged on her real day still appears
+unacknowledged on the other 364. **The one workflow built to stop the salon
+ringing a client twice was defeated by a route it could not see**, and it
+failed in the direction where the extra work is a phone call to a client
+saying something has gone wrong with her appointment when nothing has.
+
+**THE SECOND HALF IS THE ONE THAT GETS FORGOTTEN, AND IT WAS WRITTEN DOWN AS A
+CLAIM ABOUT A CALLER.** `shape()` rendered `when` as bare `label.time`, and the
+comment that authorised it sat on the function next door:
+
+> `listConflicts` above is scoped to one already-known day, so `shape()`'s
+> `when` is bare time; this spans months, so the day has to be in the label or
+> a Tuesday and a Thursday both read "14:15".
+
+That is a correct paragraph about a property the code did not have. The
+deactivation preview compensated locally, and the shared formatter stayed
+unsafe — so the five leaked rows all read `"09:00"` with nothing to tell them
+apart, which is why nobody looking at the screen could see the query was wrong.
+`shape()` names the day for everybody now and the special case is **deleted**:
+one label, no caller has to remember, and the day comes off `startDay` (the
+stored `CHAR(10)`, A-047) rather than by re-labelling `startAt`, so the row
+cannot disagree with the link beside it.
+
+**Fewer queries, as a side effect of asking the right question.** The old shape
+was one appointment query **per absence ever recorded** against the provider —
+`PROGRESS.md` flagged it at A-041 as "bounded by the chair count and a day's
+absences", which was true of the intent and not of the code. It is now two
+absence lookups per provider, bounded by the span of that day's book and served
+by the existing `[businessId, providerId, startAt, endAt]` index.
+
+**What the tests are.** Four in `impact.test.ts`, under a fixture that could
+not exist before: **one `TimeOff` row over two booked Tuesdays**. Three of them
+are red against the old code — the day asked for returns only its own client,
+every returned row's `startDay` equals the day asked for, and a day the absence
+does not reach returns `[]`. The fourth is a guard on the half-open edge (an
+absence starting exactly when an appointment ends strands nobody), asserted as
+`toEqual([])` rather than `not.toContain`. The e2e test walks the real screen
+across three `?day=` values and asserts **both halves** — the right client
+present, the other absent, and the row printing `Tuesday 16 June · 10:00`
+through the app's one day formatter.
+
+**The fixture rule again, and this is the third phase running it has bitten.**
+On a one-day absence the wrong question and the right one return the same list.
+Every existing test in this file used a one-day absence, so forty green runs
+could not say a word about it. The thing that finds a defect in a range is a
+fixture whose range is longer than one unit.
+
+**Left behind.** `conflictsForDay` still asks per provider rather than once for
+the business — one appointment query and two absence queries per provider,
+bounded by D-20's chair count, and batching is the fix if a much larger roster
+ever appears. `strandedByAbsence` derives membership from `startDay`, matching
+the day view and the printed sheet: an appointment that starts at 23:30 and
+runs past midnight belongs to the day it starts on, on every surface, and an
+absence covering only the small hours of the following day therefore strands it
+on **its own** day and not on the next one. That is deliberate and consistent
+with the other two causes; it is worth knowing it is a choice.

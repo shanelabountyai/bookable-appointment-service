@@ -10,16 +10,22 @@ import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 import { createTimeOff } from '@bookable/db/availability';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
+// Relative, not `@/lib/…` (the same reason booking.spec.ts gives): the page
+// prints the day through this one formatter, and a hand-rolled "16 June" here
+// would be a second copy that goes quietly wrong the day the format changes.
+import { readableDay } from '../lib/customer-format';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 let DAY: string;
 let ZONE: string;
 
-function at(time: string): Date {
-  const resolution = resolve(calendarDay(DAY), wallTime(time), zoneId(ZONE));
-  if (resolution.kind !== 'unique') throw new Error(`${DAY} ${time} is not unique in ${ZONE}`);
+function atOn(day: string, time: string): Date {
+  const resolution = resolve(calendarDay(day), wallTime(time), zoneId(ZONE));
+  if (resolution.kind !== 'unique') throw new Error(`${day} ${time} is not unique in ${ZONE}`);
   return toDate(resolution.at);
 }
+
+const at = (time: string) => atOn(DAY, time);
 
 async function signIn(page: Page) {
   await page.goto('/staff/login');
@@ -38,27 +44,7 @@ async function danaCallsInSick(times: string[] = ['10:00', '11:30']) {
     const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
 
     for (const [index, time] of times.entries()) {
-      const client = await prisma.client.create({
-        data: { businessId: business.id, name: `Client ${index + 1}`, phone: `512555010${index}` },
-      });
-      const startAt = at(time);
-      const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
-      await prisma.appointment.create({
-        data: {
-          businessId: business.id,
-          providerId: dana.id,
-          clientId: client.id,
-          startAt,
-          endAt,
-          blockedStart: startAt,
-          blockedEnd: endAt,
-          startDay: DAY,
-          startWallTime: time,
-          lines: {
-            create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
-          },
-        },
-      });
+      await bookOn(prisma, business.id, dana.id, service.id, DAY, time, `Client ${index + 1}`, `512555010${index}`);
     }
 
     await prisma.timeOff.create({
@@ -75,6 +61,36 @@ async function danaCallsInSick(times: string[] = ['10:00', '11:30']) {
   } finally {
     await prisma.$disconnect();
   }
+}
+
+/** One booked client in Dana's column on a named day. */
+async function bookOn(
+  prisma: PrismaClient,
+  businessId: string,
+  providerId: string,
+  serviceId: string,
+  day: string,
+  time: string,
+  name: string,
+  phone: string,
+) {
+  const client = await prisma.client.create({ data: { businessId, name, phone } });
+  const startAt = atOn(day, time);
+  const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
+  await prisma.appointment.create({
+    data: {
+      businessId,
+      providerId,
+      clientId: client.id,
+      startAt,
+      endAt,
+      blockedStart: startAt,
+      blockedEnd: endAt,
+      startDay: day,
+      startWallTime: time,
+      lines: { create: { businessId, serviceId, ordinal: 0, priceCents: 5500, durationMinutes: 45 } },
+    },
+  });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -263,6 +279,65 @@ test.describe('the impact workflow (A-019)', () => {
 
   test('says so plainly when nothing is stranded', async ({ page }) => {
     await page.goto(`/staff/conflicts?day=${DAY}`);
+    await expect(page.getByText(/Nothing stranded on/)).toBeVisible();
+  });
+
+  /**
+   * A-100 — DANA IS OFF ALL WEEK, AND `?day=` HAS TO MEAN THE DAY.
+   *
+   * One `TimeOff` row spanning two booked Tuesdays. The absence query used to
+   * have no date predicate at all, so this fixture put BOTH clients on both
+   * days' lists — and on every other `?day=` in the year — each labelled with
+   * a bare "10:00" that gave the desk no way to tell them apart. The second
+   * person to work the list re-rang the client the first had already sorted,
+   * which is the exact harm A-019's acknowledgment exists to prevent, and it
+   * could not reach her: the flag is on the appointment, and the appointment
+   * was never on this day.
+   *
+   * Both halves are asserted here, because fixing only the query leaves the
+   * row still unable to say which day it is the moment anything else spans one.
+   */
+  test('an absence spanning days strands each client on her own day, and says which', async ({ page }) => {
+    const NEXT_TUESDAY = addDays(calendarDay(DAY), 7);
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+
+      await bookOn(prisma, business.id, dana.id, service.id, DAY, '10:00', 'This Week', '5125550100');
+      await bookOn(prisma, business.id, dana.id, service.id, NEXT_TUESDAY, '10:00', 'Next Week', '5125550101');
+
+      // ONE row, both Tuesdays underneath it — the flu, not two sick days.
+      await prisma.timeOff.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          startAt: at('09:00'),
+          endAt: atOn(NEXT_TUESDAY, '17:00'),
+          reason: 'flu',
+          createdByActor: 'staff',
+          actorRef: 'staff-1',
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/conflicts?day=${DAY}`);
+    await expect(page.getByText('This Week')).toBeVisible();
+    await expect(page.getByText('Next Week')).toHaveCount(0);
+    // The second half: the row names its own day, not just "10:00".
+    await expect(page.getByText(`${readableDay(DAY)} · 10:00`)).toBeVisible();
+
+    // And next Tuesday's client is not lost — she is stranded on her own day.
+    await page.goto(`/staff/conflicts?day=${NEXT_TUESDAY}`);
+    await expect(page.getByText('Next Week')).toBeVisible();
+    await expect(page.getByText('This Week')).toHaveCount(0);
+    await expect(page.getByText(`${readableDay(NEXT_TUESDAY)} · 10:00`)).toBeVisible();
+
+    // A year out the flu strands nobody, and the page says so.
+    await page.goto(`/staff/conflicts?day=${addDays(calendarDay(DAY), 365)}`);
     await expect(page.getByText(/Nothing stranded on/)).toBeVisible();
   });
 
