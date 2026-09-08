@@ -2843,7 +2843,7 @@ Plus a sixth found by the grep the row asked for and not named in it: `waitlist/
 
 ## A-099 — two clients at ten o'clock, drawn as two clients
 
-**Commit:** `PENDING`
+**Commit:** `ccd79dd`
 
 **What it built.** Lanes. `GridItem` and `RoomTrack.blocks` gained `lane`/`lanes`, and anything drawn at the same time as something else now shares its column's width instead of one painting over the other. Plus `concurrent` — the other client's name, in words — for the three readers that have no geometry to say it with.
 
