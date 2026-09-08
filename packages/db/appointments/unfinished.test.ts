@@ -145,11 +145,18 @@ describe('what is deliberately NOT on it', () => {
     expect(await listUnfinished(prisma, { businessId, now: NOW, lookbackDays: 365 })).toHaveLength(1);
   });
 
-  it('drops one on a provider who has since left', async () => {
+  /** A-098 REVERSED THIS ONE. It read "drops one on a provider who has since
+   *  left", and the filter behind it was a defect: these are visits that
+   *  already HAPPENED, and making them permanently uncloseable froze them at
+   *  `booked` forever — poisoning the no-show counts, A-073's lapsed report
+   *  and CLIENT-04's reliability flag, which is the exact harm D-46 and A-081
+   *  exist to end. Her last fortnight is the salon's to close out. */
+  it('KEEPS one on a provider who has since left — the visit still happened', async () => {
     await visit({ startAt: at('2026-06-13T10:00:00-05:00') });
     await prisma.provider.update({ where: { id: providerId }, data: { active: false } });
 
-    expect(await list()).toHaveLength(0);
+    expect(await list()).toHaveLength(1);
+    expect(await countUnfinished(prisma, { businessId, now: NOW })).toBe(1);
   });
 
   it('is scoped to the business', async () => {

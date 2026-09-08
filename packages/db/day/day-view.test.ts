@@ -110,9 +110,32 @@ describe('the columns', () => {
     expect(view.columns.map((c) => c.providerName)).toEqual(['Dana', 'Priya']);
   });
 
-  it('drops a deactivated provider', async () => {
+  /**
+   * A-098 SPLIT THIS IN TWO, and the original passed both before and after
+   * the fix — which is the whole warning. It deactivated Priya on a day where
+   * Priya had nothing booked, so it was asserting "a provider with an empty
+   * day is not drawn", under a name that claimed something much stronger. The
+   * defect it was standing guard over needed a provider with CLIENTS.
+   */
+  it('drops a deactivated provider who has nothing left on the day', async () => {
     await prisma.provider.update({ where: { id: priyaId }, data: { active: false } });
     expect((await load()).columns.map((c) => c.providerName)).toEqual(['Dana']);
+  });
+
+  it('KEEPS a deactivated provider who still has clients booked, offering nothing', async () => {
+    await book({ providerId: priyaId, startAt: at('2026-06-09T11:00:00-05:00') });
+    await prisma.provider.update({ where: { id: priyaId }, data: { active: false } });
+
+    const priya = await columnFor(priyaId);
+    expect(priya.offRoster).toBe(true);
+    expect(priya.appointments).toHaveLength(1);
+    // Her hours are untouched by the departure — deactivation writes
+    // `Provider.active` and nothing else — so the free minutes around that
+    // visit would otherwise draw gap chips carrying a booking link the write
+    // refuses. Dana beside her still has hers, so this cannot pass against a
+    // grid that has simply stopped offering anything.
+    expect(priya.gaps).toEqual([]);
+    expect((await columnFor(danaId)).gaps.length).toBeGreaterThan(0);
   });
 
   it('carries each provider’s own hours, intersected with the business’s', async () => {

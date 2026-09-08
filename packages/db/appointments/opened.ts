@@ -104,6 +104,18 @@ export interface OpenedSlot {
   clientName: string | null;
   clientPhone: string | null;
   freedBy: FreedBy;
+  /**
+   * A-098. Whether the stylist whose time this was is still on the roster.
+   *
+   * The span is sellable either way — a Saturday afternoon that has come free
+   * is the salon's most valuable thing, and it is most likely to come free in
+   * the week AFTER somebody leaves, because that is when the desk is cancelling
+   * her book. What is NOT true either way is who can take it: the "who wants
+   * this slot?" errand ends in a booking, and booking a departed stylist is
+   * refused. So the flag rides the row, and the offer is pointed at the whole
+   * roster instead of at her.
+   */
+  providerActive: boolean;
 }
 
 /** One candidate span before the still-empty bound has been applied. */
@@ -213,8 +225,13 @@ async function cancelledCandidates(
       // A cancelled override freed a zero-width range (D-8) — it never held
       // any time to give back, and its `freedMinutes` of 0 matches nothing.
       isOverride: false,
-      // Nobody can be booked with a provider who has left (A-041).
-      provider: { is: { active: true } },
+      // A-098 TOOK THE PROVIDER FILTER OFF. It read `provider: { is: { active:
+      // true } }` — "nobody can be booked with a provider who has left" — and
+      // the conclusion drawn from it was wrong: what cannot happen is booking
+      // HER, not selling the hour. The week a stylist leaves is the week her
+      // book gets cancelled, so this filter turned the screen whose whole job
+      // is selling freed time off at precisely the moment it had the most to
+      // sell. `providerActive` below carries the real constraint to the row.
     },
     select: {
       id: true,
@@ -223,7 +240,7 @@ async function cancelledCandidates(
       blockedStart: true,
       blockedEnd: true,
       status: true,
-      provider: { select: { displayName: true } },
+      provider: { select: { displayName: true, active: true } },
       client: { select: { name: true, phone: true } },
       lines: { orderBy: { ordinal: 'asc' }, select: { serviceId: true, service: { select: { name: true } } } },
     },
@@ -244,6 +261,7 @@ async function cancelledCandidates(
     clientName: row.client?.name ?? null,
     clientPhone: row.client?.phone ?? null,
     freedBy: { kind: 'cancelled' },
+    providerActive: row.provider.active,
   }));
 }
 
@@ -336,8 +354,13 @@ async function vacatedCandidates(
     const start = fromDate(span.start) < fromDate(args.now) ? args.now : span.start;
 
     const provider = providers.get(span.providerId);
-    // Nobody can be booked with a provider who has left (A-041).
-    if (provider === undefined || !provider.active) return [];
+    // A-098 — the same filter the cancellation arm above carried, and the same
+    // correction: a departed stylist's freed span is still sellable, it is
+    // only she who is unbookable. The roster read a few lines up already
+    // fetches `active` for this reason, so the fact rides the row instead of
+    // deleting it. A provider row that does not exist at all still drops the
+    // span: that is a deleted business, not a departure.
+    if (provider === undefined) return [];
 
     const droppedNames = asStrings(payload.removed);
     const droppedIds = asStrings(payload.removedServiceIds);
@@ -356,6 +379,7 @@ async function vacatedCandidates(
         // else wants a colour on Saturday afternoon?" `removedServiceIds` is
         // A-067's addition to the payload; events written before it fall back
         // to what is still on the visit, which fits the span by construction.
+        providerActive: provider.active,
         primaryServiceId: droppedIds[0] ?? appointment.lines[0]?.serviceId ?? null,
         serviceNames: droppedNames.length > 0 ? droppedNames : appointment.lines.map((l) => l.service.name),
         status: appointment.status,

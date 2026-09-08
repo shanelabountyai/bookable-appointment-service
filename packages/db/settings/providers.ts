@@ -6,6 +6,28 @@
  * phone number" — belongs to A-019 (operator S-2): no appointment can exist
  * until A-009, so a preview built here would ship untested against an empty
  * set and would have to be rewritten the moment it met a real book.
+ *
+ * A-098 — `active` ANSWERS EXACTLY ONE QUESTION: MAY NEW WORK BE BOOKED WITH
+ * HER. It is not "is she in the salon's records", and every surface that read
+ * it as that deleted a stylist's whole forward book off the screen the moment
+ * somebody clicked the one button the product offers for "she has left" —
+ * 106 appointments and $2,870 on the seeded book, silently, while the reminder
+ * job (rightly: a reminder is about an APPOINTMENT) kept telling those clients
+ * to come in.
+ *
+ * The answer was already one axis over. `day/room.ts` renders a retired CHAIR
+ * for exactly as long as it still holds somebody, and A-046's confirm dialog
+ * says it out loud: *they keep the chair until they are done, and nothing new
+ * is seated here.* A retired stylist is the same shape. She stays VISIBLE on
+ * the grid and the printed sheet, her past visits stay CLOSEABLE, her forward
+ * book is STRANDED where the desk can work it, and the time she gives back is
+ * SELLABLE. She stops being BOOKABLE, and only that.
+ *
+ * So the filter belongs on a read whose next step is a booking — who may take
+ * this visit, who may be reassigned to, who is offered on the public site.
+ * Everywhere else either DROP it (the appointment set already bounds the read)
+ * or widen it to `{ OR: [{ active: true }, { appointments: { some: <the
+ * window this screen covers> } }] }`, which is `room.ts:116` written in SQL.
  */
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 

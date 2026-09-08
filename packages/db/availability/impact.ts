@@ -355,8 +355,17 @@ export async function futureAppointments(
  * markers, derived on every render (AVAIL-05: "conflicting-but-kept
  * appointments render with a conflict marker until resolved").
  *
- * Both causes in one pass, because the front desk does not care which kind it
- * is: the client is booked and somebody has to do something about it.
+ * All THREE causes in one pass, because the front desk does not care which
+ * kind it is: the client is booked and somebody has to do something about it.
+ *
+ * A-098 ADDED THE THIRD, and it is the one that had no absence and no hours
+ * change to derive from. Deactivating a provider writes `Provider.active` and
+ * NOTHING ELSE — no time off, no window edit — so both existing causes came
+ * back empty and this function reported **0 stranded** for a stylist with 106
+ * booked clients still ahead of her. "Nobody is coming in to do this" is the
+ * plainest conflict there is; it just happened to be spelled with a boolean
+ * instead of with a row, and a screen whose entire job is naming the stranded
+ * was the last place that could afford to miss it.
  */
 export async function conflictsForDay(
   db: Db,
@@ -364,11 +373,28 @@ export async function conflictsForDay(
 ): Promise<ConflictingAppointment[]> {
   const providers = await db.provider.findMany({
     where: { businessId: args.businessId },
-    select: { id: true },
+    select: { id: true, active: true },
   });
 
   const perProvider = await Promise.all(
     providers.map(async (provider) => {
+      // CAUSE 3 — she is off the roster. Everything still in her column that
+      // day is stranded, whether or not the hours or the absences say so.
+      const gone = provider.active
+        ? []
+        : (
+            await db.appointment.findMany({
+              where: {
+                businessId: args.businessId,
+                providerId: provider.id,
+                status: { in: [...ACTIVE_STATUSES] },
+                startDay: args.day,
+              },
+              orderBy: { startAt: 'asc' },
+              select: SELECT,
+            })
+          ).map(toConflict);
+
       const [outside, absences] = await Promise.all([
         appointmentsOutsideHours(db, { businessId: args.businessId, providerId: provider.id, day: args.day }),
         db.timeOff
@@ -393,7 +419,7 @@ export async function conflictsForDay(
         ),
       );
 
-      return [...outside, ...overlapping.flat()];
+      return [...gone, ...outside, ...overlapping.flat()];
     }),
   );
 

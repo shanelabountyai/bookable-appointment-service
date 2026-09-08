@@ -50,6 +50,7 @@ function slot(item: Partial<OpenedSlot> & { startTime: string; freedBy: OpenedSl
     status: 'cancelled',
     clientName: 'Mrs Hall',
     clientPhone: '512 555 0142',
+    providerActive: true,
     ...rest,
   };
 }
@@ -133,6 +134,23 @@ export const FREED_SLOTS: { slot: OpenedSlot; marks: CallMark[] }[] = [
       // to hold up on its own.
       primaryServiceId: null,
       freedMinutes: 90,
+    }),
+    marks: [],
+  },
+  /* A-098. The sixth row is not a sixth KIND — it is the same cancellation
+     with the stylist gone, which is the shape this screen fills up with in
+     the week after somebody leaves. The span is sellable and the row says so;
+     what changes is that the call ends with somebody else in the chair. */
+  {
+    slot: slot({
+      startTime: '17:30',
+      freedBy: { kind: 'cancelled' },
+      status: 'cancelled',
+      clientName: 'Ruth Adeyemi',
+      providerName: 'Tess',
+      providerId: 'tess',
+      providerActive: false,
+      freedMinutes: 105,
     }),
     marks: [],
   },

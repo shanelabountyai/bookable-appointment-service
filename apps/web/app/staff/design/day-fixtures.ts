@@ -66,6 +66,7 @@ function column(over: Partial<GridModel['columns'][number]> & { providerName: st
   return {
     providerId: over.providerName.toLowerCase(),
     closed: false,
+    offRoster: false,
     runningLateMinutes: null,
     calls: [],
     pushFrom: null,
@@ -249,6 +250,17 @@ export const A_STYLIST_OFF = model({
         },
         chip({ top: 330, minutes: 60, startTime: '14:30', title: 'Nadia Rahman', detail: 'Cut' }),
       ],
+    }),
+    /* A-098 — THE THIRD KIND OF COLUMN, and the one the grid had no way to
+       draw. Priya above is off TODAY and Marcus is out for the afternoon;
+       Tess has left, and her clients are still booked. The column carries no
+       gap by construction (`day-view.ts` empties them), so this fixture also
+       has none: what the gallery is checking is that the header says which of
+       the three this is, in a scheme-independent colour. */
+    column({
+      providerName: 'Tess',
+      offRoster: true,
+      items: [chip({ top: 60, minutes: 90, startTime: '10:00', title: 'Ruth Adeyemi', detail: 'Colour' })],
     }),
   ],
 });

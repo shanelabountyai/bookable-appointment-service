@@ -89,9 +89,17 @@ function unfinishedWhere(args: { businessId: string; now: Date; lookbackDays?: n
     // PAST — the appointment's own END, not its start: a visit still running
     // at six o'clock is not unfinished, it is in progress.
     endAt: { lt: args.now, gte: since },
-    // A provider who has left cannot be asked what happened (A-041), and her
-    // column is not what the desk is closing out tonight.
-    provider: { is: { active: true } },
+    // A-098 TOOK THE PROVIDER FILTER OFF. It read `provider: { is: { active:
+    // true } }`, reasoning that a stylist who has left cannot be asked what
+    // happened — true, and beside the point. These are visits that ALREADY
+    // HAPPENED, and the desk knows perfectly well whether the client walked
+    // in; what the filter actually did was make her last fortnight
+    // permanently uncloseable, freezing every one of those rows at `booked`
+    // forever. Everything downstream reads that: the no-show counts, A-073's
+    // lapsed-client report, CLIENT-04's reliability flag. D-46 and A-081
+    // exist to stop exactly this poisoning, and it was arriving through a
+    // door neither of them touched. Nothing bounds the read but the
+    // appointment set itself, which is the point — see `settings/providers.ts`.
   };
 }
 

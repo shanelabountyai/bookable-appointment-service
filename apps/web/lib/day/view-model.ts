@@ -140,6 +140,10 @@ export interface GridColumn {
   providerId: string;
   providerName: string;
   closed: boolean;
+  /** A-098. She is off the roster and this day still has her clients on it.
+   *  The header says so, and the column carries no gap to book into — see
+   *  `day-view.ts`, which is where that is enforced rather than here. */
+  offRoster: boolean;
   /** D-22, for the column header's "Dana +38". */
   runningLateMinutes: number | null;
   /** A-059. Who is still on their way and has to be RUNG — empty unless a
@@ -432,6 +436,7 @@ function toColumn(
     providerId: column.providerId,
     providerName: column.providerName,
     closed: column.closed,
+    offRoster: column.offRoster,
     runningLateMinutes: column.runningLateMinutes,
     calls: column.lateCalls.map((call) => {
       const who = call.clientName ?? 'Walk-in';

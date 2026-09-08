@@ -51,6 +51,12 @@ export function FreedSlotRow({
         </span>
         <span className="text-ink-muted">
           {slot.serviceNames.join(' + ')} · {slot.providerName}
+          {/* A-098. The week a stylist leaves is the week her book gets
+              cancelled, so this screen fills up with her spans exactly when it
+              matters most — and every one of them is a call that ends with
+              somebody ELSE doing the work. The matcher this row links to says
+              the same thing again beside its Book button. */}
+          {slot.providerActive ? '' : ' · off the roster'}
         </span>
         {/* Who gave it back, and HOW. On the row for the same reason AVAIL-05's
             conflicts and A-021's call-down put it there — "shall we find you

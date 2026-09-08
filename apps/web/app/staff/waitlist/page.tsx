@@ -36,7 +36,16 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
 
   const [entries, providers, services] = await Promise.all([
     listWaitlistEntries(prisma, staff.businessId),
-    listProviders(prisma, staff.businessId, false),
+    // A-098 — THE WHOLE ROSTER, then narrowed at the one place that needs it.
+    //
+    // This read was `includeInactive: false`, and it is used for three
+    // different questions. Only ONE of them is about bookability. Naming a
+    // departed stylist made `freedSlotFrom` below return null, which took the
+    // entire "who wants this slot?" panel off the screen silently — the freed
+    // span still existed, the link still worked, the page just rendered as if
+    // it had been reached with no parameters at all. It also rendered a `?`
+    // instead of her name against every waiting client who had asked for her.
+    listProviders(prisma, staff.businessId, true),
     listServices(prisma, staff.businessId, false),
   ]);
 
@@ -64,7 +73,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
             Who wants this slot?
           </h2>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {freed.serviceName} with {freed.providerName}, {readableInstant(toDate(instantFromIso(freed.at)), business.timezone)}.
+            {freed.serviceName} with {freed.providerName}
+            {/* A-098. The span is real and sellable; the stylist is not
+                available to sell it. Saying so here is what stops the desk
+                promising Tess to whoever answers the phone. */}
+            {freed.providerActive ? '' : ' (off the roster — this goes to somebody else)'},{' '}
+            {readableInstant(toDate(instantFromIso(freed.at)), business.timezone)}.
           </p>
           {matches && matches.length === 0 ? (
             <p className="text-sm text-ink-muted">Nobody on the waitlist fits this one.</p>
@@ -85,7 +99,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                   </span>
                   <span className="flex items-center gap-2">
                     <Link
-                      href={`/staff/book?provider=${freed.providerId}&at=${encodeURIComponent(freed.at)}&day=${freed.query.day}`}
+                      /* A-098. `provider=any` when the stylist whose time this
+                         was has left: booking HER is refused, so a link naming
+                         her is an offer the write cannot honour. The instant
+                         and the day carry over unchanged — it is the same hour
+                         of the same Saturday, with whoever is free. */
+                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(freed.at)}&day=${freed.query.day}`}
                       className="rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium dark:border-zinc-600"
                     >
                       Book
@@ -127,7 +146,9 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
         </section>
       ) : null}
 
-      <EntryForm services={services} providers={providers} />
+      {/* The one question here that IS about bookability: who a new waiting
+          client may ask for. A stylist who has left is not on that list. */}
+      <EntryForm services={services} providers={providers.filter((p) => p.active)} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
@@ -176,7 +197,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
 function freedSlotFrom(
   params: Awaited<PageProps<'/staff/waitlist'>['searchParams']>,
   timezone: string,
-  providers: { id: string; displayName: string }[],
+  providers: { id: string; displayName: string; active: boolean }[],
   services: { id: string; name: string }[],
 ) {
   const providerId = typeof params.providerId === 'string' ? params.providerId : null;
@@ -204,6 +225,8 @@ function freedSlotFrom(
   return {
     providerId,
     providerName: provider.displayName,
+    /** A-098. Whether the Book button below may name her at all. */
+    providerActive: provider.active,
     serviceName: service.name,
     at,
     key,

@@ -95,7 +95,15 @@ export function DaySheet({
             <thead>
               <tr>
                 <td colSpan={4} className='border-b-2 border-line-strong pb-1 text-left'>
-                  <h2 className='text-section font-bold'>{column.providerName}</h2>
+                  {/* A-098. On paper there is no header link and no colour,
+                      so the fact that these clients are booked with somebody
+                      who has left has to be in the words — otherwise the sheet
+                      reads like an ordinary column and the desk works it like
+                      one. */}
+                  <h2 className='text-section font-bold'>
+                    {column.providerName}
+                    {column.offRoster ? <span className='font-normal'> — off the roster</span> : null}
+                  </h2>
                   <p className='text-body font-normal'>
                     {model.dayLabel} · {model.day}
                     {/* A-093. The hours in words, because the paper has no
@@ -133,7 +141,11 @@ export function DaySheet({
                    and the paper read the same eight words either way. */
                 <tr>
                   <td colSpan={4} className='py-2'>
-                    {column.closed ? 'Not working today.' : 'Nothing in the book.'}
+                    {column.offRoster
+                      ? 'Off the roster.'
+                      : column.closed
+                        ? 'Not working today.'
+                        : 'Nothing in the book.'}
                   </td>
                 </tr>
               ) : (

@@ -20,7 +20,7 @@
  *     from `ACTIVE_STATUSES`, so `completed` and `no_show` still hold their
  *     time (D-7) and only cancellations free it.
  */
-import { type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
+import { ACTIVE_STATUSES, type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
 import { type DayRoom, loadRoom } from './room';
@@ -82,6 +82,15 @@ export interface DayGap {
 export interface DayColumn {
   providerId: string;
   providerName: string;
+  /**
+   * A-098. She has been taken off the roster and still has work in this
+   * window — the stylist half of `room.ts`'s retired chair. The column is
+   * here because 106 booked clients are, and it OFFERS NOTHING: `gaps` is
+   * empty below, so no surface can put a booking link in a departed
+   * stylist's day. False for everybody who is still on the roster, which is
+   * every column on an ordinary day.
+   */
+  offRoster: boolean;
   /** D-22. How far behind she is running right now, if anybody has said so.
    *  Null is "on time", which is the state that needs no explanation. */
   runningLateMinutes: number | null;
@@ -140,17 +149,46 @@ export async function loadDayView(
   const day = calendarDay(args.day);
   const weekday = weekdayOf(day);
 
-  const providers = await db.provider.findMany({
-    where: { businessId: args.businessId, active: true },
-    orderBy: [{ displayOrder: 'asc' }, { displayName: 'asc' }],
-    select: { id: true, displayName: true },
-  });
-
   // The widest span the day can touch, for the queries. Local midnight either
   // side plus a day of slack covers an overnight window and anything whose
   // buffers hang off the ends.
   const from = toDate(instant(startOfDay(day, zone) - 24 * 60 * MIN));
   const to = toDate(instant(startOfDay(addDays(day, 1), zone) + 24 * 60 * MIN));
+
+  /**
+   * A-098 — `active: true` HERE REMOVED THE COLUMN RATHER THAN EMPTYING IT.
+   *
+   * Deactivation writes `Provider.active` and nothing else (see
+   * `settings/providers.ts`), so a stylist taken off the roster keeps every
+   * appointment she had — and this filter took all of them off the grid AND
+   * off the printed sheet, which renders the same `GridModel`. Measured on
+   * `db:reset:test`: one boolean, 106 future appointments and $2,870 gone,
+   * 106 chairs still held.
+   *
+   * The predicate is `room.ts:116` in SQL — active, OR still holding
+   * something in the window this screen covers. `ACTIVE_STATUSES` and the
+   * blocked range, so it agrees with what the column will actually draw: a
+   * day on which her last cancelled visit sits is not a day she is on.
+   */
+  const providers = await db.provider.findMany({
+    where: {
+      businessId: args.businessId,
+      OR: [
+        { active: true },
+        {
+          appointments: {
+            some: {
+              status: { in: [...ACTIVE_STATUSES] },
+              blockedStart: { lt: to },
+              blockedEnd: { gt: from },
+            },
+          },
+        },
+      ],
+    },
+    orderBy: [{ displayOrder: 'asc' }, { displayName: 'asc' }],
+    select: { id: true, displayName: true, active: true },
+  });
 
   // One read for the whole day rather than one per column: the delta table is
   // keyed by (provider, day), so the day's rows are a single indexed lookup.
@@ -200,7 +238,7 @@ async function loadColumn(
   db: Db,
   args: {
     businessId: string;
-    provider: { id: string; displayName: string };
+    provider: { id: string; displayName: string; active: boolean };
     zone: ZoneId;
     day: ReturnType<typeof calendarDay>;
     weekday: number;
@@ -359,11 +397,22 @@ async function loadColumn(
     breaks: breakSpans.map(toDateSpan),
     appointments,
     absences: absences.filter((a) => belongsHere(a.start, a.end)),
-    gaps: subtractSpans(windowSpans, taken).map((span) => ({
-      start: toDate(span.start),
-      end: toDate(span.end),
-      minutes: (span.end - span.start) / MIN,
-    })),
+    offRoster: !args.provider.active,
+    // A-098. NO GAPS IN A DEPARTED STYLIST'S COLUMN. Her weekly hours are
+    // still on the row — deactivation writes neither hours nor absences — so
+    // every free minute between her remaining appointments would otherwise be
+    // drawn as a bookable gap, carrying a `/staff/book?provider=…` link the
+    // write refuses (`slot-query.ts` reads `provider.active`). That is the
+    // offered-then-refused shape this repo has now caught four times, and one
+    // empty array shuts it at the source: the grid, the sheet and anything
+    // else reading `gaps` all follow, because none of them invents its own.
+    gaps: args.provider.active
+      ? subtractSpans(windowSpans, taken).map((span) => ({
+          start: toDate(span.start),
+          end: toDate(span.end),
+          minutes: (span.end - span.start) / MIN,
+        }))
+      : [],
   };
 }
 

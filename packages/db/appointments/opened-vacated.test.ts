@@ -307,7 +307,12 @@ describe('a visit handed to another stylist (A-038/A-042)', () => {
     });
   });
 
-  it('drops it once the stylist who vacated it has left (A-041)', async () => {
+  /** A-098 REVERSED THIS ONE — see `opened.test.ts` for the whole reasoning.
+   *  A hand-over is the freed-span kind MOST likely to be sitting on this
+   *  screen the week somebody leaves, because handing her visits to Priya is
+   *  what the desk spends that week doing, and every one of them leaves a
+   *  Dana-shaped hour behind it. */
+  it('KEEPS it once the stylist who vacated it has left, flagged (A-041)', async () => {
     const appointment = await book();
     await reassignAppointment(prisma, {
       businessId,
@@ -317,7 +322,9 @@ describe('a visit handed to another stylist (A-038/A-042)', () => {
     });
     await prisma.provider.update({ where: { id: danaId }, data: { active: false } });
 
-    expect(await list()).toHaveLength(0);
+    const slots = await list();
+    expect(slots).toHaveLength(1);
+    expect(slots[0]!.providerActive).toBe(false);
   });
 });
 

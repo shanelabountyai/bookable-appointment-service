@@ -59,8 +59,25 @@ export async function dashboardSummary(
 
   const business = await db.business.findUniqueOrThrow({ where: { id: args.businessId }, select: { timezone: true } });
   const zone = zoneId(business.timezone);
+  /**
+   * A-098. Active, OR she worked some part of THIS week — the same widening
+   * `day-view.ts` and `room.ts` make, on the window this report covers.
+   *
+   * `active: true` alone meant a stylist leaving on Wednesday took Monday and
+   * Tuesday's no-shows and her whole utilisation row out of the week she was
+   * actually in, and out of every week before it. Retiring does not rewrite
+   * history — `room.ts`'s comment says so about a chair, and a report is the
+   * one surface where that has to be literally true.
+   *
+   * RPT-02's utilisation formula is untouched (frozen; A-101 owns the only
+   * open question about it). This changes who has a row, not how one is
+   * computed.
+   */
   const providers = await db.provider.findMany({
-    where: { businessId: args.businessId, active: true },
+    where: {
+      businessId: args.businessId,
+      OR: [{ active: true }, { appointments: { some: { startDay: { gte: fromDay, lte: toDay } } } }],
+    },
     orderBy: { displayOrder: 'asc' },
     select: { id: true, displayName: true },
   });

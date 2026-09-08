@@ -3134,3 +3134,46 @@ link directly worked perfectly. That correction is written into the checkpoint
 alongside the real findings, because a review that reports a false alarm costs
 more than one that misses something: the next real finding is the one nobody
 believes.
+
+---
+
+## A stylist leaves, and her clients do not
+
+The salon has one button for "she has left": untick the stylist. Before this
+item, that click deleted her entire future book from every screen in the
+building — 106 appointments and $2,870 on the demo data — while the reminder
+job kept texting those clients to come in.
+
+**Nothing was broken. That is the interesting part.** Five separate pieces of
+code filtered her out, and each was individually right: the day grid drew one
+column per active stylist, the "close out yesterday" list skipped people who
+cannot be asked what happened, the freed-slot screen skipped time nobody can be
+booked into, the conflicts screen derived its conflicts from absences and hours
+changes (a departure writes neither), and the weekly report listed the current
+roster. Two of the five carried comments explaining themselves. The defect lived
+in the space between them: a single boolean was answering *may new work be
+booked with her* and five surfaces were reading it as *does she exist*.
+
+The fix was not new thinking — **the same question had been answered correctly
+one axis over, months earlier.** When a chair is retired from the salon, the
+code keeps drawing it until its last booking ends. That predicate, moved to the
+stylist, is the whole change: she renders until her last client walks out.
+
+**The part worth stealing is what the fix nearly broke.** Deactivating a stylist
+writes one boolean and nothing else — her working hours are untouched. So the
+moment her column came back, every free half-hour between her remaining
+appointments would have drawn as a bookable gap, linking to a booking screen
+that refuses her. The fix for the invisibility would have shipped the salon a
+row of buttons that promise a stylist who has gone. Empty gaps are now suppressed
+where the column is built, so every screen that reads them follows without
+knowing, and the freed-time screen points its offer at *whoever is free* rather
+than at her.
+
+**And one test was already green in exactly the wrong way.** A test named "drops
+a deactivated provider" passed before the fix and after it, because it
+deactivated someone with an empty day — it had been asserting "an empty column
+is not drawn" under a name claiming something much stronger. It stood guard over
+this defect for months and could never have caught it. The new tests ask one
+operational question of every surface at once, on a book where the departing
+stylist and the one who stays are genuinely different people; a book where
+everybody is interchangeable cannot fail any of it.

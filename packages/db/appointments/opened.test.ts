@@ -163,11 +163,20 @@ describe('the bounds', () => {
     expect(await list()).toHaveLength(0);
   });
 
-  it('drops a slot on a provider who has since been deactivated', async () => {
+  /** A-098 REVERSED THIS ONE TOO, and it is the sharpest of the three. The
+   *  reasoning was "nobody can be booked with a provider who has left", which
+   *  is true and is about HER, not about the hour. The week a stylist leaves
+   *  is the week her book gets cancelled, so this filter turned the screen
+   *  whose entire job is selling freed time off at precisely the moment it
+   *  had the most to sell. What the row carries instead is the real
+   *  constraint, so the offer the desk makes is one the write will honour. */
+  it('KEEPS a slot on a provider who has since left, and says she has', async () => {
     await seed({ day: '2026-08-20', hour: '14:00', endHour: '15:00' });
     await prisma.provider.update({ where: { id: providerId }, data: { active: false } });
 
-    expect(await list()).toHaveLength(0);
+    const slots = await list();
+    expect(slots).toHaveLength(1);
+    expect(slots[0]!.providerActive).toBe(false);
   });
 });
 

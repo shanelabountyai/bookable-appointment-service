@@ -111,7 +111,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
   return (
     <section
       className="row-span-2 grid grid-rows-subgrid"
-      aria-label={`${column.providerName}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
+      aria-label={`${column.providerName}${column.offRoster ? ', off the roster, still has clients booked' : ''}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
     >
       {/* ROW ONE — everything above the day. Wrapped, so that however much of
           it a column happens to have, its box below still starts where every
@@ -120,20 +120,43 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
       <h2 className="text-sm font-semibold">
         {column.providerName}
         {column.closed ? <span className="ml-2 font-normal text-ink-muted">off today</span> : null}
-        {/* A-042 — the way INTO the booking panel that does not depend on
-            there being a gap. Until this link, the only per-stylist door was a
-            gap chip, so a fully booked column could not be booked into at all
-            and BOOK-05's override was unreachable from any screen. No `at`:
-            the panel lists the day's real times, refusals and all. */}
-        <Link
-          href={`/staff/book?provider=${column.providerId}&day=${model.day}`}
-          className="ml-2 font-normal text-ink-muted underline underline-offset-4"
-        >
-          Book with {column.providerName}
-        </Link>
+        {/* A-098 — SHE IS HERE BECAUSE HER CLIENTS ARE. The column renders
+            until her last appointment ends (`day-view.ts`, the same rule
+            `room.ts` gives a retired chair) and the desk has to be told which
+            of the two kinds of column it is looking at: a stylist who is
+            simply free this afternoon, or one who is not coming back. The
+            second sentence is the actionable one, so it carries the link to
+            the screen that does something about it. */}
+        {column.offRoster ? (
+          <span className="ml-2 font-normal text-ink-muted">
+            off the roster —{' '}
+            <Link href={`/staff/conflicts?day=${model.day}`} className="underline underline-offset-4">
+              still booked
+            </Link>
+          </span>
+        ) : (
+          /* A-042 — the way INTO the booking panel that does not depend on
+             there being a gap. Until this link, the only per-stylist door was
+             a gap chip, so a fully booked column could not be booked into at
+             all and BOOK-05's override was unreachable from any screen. No
+             `at`: the panel lists the day's real times, refusals and all.
+             NOT RENDERED for a departed stylist: `/staff/book` resolves the
+             provider with `active: true` and would land on a panel with her
+             name missing from its own heading and no time it could ever
+             offer. */
+          <Link
+            href={`/staff/book?provider=${column.providerId}&day=${model.day}`}
+            className="ml-2 font-normal text-ink-muted underline underline-offset-4"
+          >
+            Book with {column.providerName}
+          </Link>
+        )}
       </h2>
 
-      {column.closed ? null : (
+      {/* Neither control means anything for somebody who is not in the
+          building: she is not running late, and pushing her column moves
+          appointments nobody is doing. */}
+      {column.closed || column.offRoster ? null : (
         <ColumnControls
           providerId={column.providerId}
           providerName={column.providerName}

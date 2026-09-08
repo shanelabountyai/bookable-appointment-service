@@ -1,51 +1,55 @@
 # Next
 
-**Build A-098** — row 100 in `docs/prds/06-backlog.md`, the top of Phase 11.
-The backlog is no longer empty: checkpoint 8 and the operator review at the
-Phase 10 close scoped **eight rows, A-098…A-105**, on 2026-09-07.
+**Build A-099** — row 101 in `docs/prds/06-backlog.md`, the second row of
+Phase 11. A-098 is ✅ and pushed.
 
-**A-098: a stylist taken off the roster takes her whole forward book off every
-screen, silently, while the salon keeps telling her clients to come.**
-`provider.active = false` is the one action the product offers for "she has
-left". Proved by flipping that one boolean on `db:reset:test`: **106 future
-appointments worth $2,870** off the day grid *and* the printed sheet, **106
-chairs still held**, `/staff/conflicts` reporting **0 stranded** — and
-`reminders.ts` (correctly, on its own terms) still sending "your appointment is
-tomorrow", whose manage link then offers an empty day forever
-(`candidatesConsidered: 0`).
+**A-099: the knowingly double-booked hour draws one client on top of the
+other, and D-8 promises in writing that it does not.** D-8's last clause is a
+promise about a screen — an override writes `blockedStart = blockedEnd` plus
+`overriddenFromRange` *"so the constraint never lies and the day view renders
+the true collision."* It does not. Two clients, same stylist, same instant,
+the second booked through BOOK-05 with a typed reason: both chips compute
+`top=60 height=55`, and the horizontal extent is not per-item —
+`CHIP_SHELL` (`appointment-chip.tsx:89`) is `absolute inset-x-1` for **every
+chip in the product**, and `GridItem` (`view-model.ts:23`) carries only `top`
+and `minutes`. **There is no lane, no offset and no width anywhere in the day
+surfaces.** The later chip in DOM order paints over the earlier one, opaque,
+`overflow-hidden` — so **the client already in the book is the one who
+disappears**, under a chip wearing the override marker, which reads as one
+deliberate override rather than as two people at ten o'clock. The desk
+overrides *because* it intends to see both.
 
-Four readers, one line each, **each correct in isolation and two of them
-carrying a comment explaining why** — all four verified against source before
-the row was written:
-
-```
-day-view.ts:144    where: { businessId, active: true }   ← removes the COLUMN, not its contents
-impact.ts:361      conflictsForDay derives from hours + absences; deactivation writes NEITHER
-unfinished.ts:94   provider: { is: { active: true } }    ← her visits can never be closed out
-opened.ts:217      provider: { is: { active: true } }    ← a Saturday she frees is never sold
-```
-
-**The answer already exists one axis over.** `room.ts:116` is
-`.filter((r) => r.active || r.holds.length > 0)` — a retired *chair* keeps
-rendering until its last hold ends, and A-046's dialog says so out loud. A
-retired stylist must stay **visible, closeable, conflictable and sellable**;
-she must only stop being **bookable**. And per CLAUDE.md's status-enum rule,
-**the item is the grep for readers of `active: true` across every surface**,
-not the four named above.
+It needs lanes in the view model (n overlapping items share the column width)
+and **it must hold on the printed sheet**, where there is no z-order to hide
+behind — the sheet renders the same `GridModel` and has no absolute
+positioning at all, so "two rows at the same time" is the paper's version of
+the same fact.
 
 ## Read first
 
-`docs/START-HERE.md`, `CLAUDE.md`, then the row itself and the two reviews it
-came from: `docs/reviews/19-demo-checkpoint-8.md` and
-`docs/reviews/19-operator-review-phase-10-close.md`. Both carry the `19-`
-prefix — that is the house pattern (18- is shared too), not a collision.
+`docs/START-HERE.md`, `CLAUDE.md`, then the row itself and
+`docs/reviews/19-demo-checkpoint-8.md`, which is where it was found.
 
-## Two things about the next few rows, so they are not re-derived
+## What A-098 just changed underneath it
+
+`GridColumn` gained `offRoster`, and `DayColumn.gaps` is now empty for an
+inactive provider — so the day surfaces have moved slightly. Nothing about
+lanes conflicts with it, but `view-model.ts`'s `toColumn` and
+`day-grid.tsx`'s `Column` are both freshly edited; re-read them rather than
+working from memory of an earlier session.
+
+`apps/web/app/staff/design/day-fixtures.ts` now has a fourth column in
+`A_STYLIST_OFF` (`Tess`, `offRoster: true`). The gallery is the cheap place to
+draw an overlapping pair for A-099 too — `/staff/design` is axe-swept in both
+schemes and needs no seeded book.
+
+## Two things about the rows after it, so they are not re-derived
 
 - **A-101 needs a DECISION before any code** — a new D-number. RPT-02's
   utilization formula is **frozen and out of scope**; the open question is only
   what the tile renders for a week that has not happened yet. Do not "fix" the
-  formula.
+  formula. (A-098 touched `dashboard.ts` — it widened WHO gets a row, not how
+  one is computed. The formula is untouched.)
 - **A-104 is a shape, not two screens.** The audit is already done: of the four
   parameter-driven zero-row states, `clients` and `dashboard/appointments` are
   right, `dashboard/overruled` and `book` are wrong. It brings the missing
@@ -53,11 +57,11 @@ prefix — that is the house pattern (18- is shared too), not a collision.
 
 ## Environment notes that cost previous sessions a pass
 
-- Check `psql -c "SELECT datname, count(*) FROM pg_stat_activity GROUP BY
-  datname"` and `uptime` **before** reading a stack trace — A-097 lost three
-  gate runs to a *different project* mid-sweep.
-- **The seed alone is 16.8 s** (measured at checkpoint 8, on a quiet machine).
-  A-095's "~15–18 s" was right; the 120 s hook budget stands. No longer an open
+- Check `psql -d postgres -c "SELECT datname, count(*) FROM pg_stat_activity
+  GROUP BY datname"` and `uptime` **before** reading a stack trace — A-097 lost
+  three gate runs to a *different project* mid-sweep. (Bare `psql` fails on
+  this machine: there is no `shanelabounty` database. Use `-d postgres`.)
+- **The seed alone is 16.8 s**; the 120 s hook budget stands. Not an open
   question.
 - The demo book runs **eight working days forward** and then nothing until the
   fixed fall-back day on 1 November.
