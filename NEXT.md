@@ -1,70 +1,57 @@
 # Next
 
-**Build A-104** — row 106 in `docs/prds/06-backlog.md`, the seventh row of
-Phase 11. A-103 is ✅ and pushed.
+**Build A-105** — row 107 in `docs/prds/06-backlog.md`, the eighth row of
+Phase 11. A-104 is ✅, pushed, and CI is green (`646a086`, run 34286941186).
 
-**A-104 is a SHAPE, not two screens, and the audit is already done** (recorded
-in the row itself): of the four parameter-driven zero-row states,
-`clients` and `dashboard/appointments` are RIGHT and `dashboard/overruled` and
-`book` are WRONG. The right one to copy is
-`dashboard/appointments/page.tsx:64` — `{fromDay && toDay ? 'Nothing matches
-this filter.' : 'Pick a week from the dashboard.'}`. The wrong ones say BOTH
-sentences at once, so they reassure you about a week you have not chosen.
+**A-105 is A-083's shape on the caller A-083 did not reach.**
+`confirmAppointment` resolves the client at `public-actions.ts:364` and then,
+in its own `catch` at `:429`, calls `sameTimeWithSomebodyElse(...)`, which asks
+`anyProviderAt` with **no `holderKey`** (`:252-266`). Strict direction, so it
+only ever offers FEWER times than the write would take — the row records the
+measurement: **472 comparisons, 23 instants the named question offers that the
+anonymous one refuses, 0 the other way.** Read the row itself for the rest; it
+carries the numbers.
 
-`/staff/book`'s version is `book/page.tsx:120`, branch
-`!walkIn && !anyone && !provider`: it says *"That stylist is not on today."*
-when no `provider` param was given at all — on a Tuesday when all four are in —
-and the same branch catches a **deactivated** stylist, who is not "not on
-today" either. Three cases, one sentence.
-
-**It brings the missing `overruled` e2e spec with it.** `/staff/dashboard/
-overruled` is the one staff route with NO e2e spec at all, which is why the
-sibling of A-087's fix was never opened. The fixture needs a genuinely
-overruled cancellation so the scan is not scanning chrome.
+**The fixture rule applies here as loudly as anywhere.** A room where the
+answers can differ is a room where she is ALREADY IN A CHAIR at that instant.
+On a book where nobody is seated the two questions agree, so a spec written the
+obvious way passes against the bug (CLAUDE.md, the A-082/A-097 entries).
 
 ## Read first
 
-`docs/START-HERE.md`, `CLAUDE.md`, then the row itself. A-087 is the precedent
-to copy, not to re-derive.
+`docs/START-HERE.md`, `CLAUDE.md`, then the row. A-082 and A-083 are the
+precedent — the `holderKey` thread — not to be re-derived.
 
-## What A-103 just changed underneath it
+## What A-104 just changed underneath it
 
-- **`walkInAnswer(db, {businessId, serviceIds, day, now, holderKey?, daysAhead?})`**
-  in `packages/db/booking/walk-in.ts` returns `WalkInSearch`:
-  `{day, options, nextDay, squeeze}`. `walkInOptions` still exists and is
-  unchanged in behaviour — both now share `earliestEach`, ONE `computeDaySlots`
-  pass per provider per day returning the earliest OFFERED slot and the
-  earliest REFUSED candidate together.
-- **The safety rule lives in `walkInAnswer`, not in the caller**: a non-empty
-  `options` returns `nextDay: null, squeeze: []`. Do not move it into a
-  surface.
-- **`findWalkInOptions` now returns an OBJECT** (`WalkInAnswer` in
-  `staff-actions.ts`), not `WalkInChoice[]`. It only formats; every decision is
-  in the db layer.
-- **`/staff/book?walkin=1` accepts `?day=`** — it always did (`safeDay`), and
-  A-103's e2e is the first thing to use it. The panel still hides the day
-  picker for a walk-in; taking a following-day offer moves `day` from the
-  SERVER-supplied string.
-- **The walk-in refusal text changed**: `Nobody is free for that on <day>`, not
-  `...today`. Anything grepping the old string is stale.
-- Nothing in the engine, the constraint, the transition table, `book.ts` or the
-  override write path moved. There is still exactly one write path.
-
-## The row after that, so it is not re-derived
-
-- **A-105 is A-097's rule one door on** — `sameTimeWithSomebodyElse`
-  (`public-actions.ts:252-266`) asks `anyProviderAt` with no `holderKey` while
-  the caller resolved the client at `:364`. Strict direction, so it only ever
-  offers fewer times than the write would take: 23 instants over the future
-  book.
+- **All four parameter-driven zero-row screens are one construction now**, and
+  it tests the MISSING PARAMETER FIRST:
+  `{!fromDay || !toDay ? <EmptyState>pick one</EmptyState> : rows.length === 0
+  ? <EmptyState>none matched</EmptyState> : <ul>…}`. Copy that precedence, not
+  A-087's nested `{cond ? A : B}` inside `rows.length === 0`. All four use
+  `EmptyState` (`@/components/ui/empty-state`).
+- **`/staff/book` no longer filters the provider lookup by `active`.** It
+  selects `{id, displayName, active}` and derives
+  `provider = providerRow?.active ? … : null` afterwards, so the page can tell
+  "off the roster" from "no such stylist". `provider` still means exactly
+  "bookable" everywhere below that line — nothing downstream changed.
+- **Three strings on `/staff/book` are gone.** *"That stylist is not on
+  today."* no longer exists anywhere; it is now "Pick a stylist from the day
+  view." / "<Name> is off the roster — no new bookings with her. Her clients
+  are still booked." / "No stylist here matches that link." Anything grepping
+  the old sentence is stale.
+- **`e2e/overruled.spec.ts` is new** (5 tests) and `staff-booking.spec.ts` has
+  3 more at the bottom. The suite is now **303 tests in 32 files, ~3.5 min**.
+- Nothing in the engine, the constraint, the transition table, the write paths
+  or any query moved. A-104 was presentation only.
 
 ## Environment notes that cost previous sessions a pass
 
 - **Run every command from the REPO ROOT.** The shell's cwd persists between
-  calls: a stray `cd apps/web` made `npm run test:e2e` skip the root's
-  `dotenv -e .env.test -e .env.local` wrapper, and the sweep died on
+  calls: a stray `cd apps/web` makes `npm run test:e2e` skip the root's
+  `dotenv -e .env.test -e .env.local` wrapper, and the sweep dies on
   `CRON_SECRET must be set in .env.test` — which reads exactly like a missing
-  secret and is not one. Cost A-103 a full sweep.
+  secret and is not one.
 - Run unit tests with `npm test`, never bare `npx vitest` — without the dotenv
   wrapper every DB test SKIPS and the file merely "fails". Same for
   `playwright --list`: under `dotenv` or it lists **0 tests in 0 files**.
@@ -77,17 +64,12 @@ to copy, not to re-derive.
 - **A hand-written appointment fixture cannot set `blockedStart`/`blockedEnd`**
   — a trigger derives them from the row's own buffer columns, which default to
   0. Copy the buffers off the service.
-- **Time off leaves the working WINDOW open**, so every grid candidate stays a
-  REFUSED candidate rather than no candidate at all. That is what A-103's e2e
-  uses to close a day deterministically on a pinned FUTURE day.
 - Check `psql -d postgres -c "SELECT datname, count(*) FROM pg_stat_activity
   GROUP BY datname"` and `sysctl -n kern.memorystatus_level` **before** reading
   a stack trace. (Bare `psql` fails: there is no `shanelabounty` database.)
 - **Scope the pre-sweep kill to `$PWD`** (`pkill -9 -f "$PWD.*playwright"`) — a
   sibling project's sweep may be running.
 - **The seed alone is 16.8 s**; the 120 s hook budget stands.
-- A full e2e sweep is now **295 tests, ~3.5 minutes**. Reconcile
-  `passed + skipped + flaky` against 295, not against exit 0.
 - **The unit suite is 1590 passed + 1 skipped and takes ~2.6 minutes** — longer
   than the 120 s foreground budget, so background it.
 - **CI takes ~19-22 minutes.** `gh run watch <id> --exit-status` before saying
