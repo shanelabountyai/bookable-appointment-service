@@ -1,55 +1,54 @@
 # Next
 
-**Build A-099** — row 101 in `docs/prds/06-backlog.md`, the second row of
-Phase 11. A-098 is ✅ and pushed.
+**Build A-100** — row 102 in `docs/prds/06-backlog.md`, the third row of
+Phase 11. A-099 is ✅ and pushed (`ccd79dd`, SHA record `7750a07`).
 
-**A-099: the knowingly double-booked hour draws one client on top of the
-other, and D-8 promises in writing that it does not.** D-8's last clause is a
-promise about a screen — an override writes `blockedStart = blockedEnd` plus
-`overriddenFromRange` *"so the constraint never lies and the day view renders
-the true collision."* It does not. Two clients, same stylist, same instant,
-the second booked through BOOK-05 with a typed reason: both chips compute
-`top=60 height=55`, and the horizontal extent is not per-item —
-`CHIP_SHELL` (`appointment-chip.tsx:89`) is `absolute inset-x-1` for **every
-chip in the product**, and `GridItem` (`view-model.ts:23`) carries only `top`
-and `minutes`. **There is no lane, no offset and no width anywhere in the day
-surfaces.** The later chip in DOM order paints over the earlier one, opaque,
-`overflow-hidden` — so **the client already in the book is the one who
-disappears**, under a chip wearing the override marker, which reads as one
-deliberate override rather than as two people at ten o'clock. The desk
-overrides *because* it intends to see both.
+**A-100: an absence longer than one day makes `/staff/conflicts?day=` lie on
+every day of the year.** Dana is off all week with flu; the desk writes one
+`TimeOff` row and follows the link A-041 hands it. `conflictsForDay`
+(`impact.ts:361`) loads **every `TimeOff` and `AdHocBlock` the provider has ever
+had, with no date predicate of any kind** — under a comment claiming the list
+"is scoped to one already-known day". Five clients on five different days show
+identically on `?day=2026-09-09`, `?day=2026-09-11`, `?day=2026-09-15` **and
+`?day=2027-03-15`** — still all five a year later, every one `completed`, and
+every row labelled with a bare `"09:00"` that does not say which day it is. So
+the second person to work the list on Wednesday re-rings the five already sorted
+on Tuesday, which is exactly what A-019's `conflictAckAt` was built to prevent,
+arriving by a route the acknowledgment cannot reach.
 
-It needs lanes in the view model (n overlapping items share the column width)
-and **it must hold on the printed sheet**, where there is no z-order to hide
-behind — the sheet renders the same `GridModel` and has no absolute
-positioning at all, so "two rows at the same time" is the paper's version of
-the same fact.
+**Two halves, and the second is the one that gets forgotten:** the absence query
+needs the day's bounds, AND a row that can span days must print its DATE, not
+just its time.
 
 ## Read first
 
 `docs/START-HERE.md`, `CLAUDE.md`, then the row itself and
-`docs/reviews/19-demo-checkpoint-8.md`, which is where it was found.
+`docs/reviews/19-demo-checkpoint-8.md`.
 
-## What A-098 just changed underneath it
+## What A-099 just changed underneath it
 
-`GridColumn` gained `offRoster`, and `DayColumn.gaps` is now empty for an
-inactive provider — so the day surfaces have moved slightly. Nothing about
-lanes conflicts with it, but `view-model.ts`'s `toColumn` and
-`day-grid.tsx`'s `Column` are both freshly edited; re-read them rather than
-working from memory of an earlier session.
+Nothing in `impact.ts`. But three things moved on the day surfaces:
 
-`apps/web/app/staff/design/day-fixtures.ts` now has a fourth column in
-`A_STYLIST_OFF` (`Tess`, `offRoster: true`). The gallery is the cheap place to
-draw an overlapping pair for A-099 too — `/staff/design` is axe-swept in both
-schemes and needs no seeded book.
+- **`apps/web/lib/day/lanes.ts` is new** and is the only place that decides what
+  "at once" means — half-open, per overlapping cluster, appointments only.
+  `GridItem` gained `lane`/`lanes`/`concurrent`; `RoomTrack.blocks` gained
+  `lane`/`lanes`. Four readers go through it: `day-grid.tsx`, `day-sheet.tsx`,
+  `provider-day.tsx`, `room-strip.tsx`.
+- **The unit suite now covers `apps/web/lib`.** `vitest.config.ts`'s `include`
+  is `['packages/**/*.test.ts', 'apps/web/lib/**/*.test.ts']`. A unit test may
+  now live beside app code, but only under `lib` and only if it is pure — no
+  `@/` alias resolution is configured, so import relatively.
+- **A locator trap, if you write a spec on the printed sheet.** The sheet now
+  prints "at the same time as <the other client>" on BOTH rows of an overlapping
+  pair, so `page.locator('tbody tr').filter({ hasText: '<a name>' })` can match
+  two rows. Locate a row by its own TIME cell and assert the name inside it.
 
 ## Two things about the rows after it, so they are not re-derived
 
 - **A-101 needs a DECISION before any code** — a new D-number. RPT-02's
   utilization formula is **frozen and out of scope**; the open question is only
   what the tile renders for a week that has not happened yet. Do not "fix" the
-  formula. (A-098 touched `dashboard.ts` — it widened WHO gets a row, not how
-  one is computed. The formula is untouched.)
+  formula.
 - **A-104 is a shape, not two screens.** The audit is already done: of the four
   parameter-driven zero-row states, `clients` and `dashboard/appointments` are
   right, `dashboard/overruled` and `book` are wrong. It brings the missing
@@ -58,10 +57,11 @@ schemes and needs no seeded book.
 ## Environment notes that cost previous sessions a pass
 
 - Check `psql -d postgres -c "SELECT datname, count(*) FROM pg_stat_activity
-  GROUP BY datname"` and `uptime` **before** reading a stack trace — A-097 lost
-  three gate runs to a *different project* mid-sweep. (Bare `psql` fails on
-  this machine: there is no `shanelabounty` database. Use `-d postgres`.)
+  GROUP BY datname"` and `uptime` **before** reading a stack trace. (Bare `psql`
+  fails on this machine: there is no `shanelabounty` database. Use `-d postgres`.)
 - **The seed alone is 16.8 s**; the 120 s hook budget stands. Not an open
   question.
 - The demo book runs **eight working days forward** and then nothing until the
   fixed fall-back day on 1 November.
+- A full e2e sweep is **287 tests, ~3.2 minutes**. Reconcile
+  `passed + skipped + flaky` against 287, not against exit 0.
