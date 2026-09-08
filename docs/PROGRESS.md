@@ -2970,7 +2970,7 @@ with the other two causes; it is worth knowing it is a choice.
 
 ## A-101 — 0% and "not yet" are different facts, and the tile spelled them the same
 
-**Commit:** `PENDING`
+**Commit:** `7df37d8`
 
 **The decision first (D-51), because the row demanded one.** RPT-02's formula is
 frozen and is untouched by this item. What was never specified is **which week
