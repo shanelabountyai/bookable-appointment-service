@@ -13,6 +13,7 @@ import 'server-only';
  * file has no opinion about it.
  */
 import type { DayColumn, DayRoom, DayView } from '@bookable/db/day';
+import { releasableAt } from '@bookable/db/appointments';
 import { type AppointmentStatus, availableTransitions, isAwaitingStart } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
 import { type Laned, assignLanes, withLanes } from './lanes';
@@ -113,6 +114,21 @@ export interface GridItem extends Laned {
    *  back. Present only on a released one; the chip keeps its booked extent,
    *  so this is what explains the bookable gap sitting on top of it. */
   released?: string;
+  /**
+   * A-102 — THE OTHER HALF OF THE SAME FACT: nobody came, and nobody has given
+   * the time back yet.
+   *
+   * `released` above says a decision was made. This says one is still WAITING
+   * to be made, on the surface that made the no-show — the stylist's own list
+   * marks it in one tap (`provider-day.tsx`), and A-069's release panel lives
+   * on the detail screen alone, so a no-show marked from here left two hours
+   * that nothing anywhere mentioned again.
+   *
+   * SERVER-DERIVED FROM THE WRITE PATH'S OWN PREDICATE (`releasableAt`), for
+   * the same reason `available` is: a control this screen offers and the write
+   * path refuses is the defect, not the screen's own rule about it.
+   */
+  releasable?: true;
   href?: string;
   /** The whole chip as one sentence, for a screen reader and for the
    *  accessible name of the link. */
@@ -407,6 +423,11 @@ function toColumn(
         // is clickable — this is the sentence that makes that legible instead
         // of alarming.
         ...(appointment.releasedAt ? { released: f.clock(appointment.releasedAt) } : {}),
+        // A-102. The MINUTES are deliberately not here: they are the envelope
+        // (`blockedEnd`) and this row carries the body, so the label says what
+        // it knows and the server says what it actually freed. Asking for them
+        // would put a fourth copy of `blockedEnd` on the day.
+        ...(releasableAt(appointment, now).releasable ? { releasable: true as const } : {}),
         // A-090 — `isAwaitingStart`, DERIVED, never `status === 'booked'`.
         //
         // That hand-typed comparison was a status list of ONE and narrower

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { GridColumn } from '@/lib/day/view-model';
+import { ReleaseButton } from '@/components/release-button';
 import { QuickNote } from './quick-note';
 import { StatusActions } from './status-actions';
 
@@ -82,6 +83,25 @@ export function ProviderDay({ column }: { column: GridColumn }) {
               two ordinary rows one under the other, which is the shape of a
               queue. Dana walking to the backwash needs to know they are both
               hers at once. */}
+          {/* A-102 — "NOBODY CAME; PUT THE REST BACK", ON THE SCREEN THAT
+              MARKED THE NO-SHOW. `ON_THE_CHIP` puts `no_show` in this list's
+              move set, so the desk marks it here in one tap — and A-069's
+              release panel is on `/staff/appointments/[id]` alone, so until now
+              the two hours it left went to nobody. `/staff/opened` catches them
+              afterwards; this catches them at the moment somebody is thinking
+              about the slot, which is the only moment anybody is (A-043).
+
+              NOT ON THE GRID CHIP: A-035 counted the space and a chip has room
+              for exactly one button, and a clipped button is worse than an
+              absent one. This list has a whole row. */}
+          {item.releasable && item.appointmentId ? (
+            <ReleaseButton
+              appointmentId={item.appointmentId}
+              label="Nobody came — put the rest of the time back"
+              className="w-full"
+            />
+          ) : null}
+
           {item.concurrent ? (
             <p className="w-full text-sm font-medium">⇄ At the same time as {item.concurrent}</p>
           ) : null}

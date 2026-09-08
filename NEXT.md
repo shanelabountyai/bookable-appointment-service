@@ -1,35 +1,42 @@
 # Next
 
-**Build A-102** — row 104 in `docs/prds/06-backlog.md`, the fifth row of
-Phase 11. A-101 is ✅ and pushed.
+**Build A-103** — row 105 in `docs/prds/06-backlog.md`, the sixth row of
+Phase 11. A-102 is ✅ and pushed.
 
-**A-102 needs no decision.** D-44 already settled the mechanism (`releasedAt`
-cuts the blocked range) and A-069 built it. The finding is that its BUTTON
-lives on one screen while `no_show` is markable on three, so the desk that taps
-no-show from the day grid at 10:15 has freed two hours nobody will ever be
-offered — and `/staff/opened`, the one screen whose whole subject is
-perishable supply, shows **0**.
+**A-103 is the walk-in nobody is free for, and it is a dead end today.**
+`booking-panel.tsx:550` is the whole refusal: *"Nobody is free for that today.
+Book a time from the day view instead."* Two answers a real front desk gives
+are missing — **"we could squeeze you in"** (RES-04/BOOK-05 override, and A-042
+built that door only on the TIME axis, never on the room axis) and **"how about
+tomorrow?"** (next-available across FOLLOWING days). Read the finding in
+`docs/reviews/19-operator-review-phase-10-close.md` §5 before the row.
 
 ## Read first
 
-`docs/START-HERE.md`, `CLAUDE.md`, then the row itself, D-44/D-45 in
-`07-decisions.md`, and `docs/reviews/19-demo-checkpoint-8.md`.
+`docs/START-HERE.md`, `CLAUDE.md`, then the row itself, and §5 of
+`19-operator-review-phase-10-close.md`.
 
-## What A-101 just changed underneath it
+## What A-102 just changed underneath it
 
-- **`dashboardSummary` now takes `now: Date`** and returns two fractions per
-  provider (`utilization` frozen, `booked` forward) plus `weekIsAhead`. Six
-  test call sites were threaded; the frozen constant (`1290/2100`) is
-  untouched.
-- **`e2e/dashboard.spec.ts`'s `DAY` is now at least SEVEN days out**, so its
-  week is strictly ahead of today whatever weekday the suite runs on. It used
-  to be "at least a day out", which lands inside the current week every Monday.
-- Nothing in `opened.ts`, the release path, or the transition layer moved.
+- **`releasableAt(appointment, at)` is exported from `@bookable/db/appointments`
+  and is now the ONLY predicate for "is there time to give back?"** The write
+  path (`releaseNoShowTime`) asks it, and so do all three read models. It floors
+  `at` to the whole minute and returns the floored instant. It answers from the
+  **body** (`endAt`); the MINUTES are `blockedEnd - at` and stay the caller's,
+  deliberately — that split is what stopped them drifting apart.
+- **`listUnreleasedNoShows(db, {businessId, now})`** — new, in `release-time.ts`.
+  Not a fifth `freedBy` kind on `listOpenedSlots`, and the comment says why.
+- **`/staff/opened` has TWO lists now**, and the shell's "Opened up N" badge is
+  `opened.length + stillBlocked.length` — so `staff/layout.tsx` runs four
+  queries per staff render, not three.
+- **`GridItem.releasable?: true`** on the day view model; the release button is
+  on `provider-day.tsx` and deliberately NOT on the grid chip (A-035's one-button
+  budget).
+- Nothing in the engine, the constraint, the transition table or `opened.ts`
+  moved.
 
 ## Two things about the rows after it, so they are not re-derived
 
-- **A-103** — the walk-in nobody is free for is a dead end. Needs
-  next-available across FOLLOWING days plus the RES-04/BOOK-05 override.
 - **A-104 is a shape, not two screens.** The audit is already done: of the four
   parameter-driven zero-row states, `clients` and `dashboard/appointments` are
   right, `dashboard/overruled` and `book` are wrong. It brings the missing
@@ -45,11 +52,19 @@ perishable supply, shows **0**.
 - Run unit tests with `npm test`, never bare `npx vitest` — the env comes from
   `dotenv -e .env.test -e .env.local`, and without it every DB test SKIPS and
   the file merely "fails", which reads nothing like a missing `DATABASE_URL`.
+  Same for `playwright --list`: it must be run under `dotenv` or it lists **0
+  tests in 0 files** and looks like a config error.
 - **The seed is not uniform, and three of four stylists differ.** Dana/Priya:
   09:00-17:00 Tue-Sat with a break = 2100 min/week. Marcus: split Thursday
   whose second window is CLIPPED by the salon's 18:00 close = 2040. Tess: no
   break = 2400. Any test that hardcodes "2100 for everybody" is wrong for two
   of them.
+- **The seeded Colour carries SEGMENTS that must sum to its duration**, so a
+  hand-written appointment fixture whose body is not 120 minutes must use the
+  **Cut** (45 min, buffers 0/10) instead — A-102's e2e fixture does.
+- **A fixture that needs `now` to be INSIDE the appointment cannot pin `?day=`.**
+  A-102's e2e anchors to the real clock and touches no roster, no working-hours
+  window and no `?day=` — that is what makes it deterministic on any weekday.
 - Check `psql -d postgres -c "SELECT datname, count(*) FROM pg_stat_activity
   GROUP BY datname"` and `sysctl -n kern.memorystatus_level` **before** reading
   a stack trace. (Bare `psql` fails on this machine: there is no
@@ -59,7 +74,9 @@ perishable supply, shows **0**.
 - **The seed alone is 16.8 s**; the 120 s hook budget stands.
 - The demo book runs **eight working days forward** and then nothing until the
   fixed fall-back day on 1 November.
-- A full e2e sweep is now **289 tests, ~3.4 minutes**. Reconcile
-  `passed + skipped + flaky` against 289, not against exit 0.
+- A full e2e sweep is now **292 tests, ~3.3 minutes**. Reconcile
+  `passed + skipped + flaky` against 292, not against exit 0.
+- **The unit suite is 1583 passed + 1 skipped and takes ~2.6 minutes** — longer
+  than the 120 s foreground tool budget, so background it.
 - **CI takes ~22 minutes.** `gh run watch <id> --exit-status` before saying
   "done".

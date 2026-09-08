@@ -3310,3 +3310,49 @@ least a day out", which lands inside the *current* week every Monday. Both now
 look at a week that is genuinely ahead, and the report takes the clock as an
 argument instead of reading it — a report that reads the system clock is a
 report whose tests cannot ask it about next week.
+
+## A-102 — the two hours nobody was ever going to be offered
+
+A client books a colour for ten o'clock and does not turn up. At twenty past,
+the desk marks her a no-show, which is right: the record has to say she was
+booked and did not come, and the salon's utilization and her twelve-month
+reliability both depend on it. What that leaves behind is **eighty minutes of a
+Saturday that the salon is paying for and nobody is sitting in.**
+
+The software had the release mechanism already — one tap puts the rest of the
+slot back on the market. What it did not have was any way to *find* the slots
+that needed it. The screen whose entire subject is perishable supply showed
+**zero**, because it lists time that has already been freed and this time has
+not. And the button that frees it lived on one screen while a no-show can be
+marked from three, so a no-show marked from the stylist's own phone left two
+hours that nothing anywhere ever mentioned again.
+
+**Three or four no-shows a week, at colour rates, is real money.** It is also
+the leak that is hardest to notice, because nothing looks wrong: the day grid
+shows an appointment, the appointment is genuinely booked, and the only thing
+missing is a decision nobody was ever prompted to make.
+
+**The list is the fix, and the timer is not.** The obvious version — release
+automatically at fifteen minutes past — resells a chair to a client who is eight
+minutes away in traffic, which is a worse outcome than the empty hour. So the
+release stays a deliberate act by a person, and what changed is that the person
+is now *asked*: the no-shows still holding time appear on the screen the desk
+already opens to decide what to sell, with the client's phone number on the row
+for one more ring before anybody gives up on her, and the same one-tap release
+sits on the stylist's own list where the no-show usually gets marked.
+
+**The bug found underneath it is the more interesting engineering.** Two parts
+of the system were answering the same operational question — *is there still
+time to give back?* — and answering it differently. The write path measured the
+appointment; the screen measured the appointment **plus its clean-up buffer**.
+For the twenty minutes between those two answers, the software offered a button
+that the server then refused: an action drawn, tapped, and rejected, in the one
+place whose job is explaining itself. Neither half was wrong on its own, and no
+compiler can see the difference, because both are timestamps of the same shape
+under two names.
+
+The fix was to make there be **one** question, asked from one place, by the
+screen that offers and the code that writes. The test that proves it runs both
+answers at the exact minute they used to differ and asserts they are **equal** —
+because a test of either one alone passes against the defect, and the fixture
+needed unequal buffers to reach that minute at all.

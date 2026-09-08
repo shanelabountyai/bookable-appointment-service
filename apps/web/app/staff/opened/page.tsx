@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
-import { listOpenedSlots } from '@bookable/db/appointments';
+import { listOpenedSlots, listUnreleasedNoShows } from '@bookable/db/appointments';
 import { listCallMarks } from '@bookable/db/clients';
 import { requireStaff } from '@/lib/auth/session';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FreedSlotRow } from './freed-slot-row';
+import { StillBlockedRow } from './still-blocked-row';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,19 @@ export default async function OpenedPage() {
     select: { timezone: true },
   });
 
-  const slots = await listOpenedSlots(prisma, { businessId: staff.businessId, now: new Date() });
+  // ONE clock for both lists. They are two halves of one question — what can
+  // this salon still sell today — and two `new Date()`s a query apart is how a
+  // row appears on one and not the other on the minute a no-show's body ends.
+  const now = new Date();
+
+  const slots = await listOpenedSlots(prisma, { businessId: staff.businessId, now });
+  // A-102. Time that is still BLOCKED and nobody is coming for. Not a fifth
+  // `freedBy` kind: `listOpenedSlots` ends with a still-empty bound, and this
+  // span is not empty — it is held by the no-show itself, which is the whole
+  // finding. It goes ABOVE the freed list because it is the only thing on this
+  // screen that expires while the desk reads it, and because it is the only
+  // thing on it that needs a decision rather than a phone call.
+  const stillBlocked = await listUnreleasedNoShows(prisma, { businessId: staff.businessId, now });
   // A-072. Who has already been rung about each of these, in ONE read for the
   // whole list. This screen is where the second person at the desk starts at
   // 4pm, so it is the screen that has to say "Mrs Patel is thinking about it"
@@ -57,9 +70,31 @@ export default async function OpenedPage() {
         </p>
       </div>
 
-      {slots.length === 0 ? (
+      {stillBlocked.length === 0 ? null : (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-section font-semibold tracking-tight">Nobody came &mdash; still blocked</h2>
+            <p className="mt-1 text-body text-ink-muted">
+              A no-show keeps her time on the book, which is right for the record. Giving the rest of it back is a
+              decision, never a timer &mdash; she may be eight minutes away.
+            </p>
+          </div>
+          <ul className="flex flex-col gap-3">
+            {stillBlocked.map((row) => (
+              <StillBlockedRow key={row.appointmentId} row={row} timezone={business.timezone} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* The empty state answers for the WHOLE screen, so it asks about both
+          lists. A page saying "nothing has opened up" above a no-show with
+          seventy minutes on it is the screen contradicting itself. */}
+      {slots.length === 0 && stillBlocked.length === 0 ? (
         <EmptyState>Nothing has opened up lately &mdash; or everything that did has already been filled.</EmptyState>
-      ) : (
+      ) : null}
+
+      {slots.length > 0 ? (
         <ul className="flex flex-col gap-3">
           {slots.map((slot) => (
             <FreedSlotRow
@@ -70,7 +105,7 @@ export default async function OpenedPage() {
             />
           ))}
         </ul>
-      )}
+      ) : null}
     </main>
   );
 }

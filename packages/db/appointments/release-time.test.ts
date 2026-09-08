@@ -23,7 +23,13 @@ import { bookAppointment } from '../booking';
 import { dashboardSummary } from '../reports/dashboard';
 import { SlotTaken } from '../booking';
 import { pushColumn, previewPush } from '../day/push-column';
-import { NotReleasable, releaseNoShowTime, unreleaseNoShowTime } from './release-time';
+import {
+  NotReleasable,
+  listUnreleasedNoShows,
+  releasableAt,
+  releaseNoShowTime,
+  unreleaseNoShowTime,
+} from './release-time';
 import { TransitionRefused, transitionAppointment } from './transition';
 
 const prisma = new PrismaClient();
@@ -741,5 +747,162 @@ describe('she walked in after all (A-075, D-45)', () => {
     expect(events[1]!.payload).toMatchObject({ restored: true });
     expect(events[1]!.reason).toBe('walked in at 10:35');
     expect(await prisma.notificationOutbox.count()).toBe(sent);
+  });
+});
+
+/**
+ * A-102 — THE PERISHABLE SUPPLY THE PERISHABLE-SUPPLY SCREEN COULD NOT SEE.
+ *
+ * Her colour is body 10:00–11:30 and envelope 09:50–11:50, with UNEQUAL
+ * buffers (10 before, 20 after) — which is what makes the interesting minute
+ * of this item reachable at all. Between 11:30 and 11:50 the BODY is over and
+ * the ENVELOPE is not, and those twenty minutes are where the offer and the
+ * write disagreed.
+ */
+describe('A-102 — the no-shows nobody has given back', () => {
+  const list = (now: Date) => listUnreleasedNoShows(prisma, { businessId, now });
+
+  it('names the no-show while her visit is still running, measuring the ENVELOPE', async () => {
+    const appointment = await noShow();
+
+    const rows = await list(GAVE_UP);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      appointmentId: appointment.id,
+      providerName: 'Dana',
+      clientName: 'Ada Chen',
+      clientPhone: '5125550101',
+      serviceNames: ['Colour'],
+    });
+    // BOTH EDGES. 10:20 to the envelope's 11:50 is 90 minutes; measuring to
+    // the BODY's 11:30 would say 70, and an assertion on the near edge alone
+    // passes against either. The envelope is the right answer because it is
+    // what `releaseNoShowTime` actually frees — the buffer comes back too.
+    expect(rows[0]!.minutes).toBe(90);
+    expect(rows[0]!.startAt).toEqual(TEN_AM);
+    expect(rows[0]!.endAt).toEqual(at('2026-06-09T11:30:00-05:00'));
+  });
+
+  /**
+   * THE ITEM'S OWN DEFECT, ASSERTED AS AN EQUALITY.
+   *
+   * At 11:40 her body is over and twenty minutes of buffer are still blocked.
+   * The old offer asked "is the ENVELOPE over?" and said yes, there are ten
+   * minutes; the write asks "is the BODY over?" and refuses. Two answers to one
+   * operational question, a whole buffer apart, both plausible — so the test
+   * that catches it is the one that runs BOTH and compares, not one that
+   * checks either alone. A fixture with equal buffers, or with no buffer at
+   * all, cannot reach this minute however many times it runs.
+   */
+  it('agrees with the write path inside the buffer, where the two used to differ', async () => {
+    const appointment = await noShow();
+    const inTheBuffer = at('2026-06-09T11:40:00-05:00');
+
+    const offered = await list(inTheBuffer);
+    const written = await release(appointment.id, inTheBuffer).then(
+      () => 'released' as const,
+      (error: unknown) => (error instanceof NotReleasable ? ('refused' as const) : Promise.reject(error)),
+    );
+
+    expect(written).toBe('refused');
+    expect(offered).toEqual([]);
+  });
+
+  it('drops her the moment the release has been made', async () => {
+    const appointment = await noShow();
+    expect(await list(GAVE_UP)).toHaveLength(1);
+
+    await release(appointment.id);
+
+    // Her freed span is `/staff/opened`'s own list from here on (the
+    // `time_released` event) — this one is only ever about the decision that
+    // has NOT been taken.
+    expect(await list(GAVE_UP)).toEqual([]);
+  });
+
+  it('says nothing about a visit that is merely booked, or one that finished', async () => {
+    const appointment = await bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: [colourId],
+      clientId,
+      startAt: TEN_AM,
+      now: NOW,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+
+    expect(await list(GAVE_UP)).toEqual([]);
+
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'checked_in',
+      now: GAVE_UP,
+      actor: STAFF,
+    });
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'in_progress',
+      now: GAVE_UP,
+      actor: STAFF,
+    });
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'completed',
+      now: at('2026-06-09T11:00:00-05:00'),
+      actor: STAFF,
+    });
+
+    // D-7 — a completed visit occupies its time too, and there is nothing
+    // perishable about it: somebody sat in that chair.
+    expect(await list(at('2026-06-09T11:10:00-05:00'))).toEqual([]);
+  });
+
+  /**
+   * THE PREDICATE ON ITS OWN, because the list's SQL bound (`endAt > now`)
+   * would answer the case above without it — and the SQL is not what the
+   * detail panel and the stylist's list read. Those two call `releasableAt`
+   * directly, so its edges are what they offer on.
+   */
+  it('is the same four answers everywhere it is asked', async () => {
+    const appointment = await noShow();
+    const row = await rowOf(appointment.id);
+
+    // Half-open at both ends: 10:00 is in, 11:30 is out.
+    expect(releasableAt(row, TEN_AM)).toEqual({ releasable: true, at: TEN_AM });
+    expect(releasableAt(row, at('2026-06-09T09:59:00-05:00'))).toEqual({
+      releasable: false,
+      why: 'before-start',
+    });
+    // INSIDE THE BUFFER — the twenty minutes the offer used to sell.
+    expect(releasableAt(row, at('2026-06-09T11:40:00-05:00'))).toEqual({
+      releasable: false,
+      why: 'nothing-left',
+    });
+    // Seconds are floored, not refused: the desk pressed the button at
+    // 10:20:37 and `blockedEnd` has to land on a whole minute.
+    expect(releasableAt(row, at('2026-06-09T10:20:37-05:00'))).toEqual({ releasable: true, at: GAVE_UP });
+
+    await release(appointment.id);
+    expect(releasableAt(await rowOf(appointment.id), GAVE_UP)).toEqual({
+      releasable: false,
+      why: 'already-released',
+    });
+    expect(releasableAt({ ...row, status: 'booked' }, GAVE_UP)).toEqual({
+      releasable: false,
+      why: 'not-a-no-show',
+    });
+  });
+
+  it('shrinks by a minute every minute, and expires on its own', async () => {
+    await noShow();
+
+    expect((await list(at('2026-06-09T10:30:00-05:00')))[0]!.minutes).toBe(80);
+    expect((await list(at('2026-06-09T11:29:00-05:00')))[0]!.minutes).toBe(21);
+    // 11:30 is the body's end, half-open: her visit is over and the twenty
+    // minutes of buffer left are not a walk-in's slot. No lookback constant
+    // retires this row — the appointment does.
+    expect(await list(at('2026-06-09T11:30:00-05:00'))).toEqual([]);
   });
 });

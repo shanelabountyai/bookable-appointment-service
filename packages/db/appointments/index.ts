@@ -40,8 +40,12 @@ export {
 } from './change-services';
 export {
   NotReleasable,
+  type Releasable,
   type ReleaseNoShowTimeInput,
   type ReleasedTime,
+  type UnreleasedNoShow,
+  listUnreleasedNoShows,
+  releasableAt,
   releaseNoShowTime,
   unreleaseNoShowTime,
 } from './release-time';

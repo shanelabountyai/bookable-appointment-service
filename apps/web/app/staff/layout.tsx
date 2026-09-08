@@ -1,6 +1,6 @@
 import { prisma } from '@bookable/db';
 import { listSwitchableStaff } from '@bookable/db/auth';
-import { countUnfinished, listOpenedSlots } from '@bookable/db/appointments';
+import { countUnfinished, listOpenedSlots, listUnreleasedNoShows } from '@bookable/db/appointments';
 import { countFailedNotifications } from '@bookable/db/notifications';
 import { currentStaff } from '@/lib/auth/session';
 import { DeskBar } from './desk-bar';
@@ -29,19 +29,28 @@ import { StaffNav } from './staff-nav';
  * reading. So the shell asks the real question once and `/staff/day` no longer
  * asks it at all.
  *
- * ponytail: three queries on every staff page render, one of them per-candidate
+ * A-102 — AND THE BADGE COUNTS BOTH LISTS ON THAT SCREEN, which is the same
+ * rule applied to the item that added the second one. `/staff/opened` now also
+ * shows the no-shows whose time nobody has given back, and a door reading
+ * "Opened up 0" over a screen holding seventy sellable minutes is precisely the
+ * invisibility A-102 exists to close, arriving one layer up. The two lists
+ * answer one question — what can this salon still sell today — so the badge
+ * adds them rather than picking one.
+ *
+ * ponytail: four queries on every staff page render, one of them per-candidate
  * over a fortnight of freed time. That is what "visible from anywhere" costs at
  * a salon's scale. If it ever shows up, the fix is a cached count that is still
- * derived from `listOpenedSlots`, never a cheaper predicate.
+ * derived from these same two calls, never a cheaper predicate.
  */
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const staff = await currentStaff();
   if (!staff) return <>{children}</>;
 
   const now = new Date();
-  const [options, opened, unfinished, failedMessages] = await Promise.all([
+  const [options, opened, stillBlocked, unfinished, failedMessages] = await Promise.all([
     listSwitchableStaff(prisma, staff.businessId),
     listOpenedSlots(prisma, { businessId: staff.businessId, now }),
+    listUnreleasedNoShows(prisma, { businessId: staff.businessId, now }),
     countUnfinished(prisma, { businessId: staff.businessId, now }),
     countFailedNotifications(prisma, staff.businessId),
   ]);
@@ -50,7 +59,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
     <>
       <DeskBar currentName={staff.name} options={options} />
       <StaffNav
-        counts={{ opened: opened.length, unfinished, failedMessages }}
+        counts={{ opened: opened.length + stillBlocked.length, unfinished, failedMessages }}
         isOwner={staff.role === 'owner'}
       />
       {children}

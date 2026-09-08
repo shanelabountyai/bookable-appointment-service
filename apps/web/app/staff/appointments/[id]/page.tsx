@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
-import { loadAppointmentDetail } from '@bookable/db/appointments';
+import { loadAppointmentDetail, releasableAt } from '@bookable/db/appointments';
 import { listSeriesOccurrences } from '@bookable/db/booking';
 import { reliabilityFor } from '@bookable/db/clients';
 import {
@@ -451,16 +451,28 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  *
  * Decided on the server so the panel has no rule of its own: only a `no_show`
  * has dead time by definition of the item, only an unreleased one has any
- * left, and only one whose blocked range has not already run out has anything
- * worth a walk-in. `releaseNoShowTime` asks the same three questions again
- * against real rows and never trusts this.
+ * left, and only one whose visit is still running has anything worth a walk-in.
+ *
+ * A-102 — AND IT NOW ASKS THE WRITE PATH'S OWN QUESTION rather than a
+ * near-miss of it. This used to gate on `blockedEnd > now` (is the ENVELOPE
+ * over?) while `releaseNoShowTime` refuses on `now >= endAt` (is the BODY
+ * over?), and those two are a whole buffer apart: for fifteen minutes after
+ * every no-show ended, this panel drew "Put 12 min back on the market" over a
+ * button the server refused. `releasableAt` is the one predicate now, and the
+ * write asks it again against real rows and never trusts this.
+ *
+ * The MINUTES are still computed here, because they are the envelope and only
+ * a caller holding `blockedEnd` can answer them — see the comment on
+ * `releasableAt` for why the two questions stay separate.
  */
 function releaseOffer(
-  detail: { status: string; releasedAt: Date | null; blockedEnd: Date },
+  detail: { status: string; releasedAt: Date | null; startAt: Date; endAt: Date; blockedEnd: Date },
   zone: string,
 ): { minutes: number } | { releasedLabel: string } | null {
   if (detail.status !== 'no_show') return null;
   if (detail.releasedAt) return { releasedLabel: readableInstant(detail.releasedAt, zone) };
-  const minutes = Math.round((fromDate(detail.blockedEnd) - fromDate(new Date())) / 60_000);
+  const verdict = releasableAt(detail, new Date());
+  if (!verdict.releasable) return null;
+  const minutes = Math.round((fromDate(detail.blockedEnd) - fromDate(verdict.at)) / 60_000);
   return minutes > 0 ? { minutes } : null;
 }

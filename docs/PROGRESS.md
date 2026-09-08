@@ -3051,3 +3051,67 @@ heading. `weekIsAhead` is a boolean, not a `past | current | ahead` enum: the
 current week partway through still renders `worked 0.0%`, which is true and now
 sits beside a forward number that makes it readable. If the owner ever wants
 "…so far this week" phrasing, that is where the third state goes.
+
+## A-102 — the button was on one screen and the no-show is markable on three
+
+**What it built.** `/staff/opened` now has a second list above the freed one:
+**"Nobody came — still blocked"**, the no-shows whose time nobody has given
+back, each with the one-tap release on the row. The same one-tap control is on
+the stylist's own list in the day view (`provider-day.tsx`), which is where
+`ON_THE_CHIP` lets a no-show be marked without ever passing A-069's release
+panel. And the shell's **"Opened up N"** badge counts both lists, because a door
+reading 0 over a screen holding seventy sellable minutes is the same
+invisibility one layer up.
+
+`listUnreleasedNoShows` is deliberately **not** a fifth `freedBy` kind on
+`listOpenedSlots`. Every row on that list is time that IS free, and its last
+bound is *still empty* — `findBusyAppointments` over the span. This time is not
+empty: it is blocked by the no-show itself, which is the entire finding. Fed
+into that list it would be dropped by the bound that makes the list true. Two
+questions, two lists, one screen. It also needs no lookback constant of its own:
+a no-show cannot be marked before its start (§7) and the query asks for
+`endAt > now`, so every row is an appointment that has begun and has not ended.
+It expires on its own.
+
+**What it decided.** D-44 is unchanged and unre-opened — releasing is never
+automatic, in either direction. *"She may be eight minutes away in traffic"* is
+an argument against a **timer**, not against a **list**. Nothing added here
+writes anything; it names what a person could still give back.
+
+**The defect found on the way, and it is the one worth reading.** There were
+**two askers of "is there time to give back?" and they disagreed by a whole
+after-buffer.** `releaseNoShowTime` refuses once the **body** is over
+(`at >= endAt`) — she was due until 11:30 and it is 11:40, there is nothing left
+of her visit to sell. The detail panel's `releaseOffer` asked whether the
+**envelope** was over (`blockedEnd > now`). Those are twenty minutes apart on
+the seeded Colour, and in every one of them the panel drew *"Put 12 min back on
+the market"* over a button the server refused — the offered-then-refused class
+CLAUDE.md has now caught four times, and the compiler sees nothing because
+`endAt` and `blockedEnd` are the same kind of fact under two names. The question
+moved into one exported predicate, `releasableAt`, which **the write path asks
+too**; the three read models that offer the release now ask the identical thing
+rather than a near-miss of it. The minutes are deliberately *not* part of it —
+"may it be released?" is answered from the body, "how much comes back?" is
+`blockedEnd - at`, and folding the two together is how they drifted apart.
+
+**Tests.** Six new unit tests in `release-time.test.ts` and three e2e. The one
+that matters is `agrees with the write path inside the buffer`: it runs **both**
+answers at 11:40 and compares them, because an assertion on either alone passes
+against the bug. The fixture's unequal buffers (10 before, 20 after) are what
+make that minute reachable at all — with equal buffers, or none, the two
+questions return the same answer however many times the suite runs. The e2e
+fixture is anchored to the **real clock** rather than to a pinned Tuesday, and
+it has to be: "there is still time to give back" is a statement about `now`
+being inside the appointment, and a pinned past day can never be that. Nothing
+it touches has a roster, a working-hours window or a `?day=` in it —
+`listUnreleasedNoShows` has no availability bound for the same reason the salon
+has none.
+
+**Left behind.** The grid chip does not get the release button: A-035 counted
+the space and a chip has room for exactly one, and a clipped button is worse
+than an absent one. `/staff/unfinished` does not get it either, and does not
+need it — `unfinishedWhere` bounds on `endAt < now`, so every row it can close
+is already past the point where anything is releasable. `/staff/design` still
+composes the five `freedBy` kinds and not this sixth row. The release from a
+list carries no reason box; the detail panel is where a reason gets typed, and
+a field on a list row is a field nobody fills in.
