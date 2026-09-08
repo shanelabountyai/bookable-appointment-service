@@ -3054,6 +3054,8 @@ sits beside a forward number that makes it readable. If the owner ever wants
 
 ## A-102 — the button was on one screen and the no-show is markable on three
 
+Commit `f21f316`.
+
 **What it built.** `/staff/opened` now has a second list above the freed one:
 **"Nobody came — still blocked"**, the no-shows whose time nobody has given
 back, each with the one-tap release on the row. The same one-tap control is on
