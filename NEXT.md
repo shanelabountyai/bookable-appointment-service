@@ -1,51 +1,84 @@
 # Next
 
-**A-107 is done, gate green (1597 unit + 307 e2e), CI watched.** Commits
-`7826bbe` (work) + `5332f95` (SHA record), pushed together in one push.
-`grep "⬜ A-" docs/prds/06-backlog.md` returns **A-108 … A-113**, rows 110–115.
+**A-108 is done, gate green (1612 unit + 310 e2e), CI watched and green**
+(run `34395076441`, 22m43s, both TZ arms). Commits `7a2d361` (work) +
+`5606659` (SHA record), pushed together in one push.
+`grep "⬜ A-" docs/prds/06-backlog.md` returns **A-109 … A-113**, rows 111–115.
 
-**So the next session is A-108, row 110** — and its row opens with
-**"DECIDE FIRST"**, so read it before writing anything; it wants a decision
-recorded in `docs/prds/07-decisions.md`, not a build.
+**So the next session is A-109, row 111** — an **S**, no decision needed, and
+the shortest of the five left.
 
-## What A-107 changed
+## A-109 in one line
 
-- **One expression in `apps/web/app/staff/day/day-grid.tsx`** (`const controls`,
-  ~line 136). `ColumnControls` now renders when the column has an appointment
-  item, or a stored `runningLateMinutes`, or is simply open — never on roster
-  status. No server change, no schema change, no new D-number.
-- **One new e2e test** in `apps/web/e2e/off-roster.spec.ts` ("still runs her
-  day, and clears a delta set before she left"). e2e is now **307 tests in 32
-  files, ~3.5 min** warm.
-- **The design gallery's Tess column now draws the control** (the fixture has a
-  chip in it). That is the truthful state; no fixture was edited.
+`/staff/opened` computes a released no-show's `freedMinutes` LIVE from `now`
+(`opened.ts:376-377`), guarded only against zero (`opened.ts:226`) — so a span
+decays through the afternoon and **"Soonest to expire first" sorts the dead row
+to the TOP.** The shortest footprint this salon sells is **15 minutes**
+(Fringe trim: `min(duration + before + after)` over active services), and
+`matchFreedSlot` **already applies that bound correctly one function over** —
+so one half of the loop knows and the other half is still selling. One
+predicate in the listing, the same one `matchFreedSlot` uses.
 
-## The rule A-107 leaves behind
+**The fixture is the whole trick:** a span decayed **below 15 minutes but still
+positive**. At zero it already drops out, so a test written against a fresh
+release passes against the bug.
 
-**AN ABSENT CONTROL LOOKS EXACTLY LIKE A CORRECTLY-ABSENT ONE, so a spec that
-only asserts what is GONE from a screen passes against a missing door.**
-`off-roster.spec.ts` had four green runs asserting the booking link and the gap
-chips were absent from her column — the two things that are absent on purpose —
-and could not see that the two CONTROLS had gone with them. Assert what is
-THERE on any surface whose item is about keeping something drawn.
+## What A-108 changed (in case A-109 trips over it)
 
-Its companion, which is the item: **a read model stricter than the write does
-not fail safe.** Neither `running-late.ts` nor `push-column.ts` has ever looked
-at `Provider.active`; the screen was the only refusal, and because the sole
-control was hidden, a delta stored before the departure could never be cleared
-from anywhere in the product. When one boolean gates both "may I offer this?"
-and "may I operate this?", they are two questions and the second one is
-usually the one nobody wrote a test for.
+- **`countFailedNotifications` no longer exists** — it is
+  `countUnsentNotifications(db, businessId, now)`. The nav count key is
+  `unsentMessages`, not `failedMessages`.
+- **`listStuckNotifications(db, businessId, { now, limit? })`** — signature
+  changed, `now` is required, and rows now carry `kind`
+  (`given-up | never-tried | retrying`). **Do not re-derive the bucket from
+  `status`/`attempts` on a screen.**
+- **`Business.remindersLastRunAt`** is new (migration
+  `20260909120000_reminder_sweep_watermark`). Run `npm run db:migrate:all`
+  in a fresh clone or the whole unit suite fails on a missing column.
+- **`sendDueReminders` loops businesses now.** Same signature, same result
+  shape; it just sweeps and stamps each business separately.
+- **`seedDensity` DISPATCHES the outbox** and returns `dispatched`. A fresh
+  `db:reset:test` now prints `713 messages sent` and leaves **zero** pending
+  rows. If a spec ever wanted a `pending` row on a seeded book, it has to
+  write one.
+- **`REMINDER_TEMPLATE` lives in `@bookable/core/notifications`** — not a
+  literal, not a private copy in `stale.ts`.
 
-## Two things A-107 deliberately did not fix (both named in PROGRESS)
+## The rule A-108 leaves behind
 
-- **`/staff/day?provider=<id>` — the single-column phone view — has NEVER had
-  `ColumnControls` for anybody.** `ProviderDay` renders chips, status actions,
-  release and quick-note and no delta control at all, so a stylist reading her
-  own day on her phone cannot say she is running behind from that screen.
-- **`ProviderDay` returns "is not working today" on `column.closed` BEFORE it
-  looks at `items`**, so an override booked onto a day off is invisible there
-  while the grid draws it. Same class as A-107, one boolean over.
+**AN AGE BOUND MUST MEASURE FROM THE MOMENT THE STATE BEGAN, NOT FROM
+`createdAt`** — the column that looks obviously right is the one that makes
+a manual retry bounce straight back onto the screen it was just cleared from.
+`retryNotification` resets `attempts` to 0 and keeps the original creation
+time, so "queued over an hour ago and never tried" was true of every
+hand-retried row the instant the desk pressed the button. `updatedAt` is the
+honest column, and on a row nobody ever touched the two are equal — which is
+why every existing test passed either way.
+
+Its companion, and the one to carry forward: **A WEAKER QUESTION AND A
+STRONGER ONE, ASKED BY TWO HALVES OF ONE FEATURE, IS THIS REPO'S RECURRING
+DEFECT** (A-108's badge vs its list; checkpoint 6's `canSeat`; A-093's map).
+The fix that holds is not "make them agree" — it is **one shared predicate and
+a test asserting the two answers are EQUAL**, run against a fixture
+interesting enough for them to differ. `actionableWhere` is that predicate;
+`'counts exactly the rows the screen calls actionable'` is that test.
+**A-109 is the same shape again** — `matchFreedSlot` asks the strong question
+and the listing asks the weak one — so the assertion to write is that the
+row `/staff/opened` OFFERS and the slot `matchFreedSlot` will ACCEPT are the
+same set.
+
+## Two things A-108 deliberately did not fix (both named in PROGRESS)
+
+- **The missed-reminder section is dormant on the demo book, and correctly so.**
+  Measured **0** on a freshly seeded 713-appointment install: every seeded
+  appointment was created seconds ago, so none was ever eligible for a 24-hour
+  reminder and the false-positive guard (`createdAt <= startAt - 24h`) excludes
+  them all. The guard is working. But the section cannot be walked at a
+  checkpoint without a hand-built fixture — **A-113 is the seed-widening item
+  and is the natural place to carry one backdated appointment.**
+- **`route.ts` has no error isolation between businesses.** One tenant's sweep
+  throwing still fails the whole request. Not a regression; worth naming because
+  the new loop makes it *look* handled.
 
 ## Environment notes that cost previous sessions a pass
 
@@ -63,23 +96,37 @@ usually the one nobody wrote a test for.
 - Run unit tests with `npm test`, never bare `npx vitest` — without the dotenv
   wrapper every DB test SKIPS and the file merely "fails". Same for
   `playwright --list`: under `dotenv` or it lists **0 tests in 0 files**.
+- **A hand-written appointment fixture must land on WHOLE MINUTES** —
+  `appointment_instants_whole_minutes` refuses the seconds `new Date()` came
+  with, and it cost A-108 an e2e pass. Floor it:
+  `const ms = fromDate(new Date()) + N; toDate(instant(ms - (ms % 60_000)))`.
+- **A hand-written appointment fixture cannot set `blockedStart`/`blockedEnd`**
+  — a trigger derives them from the row's own buffer columns, which default to
+  0. Prisma's types still REQUIRE both, so pass the body and let the trigger
+  overwrite. Book through `bookAppointment`, or copy the buffers off the
+  service, whenever the footprint is what the test is about — **which it is for
+  A-109.**
 - **`density-seed.test.ts` has a 120 s per-test budget and it is the first
-  thing that breaks under contention.** It timed out once here — on a quiet
-  machine the file passes alone in 70 s and the whole unit suite in **168 s**.
-  A timeout there with no assertion failure is the machine, not the code:
-  check `sysctl -n kern.memorystatus_level` and `pg_stat_activity` and re-run
-  before reading a stack trace. **Never overlap a vitest run with a playwright
-  sweep** — they share the test database as well as the CPU.
+  thing that breaks under contention.** On a quiet machine the whole unit suite
+  is **~185 s** (A-108's dispatch added ~15 s). A timeout there with no
+  assertion failure is the machine, not the code: check
+  `sysctl -n kern.memorystatus_level` and `pg_stat_activity` and re-run before
+  reading a stack trace. **Never overlap a vitest run with a playwright sweep**
+  — they share the test database as well as the CPU.
 - **`dropdb` may be refused by the sandbox classifier when chained with `&&`.**
   Run `dropdb --if-exists <db>` on its own line, then `createdb` on its own.
 - **`bookable_dev` is the checkpoint-9 book (718 appointments)** and has **NO
   StaffUser** — `db:seed:dev` does not seed one. To walk the staff app against
   it, call `seedStaffUser` from `@bookable/db/auth` from a script **inside the
   repo** (a scratchpad path cannot resolve the `@bookable/*` aliases).
-  `npm run db:reset:test` if a spec ever looks wrong.
+  `npm run db:reset:test` if a spec ever looks wrong (~2 min).
 - **Scanning axe after `emulateMedia({colorScheme:'dark'})` WITHOUT `FREEZE`
   invents violations** — 18 on `/staff/design`, 15 on `/staff/day`, dark only,
   deterministic. Always go through `e2e/axe.ts`.
+- **No staff surface may hand-write a `tel:` link.** `packages/design/
+  phone-link.test.ts` walks `app/staff/` and fails on any copy — use
+  `PhoneLink` from `@/components/ui/phone-link`. **A-109's rows are phone
+  calls**, so this will fire.
 - **The seed is not uniform, and three of four stylists differ.** Dana/Priya:
   09:00-17:00 Tue-Sat with a 12:00-13:00 break. Marcus: split Thursday
   (09:00-12:00, 15:00-19:00) clipped by the 18:00 close. Tess: no break, and she
@@ -89,10 +136,8 @@ usually the one nobody wrote a test for.
 - **The seeded Colour carries SEGMENTS that must sum to its duration**, so a
   hand-written appointment fixture whose body is not 120 minutes must use the
   **Cut** (45 min, buffers 0/10) or the **Blow-dry** (30 min, buffers 0/5).
-  Shortest sellable footprint in the catalogue is **15 min** (Fringe trim).
-- **A hand-written appointment fixture cannot set `blockedStart`/`blockedEnd`**
-  — a trigger derives them from the row's own buffer columns, which default to
-  0. Book through `bookAppointment`, or copy the buffers off the service.
+  Shortest sellable footprint in the catalogue is **15 min** (Fringe trim) —
+  **that number is A-109's whole subject; derive it, never type it.**
 - **A two-chair room is the cheapest fixture that can disagree with itself.**
   `resource.updateMany({ ..., skip: 2 }, { active: false })` — the idiom is in
   `holder-agreement.test.ts`, `desk-day-search.test.ts`, `staff-booking.spec.ts`
