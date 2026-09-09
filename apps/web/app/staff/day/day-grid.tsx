@@ -109,6 +109,35 @@ export function DayGrid({ model, live = true }: { model: GridModel; live?: boole
 }
 
 function Column({ column, model, height }: { column: GridColumn; model: GridModel; height: number }) {
+  /*
+   * A-107 — TWO QUESTIONS, ONE BOOLEAN. `offRoster` answers "may I seat
+   * somebody NEW here?" and was being read as "is she in the building?".
+   * Those coincide only on the day her last appointment ends: A-098 taught
+   * this very column to keep drawing her BECAUSE HER CLIENTS ARE STILL ON IT
+   * (the comment twelve lines below), and then hid the two controls that run
+   * that day. 123 appointments over eight working days on the demo book, with
+   * no way to say she was thirty minutes behind and no way to push her column.
+   *
+   * The read model was stricter than the write — neither `running-late.ts`
+   * nor `push-column.ts` looks at `Provider.active`, and both accept when
+   * called directly — so a delta set BEFORE she came off the roster was
+   * stranded, with `ColumnControls` (this, its only inbound reference in the
+   * repo) unrenderable and every projected chip in her column wrong for the
+   * rest of the day.
+   *
+   * The question the controls actually ask is whether there is a day here to
+   * be late for. So: her clients, or a delta already stored, or a column that
+   * is simply open — never her roster status. `closed` is folded in for the
+   * same reason and only in the same direction: an override booked onto a day
+   * off is still somebody sitting in the chair at 14:00. Nothing here can
+   * OFFER time — `Book with` above and `gaps` in `day-view.ts` stay shut, and
+   * they are what the write refuses.
+   */
+  const controls =
+    column.items.some((item) => item.kind === 'appointment') ||
+    column.runningLateMinutes !== null ||
+    !(column.closed || column.offRoster);
+
   return (
     <section
       className="row-span-2 grid grid-rows-subgrid"
@@ -154,10 +183,8 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
         )}
       </h2>
 
-      {/* Neither control means anything for somebody who is not in the
-          building: she is not running late, and pushing her column moves
-          appointments nobody is doing. */}
-      {column.closed || column.offRoster ? null : (
+      {/* Nothing to be late for: no clients, no delta, and not open. */}
+      {controls ? (
         <ColumnControls
           providerId={column.providerId}
           providerName={column.providerName}
@@ -166,7 +193,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           calls={column.calls}
           pushFrom={column.pushFrom}
         />
-      )}
+      ) : null}
       </div>
 
       {/* ROW TWO — the day itself, on the shared axis. */}

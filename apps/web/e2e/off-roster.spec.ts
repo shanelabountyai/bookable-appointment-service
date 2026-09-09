@@ -172,6 +172,59 @@ test.describe('a stylist off the roster (A-098)', () => {
     await expectNoAxeViolations(page, { where: 'day grid, a stylist off the roster' });
   });
 
+  /**
+   * A-107 — SHE IS WORKING HER NOTICE, AND THE DESK CANNOT TELL THE SCREEN SO.
+   *
+   * The test above asserts what is GONE from her column, and an absent control
+   * looks exactly like a correctly-absent booking link — which is why four
+   * green runs of this file could not see that "Behind by · Set" and "Push the
+   * column" had gone with it. So this one asserts what is THERE.
+   *
+   * THE DELTA IS SET WHILE SHE IS STILL ON THE ROSTER, on purpose: with the
+   * control hidden afterwards, a stored delta had no control on any screen
+   * able to clear it, and every chip in her column read `→ likely` for the
+   * rest of the day. Setting it after the departure would prove the door is
+   * open but not that the stranded row can be got at, and the stranding is the
+   * half nobody could recover from.
+   */
+  test('still runs her day, and clears a delta set before she left', async ({ page }) => {
+    await danasAfternoon();
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    const onRoster = page.getByRole('region', { name: /^Dana/ });
+    await onRoster.getByLabel('Behind by').fill('25');
+    await onRoster.getByRole('button', { name: 'Set' }).click();
+    await expect(onRoster.getByText('+25 min')).toBeVisible();
+
+    await takeDanaOffTheRoster(page);
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expect(page).toHaveURL(new RegExp(`/staff/day\\?day=${DAY}`));
+    const column = page.getByRole('region', { name: /^Dana, off the roster/ });
+
+    // The delta is still applied to her clients — the reason it has to be
+    // reachable: this is what the desk tells them on the phone.
+    await expect(column.getByText('→ likely 14:25')).toBeVisible();
+
+    // BOTH CONTROLS, on a column the write has never refused: neither
+    // `running-late.ts` nor `push-column.ts` looks at `Provider.active`.
+    await expect(column.getByText('Push the column')).toBeVisible();
+    await expect(column.getByRole('button', { name: 'Back on time' })).toBeVisible();
+
+    await column.getByRole('button', { name: 'Back on time' }).click();
+    await expect(column.getByText('+25 min')).toHaveCount(0);
+    await expect(column.getByText('→ likely 14:25')).toHaveCount(0);
+
+    // And she can be marked late again — the door is open both ways, not just
+    // long enough to undo something.
+    await expect(column.getByLabel('Behind by')).toBeVisible();
+
+    // Priya is the control, as above: this distinguishes "Dana's controls are
+    // there" from "the grid draws these on everything".
+    const priya = page.getByRole('region', { name: /^Priya/ });
+    await expect(priya.getByLabel('Behind by')).toBeVisible();
+  });
+
   test('strands her clients where the desk can work them', async ({ page }) => {
     await danasAfternoon();
     await takeDanaOffTheRoster(page);

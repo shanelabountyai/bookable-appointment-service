@@ -3690,3 +3690,44 @@ the agreed-length rule and exactly one test fails; remove the chair-sharing
 argument and exactly one other does; shorten the fortnight to a week and two
 more do. A test that has never been seen to fail is not yet evidence of
 anything.
+
+## A-107 — she is working her notice, and the screen would not let the desk say so
+
+A stylist hands in her notice. She has three weeks of clients already booked,
+and she works every one of them.
+
+An earlier item taught the day screen to keep her column — a departing stylist
+whose column vanishes takes 123 booked clients off the screen with her. It said
+so in a comment: **she is here because her clients are.** Twelve lines below
+that comment, the same file hid the two controls that run a day — *"Behind by ·
+Set"* and *"Push the column"* — under a comment reasoning *"she is not in the
+building."*
+
+Both comments are in the same function, about the same column, and they
+contradict each other. One boolean was answering two different questions:
+*"may I book somebody new with her?"* (no) and *"is she here today?"* (yes,
+until her last appointment ends). Those two answers coincide on exactly one day.
+
+**The database never refused any of it.** Neither the running-late code nor the
+push code has ever looked at whether a stylist is on the roster; both accept
+when called directly, and the whole chain behind them — the projected times on
+every chip, the ring-round list of clients to phone, the printed sheet's
+*"running 30 min behind at print"* — worked for her the moment the control was
+allowed to render. **Only the door was missing.** This is the shape this
+codebase now watches for, inverted: usually a screen offers something the
+database then refuses; here a screen refused something the database was happy
+to do.
+
+The half that could not be undone: that one control was the only way to clear a
+delta, anywhere in the product. Mark her thirty minutes behind at ten o'clock,
+take her off the roster at eleven, and the claim was stranded — no screen could
+clear it, and every client in her column read *"likely 30 minutes later"* for
+the rest of the day.
+
+**The test is the point.** The existing walkthrough of this journey asserts what
+is *gone* from her column — the booking link, the bookable gaps — and an absent
+control looks exactly like a correctly-absent booking link, which is why four
+green runs said nothing. The new one asserts what is *there*, and it sets the
+delta **before** she leaves so the stranded row is the thing being recovered.
+Then the gate was put back on purpose: exactly one test failed, on exactly the
+missing control.

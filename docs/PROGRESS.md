@@ -3500,3 +3500,67 @@ a week and the absence test and the agreement test both fail.
   week's cap and a different shape (one day, its options inline). Two answers to
   one question in two shapes is exactly what this row was about; they are not
   yet one.
+
+## A-107 — the stylist working her notice, and the column the desk could not run
+
+**Commit:** `PENDING`
+
+**What it built.** One boolean, split in two. A-098 taught `/staff/day` to keep
+drawing a departed stylist's column **because her clients are still on it**, and
+then hid `ColumnControls` — *"Behind by · Set"* and *"Push the column"* — twelve
+lines below the comment that says so, under a comment reasoning *"she is not in
+the building"*. On the seeded book that is **123 appointments over eight working
+days**. The gate is now what the controls actually ask — *is there a day here to
+be late for?* — rather than her roster status:
+
+```ts
+const controls =
+  column.items.some((item) => item.kind === 'appointment') ||
+  column.runningLateMinutes !== null ||
+  !(column.closed || column.offRoster);
+```
+
+No schema change, no server change, no new D-number. **Neither write path ever
+checked `Provider.active`** — there is no `active` in `running-late.ts` or
+`push-column.ts` — so the read model was the only thing refusing, and the whole
+downstream chain (the projected chips, D-43's `deltaAfterPush`, the print
+sheet's *"running N min behind at print"*, A-059's ring-round list) already
+worked for her the moment the door opened.
+
+**What it decided.**
+
+- **`offRoster` answers "may I seat somebody NEW here?" and nothing else.** It
+  is being read correctly by the two things that OFFER time — the `Book with`
+  link in the column header, and `gaps: []` in `day-view.ts` — and those are the
+  ones the write refuses (`slot-query.ts` reads `provider.active`). Every other
+  reader on a day surface was swept: `day-sheet.tsx` says the words on paper,
+  the conflicts screen's provider picker and the waitlist entry form are
+  active-only because both are about a NEW booking, and
+  `assertProviderCanTakeIt` only runs when a reschedule actually changes
+  provider. Nothing else gates a control on it.
+- **`closed` is folded into the same predicate, in the same direction only.** An
+  override booked onto a day off (D-8) is still somebody sitting in the chair at
+  14:00, and the column that draws her had no way to say the day was running
+  behind either. A closed column with nothing in it still shows nothing.
+- **A stored delta is reachable for as long as it exists.** `ColumnControls` at
+  `day-grid.tsx` is its **only inbound reference in the repo**, so a delta set
+  before she came off the roster was stranded: no control on any screen could
+  clear it, and every projected chip in her column stayed wrong for the rest of
+  the day. That is the half of the defect nobody could recover from, and it is
+  what the new spec walks.
+
+**What it left behind.**
+
+- **`/staff/day?provider=<id>` — the single-column phone view — has never had
+  `ColumnControls` for anybody.** `ProviderDay` renders chips, status actions,
+  release and quick-note, and no delta control at all, so a stylist reading her
+  own day on her phone cannot say she is running behind from that screen. Not
+  this item's boolean and not a regression; it is the one remaining surface
+  where the two controls are missing by omission rather than by rule.
+- **`ProviderDay` returns *"is not working today"* on `column.closed` before it
+  looks at `items`**, so the same override-on-a-day-off that the grid now draws
+  a control for is invisible on the phone view. Same class as this item, one
+  boolean over.
+- **The design gallery's off-roster fixture (Tess) now renders the control**,
+  because it has a chip in it. That is the truthful state, and it is the third
+  kind of column the gallery exists to show.
