@@ -1,68 +1,51 @@
 # Next
 
-**A-106 is done, gate green, CI watched.** Commits `a445871` (work) +
-`bdc6be3` (SHA record), pushed together in one push.
-`grep "⬜ A-" docs/prds/06-backlog.md` returns **A-107 … A-113**, rows 109–115.
+**A-107 is done, gate green (1597 unit + 307 e2e), CI watched.** Commits
+`7826bbe` (work) + `5332f95` (SHA record), pushed together in one push.
+`grep "⬜ A-" docs/prds/06-backlog.md` returns **A-108 … A-113**, rows 110–115.
 
-**So the next session is A-107, row 109, top of the backlog.**
+**So the next session is A-108, row 110** — and its row opens with
+**"DECIDE FIRST"**, so read it before writing anything; it wants a decision
+recorded in `docs/prds/07-decisions.md`, not a build.
 
-> **The stylist working her notice is the one column the desk cannot tell the
-> screen is running late.** `day-grid.tsx:159` hides `ColumnControls` —
-> *"Behind by · Set"* and *"Push the column"* — for an off-roster column, under
-> a comment reasoning *"she is not in the building"*, **twelve lines below the
-> comment that says SHE IS HERE BECAUSE HER CLIENTS ARE**. 123 appointments
-> over eight working days on the demo book. **Neither write path checks
-> `active`** (no `active` in `running-late.ts` or `push-column.ts`); both accept
-> when called directly, and the whole downstream chain works for her. Only the
-> door is missing, and `ColumnControls` at `day-grid.tsx:161` is the sole
-> inbound reference in the repo — so a delta set BEFORE she is taken off the
-> roster is stranded with no control able to clear it. `offRoster` answers *"may
-> I seat somebody new here?"* and is being read as *"is she in the building?"*;
-> those coincide only on the day her last appointment ends. **Separate them, and
-> grep the day surfaces for every OTHER control gated on the same boolean.**
-> `off-roster.spec.ts` asserts the marker is present and the booking link gone —
-> it cannot see an absent control, so the spec must assert the controls are
-> THERE and that a stored delta can be CLEARED.
+## What A-107 changed
 
-**Model: Opus is defensible but not required.** The finding is already made and
-the fix is a boolean split plus a grep sweep. The one part worth Opus is the
-sweep — "every other control gated on the same boolean" is the whole item, and
-the two named in the row are the two somebody already found.
+- **One expression in `apps/web/app/staff/day/day-grid.tsx`** (`const controls`,
+  ~line 136). `ColumnControls` now renders when the column has an appointment
+  item, or a stored `runningLateMinutes`, or is simply open — never on roster
+  status. No server change, no schema change, no new D-number.
+- **One new e2e test** in `apps/web/e2e/off-roster.spec.ts` ("still runs her
+  day, and clears a delta set before she left"). e2e is now **307 tests in 32
+  files, ~3.5 min** warm.
+- **The design gallery's Tess column now draws the control** (the fixture has a
+  chip in it). That is the truthful state; no fixture was edited.
 
-## What A-106 just changed underneath it
+## The rule A-107 leaves behind
 
-- **`daysWithAvailability` gained an optional `durationMinutes`** override
-  (`slot-query.ts`), passed straight to `computeSlotsIn` — D-18's snapshot, for
-  the one caller that has one. Also new there: `DESK_DAY_SEARCH_DAYS = 14` and
-  `deskSearchLastDay(fromDay)`, both exported from `@bookable/db/scheduling`.
-- **`daysForMove`** in `packages/db/appointments/reschedule.ts`, exported from
-  `@bookable/db/appointments`. Thin: it is `daysWithAvailability` supplied with
-  the appointment's own inputs.
-- **`anyProviderDays` gained `holderKey`** — it had no client field at all.
-- **Two server actions**: `staffOpenDays` (`lib/booking/staff-actions.ts`) and
-  `staffMoveDays` (`lib/appointments/reschedule-actions.ts`).
-- **One new component**, `apps/web/components/open-days.tsx`, used by
-  `booking-panel.tsx` (two refusals) and `move-panel.tsx` (one). It renders
-  `null` as nothing and `[]` as a sentence — those are different facts.
-- **No schema change, no migration, no new D-number.**
-- New test file `packages/db/scheduling/desk-day-search.test.ts` (7 tests) and
-  one new e2e test in `e2e/staff-reschedule.spec.ts`.
+**AN ABSENT CONTROL LOOKS EXACTLY LIKE A CORRECTLY-ABSENT ONE, so a spec that
+only asserts what is GONE from a screen passes against a missing door.**
+`off-roster.spec.ts` had four green runs asserting the booking link and the gap
+chips were absent from her column — the two things that are absent on purpose —
+and could not see that the two CONTROLS had gone with them. Assert what is
+THERE on any surface whose item is about keeping something drawn.
 
-## The rule A-106 leaves behind
+Its companion, which is the item: **a read model stricter than the write does
+not fail safe.** Neither `running-late.ts` nor `push-column.ts` has ever looked
+at `Provider.active`; the screen was the only refusal, and because the sole
+control was hidden, a delta stored before the departure could never be cleared
+from anywhere in the product. When one boolean gates both "may I offer this?"
+and "may I operate this?", they are two questions and the second one is
+usually the one nobody wrote a test for.
 
-**A PARAMETER WITH A DEFAULT IS A DECISION NOBODY EVER MAKES AGAIN — grep for
-the values a function is CALLED with, not the values it accepts.** `audience`
-had two arms and four call sites and every one passed the same value; the other
-arm was written, tested and correct, and had never run. The default was the safe
-one, which is why nothing ever failed — it just quietly made the salon's own
-screens weaker than the customer's.
+## Two things A-107 deliberately did not fix (both named in PROGRESS)
 
-Its corollary, which cost the fixture work here: **on a book where everybody
-works the same hours "tomorrow" is always the answer, so a search that walks
-exactly one day passes every assertion anybody would write.** A range predicate
-needs a fixture whose range is longer than one unit (A-100's rule, third time).
-And a test that has never been SEEN to fail is not evidence — every assertion in
-this item was mutation-checked against the bug it exists for.
+- **`/staff/day?provider=<id>` — the single-column phone view — has NEVER had
+  `ColumnControls` for anybody.** `ProviderDay` renders chips, status actions,
+  release and quick-note and no delta control at all, so a stylist reading her
+  own day on her phone cannot say she is running behind from that screen.
+- **`ProviderDay` returns "is not working today" on `column.closed` BEFORE it
+  looks at `items`**, so an override booked onto a day off is invisible there
+  while the grid draws it. Same class as A-107, one boolean over.
 
 ## Environment notes that cost previous sessions a pass
 
@@ -80,6 +63,13 @@ this item was mutation-checked against the bug it exists for.
 - Run unit tests with `npm test`, never bare `npx vitest` — without the dotenv
   wrapper every DB test SKIPS and the file merely "fails". Same for
   `playwright --list`: under `dotenv` or it lists **0 tests in 0 files**.
+- **`density-seed.test.ts` has a 120 s per-test budget and it is the first
+  thing that breaks under contention.** It timed out once here — on a quiet
+  machine the file passes alone in 70 s and the whole unit suite in **168 s**.
+  A timeout there with no assertion failure is the machine, not the code:
+  check `sysctl -n kern.memorystatus_level` and `pg_stat_activity` and re-run
+  before reading a stack trace. **Never overlap a vitest run with a playwright
+  sweep** — they share the test database as well as the CPU.
 - **`dropdb` may be refused by the sandbox classifier when chained with `&&`.**
   Run `dropdb --if-exists <db>` on its own line, then `createdb` on its own.
 - **`bookable_dev` is the checkpoint-9 book (718 appointments)** and has **NO
@@ -93,7 +83,9 @@ this item was mutation-checked against the bug it exists for.
 - **The seed is not uniform, and three of four stylists differ.** Dana/Priya:
   09:00-17:00 Tue-Sat with a 12:00-13:00 break. Marcus: split Thursday
   (09:00-12:00, 15:00-19:00) clipped by the 18:00 close. Tess: no break, and she
-  is JUNIOR — Cut, Blow-dry, Fringe trim, Treatment only.
+  is JUNIOR — Cut, Blow-dry, Fringe trim, Treatment only. **All four work
+  Tue–Sat**, so nobody is `closed` on a Tuesday — a negative assertion aimed at
+  a closed column on that day matches nothing and passes vacuously.
 - **The seeded Colour carries SEGMENTS that must sum to its duration**, so a
   hand-written appointment fixture whose body is not 120 minutes must use the
   **Cut** (45 min, buffers 0/10) or the **Blow-dry** (30 min, buffers 0/5).
@@ -109,8 +101,5 @@ this item was mutation-checked against the bug it exists for.
   GROUP BY datname"` and `sysctl -n kern.memorystatus_level` **before** reading
   a stack trace. (Bare `psql` fails: there is no `shanelabounty` database.)
 - **Scope the pre-sweep kill to `$PWD`** (`pkill -9 -f "$PWD.*playwright"`).
-- **The unit suite is 1597 passed + 1 skipped and takes ~2.5 minutes** — longer
-  than the 120 s foreground budget, so background it. The e2e suite is now
-  **306 tests in 32 files, ~3.8 min** on a warm build.
-- **CI takes ~19-22 minutes.** `gh run watch <id> --exit-status` before saying
+- **CI takes ~19-23 minutes.** `gh run watch <id> --exit-status` before saying
   "done".
