@@ -3567,6 +3567,8 @@ worked for her the moment the door opened.
 
 ## A-108 — two ways a client is never told, and the screen that said "everything has gone out"
 
+**Commit `7a2d361`.**
+
 **What it built.** Both halves of NOTIF-01/NOTIF-02's silence, plus the decision
 that settled how the second one is answered (**D-51**).
 
