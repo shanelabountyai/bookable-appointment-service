@@ -13,7 +13,7 @@ import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { addDays, calendarDay, fromDate, toLabel, weekdayOf, zoneId } from '@bookable/core/time';
+import { addDays, calendarDay, fromDate, instantFromIso, toDate, toLabel, weekdayOf, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 /** A Tuesday well clear of anything the customer flow will pick for itself —
@@ -194,6 +194,80 @@ test.describe('staff reschedule (A-033)', () => {
       expect(await prisma.appointment.count()).toBe(1);
     } finally {
       await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * A-106 — THE RESCUE FOR A SICK STYLIST, WHICH IS WHERE `/staff/conflicts`'s
+   * "Move her" LINK LANDS.
+   *
+   * "Nothing free that day for this visit. Try another day." was said to a
+   * desk with no way to find one — while the client holding the identical
+   * appointment answers this for herself on `/manage/{token}`, at eleven at
+   * night, from a grid of the days that have something.
+   *
+   * THE FIXTURE IS THE ITEM. Dana is gone for over a week, not for a day: on
+   * the seeded book everybody works the same hours, so "tomorrow" is always
+   * the answer and a search that walks one day passes. The assertion is
+   * therefore on the SIZE of the jump — she lands EIGHT days out — and it is
+   * made against the row in the database, not against a label.
+   */
+  test('names the day she is back, and moves her onto it', async ({ page }) => {
+    const booked = await bookAsCustomer(page);
+    const backOn = addDays(calendarDay(TARGET_DAY), 8);
+
+    const prisma = new PrismaClient();
+    try {
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      // ONE ROW SPANNING NINE DAYS, which is what "off with flu" looks like.
+      // Bounded in UTC and overshooting the salon's evening at each end, so
+      // the fixture does not depend on which side of a transition it runs on:
+      // every local day from TARGET_DAY to TARGET_DAY+7 is covered whole.
+      await prisma.timeOff.create({
+        data: {
+          businessId: (await prisma.business.findFirstOrThrow()).id,
+          providerId: dana.id,
+          startAt: toDate(instantFromIso(`${TARGET_DAY}T00:00:00Z`)),
+          endAt: toDate(instantFromIso(`${backOn}T00:00:00Z`)),
+          createdByActor: 'staff',
+          actorRef: 'staff-1',
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/appointments/${booked.appointmentId}`);
+    await page.getByLabel('Move to which day?').fill(TARGET_DAY);
+
+    // The refusal still says what it always said — and now it is a step
+    // rather than a dead end.
+    await expect(page.getByText('Nothing free that day for this visit.')).toBeVisible();
+    await expect(page.getByText('The next days with room:')).toBeVisible();
+
+    // The FIRST day offered, which must be the day she is back rather than
+    // tomorrow. Clicking it re-asks for that day's times — the list is a
+    // shortcut into the date box, not a second way to choose.
+    const days = page.locator('#move ul li button');
+    await expect(days.first()).toBeVisible();
+    await days.first().click();
+
+    const times = page.locator('#move input[type="radio"]');
+    await expect(times.first()).toBeVisible();
+    await times.first().check();
+    await page.getByRole('button', { name: 'Move this appointment' }).click();
+    await expect(page.getByText(/^Moved\./)).toBeVisible();
+
+    const after = new PrismaClient();
+    try {
+      const row = await after.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } });
+      // EIGHT DAYS, exactly. A day-list that stopped at the first day it
+      // looked at would have landed her inside the absence, and a cap of a
+      // week would have offered nothing at all.
+      expect(row.startDay).toBe(backOn);
+      expect(row.status).toBe('booked');
+    } finally {
+      await after.$disconnect();
     }
   });
 

@@ -1,7 +1,14 @@
 'use client';
 
 import { useActionState, useState, useTransition } from 'react';
-import { type MoveOption, type MoveState, moveAppointment, staffMoveOptions } from '@/lib/appointments/reschedule-actions';
+import {
+  type MoveOption,
+  type MoveState,
+  moveAppointment,
+  staffMoveDays,
+  staffMoveOptions,
+} from '@/lib/appointments/reschedule-actions';
+import { OpenDays } from '@/components/open-days';
 
 const initial: MoveState = {};
 
@@ -9,13 +16,18 @@ const initial: MoveState = {};
  * "Can you push my 3 o'clock to 4?" — the most common phone call in the salon,
  * and until A-033 the desk had no answer but cancel-and-rebook.
  *
- * A NATIVE DATE INPUT, not a list of days with openings. The customer's flow
- * offers a curated 28-day list because she is browsing; the desk is not
- * browsing — it is on the phone with somebody who has already said "next
- * Tuesday" or "same time in six weeks". A date box answers that in one gesture
- * and costs no engine runs at all, where the day list costs one per day.
- * Staff are uncapped by the booking horizon (D-21), so there is nothing to
- * clamp it to either.
+ * A NATIVE DATE INPUT, and — since A-106 — a list of open days BESIDE it,
+ * never instead of it. The date box answers "she already said next Tuesday" in
+ * one gesture and costs no engine runs at all; the day list answers "when CAN
+ * you fit me in?", which the box cannot, and costs one engine pass per day. So
+ * the list is computed only after a day comes back empty, which is exactly
+ * when the desk needs it and never otherwise.
+ *
+ * This is where `/staff/conflicts`'s per-row "Move her" link lands, so it is
+ * the rescue for a sick stylist — and until A-106 it was the one surface that
+ * could not say which day she is back. Staff are uncapped by the booking
+ * horizon (D-21); the fortnight is the length of a useful sentence, not a
+ * horizon.
  *
  * The radio's VALUE IS THE INSTANT (D-4). On the day the clocks go back two of
  * these labels read "01:30" an hour apart, and posting the label back would be
@@ -40,6 +52,11 @@ export function MovePanel({
   const [times, setTimes] = useState<MoveOption[]>([]);
   const [looked, setLooked] = useState(false);
   const [loading, startLoading] = useTransition();
+  // A-106 — `null` until the refusal has actually been answered. Fetched in
+  // the SAME transition as the times, off the same result, so the screen can
+  // never show a day list belonging to a different (day, stylist) pair than
+  // the empty times above it.
+  const [openDays, setOpenDays] = useState<string[] | null>(null);
 
   // Fetched on the change event rather than in an effect: choosing a day or a
   // stylist IS the event, so there is nothing to synchronize. Both re-ask,
@@ -49,9 +66,15 @@ export function MovePanel({
     setDay(nextDay);
     setProviderId(nextProviderId);
     setLooked(false);
+    setOpenDays(null);
     startLoading(async () => {
-      setTimes(nextDay ? await staffMoveOptions(appointmentId, nextDay, nextProviderId) : []);
+      const found = nextDay ? await staffMoveOptions(appointmentId, nextDay, nextProviderId) : [];
+      setTimes(found);
       setLooked(Boolean(nextDay));
+      // Only on the refusal. The walk is a fortnight of engine passes and the
+      // ordinary answer is the list above — asking every time would spend it
+      // on every successful lookup in the salon's day.
+      if (nextDay && found.length === 0) setOpenDays(await staffMoveDays(appointmentId, nextDay, nextProviderId));
     });
   }
 
@@ -104,9 +127,15 @@ export function MovePanel({
         {loading ? (
           <p className="text-sm text-ink-muted">Looking…</p>
         ) : times.length === 0 ? (
-          <p className="text-sm text-ink-muted">
-            {looked ? 'Nothing free that day for this visit. Try another day.' : 'Pick a day to see her free times.'}
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink-muted">
+              {looked ? 'Nothing free that day for this visit.' : 'Pick a day to see her free times.'}
+            </p>
+            {/* Picking a day here re-runs `look`, so the times below are the
+                ones for the day just chosen — the list is a shortcut into the
+                date box, not a second way to choose. */}
+            <OpenDays days={openDays} onPick={(next) => look(next, providerId)} />
+          </div>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {times.map((time) => (

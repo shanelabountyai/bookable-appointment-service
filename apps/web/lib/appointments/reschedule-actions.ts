@@ -22,6 +22,7 @@ import { prisma } from '@bookable/db';
 import {
   AppointmentAlreadyMoved,
   RescheduleRefused,
+  daysForMove,
   rescheduleAppointment,
   rescheduleOptions,
 } from '@bookable/db/appointments';
@@ -73,6 +74,38 @@ export async function staffMoveOptions(
     label: slot.label.time,
     ...(slot.labelIsAmbiguous ? { qualifier: slot.label.abbreviation } : {}),
   }));
+}
+
+/**
+ * A-106 — THE DAYS THIS APPOINTMENT COULD MOVE TO, when the one asked about
+ * has nothing.
+ *
+ * This panel is where `/staff/conflicts`'s "Move her" link lands, so it is the
+ * rescue for a sick stylist — and it was the one surface that could not say
+ * which day she is back. `daysForMove` asks with this appointment's own inputs
+ * (the destination provider, its own exclusion, its holder, D-18's duration),
+ * so the days offered are the days `staffMoveOptions` will actually show.
+ *
+ * The date box stays beside it: "she already said next Tuesday" is a real
+ * question too, and it costs no engine runs at all.
+ */
+export async function staffMoveDays(
+  appointmentId: string,
+  fromDay: string,
+  providerId?: string,
+): Promise<string[]> {
+  await requireStaff();
+  if (!appointmentId || !fromDay) return [];
+
+  return daysForMove(prisma, {
+    appointmentId,
+    fromDay,
+    now: new Date(),
+    // No horizon, no lead time — the same unrestricted question the move
+    // itself asks (D-21, D-25).
+    audience: 'staff',
+    providerId: providerId || null,
+  });
 }
 
 /**

@@ -50,7 +50,7 @@ import { chairForMove, resourceTypeName } from '../booking/resources';
 import { qualifiedForVisit } from '../qualification';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
-import { buildSlotQuery, computeSlotsIn } from '../scheduling';
+import { buildSlotQuery, computeSlotsIn, daysWithAvailability, deskSearchLastDay } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { repointManageTokens } from './manage-token';
 
@@ -457,6 +457,49 @@ async function slotsForMove(
     // actually matter.
     service: { ...built.query.service, durationMinutes: bookedDurationMinutes(appointment) },
     ...(args.explain ? { explain: true } : {}),
+  });
+}
+
+/**
+ * A-106 — THE DAYS THIS APPOINTMENT COULD MOVE TO, when the day asked about
+ * has nothing.
+ *
+ * `move-panel.tsx` is where `/staff/conflicts`'s per-row "Move her" link
+ * lands, so this is the rescue for a sick stylist — and until now its answer
+ * to "nothing free that day" was "try another day", said to a desk with no way
+ * to find one. `/manage/{token}` has offered the customer a grid of days that
+ * DO have something since SLOT-07; the `'staff'` arm of that same function had
+ * never been called.
+ *
+ * Built from `daysWithAvailability` and from THIS appointment's own inputs —
+ * the destination provider, `excludeAppointmentId` so it does not block its
+ * own move, `holderKey` so she keeps the chair she is in (A-082), and D-18's
+ * snapshotted duration. Every one of those is something `slotsForMove` passes;
+ * a day list that dropped any of them would offer a day the panel then shows
+ * empty, which is SLOT-07's whole reason for existing (checkpoint 6).
+ */
+export async function daysForMove(
+  prisma: PrismaClient,
+  args: {
+    appointmentId: string;
+    fromDay: string;
+    now: Date;
+    audience?: 'public' | 'staff';
+    providerId?: string | null;
+  },
+): Promise<string[]> {
+  const appointment = await loadAppointment(prisma, args.appointmentId);
+  return daysWithAvailability(prisma, {
+    businessId: appointment.businessId,
+    providerId: args.providerId?.trim() || appointment.providerId,
+    serviceIds: appointment.lines.map((l) => l.serviceId),
+    fromDay: args.fromDay,
+    toDay: deskSearchLastDay(args.fromDay),
+    now: args.now,
+    audience: args.audience ?? 'public',
+    excludeAppointmentId: appointment.id,
+    holderKey: appointment.clientId,
+    durationMinutes: bookedDurationMinutes(appointment),
   });
 }
 

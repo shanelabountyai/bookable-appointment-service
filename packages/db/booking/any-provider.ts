@@ -246,6 +246,17 @@ export async function anyProviderDays(
     toDay: string;
     now: Date;
     audience?: 'public' | 'staff';
+    /**
+     * A-106 — the same holder the per-day search passes (A-082/A-083).
+     *
+     * `anyProviderTimes` has taken this since A-097; the day list beside it
+     * had no client field at all, so it asked the STRICT question about a
+     * client the panel had already resolved and could withhold a day whose
+     * only busy chair is hers to share (A-063). Two answers to one operational
+     * question, and the day list was the stricter one — which is the direction
+     * that offers less than the write accepts.
+     */
+    holderKey?: string | null;
   },
 ): Promise<string[]> {
   const providers = await providersForVisit(db, { businessId: args.businessId, serviceIds: args.serviceIds });
@@ -261,6 +272,7 @@ export async function anyProviderDays(
         toDay: args.toDay,
         now: args.now,
         audience: args.audience ?? 'public',
+        holderKey: args.holderKey ?? null,
       }),
     ),
   );

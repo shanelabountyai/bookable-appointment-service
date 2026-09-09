@@ -23,13 +23,14 @@ import {
   SlotTaken,
   type AnyProviderTime,
   anyProviderAt,
+  anyProviderDays,
   anyProviderTimes,
   bookAppointment,
   clientAlreadyBookedAround,
   createSeries,
   walkInAnswer,
 } from '@bookable/db/booking';
-import { computeDaySlots } from '@bookable/db/scheduling';
+import { computeDaySlots, daysWithAvailability, deskSearchLastDay } from '@bookable/db/scheduling';
 import { clientReliability, searchClients } from '@bookable/db/clients';
 import { normalizePhone } from '@bookable/core/clients';
 import { calendarDay, fromDate, instantFromIso, resolve, toDate, toLabel, wallTime, zoneId } from '@bookable/core/time';
@@ -560,6 +561,58 @@ export async function anyoneTimesFor(
     providerName: time.providerName,
     freeCount: time.freeCount,
   }));
+}
+
+/**
+ * A-106 — "WHEN CAN YOU FIT ME IN?", WHICH THE DESK COULD NOT ANSWER.
+ *
+ * The customer's own manage link has answered this since SLOT-07: a grid of
+ * the days that have something, unassisted, at eleven at night. Staff got a
+ * bare date box and one of three dead ends — "Nobody can take that on
+ * Thursday", "She is not working that day", "Nothing free that day". Both day
+ * functions have taken `audience` since they were written and **all four call
+ * sites passed `'public'`**, so the staff arm was dead code: a parameter with
+ * a default is a decision nobody ever makes again.
+ *
+ * ONE ACTION FOR BOTH REFUSALS ON THIS PANEL, and `daysWithAvailability` under
+ * both arms — never a cheaper predicate. A day list built from an
+ * approximation offers a day the booking page then refuses, which is what
+ * SLOT-07 exists to prevent and what checkpoint 6 caught the last time
+ * something guessed the chooser's answer.
+ *
+ * Called ONLY when the day asked about came back empty, and it costs one
+ * engine pass per day per qualified stylist — a fortnight for "anyone" is the
+ * most expensive read on the staff side. That is affordable because it is the
+ * empty path: the desk is already saying "let me have a look for you".
+ */
+export async function staffOpenDays(
+  serviceIds: string[],
+  fromDay: string,
+  /** Empty for the "I don't mind who" path, which asks across everybody. */
+  providerId?: string | null,
+  clientId?: string | null,
+): Promise<string[]> {
+  const staff = await requireStaff();
+  if (serviceIds.length === 0 || !fromDay) return [];
+
+  const common = {
+    businessId: staff.businessId,
+    serviceIds,
+    fromDay,
+    toDay: deskSearchLastDay(fromDay),
+    now: new Date(),
+    // The whole point of the item. Staff are uncapped by the horizon (D-21)
+    // and exempt from the lead time (D-25), so the days offered here are the
+    // days `staffSlotsFor` and `anyoneTimesFor` will actually sell.
+    audience: 'staff' as const,
+  };
+
+  // A-083's holder, on both arms: one client's own overlapping envelopes may
+  // share her chair (A-063), so a day that is open FOR HER must not be
+  // withheld because the strict question says the room is full.
+  return providerId
+    ? daysWithAvailability(prisma, { ...common, providerId, holderKey: clientId || null })
+    : anyProviderDays(prisma, { ...common, holderKey: clientId || null });
 }
 
 export interface ComposedTime {

@@ -15,9 +15,11 @@ import {
   findClientsForBooking,
   findWalkInOptions,
   instantForTime,
+  staffOpenDays,
   staffSlotsFor,
 } from '@/lib/booking/staff-actions';
 import { ClientPicker } from '@/components/client-picker';
+import { OpenDays } from '@/components/open-days';
 import { readableDay } from '@/lib/customer-format';
 import { readableReason } from '@/lib/scheduling-words';
 
@@ -85,6 +87,17 @@ export function BookingPanel({
   const [answer, setAnswer] = useState<WalkInAnswer | null>(null);
   // A-056: one row per TIME, each naming who she would get.
   const [anyoneTimes, setAnyoneTimes] = useState<AnyoneChoice[]>([]);
+  /**
+   * A-106 — the answer to "when CAN you fit me in?", for the two refusals on
+   * this panel: "Nobody can take that on Thursday" and "She is not working
+   * that day". `null` until a lookup has actually come back empty, so the
+   * absence of a list never reads as "we looked and there is nothing".
+   *
+   * ONE piece of state for both arms, because it is one answer to one
+   * question — the same reasoning A-103 wrote down for `answer`, and two
+   * would let the anyone arm show the named stylist's days.
+   */
+  const [openDays, setOpenDays] = useState<string[] | null>(null);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
   const [loadingOptions, startLoadingOptions] = useTransition();
   const [slots, setSlots] = useState<GridTime[]>(initialSlots);
@@ -168,6 +181,7 @@ export function BookingPanel({
     const request = ++latestRequest.current;
     setPick(null);
     setAnswer(null);
+    setOpenDays(null);
     setSlots([]);
     setChosenSlot(null);
     // A typed 18:00 belongs to the day it was composed against — carrying it
@@ -183,6 +197,20 @@ export function BookingPanel({
     const reselect = (rows: readonly { providerId: string; at: string; label: string }[]) => {
       const same = anchorAt ? rows.find((row) => row.at === anchorAt) : undefined;
       if (same) setPick({ providerId: same.providerId, at: same.at, label: same.label });
+    };
+    /**
+     * A-106 — ONLY ON THE REFUSAL, and behind the SAME staleness guard as the
+     * times it explains (A-054). The walk is a fortnight of engine passes per
+     * qualified stylist; running it on every successful lookup would spend
+     * that on every booking the salon takes. And an answer that arrives for a
+     * day the desk has already left must be dropped, or the panel offers
+     * "Thursday, Friday" underneath Tuesday's times.
+     */
+    const answerWhenNot = async (empty: boolean, forProviderId: string | null) => {
+      if (!empty) return;
+      const found = await staffOpenDays(nextServices, nextDay, forProviderId, holderOf(nextClient));
+      if (request !== latestRequest.current) return;
+      setOpenDays(found);
     };
     if (walkIn) {
       startLoadingOptions(async () => {
@@ -205,6 +233,7 @@ export function BookingPanel({
         if (request !== latestRequest.current) return;
         setAnyoneTimes(found);
         reselect(found);
+        await answerWhenNot(found.length === 0, null);
       });
       return;
     }
@@ -246,6 +275,11 @@ export function BookingPanel({
         setChosenSlot(
           keep ?? bookable.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? bookable[0]?.at ?? null,
         );
+        // "She is not working that day" is the refusal this answers, and the
+        // engine says that by returning NO CANDIDATES AT ALL — not by refusing
+        // them. A day where every time is refused still has A-042's list, an
+        // override behind each chip, and nothing to be redirected away from.
+        await answerWhenNot(offered.length === 0, provider.id);
       });
     }
   }
@@ -412,9 +446,12 @@ export function BookingPanel({
           ) : loadingOptions ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p>
           ) : anyoneTimes.length === 0 ? (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Nobody can take that on {readableDay(day)}. Try another day.
-            </p>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">Nobody can take that on {readableDay(day)}.</p>
+              {/* A-106 — the day list moves the panel's own day (A-039), so
+                  the times below it are the ones for the day just picked. */}
+              <OpenDays days={openDays} onPick={changeDay} />
+            </div>
           ) : (
             <ul className="flex flex-wrap gap-2">
               {anyoneTimes.map((time) => {
@@ -460,9 +497,12 @@ export function BookingPanel({
           ) : (
             <>
               {slots.length === 0 ? (
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  She is not working that day. Type a time below if you mean to book her anyway.
-                </p>
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    She is not working that day. Type a time below if you mean to book her anyway.
+                  </p>
+                  <OpenDays days={openDays} onPick={changeDay} />
+                </div>
               ) : (
                 <ul className="flex flex-wrap gap-2">
                   {/* A-042 — the WHOLE column, offered and refused alike, in

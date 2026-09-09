@@ -3429,3 +3429,74 @@ overlapping same-provider pairs**, so **A-099's lanes are dormant on the demo
 install** — the one Phase 11 item that is purely a rendering promise is the one
 the demo cannot demonstrate. That is checkpoint 7's waitlist complaint one
 feature over, and A-095 is the precedent for fixing it in the seed.
+
+---
+
+## A-106 — the customer could answer "when can you fit me in?" and the desk could not
+
+**Commit:** `PENDING`
+
+**What it built.** One sentence on three staff refusals, and no new predicate
+anywhere. `daysWithAvailability` (SLOT-07) and `anyProviderDays` have both taken
+`audience: 'public' | 'staff'` since they were written, and **all four call
+sites passed `'public'`** — so the `'staff'` arm was dead code, and the customer
+moving her own appointment on `/manage/{token}` got a grid of the days that have
+something while the desk moving the identical appointment got a bare date box
+and *"Try another day."* Two new server actions, `staffOpenDays` (both refusals
+on `/staff/book`) and `staffMoveDays` (`move-panel.tsx`, which is where
+`/staff/conflicts`'s per-row "Move her" link lands), and one component,
+`OpenDays`, rendering all three. Capped at a **fortnight** — A-103's week is
+right for somebody standing in the building, and a caller on the phone is being
+told about a stylist who may be off for all of it.
+
+**What it decided.** *No new D-number.* Three choices worth recording:
+
+- **The day list is the engine, run once per day, and never an approximation.**
+  `daysWithAvailability` is what SLOT-07 built and it is what both actions call.
+  A cheaper predicate is the checkpoint-6 defect on the day axis: a list that
+  offers a day the panel then shows empty.
+- **The move's day list carries the move's own inputs.** `daysForMove` passes
+  `excludeAppointmentId`, `holderKey` and **D-18's snapshotted duration** —
+  which needed a `durationMinutes` passthrough on `daysWithAvailability`,
+  because `slotsForMove` overrides the composed body and a list built from the
+  live catalogue is a second opinion about the same move.
+- **`anyProviderDays` gained `holderKey`.** `anyProviderTimes` has carried it
+  since A-097; the day list beside it had no client field at all, so it asked
+  the STRICT question about a client the panel had already resolved — the
+  smaller answer, which is the direction that offers less than the write
+  accepts (A-082/A-083).
+- **The date box stays.** `move-panel.tsx:11-18` was right: "she already said
+  next Tuesday" is a real question, it costs no engine runs, and the list is a
+  shortcut into the box rather than a replacement for it. The list is fetched
+  **only on the refusal**, inside the same transition and behind A-054's
+  staleness guard, so the fortnight of engine passes is spent on the empty path
+  and never on a booking that succeeded.
+
+**The fixture, which is the item.** On the seeded book everybody works the same
+hours, so "tomorrow" is always the answer and a search that walks exactly one
+day passes every assertion anybody would write (A-100's rule, third time).
+`desk-day-search.test.ts` therefore puts **Dana away for nine days on one
+`TimeOff` row** — nine and not seven, because a week off starting on a Tuesday
+puts her back on a Tuesday and a gap equal to the weekly cycle cannot tell "she
+is back" from "it is Tuesday again". The assertions are on the SIZE of the jump.
+Each of the seven was **mutation-checked against the bug it exists for**: strip
+the `durationMinutes` override and only the D-18 test fails; strip
+`holderKey` from `anyProviderDays` and only the room test fails; cut the cap to
+a week and the absence test and the agreement test both fail.
+
+**What it left behind.**
+
+- **The two-chair room test lives in `packages/db/scheduling/`, one directory
+  from `holder-agreement.test.ts`, which builds the same room for
+  `anyProviderTimes`.** They are one fixture asked two ways and they are not
+  shared.
+- **`staffOpenDays` on the "anyone" arm is a fortnight of engine passes per
+  qualified stylist** — the most expensive read on the staff side. It is
+  affordable because it only runs after a day came back empty, and
+  `anyProviderDays` fans out over providers with no early exit, unlike
+  `walkInAnswer`, which walks days sequentially and stops at the first hit.
+  Nothing measures it yet.
+- **The walk-in panel is untouched.** A-103 already answers this there, with a
+  week's cap and a different shape (one day, its options inline). Two answers to
+  one question in two shapes is exactly what this row was about; they are not
+  yet one.

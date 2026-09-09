@@ -7,5 +7,7 @@ export {
   buildSlotQuery,
   computeDaySlots,
   computeSlotsIn,
+  DESK_DAY_SEARCH_DAYS,
   daysWithAvailability,
+  deskSearchLastDay,
 } from './slot-query';

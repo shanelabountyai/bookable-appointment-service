@@ -3640,3 +3640,53 @@ after switching a page to dark **without freezing transitions** invents 18
 phantom failures on one screen and 15 on another, deterministically, dark only.
 The helper that freezes them is doing work, not ceremony — and this walk found
 that out by running outside the lint rule that normally forbids the shortcut.
+
+## A-106 — the customer could answer it and the salon could not
+
+A client rings the salon: *"when can you fit me in?"*
+
+The same client, at eleven at night, on the link the salon texted her, gets a
+grid of the days that actually have room. She taps one and moves her own
+appointment. That has worked since the availability engine shipped.
+
+The person at the desk, on the phone with her, got a bare date box and one of
+three sentences: *"Nobody can take that on Thursday."* · *"She is not working
+that day."* · *"Nothing free that day for this visit. Try another day."* — the
+last of which is the screen the salon lands on when a stylist calls in sick and
+it has thirty clients to rehome.
+
+**The whole answer already existed in the codebase, behind a parameter nobody
+ever set.** The function that computes "which days have room" takes an argument
+saying whether it is answering a customer or the salon. There are four places
+that call it, and all four say *customer*. The staff branch had never run.
+Something written, tested and correct, unreachable because a default is a
+decision nobody ever makes again.
+
+**What shipped is a reuse, not a feature.** The same function, called with the
+other argument, from one place per screen, capped at a fortnight — and the date
+box kept beside it, because *"she already said next Tuesday"* is a real question
+that a list of days answers badly.
+
+Three things made it more than a one-line change, and each is the kind of detail
+that only shows up on a real book:
+
+1. **The move screen's list has to be about that appointment, not about the
+   service.** The visit's length is whatever the client agreed to when she
+   booked, not what the price list says today. A day list built from today's
+   catalogue would offer a Thursday the move itself then refuses.
+2. **An appointment must not block its own move.** The commonest move is within
+   the day it is already on.
+3. **"I don't mind who" has to ask about *her*.** One client's own back-to-back
+   appointments can share a chair; a stranger's cannot. Asked anonymously, the
+   list withholds a day whose only free chair is the one she is sitting in.
+
+**The test is the interesting part.** On a salon where everybody works the same
+hours, "tomorrow" is always the answer — so a search that walks exactly one day
+passes every test anybody would think to write. The fixture puts a stylist away
+for **nine days on a single row**, which is what "off with flu" actually looks
+like, and asserts the *size* of the jump rather than merely that a day came
+back. Then every assertion was checked by breaking the code on purpose: remove
+the agreed-length rule and exactly one test fails; remove the chair-sharing
+argument and exactly one other does; shorten the fortnight to a week and two
+more do. A test that has never been seen to fail is not yet evidence of
+anything.

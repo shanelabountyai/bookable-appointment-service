@@ -27,6 +27,7 @@ export {
   RescheduleRefused,
   type RescheduleInput,
   type RescheduledAppointment,
+  daysForMove,
   moveLockKeys,
   rescheduleAppointment,
   rescheduleOptions,

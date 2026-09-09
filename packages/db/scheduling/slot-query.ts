@@ -305,7 +305,21 @@ export async function computeDaySlots(db: Db, args: BuildSlotQueryArgs): Promise
  */
 export async function daysWithAvailability(
   db: Db,
-  args: Omit<BuildSlotQueryArgs, 'day'> & { fromDay: string; toDay: string },
+  args: Omit<BuildSlotQueryArgs, 'day'> & {
+    fromDay: string;
+    toDay: string;
+    /**
+     * A-106 — D-18's snapshotted duration, for the one caller that has one.
+     *
+     * `slotsForMove` overrides the composed body with the length the client
+     * actually agreed to, so a day list built from the live catalogue is a
+     * SECOND OPINION about the same move: shorten the service today and this
+     * would offer a Thursday the move panel then shows empty. Passed through
+     * to the same `computeSlotsIn` override the write path uses, rather than
+     * re-derived here.
+     */
+    durationMinutes?: number;
+  },
 ): Promise<string[]> {
   const available: string[] = [];
   let day = calendarDay(args.fromDay);
@@ -315,12 +329,37 @@ export async function daysWithAvailability(
   // cannot spin. 400 covers any horizon D-21 permits with room to spare.
   for (let guard = 0; day <= last && guard < 400; guard++) {
     const built = await buildSlotQuery(db, { ...args, day });
-    if (!built.beyondHorizon && built.query.windows.length > 0 && computeSlotsIn(built).slots.length > 0) {
+    const overrides =
+      args.durationMinutes === undefined
+        ? undefined
+        : { service: { ...built.query.service, durationMinutes: args.durationMinutes } };
+    if (!built.beyondHorizon && built.query.windows.length > 0 && computeSlotsIn(built, overrides).slots.length > 0) {
       available.push(day);
     }
     day = addDays(day, 1);
   }
   return available;
+}
+
+/**
+ * A-106 — HOW FAR AHEAD THE DESK LOOKS WHEN IT HAS TO SAY "NOT THAT DAY".
+ *
+ * A fortnight, and one number for all three staff refusals. A-103's week is
+ * right for somebody standing in the building with cash; the caller on the
+ * phone asking "when CAN you fit me in?" is being told about a stylist who may
+ * be off for the week, and the seed's own book has an eight-day dead run on
+ * Dana's colour column — a seven-day search answers that with silence.
+ *
+ * A cap and not a horizon: staff are uncapped by D-21. This is the length of a
+ * sentence a human can act on, and the cost of the walk — one engine pass per
+ * day per stylist, only ever on the empty path.
+ */
+export const DESK_DAY_SEARCH_DAYS = 14;
+
+/** The last day of a `DESK_DAY_SEARCH_DAYS` window starting at `fromDay`,
+ *  inclusive. One place, so the two staff actions cannot disagree by a day. */
+export function deskSearchLastDay(fromDay: string): string {
+  return addDays(calendarDay(fromDay), DESK_DAY_SEARCH_DAYS - 1);
 }
 
 // ─────────────────────────── internals ───────────────────────────
