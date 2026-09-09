@@ -3503,7 +3503,7 @@ a week and the absence test and the agreement test both fail.
 
 ## A-107 — the stylist working her notice, and the column the desk could not run
 
-**Commit:** `PENDING`
+**Commit:** `7826bbe`
 
 **What it built.** One boolean, split in two. A-098 taught `/staff/day` to keep
 drawing a departed stylist's column **because her clients are still on it**, and
