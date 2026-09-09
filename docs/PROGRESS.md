@@ -3656,7 +3656,7 @@ inspection.**
 
 ## A-109 — the floor under the screen whose whole subject is perishable money
 
-**Commit `PENDING`.**
+**Commit `8bed79f`.**
 
 **What it built.** A fourth bound on `listOpenedSlots`, and the first one that is
 about LENGTH rather than about time or recency (APPT-01).
