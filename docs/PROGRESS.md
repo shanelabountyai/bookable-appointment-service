@@ -3434,7 +3434,7 @@ feature over, and A-095 is the precedent for fixing it in the seed.
 
 ## A-106 — the customer could answer "when can you fit me in?" and the desk could not
 
-**Commit:** `PENDING`
+**Commit:** `a445871`
 
 **What it built.** One sentence on three staff refusals, and no new predicate
 anywhere. `daysWithAvailability` (SLOT-07) and `anyProviderDays` have both taken
