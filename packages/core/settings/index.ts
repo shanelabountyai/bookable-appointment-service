@@ -13,6 +13,8 @@ export {
   type ServiceInput,
   effectiveDurationMinutes,
   effectivePriceCents,
+  fitsFreedSpan,
+  serviceFootprintMinutes,
   validateQualificationOverride,
   validateService,
 } from './service';

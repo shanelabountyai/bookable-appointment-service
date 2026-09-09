@@ -3653,3 +3653,81 @@ inspection.**
   has not run in six hours"*, because that number is a deployment-tier question
   (`route.ts:15-18` — a Hobby plan's cron is daily, a factor of 288) and D-51
   did not take it.
+
+## A-109 — the floor under the screen whose whole subject is perishable money
+
+**Commit `PENDING`.**
+
+**What it built.** A fourth bound on `listOpenedSlots`, and the first one that is
+about LENGTH rather than about time or recency (APPT-01).
+
+- **`/staff/opened`'s only live span had no floor.** Four of the five sources
+  hand over a fixed range, but a released no-show's span is recomputed from
+  `now` on every read — `blockedEnd` minus the clock — so it decays all
+  afternoon. The only guard anywhere was against **zero** (`opened.ts:226`).
+  Walked at checkpoint 9: a row reading *"Wednesday 9 September at 10:54 · 10
+  min · Blow-dry · Marcus"* whose own **"Who wants this slot?"** link, followed
+  nine minutes later, carried `minutes=2` and landed on *"Blow-dry with Marcus
+  at 11:03. Nobody on the waitlist fits this one."*
+- **And "soonest to expire first" sorted it to the TOP.** A span decayed to two
+  minutes is by construction the soonest to expire, so the ordering *guaranteed*
+  the unbuyable row occupied the position the screen reserves for the most
+  urgent thing. It was link 1 of 2.
+- **The floor is `shortestSellableFootprintMinutes`, derived from the
+  catalogue.** `min(bufferBefore + effectiveDuration + bufferAfter)` over active
+  services — 15 minutes on this book, a fringe trim — and **never a constant**:
+  a test retires the trim and asserts the floor rises to 80, and a second test
+  gives one stylist a five-minute override and asserts it falls to 10. Overrides
+  count deliberately, because the floor has to be the *weakest true bound*: if
+  one stylist can do it in five, a ten-minute span really is sellable and the
+  screen whose job is selling freed time must not hide it (A-098's correction,
+  applied before it could recur).
+- **`fitsFreedSpan` and `serviceFootprintMinutes` are now the one copy of the
+  predicate**, in `core/settings`. `matchFreedSlot` had been applying it
+  correctly since A-023 — one function over from the listing that never asked
+  it.
+
+**The rule it is an instance of.** *A weaker question and a stronger one, asked
+by two halves of one feature, is this repo's recurring defect* — A-108's badge
+vs its list, checkpoint 6's `canSeat` vs `fullSpans`, A-093's map. The fix that
+holds is never "make them agree"; it is one shared predicate plus **a test
+asserting the two answers are EQUAL**, run on a fixture interesting enough for
+them to differ. Here that test walks the decay — 50 minutes left, 16, 15, 14, 2
+— and asserts at each instant that the span `/staff/opened` **offers** is
+non-empty exactly when the span `matchFreedSlot` **accepts** is. Both new bound
+tests were run against the unfixed code first and both failed; the three around
+them passed, which is the point.
+
+**The fixture is the whole trick.** The span has to have decayed **below the
+shortest footprint and still be positive**. At zero it already dropped out, so a
+test written against a fresh release passes against the bug — and the existing
+A-069 block, which asserted 50 minutes at 10:25, did exactly that for two
+phases. Deriving the boundary from the catalogue rather than typing 15 is what
+makes `whenLeft(floor - 1)` mean "one minute under whatever this salon actually
+sells".
+
+**What it changed elsewhere.** `opened-vacated.test.ts`'s fixture salon sold only
+a Cut (80 minutes of footprint) and a Colour (120), so the floor there was 80 and
+a released no-show's fifty remaining minutes would have dropped off for a reason
+that has nothing to do with what those tests are about. It now sells a fringe
+trim, which every real salon does. No production seed changed: the demo
+catalogue already carries one.
+
+**What it left behind.**
+
+- **The row's OFFER can still be a service that no longer fits.** The floor
+  answers *"can this salon sell this span to anything?"*; the link answers
+  *"who wants this span, for the service she was booked for?"* Between the
+  catalogue floor and the seed service's own footprint — 15 to 80 minutes of a
+  decayed Cut — the row is genuinely worth showing and its link still lands on
+  *"nobody fits this one"*. Closing that means choosing a DIFFERENT service to
+  ring about once the original stops fitting, which changes what the row says as
+  well as what it links to (A-067 was emphatic that the dropped service is the
+  one to ring about). That is a design decision, not a predicate, and it is not
+  this item.
+- **The floor is catalogue-wide, not per stylist.** Tess is junior and works four
+  services; a span too short for anything she does still lists if some other
+  stylist's shortest fits. Deliberately the weak direction: a stricter reader
+  than the constraint refuses work the salon needs (CLAUDE.md), and the row
+  already carries `providerActive` for the case where the offer has to go to
+  somebody else.

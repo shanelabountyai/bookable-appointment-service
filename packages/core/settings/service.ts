@@ -82,3 +82,32 @@ export function effectiveDurationMinutes(base: number, overrideMinutes: number |
 export function effectivePriceCents(base: number, overrideCents: number | null | undefined): number {
   return overrideCents ?? base;
 }
+
+/**
+ * A-109. The WHOLE time one service takes off the book for one provider —
+ * buffers included, because the buffers are what the exclusion constraint
+ * defends and `blockedEnd - blockedStart` is what a freed span measures.
+ *
+ * Extracted so the two halves of "what's opened up" cannot drift: the LISTING
+ * decides what to offer and `matchFreedSlot` decides what to accept, and until
+ * this existed only the second one measured anything. A span shorter than the
+ * shortest of these is not a slow phone call, it is an impossible one.
+ */
+export function serviceFootprintMinutes(
+  service: { durationMinutes: number; bufferBeforeMinutes: number; bufferAfterMinutes: number },
+  overrideMinutes?: number | null,
+): number {
+  return (
+    service.bufferBeforeMinutes +
+    effectiveDurationMinutes(service.durationMinutes, overrideMinutes) +
+    service.bufferAfterMinutes
+  );
+}
+
+/** A-109 — THE predicate, in one place. Equality fits: a 45-minute footprint
+ *  in exactly 45 freed minutes is a booking, and the half-open ranges
+ *  everything else here uses (CLAUDE.md) make it butt cleanly against both
+ *  neighbours. */
+export function fitsFreedSpan(footprintMinutes: number, freedMinutes: number): boolean {
+  return footprintMinutes <= freedMinutes;
+}

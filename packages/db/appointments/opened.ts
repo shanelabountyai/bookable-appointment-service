@@ -34,13 +34,28 @@
  * own clearing code in every one of those paths. Adding three more ways to
  * free time is precisely why: none of them needed clearing code.
  *
- * THE LIST IS BOUNDED IN THREE DIRECTIONS, and the tests are mostly about the
+ * THE LIST IS BOUNDED IN FOUR DIRECTIONS, and the tests are mostly about the
  * bounds rather than the contents: `appointmentsInRange` next door has no
  * lower time bound at all, which is safe there (its window is the absence
  * being written) and would be ruinous here — every cancellation the salon has
  * ever taken, forever.
+ *
+ * A-109 ADDED THE FOURTH, AND IT IS THE ONLY ONE ABOUT LENGTH. Four of the
+ * five sources hand over a fixed span, but a RELEASED no-show's span is LIVE —
+ * it starts at `now` and decays all afternoon — and the only guard anywhere
+ * was against zero. So a span counted down through ten minutes, through five,
+ * through two, and "soonest to expire first" sorted it to the TOP of the
+ * screen whose whole subject is perishable money, with the heading still
+ * naming the whole thirty-minute service the desk then rang somebody about.
+ * The floor is the shortest FOOTPRINT the salon sells
+ * (`shortestSellableFootprintMinutes` below — derived from the catalogue,
+ * never a constant): below that nothing fits, so there is no phone call to
+ * make. `matchFreedSlot` had been applying that same predicate one function
+ * over since A-023; this file was the half that never asked it, and
+ * `fitsFreedSpan` is now the one copy of it.
  */
 import { SLOT_FREEING_STATUSES } from '../../core/scheduling';
+import { fitsFreedSpan, serviceFootprintMinutes } from '../../core/settings';
 import { InvalidTimeValue, fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 import { findAbsences } from '../availability/availability';
@@ -144,6 +159,51 @@ const asStrings = (value: unknown): string[] =>
 const minutesBetween = (start: Date, end: Date) => Math.round((fromDate(end) - fromDate(start)) / 60_000);
 
 /**
+ * A-109 — THE SHORTEST THING THIS SALON SELLS, in blocked minutes.
+ *
+ * DERIVED FROM THE CATALOGUE, never a constant: the demo book's floor happens
+ * to be a fifteen-minute fringe trim, and the number moves the moment somebody
+ * adds a five-minute one or retires the trim. A constant here would be a
+ * second copy of the price list.
+ *
+ * FOOTPRINT, not duration — buffers included, because `freedMinutes` measures
+ * `blockedEnd - blockedStart` and the exclusion constraint defends the
+ * envelope, not the body. And the per-provider OVERRIDES count, because the
+ * floor has to be the weakest true bound: if one stylist does the trim in ten,
+ * a ten-minute span really is sellable and this screen must not hide it. (An
+ * override only ever makes ONE provider faster, which is why the minimum takes
+ * it and the maximum would not.)
+ *
+ * An empty catalogue returns `Infinity` — a salon selling nothing has nothing
+ * to sell a freed span to, and `fitsFreedSpan` then empties the list, which is
+ * the honest answer rather than a crash.
+ */
+export async function shortestSellableFootprintMinutes(db: Db, businessId: string): Promise<number> {
+  const services = await db.service.findMany({
+    where: { businessId, active: true },
+    select: {
+      durationMinutes: true,
+      bufferBeforeMinutes: true,
+      bufferAfterMinutes: true,
+      serviceProviders: { select: { durationOverrideMinutes: true } },
+    },
+  });
+
+  return services.reduce((shortest, service) => {
+    const durations = service.serviceProviders
+      .map((q) => q.durationOverrideMinutes)
+      .filter((minutes): minutes is number => minutes !== null);
+    // The base duration is always a candidate: an unqualified provider, or a
+    // qualified one with no override, works it at the catalogue length.
+    const own = Math.min(
+      serviceFootprintMinutes(service),
+      ...durations.map((minutes) => serviceFootprintMinutes(service, minutes)),
+    );
+    return Math.min(shortest, own);
+  }, Number.POSITIVE_INFINITY);
+}
+
+/**
  * Future time that recently stopped being occupied and is still empty,
  * soonest first.
  *
@@ -160,10 +220,18 @@ export async function listOpenedSlots(
 ): Promise<OpenedSlot[]> {
   const since = toDate(instant(fromDate(args.now) - (args.lookbackDays ?? FREED_LOOKBACK_DAYS) * DAY_MS));
 
-  const [cancelled, vacated] = await Promise.all([
+  const [shortestFootprint, cancelled, vacated] = await Promise.all([
+    shortestSellableFootprintMinutes(db, args.businessId),
     cancelledCandidates(db, args, since),
     vacatedCandidates(db, args, since),
   ]);
+
+  // BOUND 4 — long enough to sell (A-109), applied BEFORE the round trips
+  // below: a span nothing fits is not worth asking the database whether it is
+  // still empty.
+  const sellable = cancelled
+    .concat(vacated)
+    .filter((row) => fitsFreedSpan(shortestFootprint, row.freedMinutes));
 
   // BOUND 3 — still empty. One pair of reads per candidate rather than one
   // query for the lot: `findBusyAppointments` is the only reader that gets
@@ -177,7 +245,7 @@ export async function listOpenedSlots(
   // Dana, or simply sell the gap, and the span stops being empty. No path
   // anywhere has to remember to clear anything.
   const open = await Promise.all(
-    cancelled.concat(vacated).map(async (row) => {
+    sellable.map(async (row) => {
       const window = { providerId: row.providerId, windowStart: row.blockedStart, windowEnd: row.blockedEnd };
       const [busy, absences] = await Promise.all([
         // A cancelled row is not in its own busy set: its blocks carry its own

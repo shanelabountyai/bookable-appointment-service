@@ -8,7 +8,7 @@
  */
 import { DAY_PART_TAGS, matchesDayParts, tagsFor } from '../../core/waitlist';
 import type { CalendarDay, WallTime } from '../../core/time';
-import { effectiveDurationMinutes } from '../../core/settings';
+import { fitsFreedSpan, serviceFootprintMinutes } from '../../core/settings';
 import type { Prisma, PrismaClient, WaitlistStatus } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -211,11 +211,13 @@ export async function matchFreedSlot(db: Db, freed: FreedSlot): Promise<MatchedE
       select: { durationOverrideMinutes: true },
     }),
   ]);
-  const footprintMinutes =
-    service.bufferBeforeMinutes +
-    effectiveDurationMinutes(service.durationMinutes, override?.durationOverrideMinutes) +
-    service.bufferAfterMinutes;
-  if (footprintMinutes > freed.freedMinutes) return [];
+  // A-109 — THE fit check, and it is now shared with the screen that decides
+  // what to OFFER. It used to live only here, so `/staff/opened` listed spans
+  // this line was always going to refuse: one half of the loop knew the
+  // shortest thing the salon sells and the other half was still selling.
+  if (!fitsFreedSpan(serviceFootprintMinutes(service, override?.durationOverrideMinutes), freed.freedMinutes)) {
+    return [];
+  }
 
   const tags = tagsFor(freed.day, freed.time);
   return candidates.filter((entry) => matchesDayParts(entry.dayParts, tags)).map((entry) => ({

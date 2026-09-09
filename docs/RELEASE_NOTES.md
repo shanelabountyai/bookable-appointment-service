@@ -3794,3 +3794,47 @@ ninth copy on the day it was typed, which is what that guard was built to do.
 none, so the one screen a walkthrough could not honestly visit was this one. The
 seed now sends what it enqueues and reports the number, where it had silently
 been zero on every install ever made.
+
+## A-109 — the countdown that sorted itself to the top
+
+The salon's "what's opened up" screen exists to sell time that has just come
+free, and it is ordered *soonest to expire first* — because a Thursday two
+o'clock dies on Thursday at two whether it was freed this morning or last week.
+
+Four of the five ways a span reaches that screen hand over a fixed range. The
+fifth does not. When a client never turns up, the desk eventually gives up and
+puts the rest of her slot back on the market — and what is left of *that* span
+is recomputed from the clock on every page load. It decays all afternoon. The
+only guard anywhere was against zero.
+
+So a row sat there reading **"10:54 · 10 min · Blow-dry · Marcus"**, and nine
+minutes later its own *"Who wants this slot?"* link carried two minutes and
+landed on *"Nobody on the waitlist fits this one."* **The shortest thing this
+salon sells is fifteen minutes** once the buffers either side are counted, so
+the row had been unbuyable for five minutes before it decayed to two. And
+because a span with two minutes left is by construction the soonest to expire,
+the ordering *guaranteed* the dead row occupied the position the screen reserves
+for the most urgent thing on it.
+
+**The fix is one predicate, and the interesting part is where it already lived.**
+The matcher on the other side of that link had been measuring services against
+freed spans correctly since it was built. One half of the loop knew the shortest
+thing the salon sells; the other half was still selling. Two halves of one
+feature asking a weaker and a stronger version of the same question is this
+codebase's most-repeated defect, and the fix that holds is never "make them
+agree" — it is one shared predicate and **a test asserting the two answers are
+equal**. That test walks the span down through fifty minutes, sixteen, fifteen,
+fourteen, two, and at each instant asserts that what the screen *offers* is
+non-empty exactly when what the matcher *accepts* is.
+
+**The floor is derived, never typed.** Fifteen minutes is a fact about this
+salon's price list, not a constant: retire the fringe trim and the tests assert
+the floor rises to eighty; give one stylist a five-minute override and it falls
+to ten. Per-stylist overrides count on purpose — the bound has to be the weakest
+true one, because the failure this screen must never have is hiding time that
+could have been sold.
+
+**And the fixture is the whole trick.** The span must have decayed *below the
+shortest footprint and still be positive*. At zero it already dropped off, so a
+test written against a freshly released slot passes against the bug — which is
+exactly what the existing suite had been doing for two phases.

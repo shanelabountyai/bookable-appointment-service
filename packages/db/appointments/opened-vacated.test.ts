@@ -19,7 +19,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { staffActor } from '../../core/auth';
-import { instantFromIso, toDate } from '../../core/time';
+import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
@@ -27,7 +27,8 @@ import { reassignAppointment } from '../availability/reassign';
 import { bookAppointment } from '../booking';
 import { changeVisitServices } from './change-services';
 import { releaseNoShowTime } from './release-time';
-import { listOpenedSlots } from './opened';
+import { createWaitlistEntry, matchFreedSlot } from '../waitlist';
+import { listOpenedSlots, shortestSellableFootprintMinutes } from './opened';
 import { rescheduleAppointment } from './reschedule';
 import { transitionAppointment } from './transition';
 
@@ -47,6 +48,7 @@ let danaId: string;
 let priyaId: string;
 let cutId: string;
 let colourId: string;
+let fringeId: string;
 let clientId: string;
 
 beforeAll(async () => {
@@ -99,9 +101,27 @@ beforeEach(async () => {
       },
     })
   ).id;
+  // A-109. THE SHORTEST THING THIS SALON SELLS, and the reason every fixture
+  // below is allowed to be a span rather than a whole appointment: without a
+  // short service in the catalogue the floor is the 80-minute cut, and a
+  // released no-show's fifty remaining minutes would correctly drop off the
+  // list for a reason that has nothing to do with what is being tested. Every
+  // real salon has one of these. Footprint 10 + 0 + 5 = 15.
+  fringeId = (
+    await prisma.service.create({
+      data: {
+        businessId,
+        name: 'Fringe trim',
+        durationMinutes: 10,
+        priceCents: 1000,
+        bufferBeforeMinutes: 0,
+        bufferAfterMinutes: 5,
+      },
+    })
+  ).id;
   await prisma.serviceProvider.createMany({
     data: [danaId, priyaId].flatMap((providerId) =>
-      [cutId, colourId].map((serviceId) => ({ businessId, serviceId, providerId })),
+      [cutId, colourId, fringeId].map((serviceId) => ({ businessId, serviceId, providerId })),
     ),
   });
 
@@ -490,5 +510,110 @@ describe("a no-show's time given back (A-069)", () => {
     });
 
     expect(await listOpenedSlots(prisma, { businessId, now: LATER })).toHaveLength(0);
+  });
+
+  /**
+   * A-109 — THE ONLY LIVE SPAN ON THE SCREEN, AND THE ONLY GUARD ON IT WAS
+   * AGAINST ZERO.
+   *
+   * The released tail is recomputed from `now` on every read, so it decays all
+   * afternoon: 11:15 minus the clock. It dropped off at zero and at NOTHING
+   * before it — so it spent the last quarter of an hour of its life sitting at
+   * the TOP of a list ordered "soonest to expire first", naming the whole
+   * 60-minute cut, and its own "who wants this slot?" link landed on "nobody
+   * fits this one" every time.
+   *
+   * The floor is DERIVED here, never typed: the fringe trim is 15 minutes of
+   * footprint and the tests below read that number off
+   * `shortestSellableFootprintMinutes` so that changing the price list changes
+   * the tests with it.
+   */
+  describe('and the floor under it (A-109)', () => {
+    /** Her envelope ran to 11:15; this is the clock that leaves exactly `left`
+     *  minutes of it. Arithmetic on the instant, never on the wall (CLAUDE.md). */
+    const SPAN_END = at('2026-06-09T11:15:00-05:00');
+    const whenLeft = (left: number) => toDate(instant(fromDate(SPAN_END) - left * 60_000));
+
+    it('derives the floor from the catalogue rather than carrying a constant', async () => {
+      // Cut 5+60+15 = 80, Colour 10+90+20 = 120, Fringe trim 0+10+5 = 15.
+      expect(await shortestSellableFootprintMinutes(prisma, businessId)).toBe(15);
+
+      await prisma.service.update({ where: { id: fringeId }, data: { active: false } });
+      // Retire it and the floor rises to the next shortest thing on sale — a
+      // hard-coded 15 could not have moved.
+      expect(await shortestSellableFootprintMinutes(prisma, businessId)).toBe(80);
+    });
+
+    it('takes the shortest PROVIDER duration, not just the shortest service', async () => {
+      // One stylist does the trim in five. That makes a ten-minute span
+      // genuinely sellable, and a floor that ignored overrides would hide it —
+      // this screen's whole job is selling freed time (A-098).
+      await prisma.serviceProvider.update({
+        where: { serviceId_providerId: { serviceId: fringeId, providerId: priyaId } },
+        data: { durationOverrideMinutes: 5 },
+      });
+
+      expect(await shortestSellableFootprintMinutes(prisma, businessId)).toBe(10);
+    });
+
+    it('drops a released span that has decayed below the shortest footprint but is still POSITIVE', async () => {
+      await releasedNoShow();
+      const floor = await shortestSellableFootprintMinutes(prisma, businessId);
+
+      // ONE MINUTE under. At zero it already dropped out before this item, so
+      // a test written against a fresh release passes against the bug.
+      const slots = await listOpenedSlots(prisma, { businessId, now: whenLeft(floor - 1) });
+
+      expect(slots).toHaveLength(0);
+    });
+
+    it('keeps it at exactly the shortest footprint — the fringe trim fits, so there is a call to make', async () => {
+      await releasedNoShow();
+      const floor = await shortestSellableFootprintMinutes(prisma, businessId);
+
+      const slots = await listOpenedSlots(prisma, { businessId, now: whenLeft(floor) });
+
+      expect(slots).toHaveLength(1);
+      expect(slots[0]).toMatchObject({ freedMinutes: floor, freedBy: { kind: 'released' } });
+    });
+
+    /**
+     * THE AGREEMENT ASSERTION (CLAUDE.md's recurring defect, and NEXT.md's
+     * instruction). The screen OFFERS and `matchFreedSlot` ACCEPTS, and until
+     * A-109 only the second one measured the span. Asserting they are EQUAL —
+     * not merely that each is individually sensible — is the only thing that
+     * catches the two drifting apart again, and it has to run across a fixture
+     * where the answer actually CHANGES, which is why it walks the decay.
+     */
+    it('offers a span exactly when the matcher would accept somebody for it', async () => {
+      await releasedNoShow();
+      await createWaitlistEntry(prisma, {
+        businessId,
+        clientId,
+        serviceId: fringeId,
+        providerIds: [danaId],
+        fromDay: '2026-06-09',
+        toDay: '2026-06-09',
+        dayParts: [],
+      });
+      const floor = await shortestSellableFootprintMinutes(prisma, businessId);
+
+      // 50 minutes left, then the floor, then a minute under it, then two.
+      for (const left of [50, floor + 1, floor, floor - 1, 2]) {
+        const now = whenLeft(left);
+        const offered = await listOpenedSlots(prisma, { businessId, now });
+        const label = toLabel(fromDate(now), zoneId('America/Chicago'));
+        const accepted = await matchFreedSlot(prisma, {
+          businessId,
+          providerId: danaId,
+          serviceId: fringeId,
+          day: label.day,
+          time: label.time,
+          freedMinutes: left,
+        });
+
+        expect({ left, offered: offered.length > 0 }).toEqual({ left, offered: accepted.length > 0 });
+      }
+    });
   });
 });
