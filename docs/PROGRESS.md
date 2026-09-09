@@ -3342,3 +3342,90 @@ is already past the point where anything is releasable. `/staff/design` still
 composes the five `freedBy` kinds and not this sixth row. The release from a
 list carries no reason box; the detail panel is where a reason gets typed, and
 a field on a list row is a field nobody fills in.
+
+---
+
+## Demo checkpoint 9 and the Phase 11 close — a scoping pass, not a build
+
+**Commit:** `TBD`
+
+**What it produced.** `docs/reviews/20-demo-checkpoint-9.md` (the walk),
+`docs/reviews/20-operator-review-phase-11-close.md` (the operator review), and
+**eight new backlog rows, A-106…A-113**, as Phase 12. No product code changed.
+`grep "⬜ A-"` returned 0 after A-105, which is the state that means the job is
+scoping.
+
+**THE TWO REVIEWS FOUND OPPOSITE HALVES OF ONE BOOLEAN, AND NEITHER WAS LOOKING
+FOR THE OTHER.** The operator found a **parameter every caller passes
+identically**: `daysWithAvailability` (SLOT-07) and `anyProviderDays` both take
+`audience: 'public' | 'staff'`, there are four call sites, all four pass
+`'public'`, and the `'staff'` arm has been dead code since it was written. So
+the customer moving her own appointment at eleven at night gets a curated list
+of the days that have something, and **the desk on the phone with her gets a
+bare `<input type="date">` and "Try another day."** — on a book where 30% of
+(stylist, service) pairs offer nothing on a given open day and Dana's colour is
+dead for eight consecutive days. The checkpoint, from the other end, flipped
+`Provider.active = false` and diffed thirteen staff routes and four public ones:
+**A-098 holds on twelve of the thirteen**, and on the thirteenth the two
+controls a real day needs — *"Behind by · Set"* and *"Push the column"* — are
+hidden from the column A-098 went to great lengths to keep drawing.
+
+**The checkpoint's headline, and it is the inverse of this repo's most-found
+defect.** `day-grid.tsx:159` hides `ColumnControls` for an off-roster column
+under a comment reasoning *"she is not in the building"* — **twelve lines below
+the comment that says SHE IS HERE BECAUSE HER CLIENTS ARE**. On the demo book
+that stylist has **123 appointments over eight working days**. Neither
+`running-late.ts` nor `push-column.ts` contains an `active` check anywhere, and
+both accept when called directly: `setRunningLate` stored 25 minutes, and her
+column then rendered `→ likely 09:25` on every chip — **the whole downstream
+chain works for her; only the door is missing**, and `ColumnControls` is the
+sole inbound reference in the repo. So a delta set before she is taken off the
+roster is stranded with no control able to clear it. Every previous instance of
+this shape has been the read model offering what the write refuses; this one is
+a read model **refusing what the write accepts**, on the eight busiest days a
+departing stylist's book ever has.
+
+**The finding no test could ever have made.** `/staff/unfinished` puts two
+buttons under each of 124 rows: **"She came"** and **"She didn't"**. Two of the
+thirteen seeded clients are men, and they hold **171 of 718 appointments
+(23.8%)** and **33 of the 127 rows on that screen (26%)**. The screen renders
+**248 occurrences of "she"/"her"**, a quarter of them about a man, and the same
+voice runs through a dozen other files — worst of them
+`clients/[id]/page.tsx:96`, *"**She** cannot book online — the desk can"*, which
+the desk reads down the phone to the person it is about. It compiles, 1,590 unit
+tests and 305 e2e tests pass, and axe does not read English. **A demo book is
+the only place the product's voice is audible**, and a client list where
+everybody is the same cannot hear it — which is why A-113 widens the seed as
+well as A-111 fixing the copy.
+
+**What Phase 11 got right, measured rather than assumed.** A-101 verified across
+four weeks: `weekIsAhead` flips correctly at the boundary, `booked >= worked` on
+every row, both `null` on the same zero denominator, and checkpoint 8's
+four-zeroes card is gone (current week now reads worked 12.9% / **booked
+63.8%**). A-100 verified against the seed's real absence — conflicts on its own
+days, `?day=2027-03-15` clean. A-098's twelve good surfaces are in the
+transcript's diff table; `/staff/conflicts` going from *"Nothing stranded"* to
+16/27/27/7 worked rows with phone numbers is the largest behavioural improvement
+in the phase. A-099's lane helper is single-sourced through `lanes.ts` to the
+grid, the room strip **and the design gallery's fixture**, which is the mistake
+that would have made the gallery lie about the grid.
+
+**And a measurement about the harness worth keeping.** Scanning axe after
+`emulateMedia({colorScheme:'dark'})` **without** A-096's `FREEZE` invents **18
+phantom `color-contrast` nodes on `/staff/design` and 15 on `/staff/day`**, dark
+only, deterministically — frozen, both are 0. The walk hit it because it runs
+outside the suite, where the `no-restricted-imports` ban on `@axe-core/playwright`
+cannot reach. The helper is doing work, not ceremony.
+
+**The crawl.** 26 staff routes × 2 colour schemes = **52 pairs, all HTTP 200, 0
+axe violations in either scheme, 0 console errors, 0 page errors, 0 bounced to
+`/staff/login`** — every row printing the URL actually landed on, the `<h1>` and
+the body length, per checkpoint 8's rule. Six routes came back under 700
+characters and each was re-fetched settled to prove the number was the page and
+not a streamed shell; all six matched.
+
+**Left behind, and it is in a row rather than a note.** The seed produces **zero
+overlapping same-provider pairs**, so **A-099's lanes are dormant on the demo
+install** — the one Phase 11 item that is purely a rendering promise is the one
+the demo cannot demonstrate. That is checkpoint 7's waitlist complaint one
+feature over, and A-095 is the precedent for fixing it in the seed.

@@ -3495,3 +3495,148 @@ screen that offers and the code that writes. The test that proves it runs both
 answers at the exact minute they used to differ and asserts they are **equal** —
 because a test of either one alone passes against the defect, and the fixture
 needed unequal buffers to reach that minute at all.
+
+---
+
+## The walk where the bug was a button that wasn't there
+
+*Demo checkpoint 9 and the Phase 11 close — a scoping pass. No product code
+changed; what follows is what two independent reviews found on a 718-appointment
+book, and why neither of them could have been a test.*
+
+Eleven phases in, the interesting failures have stopped being wrong arithmetic.
+This one is a **control that is hidden from the one column the product went to
+great lengths to keep drawing** — and the comment justifying it is falsified by
+the comment twelve lines above it.
+
+### The method: flip one boolean, diff every screen
+
+A stylist leaves. In this product that is `Provider.active = false`, and the
+previous phase spent its most expensive item (A-098) making sure it no longer
+took her whole forward book off every screen in the salon. So the checkpoint
+did the mechanical thing: snapshot the rendered text of thirteen staff routes
+and four public ones, flip the boolean, snapshot again, diff.
+
+**Twelve of the thirteen are right, and the diff is the proof.** The public site
+drops from "4 stylists" to "3" and her card goes. Her column stays, marked *"off
+the roster — still booked"*, with "Book with Tess" gone. Her past visits stay
+closeable. Her freed spans stay sellable. And `/staff/conflicts` goes from
+*"Nothing stranded on Thursday 10 September"* to a worked list of her clients
+with phone numbers, **Keep / Cancel / Find another time** per row and a bulk
+*"Move N where qualified"* — 16, 27, 27 and 7 rows across the next four working
+days.
+
+### The thirteenth
+
+She has **123 appointments over eight working days**. She is not gone; she is
+working her notice. That is the entire premise of the item that kept her column.
+
+```tsx
+{/* Neither control means anything for somebody who is not in the
+    building: she is not running late, and pushing her column moves
+    appointments nobody is doing. */}
+{column.closed || column.offRoster ? null : <ColumnControls … />}
+```
+
+Twelve lines above that, in the same file:
+
+```
+/* A-098 — SHE IS HERE BECAUSE HER CLIENTS ARE. */
+```
+
+The two controls the desk uses to keep a real day honest — **"Behind by · Set"**
+and **"Push the column"** — are removed from the column most likely to need
+them, during the eight busiest days a departing stylist's book ever has.
+
+**Three things make it a defect rather than a debatable UI call.**
+
+Neither write path checks the boolean. There is no `active` anywhere in
+`running-late.ts` or `push-column.ts`, and both accept when called directly:
+
+```
+setRunningLate(… Tess, 2026-09-10, 25 min)   → ACCEPTED
+previewPush(… Tess, 2026-09-10, +20)         → ACCEPTED
+```
+
+With the delta stored, her column renders it perfectly — `→ likely 09:25`,
+`→ likely 09:55` — so the whole downstream chain works for her. **Only the door
+is missing**, and that component is the sole inbound reference in the repository.
+Which means a delta set at ten o'clock and a roster change at half past leaves
+`+25` on her column with **no control on any screen able to clear it**, and every
+projected chip in it wrong for the rest of the day.
+
+This codebase has caught the offered-then-refused shape four times — a read model
+promising what the write path won't take. This is the **inverse**: a read model
+stricter than the write, refusing work the salon needs. The rule it leaves behind
+is the general form:
+
+> Widening who is **rendered** is not the same edit as widening who can be
+> **acted on**, and the second half is the one with no test. A control is a
+> reader too, its filter is usually the same boolean, and a screen that renders
+> a row it will not let you touch fails no test — because the assertion
+> everybody writes is that the row is *there*.
+
+### The one that 1,895 tests read and none of them heard
+
+The close-of-business screen puts two buttons under each of 124 rows:
+
+```
+    She came        She didn't
+```
+
+Two of the thirteen clients in the demo book are men. They hold **171 of 718
+appointments (23.8%)**, and **33 of the 127 rows on that screen (26%)**. The
+screen renders 248 occurrences of *she* / *her* and a quarter of them are about
+a man — and the same voice runs through a dozen other files, worst of them the
+line the desk reads **down the phone, to the person it is about**: *"**She**
+cannot book online — the desk can."*
+
+It compiles. Every one of 1,590 unit tests and 305 end-to-end tests passes. axe
+does not read English. The design gallery renders the same strings and calls
+them correct. **The only place a product's voice is audible is a demo book with
+real people in it** — which is why the fix is two rows: one to sweep the copy,
+one to widen the seeded client list, because a book where everybody is the same
+cannot hear it.
+
+### What the reviews found from the other end
+
+The operator review, run against the same product on a separate database, found
+the mirror image: a **parameter every caller passes identically.** Two functions
+take `audience: 'public' | 'staff'`. There are four call sites. All four pass
+`'public'`. The `'staff'` arm has been dead code since it was written — so the
+customer rescheduling herself at eleven at night gets a curated list of the days
+that actually have openings, and the receptionist on the phone with her gets a
+bare date box and *"Try another day."*, on a book where **30% of (stylist,
+service) pairs offer nothing on any given open day** and one stylist's colour
+book is dead for eight consecutive days.
+
+> A parameter with a default is a decision nobody ever makes again. When a
+> function takes an audience, a mode or a role, grep for the values it is
+> actually **called with**, not the values it accepts — a parameter every caller
+> passes identically is a constant with a misleading signature, and the surface
+> that needed the other value has usually just been given a worse answer instead.
+
+And it proved, on two independent databases, that the screen whose entire job is
+*"is anybody not going to hear from us?"* cannot see a message the dispatcher has
+never touched: **713 queued confirmations, none ever attempted, and the screen
+reads "Everything has gone out. Nothing is waiting and nothing has been given up
+on."** — character for character what a healthy salon sees.
+
+> When a list is defined by exclusion, ask what state produces zero rows for the
+> *opposite* reason — and check that the sentence you print in that case is not
+> the same sentence you print when everything is fine.
+
+### The measurements that were clean
+
+52 route × colour-scheme pairs, all HTTP 200, zero axe violations in either
+scheme, zero console errors, zero bounced to the login page — every row printing
+the URL it actually landed on, because a green run over the wrong page looks
+exactly like a green run. The utilization card verified across four weeks: the
+forward number and the retrospective one, the week-ahead flag flipping at the
+right boundary, and the four-zeroes card the previous checkpoint found now gone.
+
+One harness measurement worth keeping: scanning for colour contrast immediately
+after switching a page to dark **without freezing transitions** invents 18
+phantom failures on one screen and 15 on another, deterministically, dark only.
+The helper that freezes them is doing work, not ceremony — and this walk found
+that out by running outside the lint rule that normally forbids the shortcut.
