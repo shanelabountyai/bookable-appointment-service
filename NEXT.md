@@ -1,49 +1,51 @@
 # Next
 
-**Build A-105** — row 107 in `docs/prds/06-backlog.md`, the eighth row of
-Phase 11. A-104 is ✅, pushed, and CI is green (`646a086`, run 34286941186).
+**Phase 11 is closed and the backlog is EMPTY.** `grep ⬜ docs/prds/06-backlog.md`
+returns only the legend line. A-105 is ✅, pushed (`23e5cb4`), CI run
+34369048815.
 
-**A-105 is A-083's shape on the caller A-083 did not reach.**
-`confirmAppointment` resolves the client at `public-actions.ts:364` and then,
-in its own `catch` at `:429`, calls `sameTimeWithSomebodyElse(...)`, which asks
-`anyProviderAt` with **no `holderKey`** (`:252-266`). Strict direction, so it
-only ever offers FEWER times than the write would take — the row records the
-measurement: **472 comparisons, 23 instants the named question offers that the
-anonymous one refuses, 0 the other way.** Read the row itself for the rest; it
-carries the numbers.
+**So the next session is a PHASE CLOSE, not a build item.** The established
+shape, from the Phase 8/9/10 closes:
 
-**The fixture rule applies here as loudly as anywhere.** A room where the
-answers can differ is a room where she is ALREADY IN A CHAIR at that instant.
-On a book where nobody is seated the two questions agree, so a spec written the
-obvious way passes against the bug (CLAUDE.md, the A-082/A-097 entries).
+1. **Walk demo checkpoint 9** on a freshly reset, seeded database, and write
+   `docs/reviews/20-demo-checkpoint-9.md`. Checkpoint 8's transcript
+   (`19-demo-checkpoint-8.md`) is the format. The rule it left behind, and the
+   thing to carry in: **a green run over the wrong page looks exactly like a
+   green run** — print what you actually measured.
+2. **Run the `salon-operator` agent** over `docs/PROGRESS.md` and the backlog
+   and ask for the most consequential gap. Write
+   `docs/reviews/20-operator-review-phase-11-close.md`.
+3. **Scope Phase 12** into `06-backlog.md` from both, as
+   `### Phase 12 — scoped <date> from demo checkpoint 9 and the operator
+   review at the Phase 11 close`, rows numbered from 108 and items from A-106.
 
-## Read first
+**Model: Opus for the close.** Both halves are judgement, not typing.
 
-`docs/START-HERE.md`, `CLAUDE.md`, then the row. A-082 and A-083 are the
-precedent — the `holderKey` thread — not to be re-derived.
+## What A-105 just changed underneath it
 
-## What A-104 just changed underneath it
+- **`confirmAppointment`'s `catch` now names the client in all three of its
+  questions** — `sameTimeWithSomebodyElse` → `anyProviderAt`, and the
+  `alternatives` fall-through. It passes `client.id`, the same holder the
+  write above it used.
+- **`listTimesOn` and `listAnyProviderTimes` are now four-line shells.** The
+  bodies are `timesOn(serviceIds, providerId, day, holderKey)` and
+  `anyoneTimesOn(serviceIds, day, holderKey)`, both private. `holderKey`
+  deliberately does NOT appear on a `'use server'` export — those are
+  browser-callable endpoints. Anything that needs the named question from a
+  new caller calls the internal pair, server-side.
+- **`booking.spec.ts` has 2 more tests** (`the chair she is already in
+  (A-105)`), both verified red against the pre-fix code. The suite is now
+  **305 tests in 32 files, ~5.7 min**.
+- Nothing in the engine, the constraint, the transition table, any write path
+  or any query in `packages/` moved. A-105 was three arguments.
 
-- **All four parameter-driven zero-row screens are one construction now**, and
-  it tests the MISSING PARAMETER FIRST:
-  `{!fromDay || !toDay ? <EmptyState>pick one</EmptyState> : rows.length === 0
-  ? <EmptyState>none matched</EmptyState> : <ul>…}`. Copy that precedence, not
-  A-087's nested `{cond ? A : B}` inside `rows.length === 0`. All four use
-  `EmptyState` (`@/components/ui/empty-state`).
-- **`/staff/book` no longer filters the provider lookup by `active`.** It
-  selects `{id, displayName, active}` and derives
-  `provider = providerRow?.active ? … : null` afterwards, so the page can tell
-  "off the roster" from "no such stylist". `provider` still means exactly
-  "bookable" everywhere below that line — nothing downstream changed.
-- **Three strings on `/staff/book` are gone.** *"That stylist is not on
-  today."* no longer exists anywhere; it is now "Pick a stylist from the day
-  view." / "<Name> is off the roster — no new bookings with her. Her clients
-  are still booked." / "No stylist here matches that link." Anything grepping
-  the old sentence is stale.
-- **`e2e/overruled.spec.ts` is new** (5 tests) and `staff-booking.spec.ts` has
-  3 more at the bottom. The suite is now **303 tests in 32 files, ~3.5 min**.
-- Nothing in the engine, the constraint, the transition table, the write paths
-  or any query moved. A-104 was presentation only.
+## Known gap A-105 deliberately left
+
+`anyProviderDays` / `listDaysWithOpenings` still take no holder. They are the
+BROWSE-time day list, asked before anybody has said who she is, and strict is
+right there — but a day whose only openings are her own chair will not appear
+in her day list either. Worth a row if the operator raises it; not worth
+widening a public endpoint speculatively.
 
 ## Environment notes that cost previous sessions a pass
 
@@ -52,18 +54,29 @@ precedent — the `holderKey` thread — not to be re-derived.
   `dotenv -e .env.test -e .env.local` wrapper, and the sweep dies on
   `CRON_SECRET must be set in .env.test` — which reads exactly like a missing
   secret and is not one.
+- **`npm run test:e2e -- <args>` DOES NOT WORK.** npm puts the args after
+  `-w apps/web` and it dies with `Workspaces not supported for global
+  packages`. To run one spec or one `-g` filter:
+  `PORT=3300 npx dotenv -e .env.test -e .env.local -- npx playwright test
+  --config=apps/web/playwright.config.ts <spec> -g "<pattern>"`.
+  The bare `PORT=3300 npm run test:e2e` (no args) is fine for the full sweep.
 - Run unit tests with `npm test`, never bare `npx vitest` — without the dotenv
   wrapper every DB test SKIPS and the file merely "fails". Same for
   `playwright --list`: under `dotenv` or it lists **0 tests in 0 files**.
 - **The seed is not uniform, and three of four stylists differ.** Dana/Priya:
-  09:00-17:00 Tue-Sat with a break = 2100 min/week. Marcus: split Thursday
-  clipped by the 18:00 close = 2040. Tess: no break = 2400.
+  09:00-17:00 Tue-Sat with a 12:00-13:00 break = 2100 min/week. Marcus: split
+  Thursday (09:00-12:00, 15:00-19:00) clipped by the 18:00 close = 2040. Tess:
+  no break = 2400, and she is JUNIOR — Cut, Blow-dry, Fringe trim, Treatment
+  only.
 - **The seeded Colour carries SEGMENTS that must sum to its duration**, so a
   hand-written appointment fixture whose body is not 120 minutes must use the
-  **Cut** (45 min, buffers 0/10).
+  **Cut** (45 min, buffers 0/10) or the **Blow-dry** (30 min, buffers 0/5).
 - **A hand-written appointment fixture cannot set `blockedStart`/`blockedEnd`**
   — a trigger derives them from the row's own buffer columns, which default to
-  0. Copy the buffers off the service.
+  0. Book through `bookAppointment`, or copy the buffers off the service.
+- **A two-chair room is the cheapest fixture that can disagree with itself.**
+  `resource.updateMany({ ..., skip: 2 }, { active: false })` — the idiom is in
+  `holder-agreement.test.ts`, `staff-booking.spec.ts` and now `booking.spec.ts`.
 - Check `psql -d postgres -c "SELECT datname, count(*) FROM pg_stat_activity
   GROUP BY datname"` and `sysctl -n kern.memorystatus_level` **before** reading
   a stack trace. (Bare `psql` fails: there is no `shanelabounty` database.)
