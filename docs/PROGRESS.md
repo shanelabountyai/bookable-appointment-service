@@ -3054,7 +3054,7 @@ sits beside a forward number that makes it readable. If the owner ever wants
 
 ## A-105 — the rescue asked the room about a stranger, and she was sitting in it
 
-Commit `PENDING`.
+Commit `23e5cb4`.
 
 **What it built.** `confirmAppointment` resolves the client — by phone and
 name, twenty-five lines before the write — and hands that row's id to
