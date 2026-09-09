@@ -3347,7 +3347,7 @@ a field on a list row is a field nobody fills in.
 
 ## Demo checkpoint 9 and the Phase 11 close — a scoping pass, not a build
 
-**Commit:** `TBD`
+**Commit:** `e0656f0`
 
 **What it produced.** `docs/reviews/20-demo-checkpoint-9.md` (the walk),
 `docs/reviews/20-operator-review-phase-11-close.md` (the operator review), and
