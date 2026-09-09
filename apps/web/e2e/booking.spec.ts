@@ -13,6 +13,8 @@ import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
+import { bookAppointment } from '@bookable/db/booking';
+import { staffActor } from '@bookable/core/auth';
 import {
   addDays,
   calendarDay,
@@ -514,5 +516,284 @@ test.describe('a whole visit, and only what may be sold online (A-058)', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+});
+
+/**
+ * A-105 — THE RESCUE ASKS THE ROOM ABOUT A STRANGER, AND SHE IS SITTING IN IT.
+ *
+ * `confirmAppointment` resolves her client row, hands that row's id to
+ * `bookAppointment` as A-063's holder, and then — in its own `catch`, twenty
+ * lines further down — asked the room "who else could take this?" and "what
+ * else is free that day?" with no holder at all. `null` is the question you
+ * ask a stranger, and it is STRICTER: one client's own overlapping envelopes
+ * may share a single chair, so the chair she is physically sitting in reads as
+ * taken. Measured over the future book: 472 comparisons, 23 instants the named
+ * question offers that the anonymous one refuses, none the other way.
+ *
+ * A refusal handler does not read like a caller of the room's question, which
+ * is why A-083 threaded every other caller and walked past these three —
+ * A-097's rule one door on, the fallback arm is a reader too and it inherited
+ * the default instead of the answer it already had.
+ *
+ * THE FIXTURE IS THE ITEM. On a book where nobody is seated the two questions
+ * agree, so a spec written the obvious way passes against the bug. Both tests
+ * below need a room where every chair is held at the contested instant and one
+ * of the holders is HER: two chairs, her Cut ending at 13:45 in one of them,
+ * somebody else across the other.
+ */
+test.describe('the chair she is already in (A-105)', () => {
+  /** Typed into the form exactly as the seeded row carries it: a client is
+   *  reused only on an exact (phone, name) match, and the row it finds is the
+   *  whole of this item. */
+  const HER = { name: 'Marcy Dunn', typed: '(512) 555-0177', stored: '5125550177' };
+
+  /** Her Cut: body 13:00–13:45, envelope 13:00–13:55 with the after-buffer.
+   *  A Blow-dry at 13:45 therefore shares her ENVELOPE and not her BODY, which
+   *  is exactly A-063's shareable chair. */
+  const CONTESTED = '13:45';
+
+  const threeHoursBefore = (when: Date) => toDate(instant(fromDate(when) - 3 * 60 * 60_000));
+
+  /**
+   * The next open Tuesday, a two-chair room, and her already in chair one.
+   *
+   * Tuesday because the seeded roster is uniform on it — Marcus's split shift
+   * is Thursday — and computed rather than pinned because the public flow
+   * refuses a past day and only lists 28 ahead.
+   */
+  async function herAfternoon() {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const zone = zoneId(business.timezone);
+      let day = calendarDay(toLabel(fromDate(new Date()), zone).day);
+      do {
+        day = addDays(day, 1);
+      } while (weekdayOf(day) !== 2);
+
+      const at = (time: string) => {
+        const resolution = resolve(calendarDay(day), wallTime(time), zone);
+        if (resolution.kind !== 'unique') throw new Error(`${day} ${time} is not unique in ${zone}`);
+        return toDate(resolution.at);
+      };
+
+      // TWO chairs: a room that cannot bind cannot disagree with anything, and
+      // a fixture with no room in it is what let A-069 through (CLAUDE.md).
+      const spare = await prisma.resource.findMany({
+        where: { businessId: business.id, active: true },
+        orderBy: { name: 'asc' },
+        skip: 2,
+      });
+      await prisma.resource.updateMany({
+        where: { id: { in: spare.map((r) => r.id) } },
+        data: { active: false },
+      });
+
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const cut = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const her = await prisma.client.create({
+        data: { businessId: business.id, name: HER.name, phone: HER.stored },
+      });
+      // Through `bookAppointment`, never a hand-written row: the trigger
+      // derives `blockedStart`/`blockedEnd` from the appointment's own buffer
+      // columns, which default to 0, and an envelope equal to its body is a
+      // row the product cannot produce (CLAUDE.md, A-098).
+      await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: dana.id,
+        serviceIds: [cut.id],
+        clientId: her.id,
+        startAt: at('13:00'),
+        now: threeHoursBefore(at('13:00')),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+
+      return { businessId: business.id, day, at, clientId: her.id };
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  /** Somebody who is not her, in the other chair, for one Blow-dry. */
+  async function somebodyElseTakes(providerName: string, at: Date, name: string) {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const provider = await prisma.provider.findFirstOrThrow({ where: { displayName: providerName } });
+      const blowDry = await prisma.service.findFirstOrThrow({ where: { name: 'Blow-dry' } });
+      const stranger = await prisma.client.create({ data: { businessId: business.id, name } });
+      await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: provider.id,
+        serviceIds: [blowDry.id],
+        clientId: stranger.id,
+        startAt: at,
+        now: threeHoursBefore(at),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  /**
+   * THE PRECONDITION, asserted rather than assumed: at the contested instant
+   * every chair in the room is held, and one of the holders is her. That is
+   * what makes the two questions differ — a stranger sees no free chair, she
+   * sees the one she is sitting in. If the fixture ever stops producing it,
+   * these tests stop being about A-105 and must say so rather than pass.
+   */
+  async function expectTheRoomFullExceptHers(clientId: string, from: Date, to: Date) {
+    const prisma = new PrismaClient();
+    try {
+      const holds = await prisma.appointmentResourceHold.findMany({
+        where: {
+          status: { notIn: ['cancelled', 'cancelled_late'] },
+          blockedStart: { lt: to },
+          blockedEnd: { gt: from },
+        },
+        select: { resourceId: true, holderKey: true },
+      });
+      expect(new Set(holds.map((h) => h.resourceId)).size).toBe(2);
+      expect(holds.map((h) => h.holderKey)).toContain(clientId);
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  /** Her two appointments, in ONE chair — the offer was right about which
+   *  chair too, not merely that some chair existed. */
+  async function expectOneChairForBoth(clientId: string) {
+    const prisma = new PrismaClient();
+    try {
+      const holds = await prisma.appointmentResourceHold.findMany({
+        where: { holderKey: clientId, status: { notIn: ['cancelled', 'cancelled_late'] } },
+        select: { resourceId: true },
+      });
+      expect(holds).toHaveLength(2);
+      expect(new Set(holds.map((h) => h.resourceId)).size).toBe(1);
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  /**
+   * The row's own story: she books a blow-dry straight after her cut, said she
+   * does not mind who, and the stylist the flow named is taken while she types
+   * — taking the last chair with her. The rescue that exists precisely so she
+   * is not dead-ended came back `null`, because it asked about a stranger.
+   */
+  test('re-offers the same time with somebody else, in the chair she is already in', async ({ page }) => {
+    const { day, at, clientId } = await herAfternoon();
+    const { weekday, date } = readableDayParts(day);
+
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Blow-dry 30 min/ }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: /No preference/ }).click();
+    await page.getByRole('button', { name: `${weekday} ${date}` }).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    // Offered while the other chair is still free — which is how she can be
+    // holding this row at all.
+    await page.getByRole('button', { name: CONTESTED, exact: true }).click();
+
+    const named = /with (\w+)/.exec((await page.getByRole('heading', { level: 2 }).textContent())!)![1]!;
+    // Never the stylist whose chair-mate she is: Dana's after-buffer runs to
+    // 13:55, so Dana cannot be the one offered at 13:45.
+    expect(named).not.toBe('Dana');
+
+    await page.getByLabel('Your name').fill(HER.name);
+    await page.getByLabel('Phone').fill(HER.typed);
+
+    // …and while she is typing, that stylist takes the last free chair at the
+    // same time. One write, and it does both: the race is lost AND the room is
+    // full for anybody who is not already in it.
+    await somebodyElseTakes(named, at(CONTESTED), 'Ben Rios');
+    await expectTheRoomFullExceptHers(clientId, at(CONTESTED), at('14:20'));
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+    // Named, at the SAME time. Before A-105 the rescue found nobody — every
+    // chair is taken to a stranger — and she was sent back to the time list.
+    await expect(page.getByText(/is free at the same time/)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2 })).not.toContainText(`with ${named}`);
+    await expect(page.getByLabel('Your name')).toHaveValue(HER.name);
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      const booked = await prisma.appointment.findFirstOrThrow({
+        where: { clientId, startAt: at(CONTESTED) },
+        include: { provider: true },
+      });
+      // Never silently re-assigned, and never an override: the write took the
+      // chair for real (D-30 overrides hold none).
+      expect(booked.provider.displayName).not.toBe(named);
+      expect(booked.isOverride).toBe(false);
+    } finally {
+      await prisma.$disconnect();
+    }
+    await expectOneChairForBoth(clientId);
+  });
+
+  /**
+   * The same handler's OTHER arm, and the same defect: when the rescue is not
+   * reached — she asked for a stylist by name — the fall-through offers "the
+   * other times still free". Built from the stranger's question, that list
+   * withheld the one time this very write would have accepted.
+   *
+   * No staleness in the room here: the other chair is taken up front, so 13:45
+   * is correctly absent while she browses anonymously and correctly present
+   * the moment she has said who she is. The only stale thing is her stylist's
+   * three o'clock.
+   */
+  test('and the other times it falls back to are asked about her too', async ({ page }) => {
+    const { day, at, clientId } = await herAfternoon();
+    // Chair two, across 13:45, before she ever opens the page.
+    await somebodyElseTakes('Priya', at(CONTESTED), 'Ben Rios');
+    await expectTheRoomFullExceptHers(clientId, at(CONTESTED), at('14:20'));
+
+    const { weekday, date } = readableDayParts(day);
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Blow-dry 30 min/ }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Marcus', exact: true }).click();
+    await page.getByRole('button', { name: `${weekday} ${date}` }).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+
+    // Browsing, she is nobody yet — and 13:45 is rightly not on offer. This is
+    // the strict question being CORRECT, and it is why the page cannot simply
+    // be made permissive everywhere.
+    await expect(page.getByRole('button', { name: CONTESTED, exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: '15:00', exact: true }).click();
+    await page.getByLabel('Your name').fill(HER.name);
+    await page.getByLabel('Phone').fill(HER.typed);
+
+    // …and Marcus's three o'clock goes while she types. Late enough that its
+    // chair cannot touch 13:45 — the fixture must stay interesting after it.
+    await somebodyElseTakes('Marcus', at('15:00'), 'Iris Patel');
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+    // Back on the time list, and 13:45 is on it. Before A-105 it was not, and
+    // she was shown a shorter day than the salon could actually sell her.
+    await expect(page.getByRole('group')).toContainText('What time on');
+    const hers = page.getByRole('button', { name: CONTESTED, exact: true });
+    await expect(hers).toBeVisible();
+
+    await hers.click();
+    await page.getByLabel('Your name').fill(HER.name);
+    await page.getByLabel('Phone').fill(HER.typed);
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+    // The offer was not merely permissive — the write agrees, in her chair.
+    await expectOneChairForBoth(clientId);
   });
 });

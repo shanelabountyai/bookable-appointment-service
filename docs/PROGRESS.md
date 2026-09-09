@@ -3052,6 +3052,73 @@ current week partway through still renders `worked 0.0%`, which is true and now
 sits beside a forward number that makes it readable. If the owner ever wants
 "…so far this week" phrasing, that is where the third state goes.
 
+## A-105 — the rescue asked the room about a stranger, and she was sitting in it
+
+Commit `PENDING`.
+
+**What it built.** `confirmAppointment` resolves the client — by phone and
+name, twenty-five lines before the write — and hands that row's id to
+`bookAppointment` as A-063's holder. Its own `catch`, twenty lines further
+down, then asked the room three questions with no holder at all: *who else
+could take this instant?* (`sameTimeWithSomebodyElse` → `anyProviderAt`) and,
+on the fall-through, *what else is free that day?* (`listAnyProviderTimes` /
+`listTimesOn`). `null` is the STRICT question — one client's own overlapping
+envelopes may share a single chair, so asking anonymously reads the chair she
+is physically sitting in as taken. All three now pass `client.id`, which is the
+same holder the write immediately above them just used.
+
+**The measurement in the backlog row, and the instant it names.** 472
+comparisons over the future book; 23 instants the named question offers that
+the anonymous one refuses; none the other way. The concrete one: Tuesday 13:45,
+her cut's body ending exactly there and its after-buffer running to 13:55, with
+every other chair's envelope across that instant. To a stranger there is no
+fifth chair. To her it is the chair she is in, because A-063's envelopes may
+overlap for one holder and half-open bodies that meet do not. So she books a
+blow-dry straight after her cut, the stylist the flow named is taken while she
+types, and the rescue that exists precisely so she is not dead-ended returns
+`null`.
+
+**What it decided.** `holderKey` is a parameter of the INTERNAL functions and
+deliberately not of the server actions. Every export from a `'use server'` file
+is an endpoint the browser can call with anything it likes, and a holder taken
+from there is a stranger naming somebody else's chair — so `listTimesOn` and
+`listAnyProviderTimes` became four-line shells that pass `null`, and `timesOn`
+and `anyoneTimesOn` behind them take the holder. That is the difference from
+the staff side, where A-083 could put `clientId` straight on the action because
+`requireStaff` runs first.
+
+**And the second and third calls were not in the row.** The row names
+`sameTimeWithSomebodyElse`. The `alternatives` arm thirty lines below it is the
+same asymmetry in the same handler, on the same resolved client row: a list
+built from the stranger's question withholds times this very write would
+accept, shown to her at the one moment she has just been refused once. A-097
+had already fixed *which* question that arm asks (anyone's day, not the
+assigned stylist's); this fixes *whose chair* it asks about. Patching only the
+path the ticket names is how A-083 left this one behind in the first place.
+
+**Tests.** Two e2e in `booking.spec.ts`, one per arm, sharing a fixture. Both
+were run against the pre-fix code and both fail there — the first at *"is free
+at the same time"* never appearing, the second at 13:45 missing from the
+fall-back list. The fixture is the item: a two-chair room on the next open
+Tuesday, her Cut at 13:00 in chair one, somebody else across chair two, and an
+asserted precondition that at the contested instant BOTH chairs are held and
+one holder is her. On a book where nobody is seated the two questions agree and
+a spec written the obvious way passes against the bug. The second test also
+asserts the strict question being CORRECT — 13:45 is rightly absent while she
+browses anonymously, and appears only once she has said who she is — so the fix
+cannot be mistaken for "make the public page permissive". Both end on the same
+write-side assertion: her two appointments hold ONE chair, so the offer was
+right about *which* chair and not merely that some chair existed.
+
+**Left behind.** `anyProviderDays` and `listDaysWithOpenings` still have no
+holder and do not need one: they are the browse-time day list, asked before
+anybody has said who she is, and the strict question is the right one there.
+The consequence is that a day whose ONLY openings are her own chair will not
+appear in the day list even for her — the same shape one axis coarser, worth a
+row if the operator ever reports it, and not worth widening a public endpoint
+for now. The manage-link reschedule was already covered by A-082: it holds an
+appointment, and the appointment carries the holder.
+
 ## A-104 — the empty state that answers a question nobody asked
 
 Commit `f8d2652`.

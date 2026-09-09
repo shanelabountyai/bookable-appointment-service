@@ -3311,6 +3311,43 @@ look at a week that is genuinely ahead, and the report takes the clock as an
 argument instead of reading it — a report that reads the system clock is a
 report whose tests cannot ask it about next week.
 
+## A-105 — the chair she was already sitting in
+
+**A client rings off the back of her own appointment.** She is in the chair at
+one o'clock for a cut; she wants a blow-dry straight afterwards; she does not
+mind who does it. The software's answer was *sorry, pick another time* — and
+the time it refused her was the one where she was already in the room.
+
+**Why it happened is the interesting part.** The system asks the room a
+question — *is there a chair free for this?* — and the answer genuinely depends
+on **who is asking**. A salon can put one client's two back-to-back
+appointments in the same chair; she does not get up and move. It cannot do that
+for two different people. So the question has an input: *who would be sitting
+in it?*
+
+The booking that WRITES had always named her. The code that runs when a booking
+is refused — the part whose entire job is finding her another way in — asked
+anonymously, twenty lines below the point where her record had been looked up.
+It was not a wrong answer. It was a **stricter** answer, and strict in the
+direction nobody notices: the salon simply offered less than it could sell.
+Measured across the coming weeks of a real book: 23 times where naming her
+opens a slot that anonymity refuses, and not one the other way.
+
+**Nothing looked broken.** The screen said something reasonable, the refusal
+was polite, and every one of the forty-odd automated journeys through this flow
+passed — because on a book where the client is not already sitting somewhere,
+the two questions give identical answers. The test that catches it had to build
+a room worth arguing about: two chairs, both held at the contested minute, one
+of them hers.
+
+**What shipped.** The refusal handler now asks all three of its questions about
+the client it has already identified — the same person the write was about. The
+identity stays strictly server-side: the public web endpoints deliberately
+cannot be told who to ask about, because an endpoint the browser can hand a
+name to is an endpoint that can be handed somebody else's. And the two new
+tests were each run against the old code first and confirmed to fail there,
+which is the only thing that makes a passing test mean anything.
+
 ## A-104 — the empty state that answers a question nobody asked
 
 An owner types a URL she has bookmarked, or follows a link from an email, and

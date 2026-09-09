@@ -171,6 +171,21 @@ export async function listDaysWithOpenings(serviceIds: string[], providerId: str
 
 
 export async function listTimesOn(serviceIds: string[], providerId: string, day: string): Promise<OfferedTime[]> {
+  // A-105 — `null`, the STRICT question, because a visitor browsing has not
+  // said who she is. It stays a parameter of the internal function and NOT of
+  // this action: every export from a `'use server'` file is an endpoint the
+  // browser can call with anything it likes, and a holder taken from there is
+  // a stranger naming somebody else's chair. The one caller that knows her
+  // resolved her server-side and calls `timesOn` directly.
+  return timesOn(serviceIds, providerId, day, null);
+}
+
+async function timesOn(
+  serviceIds: string[],
+  providerId: string,
+  day: string,
+  holderKey: string | null,
+): Promise<OfferedTime[]> {
   if (await anyDeskOnly(serviceIds)) return [];
   const { slots } = await computeDaySlots(prisma, {
     businessId: await businessId(),
@@ -179,6 +194,7 @@ export async function listTimesOn(serviceIds: string[], providerId: string, day:
     day,
     now: new Date(),
     audience: 'public',
+    holderKey,
   });
 
   return slots.map((slot) => ({
@@ -218,6 +234,11 @@ export async function listAnyProviderDays(serviceIds: string[]): Promise<OpenDay
 /** A-056 — every time anyone could take it that day, one row per time, each
  *  carrying the stylist SVC-02 assigned it to. */
 export async function listAnyProviderTimes(serviceIds: string[], day: string): Promise<OfferedTime[]> {
+  // A-105 — anonymous for the same reason as `listTimesOn` above.
+  return anyoneTimesOn(serviceIds, day, null);
+}
+
+async function anyoneTimesOn(serviceIds: string[], day: string, holderKey: string | null): Promise<OfferedTime[]> {
   if (await anyDeskOnly(serviceIds)) return [];
   const business = await theBusiness();
   const offered = await anyProviderTimes(prisma, {
@@ -226,6 +247,7 @@ export async function listAnyProviderTimes(serviceIds: string[], day: string): P
     day,
     now: new Date(),
     audience: 'public',
+    holderKey,
   });
 
   const zone = zoneId(business.timezone);
@@ -248,11 +270,24 @@ export async function listAnyProviderTimes(serviceIds: string[], day: string): P
  * A DIFFERENT person, because re-offering the one just refused is a dead end:
  * that happens when the refusal was about the room (RES-03) rather than about
  * her.
+ *
+ * A-105 — AND IT IS ASKED ABOUT HER, because by this point she has said who
+ * she is. `holderKey` is A-063's holder: one client's own overlapping
+ * envelopes may share a single chair, so the room's answer DEPENDS on who
+ * would be sitting in it, and `null` is the question you ask a stranger. This
+ * rescue runs AFTER `confirmAppointment` has resolved her client row and
+ * AFTER the write refused using that very holder — so asking anonymously here
+ * made the rescue stricter than the booking it exists to recover from, in the
+ * one direction that cannot fail safe: it comes back `null`, and a client who
+ * said she does not mind who is dead-ended on a chair she is physically
+ * sitting in. Measured over the future book: 472 comparisons, 23 instants the
+ * named question offers that the anonymous one refuses, none the other way.
  */
 async function sameTimeWithSomebodyElse(
   serviceIds: string[],
   at: Date,
   refusedProviderId: string,
+  holderKey: string,
 ): Promise<OfferedTime | null> {
   const business = await theBusiness();
   const instead = await anyProviderAt(prisma, {
@@ -261,6 +296,7 @@ async function sameTimeWithSomebodyElse(
     at,
     now: new Date(),
     audience: 'public',
+    holderKey,
   });
   if (!instead || instead.providerId === refusedProviderId) return null;
 
@@ -426,7 +462,13 @@ export async function confirmAppointment(input: {
       input.anyProvider &&
       (error instanceof SlotTaken || error instanceof SlotNotOffered || error instanceof NoResourceFree)
     ) {
-      const instead = await sameTimeWithSomebodyElse(input.serviceIds, startAt, input.providerId).catch(() => null);
+      const instead = await sameTimeWithSomebodyElse(
+        input.serviceIds,
+        startAt,
+        input.providerId,
+        // A-105 — the same holder the write above just used.
+        client.id,
+      ).catch(() => null);
       if (instead) {
         return {
           ok: false,
@@ -456,9 +498,13 @@ export async function confirmAppointment(input: {
       // the stylist SVC-02 assigned it (`providerId`/`providerName`), which
       // is what the flow posts back — so a time picked out of this list books
       // exactly like one picked out of the original list.
+      // A-105 — AND SO DO THE OTHER TIMES. Same handler, same client row,
+      // same asymmetry: a list built from the stranger's question withholds
+      // times this very write would accept, and she is looking at it having
+      // just been refused once.
       const alternatives = await (input.anyProvider
-        ? listAnyProviderTimes(input.serviceIds, input.day)
-        : listTimesOn(input.serviceIds, input.providerId, input.day)
+        ? anyoneTimesOn(input.serviceIds, input.day, client.id)
+        : timesOn(input.serviceIds, input.providerId, input.day, client.id)
       ).catch(() => []);
       return {
         ok: false,
