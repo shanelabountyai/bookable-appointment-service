@@ -7,9 +7,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/notifications';
 import { PrismaClient } from '../generated/client/index.js';
 import { ChannelSendError, LOGGING_ADAPTER_ID } from '../../core/notifications';
-import { instant, instantFromIso, toDate } from '../../core/time';
+import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import { dispatchPendingNotifications } from './dispatch';
-import { countFailedNotifications, listStuckNotifications, retryNotification } from './stuck';
+import { UNTRIED_ALARM_MS, countUnsentNotifications, isActionable, listStuckNotifications, retryNotification } from './stuck';
 import { reallyDelivered } from './provider';
 import { enqueueNotification } from './enqueue';
 import { resetDatabase } from '../testing';
@@ -716,7 +716,9 @@ describe('A-051 — what did not go out', () => {
     await row('stuck:fresh', 'pending', 0); // queued a second ago — not stuck
     await row('stuck:gone-out', 'sent', 1);
 
-    const stuck = await listStuckNotifications(prisma, businessId);
+    // `now` is the rows' own creation moment, so `stuck:fresh` is genuinely
+    // new rather than merely lucky.
+    const stuck = await listStuckNotifications(prisma, businessId, { now: new Date() });
     const keys = await Promise.all(
       stuck.map(async (found) => (await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: found.id } })).dedupeKey),
     );
@@ -724,13 +726,93 @@ describe('A-051 — what did not go out', () => {
     expect(stuck.find((found) => found.status === 'failed')?.attempts).toBe(5);
   });
 
-  it('counts only what has been given up on', async () => {
+  /**
+   * A-108 / D-51 — THE STATE THIS SCREEN COULD NOT SEE.
+   *
+   * A `pending` row with no attempts was excluded as "new rather than stuck",
+   * which holds only while the dispatcher is running. 713 rows sat in it on
+   * two independent databases under the sentence "Everything has gone out."
+   *
+   * Both sides of the hour are asserted from ONE row by moving `now`, so the
+   * test cannot pass by the bound being anywhere at all.
+   */
+  it('calls a never-attempted row new for an hour and stuck after it', async () => {
+    await queue('untried:one');
+    const at = (await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'untried:one' } })).updatedAt;
+    const after = (ms: number) => toDate(instant(fromDate(at) + ms));
+
+    const justUnder = await listStuckNotifications(prisma, businessId, { now: after(UNTRIED_ALARM_MS - 1000) });
+    expect(justUnder).toHaveLength(0);
+    expect(await countUnsentNotifications(prisma, businessId, after(UNTRIED_ALARM_MS - 1000))).toBe(0);
+
+    const justOver = await listStuckNotifications(prisma, businessId, { now: after(UNTRIED_ALARM_MS + 1000) });
+    expect(justOver.map((row) => row.kind)).toEqual(['never-tried']);
+    expect(await countUnsentNotifications(prisma, businessId, after(UNTRIED_ALARM_MS + 1000))).toBe(1);
+  });
+
+  /**
+   * A-108 — the trap `updatedAt` exists for. `retryNotification` resets
+   * `attempts` to 0 and the row's `createdAt` is by definition already old, so
+   * an age bound on CREATION bounces every hand-retried message straight back
+   * onto the screen as "queued over an hour ago and not tried" the instant the
+   * desk presses the button. Aged deliberately past the bound first, which is
+   * the only state where the two columns disagree.
+   */
+  it('does not call a just-retried row never-tried, however old it is', async () => {
+    await queue('untried:retried');
+    await dispatchPendingNotifications(prisma, new CodedAdapter('invalid_recipient'), 100, AT);
+    const failed = await prisma.notificationOutbox.findFirstOrThrow({ where: { dedupeKey: 'untried:retried' } });
+    await prisma.$executeRaw`UPDATE "NotificationOutbox" SET "createdAt" = now() - interval '3 days' WHERE id = ${failed.id}`;
+
+    expect(await retryNotification(prisma, { businessId, id: failed.id })).toBe(true);
+
+    const seen = await listStuckNotifications(prisma, businessId, { now: new Date() });
+    expect(seen).toHaveLength(0);
+    expect(await countUnsentNotifications(prisma, businessId, new Date())).toBe(0);
+  });
+
+  /**
+   * A-108 — THE TWO ANSWERS TO ONE QUESTION MUST BE EQUAL, on a book with all
+   * three kinds in it, which is the only fixture where they CAN disagree. The
+   * badge read 0 beside a list of 713 for eight items because these were two
+   * separate predicates that nobody compared.
+   */
+  it('counts exactly the rows the screen calls actionable', async () => {
+    const row = (dedupeKey: string, status: 'pending' | 'failed', attempts: number, ageMs: number) =>
+      prisma.notificationOutbox.create({
+        data: {
+          businessId,
+          dedupeKey,
+          channel: 'email',
+          template: 'appointment.confirmed',
+          recipient: 'dana@example.com',
+          payload: {},
+          status,
+          attempts,
+          updatedAt: toDate(instant(fromDate(new Date()) - ageMs)),
+        },
+      });
+
+    await row('agree:dead', 'failed', 5, 0);
+    await row('agree:untried', 'pending', 0, UNTRIED_ALARM_MS * 2);
+    await row('agree:waiting', 'pending', 2, UNTRIED_ALARM_MS * 2);
+    await row('agree:fresh', 'pending', 0, 0);
+
+    const now = new Date();
+    const listed = await listStuckNotifications(prisma, businessId, { now });
+    expect(listed.map((found) => found.kind).sort()).toEqual(['given-up', 'never-tried', 'retrying']);
+    expect(await countUnsentNotifications(prisma, businessId, now)).toBe(
+      listed.filter((found) => isActionable(found.kind)).length,
+    );
+  });
+
+  it('counts what has been given up on, and not what is still trying', async () => {
     await queue('count:waiting');
     await dispatchPendingNotifications(prisma, new CodedAdapter('server_error'), 100, AT);
-    expect(await countFailedNotifications(prisma, businessId)).toBe(0);
+    expect(await countUnsentNotifications(prisma, businessId, AT)).toBe(0);
 
     await dispatchPendingNotifications(prisma, new CodedAdapter('invalid_recipient'), 100, later(60_000));
-    expect(await countFailedNotifications(prisma, businessId)).toBe(1);
+    expect(await countUnsentNotifications(prisma, businessId, later(60_000))).toBe(1);
   });
 
   /** The desk fixed the phone number. The row gets a FULL budget back — a

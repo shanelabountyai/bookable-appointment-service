@@ -29,6 +29,10 @@
  * appointment it produces is one a user could actually have made.
  */
 import { bookAppointment } from '../booking';
+// Direct file imports, not the `../notifications` barrel: that barrel pulls in
+// reminders.ts, which reaches back into `../appointments` — the same cycle
+// reminders.ts's own header warns about, through the other door.
+import { dispatchPendingNotifications } from '../notifications/dispatch';
 import { computeDaySlots } from '../scheduling';
 import {
   listOpenedSlots,
@@ -41,6 +45,8 @@ import { recordCallMark } from '../clients';
 import { LAPSED_WEEKS, listLapsedClients } from '../reports';
 import { createWaitlistEntry } from '../waitlist';
 import { staffActor } from '../../core/auth';
+import { LOGGING_ADAPTER_ID } from '../../core/notifications';
+import type { ChannelAdapter, SendResult } from '../../core/notifications';
 import {
   type ZoneId,
   addDays,
@@ -105,6 +111,10 @@ export interface DensitySeedResult {
    *  can assert `/staff/unfinished` has something on it rather than trusting
    *  the modulo. */
   leftUnfinished: number;
+  /** A-108 — outbox rows actually SENT rather than merely written. Returned
+   *  and printed for A-095's reason: the number that was silently zero for
+   *  eight items is the number worth being able to notice. */
+  dispatched: number;
   /** A-095 — the four tables that were empty on a book with hundreds of
    *  appointments in it. Returned as counts for the same reason
    *  `leftUnfinished` is: whether the demo has anything on these screens is
@@ -655,9 +665,22 @@ export async function seedDensity(
     }
   }
 
+  // A-108 — DISPATCH WHAT THIS SEED ENQUEUED.
+  //
+  // Every booking above writes a confirmation through the real path, and
+  // nothing on a fresh install ever sent one: measured at 713 outbox rows, all
+  // `pending`, all never attempted. That made `/staff/messages` the one screen
+  // a demo checkpoint could not walk truthfully — and after A-108 it is worse
+  // than untruthful, because an hour later the seed's own backlog becomes a
+  // 713-row alarm about a job that was never asked to run. The operator asked
+  // for this HERE rather than in the screen: the screen is right, the book was
+  // wrong.
+  const dispatched = await drainOutbox(prisma);
+
   return {
     appointmentsCreated,
     clientsCreated: clients.length + lapsedClients,
+    dispatched,
     byProvider,
     springForwardCount,
     fallBackCount,
@@ -862,4 +885,36 @@ async function seedNoShowHistory(
   }
 
   return created;
+}
+
+/**
+ * A-108 — send everything the seed queued, in pages, until nothing is left.
+ *
+ * A SILENT ADAPTER, and that is the only reason it is not `notificationAdapter`
+ * itself: the wired one logs a line per message, and seven hundred of them bury
+ * the seed's own summary — the one line anybody reads to see whether the book
+ * came out right. It keeps `LOGGING_ADAPTER_ID`, so `reallyDelivered` still
+ * answers "queued" on every row and no appointment panel claims a client was
+ * genuinely texted (A-048's per-row `deliveredBy`).
+ */
+const SILENT_LOG_ADAPTER: ChannelAdapter = {
+  id: LOGGING_ADAPTER_ID,
+  supports: () => true,
+  async send(): Promise<SendResult> {
+    return {};
+  },
+};
+
+async function drainOutbox(prisma: PrismaClient): Promise<number> {
+  let sent = 0;
+  // Bounded rather than `while (true)`: a row that fails permanently comes back
+  // `failed` and stops being claimed, so the loop terminates on its own — but a
+  // seed that spins forever on an unforeseen state is a worse failure than one
+  // that leaves a few rows queued.
+  for (let page = 0; page < 50; page++) {
+    const result = await dispatchPendingNotifications(prisma, SILENT_LOG_ADAPTER, 200);
+    sent += result.sent;
+    if (result.sent + result.failed + result.retrying + result.suppressed === 0) break;
+  }
+  return sent;
 }

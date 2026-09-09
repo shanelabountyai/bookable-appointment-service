@@ -1,0 +1,11 @@
+-- A-108 / D-51 — the reminder sweep's watermark.
+--
+-- One nullable column, per business. NULL means the sweep has never run for
+-- this business, which /staff/messages says in those words rather than
+-- pretending it ran at the epoch.
+--
+-- There is deliberately no second column recording the BAND a sweep covered:
+-- who was missed is derived from the appointments (listMissedReminders), which
+-- also catches the case a band cannot — a sweep that ran and whose enqueue
+-- failed sits inside every band and still reached nobody.
+ALTER TABLE "Business" ADD COLUMN "remindersLastRunAt" TIMESTAMPTZ(3);

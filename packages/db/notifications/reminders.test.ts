@@ -13,6 +13,7 @@ import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/not
 import { dispatchPendingNotifications } from './dispatch';
 import { enqueueNotification } from './enqueue';
 import { sendDueReminders } from './reminders';
+import { lastReminderSweep, listMissedReminders } from './missed-reminders';
 
 const prisma = new PrismaClient();
 
@@ -328,5 +329,183 @@ describe('the reminder that is no longer true (A-054)', () => {
     const adapter = new Recorder();
     await dispatchPendingNotifications(prisma, adapter, 100, NOW);
     expect(templatesSent(adapter)).toContain('appointment.cancelled');
+  });
+});
+
+/**
+ * A-108 / D-51 — THE WATERMARK.
+ *
+ * "Nothing was due" and "the job has not run since Tuesday" are identical on
+ * an empty screen, and telling those two apart is the whole reason the column
+ * exists — so the stamp is asserted on the run that enqueues NOTHING, which is
+ * the case a stamp written only alongside an enqueue would get wrong.
+ */
+describe('sendDueReminders — the sweep watermark (D-51)', () => {
+  const NOW = at('2026-06-08T08:00:00-05:00');
+
+  it('stamps the business even when nothing was due', async () => {
+    expect(await sendDueReminders(prisma, NOW)).toEqual({ due: 0, enqueued: 0, duplicate: 0 });
+
+    const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId } });
+    expect(business.remindersLastRunAt).toEqual(NOW);
+  });
+
+  /** A late tick arriving after a later one must not walk the clock backwards
+   *  and invent a gap that never happened. */
+  it('never moves the stamp backwards', async () => {
+    await sendDueReminders(prisma, NOW);
+    await sendDueReminders(prisma, at('2026-06-08T07:00:00-05:00'));
+
+    const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId } });
+    expect(business.remindersLastRunAt).toEqual(NOW);
+  });
+
+  /**
+   * The `businessId` ride-along. This was the only core query in the repo with
+   * no business filter, and the fix is a per-business loop rather than a filter
+   * bolted on — so the property to assert is that a SECOND salon is swept as
+   * its own unit and stamped in its own right, including when it has nothing
+   * due while its neighbour does.
+   */
+  it('sweeps and stamps each business separately', async () => {
+    await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+
+    expect(await sendDueReminders(prisma, NOW)).toEqual({ due: 1, enqueued: 1, duplicate: 0 });
+
+    const rows = await prisma.notificationOutbox.findMany({ select: { businessId: true } });
+    expect(rows.map((row) => row.businessId)).toEqual([businessId]);
+    expect((await prisma.business.findUniqueOrThrow({ where: { id: other.id } })).remindersLastRunAt).toEqual(NOW);
+  });
+});
+
+/**
+ * A-108 / D-51 — WHO WAS NEVER REMINDED.
+ *
+ * Derived from the appointments rather than from a stored band, because a band
+ * names a duration and this screen has to name a person — and because a sweep
+ * that RAN and whose enqueue failed is inside every band and still reached
+ * nobody.
+ */
+describe('listMissedReminders (D-51)', () => {
+  const NOW = at('2026-06-08T08:00:00-05:00');
+
+  const HOUR = 60 * 60 * 1000;
+
+  /**
+   * An appointment `inMs` from now, BOOKED `bookedAgoMs` before now.
+   *
+   * Not the file's `seed()` helper: that one pins `endAt` to a constant, which
+   * is fine for a window fixture that never moves and violates
+   * `appointment_end_after_start` the moment `startAt` is a parameter. The
+   * booking moment is the axis the false-positive guard turns on, so it is
+   * written explicitly rather than being whatever the insert happened to
+   * stamp.
+   */
+  async function booked(args: { inMs: number; bookedAgoMs: number; status?: string }) {
+    const startAt = toDate(instant(fromDate(NOW) + args.inMs));
+    const endAt = toDate(instant(fromDate(NOW) + args.inMs + HOUR));
+    const appointment = await prisma.appointment.create({
+      data: {
+        businessId,
+        providerId,
+        clientId,
+        status: (args.status ?? 'booked') as 'booked',
+        startAt,
+        endAt,
+        blockedStart: startAt,
+        blockedEnd: endAt,
+        startDay: '2026-06-09',
+        startWallTime: '10:00',
+        lines: { create: { businessId, serviceId, ordinal: 0, priceCents: 5500, durationMinutes: 60 } },
+      },
+    });
+    await prisma.$executeRaw`UPDATE "Appointment" SET "createdAt" = ${toDate(
+      instant(fromDate(NOW) - args.bookedAgoMs),
+    )} WHERE id = ${appointment.id}`;
+    return appointment;
+  }
+
+  it('names the client, with a number to ring', async () => {
+    await booked({ inMs: 12 * HOUR, bookedAgoMs: 3 * 24 * HOUR });
+
+    const missed = await listMissedReminders(prisma, { businessId, now: NOW });
+    expect(missed).toHaveLength(1);
+    expect(missed[0]!.clientName).toBe('Ada Chen');
+    expect(missed[0]!.phone).toBe('5125550101');
+  });
+
+  it('drops her the moment a reminder exists for her', async () => {
+    const appointment = await booked({ inMs: 12 * HOUR, bookedAgoMs: 3 * 24 * HOUR });
+    await enqueueNotification(prisma, {
+      businessId,
+      dedupeKey: `reminder-24h:${appointment.id}:${fromDate(appointment.startAt)}`,
+      appointmentId: appointment.id,
+      channel: 'email',
+      template: 'appointment.reminder',
+      recipient: 'ada@example.test',
+      payload: {},
+    });
+
+    expect(await listMissedReminders(prisma, { businessId, now: NOW })).toHaveLength(0);
+  });
+
+  /**
+   * THE PREDICATE WITHOUT WHICH THIS SCREEN FILLS WITH PERMANENT FALSE ROWS.
+   * An appointment made this morning for this afternoon was never eligible for
+   * a 24-hour reminder and never will be. Without `createdAt <= startAt - 24h`
+   * every same-day booking joins the list forever and the desk stops reading
+   * it — which is the failure the fresh-pending exclusion was written to avoid,
+   * arriving through the other door.
+   */
+  it('does not accuse the job of missing a same-day booking', async () => {
+    await booked({ inMs: 4 * HOUR, bookedAgoMs: 2 * HOUR });
+
+    expect(await listMissedReminders(prisma, { businessId, now: NOW })).toHaveLength(0);
+  });
+
+  it('ignores an appointment whose reminder is not due yet', async () => {
+    await booked({ inMs: 30 * HOUR, bookedAgoMs: 5 * 24 * HOUR });
+
+    expect(await listMissedReminders(prisma, { businessId, now: NOW })).toHaveLength(0);
+  });
+
+  /** A cancelled appointment is not a missed reminder — the same allow-list
+   *  the sweep itself uses (D-7), never a second copy of it. */
+  it('ignores an appointment nobody is coming to', async () => {
+    await booked({ inMs: 12 * HOUR, bookedAgoMs: 3 * 24 * HOUR, status: 'cancelled' });
+
+    expect(await listMissedReminders(prisma, { businessId, now: NOW })).toHaveLength(0);
+  });
+
+  it('never shows another salon their clients', async () => {
+    await booked({ inMs: 12 * HOUR, bookedAgoMs: 3 * 24 * HOUR });
+    const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+
+    expect(await listMissedReminders(prisma, { businessId: other.id, now: NOW })).toHaveLength(0);
+  });
+
+  /**
+   * The half that makes the other half honest: after the sweep that covered
+   * her, she is gone from the list — so an empty list means the job worked
+   * rather than that the query is broken.
+   *
+   * READ A MINUTE LATE, deliberately. She starts exactly `now + 24h`, which is
+   * the instant her reminder is DUE rather than missed, so at `NOW` the list
+   * is correctly empty; a minute on, her moment has passed and nothing was
+   * written. That minute is the whole distinction the list is about, and a
+   * fixture that read at `NOW` would pass with the lower bound anywhere.
+   */
+  it('is emptied by the sweep that should have caught her', async () => {
+    await booked({ inMs: 24 * HOUR, bookedAgoMs: 3 * 24 * HOUR });
+    const aMinuteLater = toDate(instant(fromDate(NOW) + 60_000));
+
+    expect(await listMissedReminders(prisma, { businessId, now: NOW })).toHaveLength(0);
+    expect(await listMissedReminders(prisma, { businessId, now: aMinuteLater })).toHaveLength(1);
+
+    await sendDueReminders(prisma, NOW);
+
+    expect(await listMissedReminders(prisma, { businessId, now: aMinuteLater })).toHaveLength(0);
+    expect(await lastReminderSweep(prisma, businessId)).toEqual(NOW);
   });
 });

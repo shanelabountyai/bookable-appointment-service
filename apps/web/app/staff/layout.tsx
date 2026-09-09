@@ -1,7 +1,7 @@
 import { prisma } from '@bookable/db';
 import { listSwitchableStaff } from '@bookable/db/auth';
 import { countUnfinished, listOpenedSlots, listUnreleasedNoShows } from '@bookable/db/appointments';
-import { countFailedNotifications } from '@bookable/db/notifications';
+import { countUnsentNotifications } from '@bookable/db/notifications';
 import { currentStaff } from '@/lib/auth/session';
 import { DeskBar } from './desk-bar';
 import { StaffNav } from './staff-nav';
@@ -47,19 +47,22 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   if (!staff) return <>{children}</>;
 
   const now = new Date();
-  const [options, opened, stillBlocked, unfinished, failedMessages] = await Promise.all([
+  const [options, opened, stillBlocked, unfinished, unsentMessages] = await Promise.all([
     listSwitchableStaff(prisma, staff.businessId),
     listOpenedSlots(prisma, { businessId: staff.businessId, now }),
     listUnreleasedNoShows(prisma, { businessId: staff.businessId, now }),
     countUnfinished(prisma, { businessId: staff.businessId, now }),
-    countFailedNotifications(prisma, staff.businessId),
+    // A-108: no longer `failed` alone. A message the dispatcher has never
+    // touched is one nobody has been told about either, and the badge that
+    // read 0 beside 713 of them is the defect this item exists to close.
+    countUnsentNotifications(prisma, staff.businessId, now),
   ]);
 
   return (
     <>
       <DeskBar currentName={staff.name} options={options} />
       <StaffNav
-        counts={{ opened: opened.length + stillBlocked.length, unfinished, failedMessages }}
+        counts={{ opened: opened.length + stillBlocked.length, unfinished, unsentMessages }}
         isOwner={staff.role === 'owner'}
       />
       {children}

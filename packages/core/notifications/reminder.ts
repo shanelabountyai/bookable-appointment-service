@@ -18,6 +18,13 @@
  */
 import { type Instant, instant } from '../time';
 
+/**
+ * The template name every reader of "was she reminded?" asks about. It lived
+ * as a private copy in `stale.ts` and a string literal in `reminders.ts`, and
+ * A-108 needed a third — which is one more than this repo lets a fact have.
+ */
+export const REMINDER_TEMPLATE = 'appointment.reminder';
+
 export const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
 export const REMINDER_WINDOW_MS = 5 * 60 * 1000;
 

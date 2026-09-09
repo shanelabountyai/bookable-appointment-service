@@ -3731,3 +3731,66 @@ green runs said nothing. The new one asserts what is *there*, and it sets the
 delta **before** she leaves so the stranded row is the thing being recovered.
 Then the gate was put back on purpose: exactly one test failed, on exactly the
 missing control.
+
+## A-108 — the screen that reported perfect health over 713 undelivered messages
+
+A salon's notification queue has a failure mode that looks exactly like success.
+This one had two, and the screen built to catch them said, character for
+character, what a healthy salon sees: *"Everything has gone out. Nothing is
+waiting and nothing has been given up on."*
+
+**The first was one word in a `WHERE` clause.** The "what did not go out" screen
+listed `failed` rows and rows mid-backoff, and deliberately excluded a fresh
+`pending` row with no attempts — *"that one is new, not stuck."* Which is true,
+**while the dispatcher is running**. A row it has never touched stays
+`pending`/`attempts = 0` forever, and that state was invisible to the only screen
+that exists to find it. Measured on two independent databases: **713 rows**, all
+of them, with the shell badge beside them reading **0** because the count asked
+`failed` only. The fix is an age bound — an hour, twelve missed ticks — and a
+single shared predicate so the badge and the list cannot drift apart again. A
+test now asserts the two answers are **equal** on a book carrying all three
+kinds, which is the only fixture where they can disagree.
+
+**The second was silent in production too.** The reminder job is a five-minute
+band anchored to `now`. Nothing caught it up, and **nothing anywhere recorded
+that it had ever run** — so a deploy, a cold start, a 5xx or a rotated cron
+secret permanently lost everybody starting inside that band, with no list to
+work and no screen able to say a word about it.
+
+**The interesting decision was what *not* to build.** The obvious fix is a
+catch-up sweep: remember where you got to, go back and enqueue what you missed.
+It was rejected. A catch-up needs a policy nobody had taken — *how few hours out
+may a message still calling itself a 24-hour reminder honestly be sent?* — and
+this product has no real channel yet, so it would have recovered a missed cohort
+into a console. What shipped instead: the job records that it ran, and the screen
+**derives who was missed from the appointments themselves** — eligible, due
+inside the next day, booked early enough to have been reminded, holding no
+reminder row — and prints them with phone numbers. The desk is told the truth and
+a person decides what to say.
+
+That derivation is stronger than the watermark arithmetic it replaced, and that
+is why the database grew exactly **one** column instead of two. A stored band of
+missed time names a duration, not a person — and it is blind in the case that
+matters most: **a sweep that ran, and whose enqueue then failed, sits inside
+every band and still reached nobody.** Asking the appointments cannot miss it.
+
+**One predicate is doing quiet, load-bearing work.** The cohort only includes
+appointments booked at least 24 hours before they start. Without it, every
+same-day booking — a client who rang at ten for a two o'clock — joins the missed
+list permanently, because a 24-hour reminder was never possible for her and never
+will be. A screen with permanent false rows on it is a screen the desk stops
+reading, which is the exact failure the original "that one is new" exclusion was
+written to avoid, arriving through the other door.
+
+**Two things caught the author rather than the other way round.** The age bound
+had to measure from `updatedAt`, not `createdAt`: the manual retry resets the
+attempt count and keeps the original creation time, so a bound on creation would
+have thrown every hand-retried message straight back onto the screen the instant
+the desk pressed the button. And a directory-walking guard written eight items
+earlier failed the new row for hand-writing its own `tel:` link — catching the
+ninth copy on the day it was typed, which is what that guard was built to do.
+
+**And the demo book was lying too.** It queued 713 confirmations and dispatched
+none, so the one screen a walkthrough could not honestly visit was this one. The
+seed now sends what it enqueues and reports the number, where it had silently
+been zero on every install ever made.

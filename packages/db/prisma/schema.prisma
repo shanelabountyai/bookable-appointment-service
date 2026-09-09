@@ -181,6 +181,14 @@ model Business {
   /// 'offer-both' | 'offer-earlier-only' (spec FB-7).
   ambiguousLocalTime       String  @default("offer-both")
 
+  /// A-108 / D-51 — WHEN THE REMINDER SWEEP LAST RAN FOR THIS BUSINESS.
+  /// NULL means it never has, which is a different sentence on the screen and
+  /// not the same as "an hour ago". The ONLY watermark: the band a sweep
+  /// covered is deliberately NOT stored, because the cohort it would describe
+  /// is derived from the appointments themselves (`listMissedReminders`) and a
+  /// second column would be the same fact under a different name.
+  remindersLastRunAt DateTime? @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 

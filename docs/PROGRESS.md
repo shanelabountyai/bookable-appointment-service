@@ -3564,3 +3564,90 @@ worked for her the moment the door opened.
 - **The design gallery's off-roster fixture (Tess) now renders the control**,
   because it has a chip in it. That is the truthful state, and it is the third
   kind of column the gallery exists to show.
+
+## A-108 — two ways a client is never told, and the screen that said "everything has gone out"
+
+**What it built.** Both halves of NOTIF-01/NOTIF-02's silence, plus the decision
+that settled how the second one is answered (**D-51**).
+
+- **A third bucket on `/staff/messages`: queued and never tried.**
+  `listStuckNotifications` filtered `failed OR (pending AND attempts > 0)`,
+  justified as *"a fresh pending row is not stuck, it is new"* — true **only
+  while the dispatcher is running**. A row it has never touched is
+  `pending`/`attempts = 0` forever. Measured on two independent databases —
+  `bookable_test` at the operator review and `bookable_dev` at checkpoint 9 —
+  **713 rows in exactly that state**, under the sentence *"Everything has gone
+  out. Nothing is waiting and nothing has been given up on."* The bound is one
+  hour (D-51): twelve missed five-minute ticks.
+- **The badge counts it.** `countFailedNotifications` counted `failed` alone and
+  is now `countUnsentNotifications`, sharing **one `actionableWhere` predicate**
+  with the listing. Renamed rather than widened in place, because a badge whose
+  meaning silently changed is the next reader's trap.
+- **A sweep watermark, and a derived missed cohort.** `Business.remindersLastRunAt`
+  is stamped per business on **every** run, and `/staff/messages` renders it
+  always — *"nothing was due"* and *"the job has not run since Tuesday"* are
+  identical on an empty screen. Who was actually missed is a separate query over
+  the **appointments**: eligible, starting inside the 24-hour lead, booked early
+  enough to have been swept, holding no reminder row. Rendered with names and
+  phone numbers, dialled through `PhoneLink`.
+- **The sweep is per business.** `sendDueReminders` was the only core query in
+  the repo with no `businessId` filter. It loops businesses rather than bolting a
+  filter onto a global job, which is also where the watermark gets written.
+- **The seed dispatches what it enqueues.** `seedDensity` drains the outbox
+  through a silent `log`-id adapter and reports the count: **713 messages sent**
+  on a fresh reset, where it had always been zero.
+- **`REMINDER_TEMPLATE` moved to `core/notifications`.** It was a private copy in
+  `stale.ts` and a literal in `reminders.ts`, and this item needed a third.
+
+**What it decided (D-51).** Recorded before any code: **(b)** — record the
+sweep, derive the cohort, list it. Not a catch-up enqueue.
+
+- **(a) and (c) both need a policy nobody has taken** — how few hours out a
+  message still calling itself a *24-hour reminder* may honestly be sent — and
+  A-108's own scope refuses any message making a claim about the future after
+  its window has passed. (b) needs no such policy: it tells the desk who was
+  missed and a person decides what to say. **That is D-46's argument one system
+  over** — the reports became right because the desk could tell them the truth,
+  not because the software started guessing.
+- **(b) does not foreclose (c).** It builds the watermark a catch-up would need,
+  and the cohort query is the list a catch-up would iterate.
+- **The cohort is derived from appointments, not from watermark arithmetic**, and
+  that is why `Business` grew exactly **one** column. A stored band
+  `[lastSweptThrough, thisWindowStart)` names a duration rather than a person,
+  and it is blind in the case that matters most: **a sweep that RAN and whose
+  enqueue failed is inside every band and still reached nobody.**
+
+**Two traps this item walked into, both caught by the repo rather than by
+inspection.**
+
+- **The age bound had to read `updatedAt`, not `createdAt`.** `retryNotification`
+  puts a row back with `attempts` reset to 0 (deliberately, since A-051), and its
+  `createdAt` is by definition already old — so an age bound on creation
+  **bounces every hand-retried message straight back onto the screen** as
+  *"queued over an hour ago and not tried"* the instant the desk presses the
+  button. On a row nobody has ever touched the two columns are equal, which is
+  the only state the bucket is about. There is now a test that ages a row three
+  days, retries it, and asserts the screen stays empty.
+- **`phone-link.test.ts` failed on the new row's hand-written `tel:`.** A-092's
+  directory-walking guard caught the ninth copy on the day it was typed, exactly
+  as its header said it would. The row dials through `PhoneLink`.
+
+**What it left behind.**
+
+- **The missed-reminder section is dormant on the demo book, and correctly so.**
+  Measured 0 on a freshly seeded 713-appointment install: every appointment was
+  created seconds ago, so none was ever eligible for a 24-hour reminder and the
+  false-positive guard excludes them all. That is the guard working, not a bug —
+  but it means the section cannot be walked at a checkpoint without a hand-built
+  fixture. **Same class as A-113's complaint, and A-113 is the seed-widening item
+  that could carry it** (one appointment backdated into the seeded future book).
+- **`route.ts` still calls `sendDueReminders` then `dispatchPendingNotifications`
+  back to back with no error isolation between businesses.** A tenant whose sweep
+  throws now fails the whole request, same as before — the loop is scoped, not
+  fault-tolerant. Not this item's defect; worth naming because the loop makes it
+  look as if it were handled.
+- **Nothing raises an alarm about the watermark itself.** The screen says when
+  the job last ran, and a person has to read it. There is no badge for *"the job
+  has not run in six hours"*, because that number is a deployment-tier question
+  (`route.ts:15-18` — a Hobby plan's cron is daily, a factor of 288) and D-51
+  did not take it.

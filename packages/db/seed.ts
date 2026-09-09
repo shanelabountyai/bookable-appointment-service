@@ -27,7 +27,9 @@ async function main(): Promise<void> {
         // under-report itself by three. A number that is printed is a number
         // somebody can notice going to zero.
         `${density.waitlistEntries} on the waitlist, ${density.callMarks} call marks, ` +
-        `${density.callDownAttempts} call-down attempts, ${density.lapsedClients} lapsed)`,
+        `${density.callDownAttempts} call-down attempts, ${density.lapsedClients} lapsed; ` +
+        // A-108. This was zero on every install ever made, and nothing said so.
+        `${density.dispatched} messages sent)`,
     );
   } finally {
     await prisma.$disconnect();

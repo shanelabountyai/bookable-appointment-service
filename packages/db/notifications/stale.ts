@@ -25,14 +25,12 @@
  * two"), which is the only kind of claim the world can falsify while the
  * message sits in a queue.
  */
+import { REMINDER_TEMPLATE } from '../../core/notifications';
 import { REMINDER_ELIGIBLE_STATUSES } from '../../core/scheduling';
 import { fromDate, instantFromIso } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
-
-/** The template whose claim is about the future. */
-const REMINDER_TEMPLATE = 'appointment.reminder';
 
 export interface QueuedMessage {
   template: string;

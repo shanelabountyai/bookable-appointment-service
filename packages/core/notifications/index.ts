@@ -7,5 +7,11 @@ export {
 } from './adapter';
 export { LoggingChannelAdapter } from './logging-adapter';
 export { LOGGING_ADAPTER_ID } from './adapter';
-export { type ReminderWindow, REMINDER_LEAD_MS, REMINDER_WINDOW_MS, reminderWindow } from './reminder';
+export {
+  type ReminderWindow,
+  REMINDER_LEAD_MS,
+  REMINDER_TEMPLATE,
+  REMINDER_WINDOW_MS,
+  reminderWindow,
+} from './reminder';
 export { type FailureKind, MAX_ATTEMPTS, classifyFailure, retryDelayMs } from './retry';

@@ -29,7 +29,7 @@ import { Field, Input } from '@/components/ui/field';
  * NO HAMBURGER (§5.5). It wraps instead. The desk does this forty times a day
  * and a disclosure costs two taps for the thing that should cost one.
  */
-type Counts = { opened: number; unfinished: number; failedMessages: number };
+type Counts = { opened: number; unfinished: number; unsentMessages: number };
 
 /**
  * THE LINK IS PERMANENT AND THE BADGE HIDES AT ZERO — D-50, and it settles a
@@ -52,7 +52,7 @@ const DESK = [
   { href: '/staff/waitlist', label: 'Waitlist', count: null },
   { href: '/staff/call-down', label: 'Call-down', count: null },
   { href: '/staff/conflicts', label: 'Conflicts', count: null },
-  { href: '/staff/messages', label: 'Messages', count: 'failedMessages' },
+  { href: '/staff/messages', label: 'Messages', count: 'unsentMessages' },
 ] as const;
 
 export function StaffNav({ counts, isOwner }: { counts: Counts; isOwner: boolean }) {
@@ -83,7 +83,7 @@ export function StaffNav({ counts, isOwner }: { counts: Counts; isOwner: boolean
               {/* The badge is INSIDE the link, so the accessible name reads
                   "Opened up 3" rather than announcing a bare "3". */}
               {count > 0 ? (
-                <Badge intent={item.count === 'failedMessages' ? 'attention' : 'neutral'}>
+                <Badge intent={item.count === 'unsentMessages' ? 'attention' : 'neutral'}>
                   {count}
                 </Badge>
               ) : null}

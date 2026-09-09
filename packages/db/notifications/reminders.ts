@@ -18,9 +18,25 @@
  * Embedding the target instant is what makes a reschedule produce a genuinely
  * NEW reminder for the new time rather than colliding with — or silently
  * reusing — a stale one.
+ *
+ * A-108 / D-51 — BUSINESS BY BUSINESS, AND IT SAYS SO AFTERWARDS.
+ *
+ * This was the only core query in the repo with no `businessId` filter. The
+ * fix is not a filter bolted onto a global sweep — a cron job legitimately
+ * serves every tenant — it is a loop, so each business's sweep is its own
+ * scoped unit, one tenant's failure cannot silently swallow the next one's,
+ * and there is somewhere honest to write "the job ran for YOU": the run
+ * stamps `Business.remindersLastRunAt` per business, which is the whole of
+ * D-51's watermark. Who was MISSED is derived separately and from the
+ * appointments themselves (`missed-reminders.ts`), never from arithmetic on
+ * this column.
+ *
+ * The stamp is written whether or not anything was due. "Nothing was due" and
+ * "the job has not run since Tuesday" are the two answers this screen exists
+ * to tell apart, and only a stamp on every run can.
  */
 import { REMINDER_ELIGIBLE_STATUSES } from '../../core/scheduling';
-import { reminderWindow } from '../../core/notifications';
+import { REMINDER_TEMPLATE, reminderWindow } from '../../core/notifications';
 import { fromDate, toDate } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 // Direct file import, not the `../appointments` barrel: that barrel pulls in
@@ -41,17 +57,41 @@ export interface ReminderRunResult {
 
 /**
  * Enqueues (never sends — see dispatch.ts) exactly one reminder for every
- * appointment starting in `[now+24h, now+24h+5m)`.
+ * appointment starting in `[now+24h, now+24h+5m)`, for every business.
  *
  * `now` is a parameter, read from the system clock exactly once, at the one
  * legitimate boundary — the route handler an external scheduler calls.
  * Nothing below this line reads a clock of its own.
+ *
+ * ponytail: one sweep query per business, which for a single-salon deployment
+ * is one query. If a tenant count ever makes that show up, the fix is one
+ * query grouped by `businessId` feeding the same per-business loop — never a
+ * return to the unscoped sweep, and never a watermark written outside it.
  */
 export async function sendDueReminders(prisma: PrismaClient, now: Date): Promise<ReminderRunResult> {
+  const businesses = await prisma.business.findMany({ select: { id: true } });
+  const totals: ReminderRunResult = { due: 0, enqueued: 0, duplicate: 0 };
+
+  for (const business of businesses) {
+    const one = await sweepOneBusiness(prisma, business.id, now);
+    totals.due += one.due;
+    totals.enqueued += one.enqueued;
+    totals.duplicate += one.duplicate;
+  }
+
+  return totals;
+}
+
+async function sweepOneBusiness(
+  prisma: PrismaClient,
+  businessId: string,
+  now: Date,
+): Promise<ReminderRunResult> {
   const window = reminderWindow(fromDate(now));
 
   const due = await prisma.appointment.findMany({
     where: {
+      businessId,
       status: { in: [...REMINDER_ELIGIBLE_STATUSES] },
       startAt: { gte: toDate(window.start), lt: toDate(window.end) },
     },
@@ -118,7 +158,7 @@ export async function sendDueReminders(prisma: PrismaClient, now: Date): Promise
         dedupeKey,
         appointmentId: appointment.id,
         channel: appointment.client?.email ? 'email' : 'sms',
-        template: 'appointment.reminder',
+        template: REMINDER_TEMPLATE,
         recipient: appointment.client?.email ?? appointment.client?.phone ?? null,
         payload: {
           appointmentId: appointment.id,
@@ -134,6 +174,15 @@ export async function sendDueReminders(prisma: PrismaClient, now: Date): Promise
     if (result?.outcome === 'recorded') enqueued++;
     else duplicate++;
   }
+
+  // D-51's watermark, and the LAST thing the sweep does: a stamp written
+  // before the enqueues would claim the run covered a band it then threw
+  // half way through. Monotonic, so a late tick arriving after a later one
+  // cannot walk the clock backwards and invent a gap that never happened.
+  await prisma.business.updateMany({
+    where: { id: businessId, OR: [{ remindersLastRunAt: null }, { remindersLastRunAt: { lt: now } }] },
+    data: { remindersLastRunAt: now },
+  });
 
   return { due: due.length, enqueued, duplicate };
 }
