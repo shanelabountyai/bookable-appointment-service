@@ -42,6 +42,8 @@ let shared: Awaited<ReturnType<typeof seedDensity>>;
  * Deliberately twelve weeks past `SEED_ANCHOR_DAY` — that gap IS the defect.
  */
 const SEED_NOW = toDate(instantFromIso('2026-09-02T15:30:00-05:00'));
+/** A-110 — the seed's own day, which is what a waitlist entry expires against. */
+const seedToday = (timezone: string) => toLabel(fromDate(SEED_NOW), zoneId(timezone)).day;
 
 beforeAll(async () => {
   await prisma.$connect();
@@ -403,7 +405,10 @@ describe('determinism and safety', () => {
       const zone = zoneId(business.timezone);
       expect(shared.waitlistEntries).toBeGreaterThan(0);
 
-      const entries = await listWaitlistEntries(prisma, business.id);
+      const entries = await listWaitlistEntries(prisma, { businessId: business.id, today: seedToday(business.timezone) });
+      // A-110 — and every seeded entry's window is still open at `SEED_NOW`.
+      // A demo book whose standing queue had lapsed rows on it would now be
+      // SHORT here rather than merely stale, which is the point of the count.
       expect(entries.length).toBe(shared.waitlistEntries);
 
       const opened = await listOpenedSlots(prisma, { businessId: business.id, now: SEED_NOW });
@@ -432,7 +437,7 @@ describe('determinism and safety', () => {
      */
     it('seeds narrower entries too, so the filters have something to exclude', async () => {
       const business = await prisma.business.findFirstOrThrow();
-      const entries = await listWaitlistEntries(prisma, business.id);
+      const entries = await listWaitlistEntries(prisma, { businessId: business.id, today: seedToday(business.timezone) });
       expect(entries.some((entry) => entry.dayParts.length > 0)).toBe(true);
       expect(entries.some((entry) => entry.providerIds.length > 0)).toBe(true);
       expect(entries.some((entry) => entry.dayParts.length === 0 && entry.providerIds.length === 0)).toBe(true);

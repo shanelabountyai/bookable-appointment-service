@@ -28,6 +28,7 @@ export {
   findAbsences,
   listDateOverrides,
   listWeeklyWindows,
+  openWeekdays,
   resolveDayWindows,
   upsertDateOverride,
 } from './availability';

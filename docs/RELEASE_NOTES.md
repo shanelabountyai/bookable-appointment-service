@@ -3838,3 +3838,68 @@ could have been sold.
 shortest footprint and still be positive*. At zero it already dropped off, so a
 test written against a freshly released slot passes against the bug — which is
 exactly what the existing suite had been doing for two phases.
+
+## A-110 — the list with one door in and none out
+
+The salon's waitlist was built, correct, and unreachable from the only moment
+anybody would want it. The booking screen says *"nobody can take that on
+Thursday"* — that sentence **is** the waitlist's reason to exist — and the code
+behind it contained not one reference to the feature. Putting her on the list
+meant abandoning the screen, opening a different one, and typing the same
+client's name into a second search box while she was still on the phone. The
+front desk does not do that. They say "try us next week" and hang up.
+
+**The refusal is now a step.** Both refusals carry *"put her on the list for
+this"*, and the form on the other side arrives already holding what the screen
+it came from knew: who she is, what she asked for, which stylist she would
+accept, the day she wanted. Every field stays editable, because she is still
+changing her mind mid-sentence — a prefill that cannot be corrected is worse
+than no prefill. It is the *same* write path the manual form has always used;
+nothing new can now create an entry.
+
+**The second half is a status that had never once been written.** `expired` was
+in the enum from the day the feature shipped, and nothing anywhere set it. The
+standing queue filtered on status alone, so an entry whose window closed in June
+sat on the September screen looking exactly like somebody worth ringing — while
+the matcher on the other half of the same feature, which reads the window
+directly, refused to match her against anything that could ever open up.
+**Silently dead and visibly live.** The queue now derives expiry from the entry's
+own window, on every read, with no job: a nightly sweep stamping a column is a
+second writer that eventually disagrees with the reader, and it would have to run
+immediately before every query to be trusted anyway.
+
+**The test that closes it asserts the two halves agree**, day by day across the
+window's closing edge: whoever is on the queue on a given day is exactly whoever
+an hour freeing that day could be offered to. Run against the real pre-fix code
+it fails naming the day it disagrees about. This is the fifth time this codebase
+has caught the same shape — one fact, two readers, one of them asking a weaker
+question — and the fix that holds has never been "make them agree". It is one
+shared predicate plus a test that says out loud that they do.
+
+**A one-day fixture cannot see any of it.** When the window is a single day, the
+wrong question and the right one return the same list. The same trap has now
+appeared three times here in different clothes, and the rule is the same each
+time: a range predicate needs a fixture whose range is longer than one unit.
+
+**And a green assertion that proved nothing.** The first passing run checked that
+the prefilled form showed the right service — using a service that happened to be
+first in the dropdown, which is what an empty form shows too. It would have
+passed against no prefill at all. The check now uses a service that is not the
+default.
+
+**One line that costs a client.** The "which days" checkboxes offered all seven
+weekday names, at a salon that shuts on Sunday and Monday. A client waitlisted
+for those two days is refused by the matcher against every slot that ever frees,
+forever, and no screen ever says why. They are now built from the days the salon
+actually opens.
+
+**And a bug the sweep found in its own suite.** An unrelated end-to-end test —
+a no-show whose remaining time gets given back — failed, then passed in
+isolation, then failed again. Its fixture put the freed span at *exactly* the
+minimum length the previous item had just taught that screen to refuse, and the
+span loses up to a minute to rounding before anything else happens. So it was a
+coin flip, shipped green, and it would have gone on failing at random for months
+while looking like flakiness. The fixture now sits nowhere near the boundary.
+The rule the previous item wrote down — *only a small positive value can expose
+a floor* — has a mirror image: every test whose subject is **not** the bound has
+to be kept away from it.

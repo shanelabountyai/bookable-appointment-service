@@ -13,6 +13,7 @@ import {
   createWeeklyWindow,
   findAbsences,
   listWeeklyWindows,
+  openWeekdays,
   resolveDayWindows,
   upsertDateOverride,
 } from './availability';
@@ -359,5 +360,41 @@ describe('AVAIL-03 — time off and ad-hoc blocks', () => {
     ).resolves.toBeDefined();
     // And the appointment is untouched — nothing is ever silently cancelled.
     expect(await prisma.appointment.count({ where: { status: 'booked' } })).toBe(1);
+  });
+});
+
+/**
+ * A-110 — which weekdays anybody is ever open, for the waitlist's "which
+ * days" checkboxes. The interesting cases are both boundaries: a business
+ * with no hours at all (a fresh install, where an empty answer would render
+ * an unfillable form), and a day only ONE stylist works (which is still a day
+ * somebody can be waiting for).
+ */
+describe('A-110 — the salon\'s open weekdays', () => {
+  it('falls back to all seven when nobody has set any hours yet', async () => {
+    expect(await openWeekdays(prisma, businessId)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('is the union across everybody, business-level windows included, ascending and distinct', async () => {
+    await businessHours(); // Tuesday, business level.
+    await providerHours(); // Tuesday again — Dana. Must not appear twice.
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId: otherProviderId, weekday: 6, open: '10:00', close: '16:00', endsNextDay: false },
+      STAFF,
+    );
+    // Only Priya works Saturday, and Saturday is still a day to wait for.
+    expect(await openWeekdays(prisma, businessId)).toEqual([2, 6]);
+  });
+
+  it("does not leak another business's days", async () => {
+    await providerHours();
+    const other = await prisma.business.create({ data: { name: 'Other Salon', timezone: 'America/Chicago' } });
+    await createWeeklyWindow(
+      prisma,
+      { businessId: other.id, providerId: null, weekday: 0, open: '10:00', close: '16:00', endsNextDay: false },
+      STAFF,
+    );
+    expect(await openWeekdays(prisma, businessId)).toEqual([2]);
   });
 });

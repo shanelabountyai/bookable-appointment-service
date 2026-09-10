@@ -649,8 +649,24 @@ test.describe('who was this? (A-068)', () => {
  * to dismiss the marker D-8 rests on.
  */
 test.describe("a no-show's time, given back (A-069)", () => {
-  /** Her appointment is in the PAST on the grid's own day, because a no-show
-   *  cannot be marked before it has started. */
+  /**
+   * Her appointment has STARTED on the grid's own day, because a no-show
+   * cannot be marked before it has.
+   *
+   * TWENTY minutes in, not forty, and the difference is A-109's length floor
+   * rather than a style choice. `/staff/opened` refuses a span too short to
+   * hold the shortest thing the salon sells — a fringe trim's 15-minute
+   * FOOTPRINT on the demo catalogue — and this fixture's remaining span is
+   * `startAt + 45 + 10` minus the moment the desk clicks release. At forty
+   * minutes in that is fifteen minutes, DEAD ON the floor, and `startAt` is
+   * floored to the minute so the row also loses a uniform 0-59 seconds before
+   * anything else happens: `Math.round` then tipped it to 14 about half the
+   * time and the last assertion below failed with the row simply absent.
+   * A LATENT COIN FLIP, green on the run that shipped it.
+   *
+   * Twenty minutes in leaves ~35, which is a real no-show and nowhere near
+   * the boundary. A test whose subject is not the bound must not sit on it.
+   */
   async function pastNoShow() {
     const prisma = new PrismaClient();
     try {
@@ -662,7 +678,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
       });
       // Floored to the minute: `appointment_instants_whole_minutes` refuses a
       // stray second, and `new Date()` always has one.
-      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - 40) * 60_000));
+      const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - 20) * 60_000));
       const appointment = await prisma.appointment.create({
         data: {
           businessId: business.id,

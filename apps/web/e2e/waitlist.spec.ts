@@ -13,6 +13,9 @@ import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wall
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 let DAY: string;
+/** A-110 — a day nobody works. All four stylists are Tue–Sat, so this is the
+ *  refusal WAIT-01 exists for rather than a book that happens to be full. */
+let SUNDAY: string;
 let ZONE: string;
 
 function at(time: string): Date {
@@ -79,6 +82,11 @@ test.beforeEach(async ({ page }) => {
       day = addDays(day, 1);
     } while (weekdayOf(day) !== 2); // Tuesday, same as the roster's regular hours.
     DAY = day;
+    let sunday = calendarDay(toLabel(fromDate(new Date()), zoneId(ZONE)).day);
+    do {
+      sunday = addDays(sunday, 1);
+    } while (weekdayOf(sunday) !== 0);
+    SUNDAY = sunday;
   } finally {
     await prisma.$disconnect();
   }
@@ -222,6 +230,109 @@ test.describe('the waitlist, staff half (A-023)', () => {
       await prisma.$disconnect();
     }
   }
+
+  /**
+   * A-110 — THE WAITLIST'S DOOR OUT OF THE BOOKING REFUSAL (WAIT-01, BOOK-04).
+   *
+   * The whole reason WAIT-01 exists is the sentence this panel says out loud,
+   * and `/staff/book` contained zero references to the waitlist: adding her
+   * meant leaving the screen and searching for the SAME client a second time,
+   * on a form whose every field had just been on it, with her on the phone.
+   *
+   * The assertions that define the item are on the OTHER side of the link —
+   * that the form arrived carrying what the panel already knew. A link that
+   * merely navigates is the nav item this already had.
+   */
+  test('carries a booking refusal onto the waitlist, prefilled', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let colourId: string;
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      await prisma.client.create({ data: { businessId: business.id, name: 'Beth Waits', phone: '5125550199' } });
+      // NOT the first service in the list. `Cut` is, so a form that ignored
+      // the prefill entirely would still show `Cut` selected and the
+      // assertion below would pass against no prefill at all.
+      colourId = (await prisma.service.findFirstOrThrow({ where: { name: 'Colour' } })).id;
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // "Anything Sunday? I don't mind who" (SVC-02) — and nobody works Sunday.
+    await page.goto(`/staff/book?provider=any&day=${SUNDAY}`);
+    // A WHOLE VISIT, in its order (VISIT-01) — a waitlist entry is ONE
+    // service, so the second one has to be said out loud rather than dropped.
+    // Anchored: "Cut & finish" is also on this list and `/^Cut/` takes both.
+    await page.getByRole('button', { name: /^Colour/ }).click();
+    await page.getByRole('button', { name: /^Cut45 min/ }).click();
+    await expect(page.getByText(/Nobody can take that on/)).toBeVisible();
+
+    // Named on the refusal screen, which is where the desk actually names her:
+    // the panel asks in BOOK-04's order and she is on the phone regardless.
+    await page.getByPlaceholder('Name or phone number').fill('Beth');
+    await page.getByRole('button', { name: /Beth Waits/ }).click();
+
+    await page.getByRole('link', { name: 'Put her on the list for this' }).click();
+    await expect(page).toHaveURL(/\/staff\/waitlist/);
+
+    // EVERY field the panel held, on the form — this is the item.
+    await expect(page.getByText('For Beth Waits')).toBeVisible();
+    await expect(page.getByLabel('Service')).toHaveValue(colourId);
+    await expect(page.getByText(/She also asked for Cut/)).toBeVisible();
+    await expect(page.getByLabel('From', { exact: true })).toHaveValue(SUNDAY);
+    await expect(page.getByLabel('To', { exact: true })).toHaveValue(SUNDAY);
+    // The day she actually asked about, checked — even though the salon is
+    // shut then, because that is the fact she rang with.
+    await expect(page.getByRole('checkbox', { name: 'sunday' })).toBeChecked();
+    // …and the ride-along: a day the salon is shut and nobody asked for is
+    // not offerable at all. Monday used to be, off a hard-coded seven, and an
+    // entry for Mondays only can never be matched by anything.
+    await expect(page.getByRole('checkbox', { name: 'monday' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Add to waitlist' }).click();
+    await expect(page.getByText('Added Beth Waits to the waitlist.')).toBeVisible();
+    await expect(page.getByText(/^Waiting \(1\)/)).toBeVisible();
+  });
+
+  /**
+   * A-110 — AN ENTRY LEAVES THE PANEL WHEN ITS OWN WINDOW CLOSES (WAIT-02).
+   *
+   * `expired` is in the enum and nothing has ever written it, so an entry
+   * whose `toDay` was in June sat on the September queue looking exactly like
+   * somebody to ring — while `matchFreedSlot` refused to match her. The unit
+   * tests prove the predicate; this proves the PAGE hands it the salon's own
+   * calendar day, which is the half a query cannot check itself.
+   */
+  test('a lapsed entry is off the standing queue', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const client = await prisma.client.create({
+        data: { businessId: business.id, name: 'Gone Bydays', phone: '5125550188' },
+      });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      // Written straight in: `createWaitlistEntry` refuses an inverted range
+      // and nothing else, so a window in the past is a row the product can
+      // and does produce — it just needs time to pass, which a test cannot
+      // spend.
+      await prisma.waitlistEntry.create({
+        data: {
+          businessId: business.id,
+          clientId: client.id,
+          serviceId: service.id,
+          providerIds: [],
+          fromDay: '2020-01-01',
+          toDay: '2020-03-01',
+          dayParts: [],
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto('/staff/waitlist');
+    await expect(page.getByText(/^Waiting \(0\)/)).toBeVisible();
+    await expect(page.getByText('Gone Bydays')).toHaveCount(0);
+  });
 
   test('has no accessibility violations', async ({ page }) => {
     await page.goto('/staff/waitlist');

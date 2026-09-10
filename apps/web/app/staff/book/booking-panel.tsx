@@ -18,6 +18,8 @@ import {
   staffOpenDays,
   staffSlotsFor,
 } from '@/lib/booking/staff-actions';
+import { WEEKDAY_TAGS } from '@bookable/core/waitlist';
+import { calendarDay, weekdayOf } from '@bookable/core/time';
 import { ClientPicker } from '@/components/client-picker';
 import { OpenDays } from '@/components/open-days';
 import { readableDay } from '@/lib/customer-format';
@@ -284,6 +286,45 @@ export function BookingPanel({
     }
   }
 
+  /**
+   * A-110 — "PUT HER ON THE LIST FOR THIS", FROM THE REFUSAL ITSELF.
+   *
+   * WAIT-01's whole reason to exist is the sentence two of these branches
+   * say out loud — "nobody can take that on Thursday" — and the waitlist had
+   * one door in (the nav) and none out. Adding her meant leaving this screen
+   * and searching for the SAME client a second time, on a form whose every
+   * field was on the screen just abandoned, with her still on the phone.
+   *
+   * A PREFILL, NOT A SECOND WRITE PATH: `addWaitlistEntry` is untouched and
+   * every field stays editable on the other side. She is still changing her
+   * mind mid-sentence, and a prefill that cannot be corrected is worse than
+   * none.
+   *
+   * The day goes across as BOTH ends of the range — she asked for Thursday,
+   * not for "some time this quarter" — plus the weekday itself, which is the
+   * fact that survives the desk widening the range to a month.
+   */
+  function waitlistHref() {
+    const params = new URLSearchParams();
+    if (client?.id) params.set('clientId', client.id);
+    // The whole visit in ITS order (VISIT-01). The entry is for the first;
+    // the form names the rest rather than dropping them silently.
+    for (const id of chosen) params.append('serviceId', id);
+    // "Anyone" here is the entry's own "none checked = any" — the same
+    // preference expressed on both screens, so it carries as absence.
+    if (!anyone && provider) params.append('providerIds', provider.id);
+    params.set('fromDay', day);
+    params.set('toDay', day);
+    params.append('dayParts', WEEKDAY_TAGS[weekdayOf(calendarDay(day))]);
+    return `/staff/waitlist?${params}`;
+  }
+
+  const waitlistLink = (
+    <Link href={waitlistHref()} className={`${secondary} self-start`}>
+      Put her on the list for this
+    </Link>
+  );
+
   function toggleService(id: string) {
     // ORDER MATTERS (VISIT-01): the buffers come from the ends, so "cut then
     // colour" is a different appointment from "colour then cut". Selection
@@ -451,6 +492,7 @@ export function BookingPanel({
               {/* A-106 — the day list moves the panel's own day (A-039), so
                   the times below it are the ones for the day just picked. */}
               <OpenDays days={openDays} onPick={changeDay} />
+              {waitlistLink}
             </div>
           ) : (
             <ul className="flex flex-wrap gap-2">
@@ -502,6 +544,7 @@ export function BookingPanel({
                     She is not working that day. Type a time below if you mean to book her anyway.
                   </p>
                   <OpenDays days={openDays} onPick={changeDay} />
+                  {waitlistLink}
                 </div>
               ) : (
                 <ul className="flex flex-wrap gap-2">

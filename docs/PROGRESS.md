@@ -3731,3 +3731,109 @@ catalogue already carries one.
   than the constraint refuses work the salon needs (CLAUDE.md), and the row
   already carries `providerActive` for the case where the offer has to go to
   somebody else.
+
+## A-110 — the waitlist had one door in and none out
+
+**WAIT-01, WAIT-02, BOOK-04.** `/staff/book`, `/staff/day` and `lib/booking/`
+contained **zero references to the waitlist**. So the exact moment WAIT-01
+exists for — *"Nobody can take that on Thursday"*, said out loud by
+`booking-panel.tsx` — offered nothing, and putting her on the list meant leaving
+the screen, opening the nav item, and **searching for the same client a second
+time** on a form whose every field had just been on the screen abandoned, with
+her still on the phone.
+
+**What it built.** Three things, and the first is the item.
+
+1. **"Put her on the list for this", on both refusals**, prefilled from what the
+   panel already holds: the client, the whole visit in its order, the stylist
+   she asked for (or nobody, when she said she did not mind who), and the day as
+   both ends of the range. **No second write path** — `addWaitlistEntry` is
+   untouched and every field stays editable on the other side, because she is
+   still changing her mind mid-sentence and a prefill that cannot be corrected
+   is worse than none.
+2. **An entry now expires with its own window.** `expired` has been in the enum
+   since A-023 and **nothing in this repo has ever written it**, while
+   `listWaitlistEntries` filtered on status alone — so an entry whose `toDay`
+   was in June sat on the September queue looking exactly like somebody to ring,
+   and `matchFreedSlot`, which has read `toDay` directly since it was built,
+   correctly refused to match her against anything that could still open up.
+   **Silently dead and visibly live**, and §8 of the master PRD promises the
+   opposite in writing.
+3. **Ride-along:** the "which days" checkboxes were the seven weekday names off
+   `WEEKDAY_TAGS`, so a client could be waitlisted for **Sunday and Monday
+   only** — the two days this salon is shut — and never be matched by anything,
+   ever, with nothing on any screen saying why. They are now built from
+   `openWeekdays`, the union of everybody's weekly windows.
+
+**What it decided.**
+
+- **Derived on every read, never a job.** A nightly sweep that stamped `expired`
+  is a second write path that eventually disagrees with the read (A-077's shape
+  for the lapsed call marks), and it would have to run immediately before every
+  one of these queries to be worth trusting anyway.
+- **`notExpiredOn` is the one copy of the closing edge, and it is deliberately
+  NOT the same predicate as "covers this day".** The listing must still show an
+  entry whose window opens next month — *not started* is not *lapsed*, and a
+  queue that hid her would lose every client who rang in September about
+  half-term. Only the closing edge is shared.
+- **Expiry qualifies `active` only.** A fulfilled entry stays readable however
+  long ago its window was; date-filtering history would make the status filter
+  lie about what the salon actually did last month.
+- **The day comes from the caller.** `listWaitlistEntries` takes `today` — the
+  business's own CalendarDay in the salon's zone, resolved by the page — so
+  nothing in the module reads a clock and nothing expires against the server's
+  idea of the date.
+- **A prefilled shut day is still shown.** `openWeekdays` decides what can be
+  *picked*; a weekday the prefill actually carries is rendered checked even when
+  the salon is closed then, because "she rang about that Monday" is a fact and a
+  checkbox that silently vanished would drop it without saying so.
+- **A visit is many services and an entry is one.** The panel refuses a whole
+  visit, so the link carries every service in VISIT-01's order: the first is
+  what the entry is for and the rest are **named on the form** rather than
+  dropped. Multi-service waitlist entries would be a schema change and are not
+  this item; what this item refuses to do is make a promise the matcher cannot
+  keep without saying so on screen.
+
+**The test that defines it is the equality, not either half.** A day-by-day walk
+across the window's closing edge asserting that whoever is on the queue that day
+is exactly whoever an hour freeing that day could be offered to. It was run
+against the real pre-fix asymmetry — the listing with no date predicate, the
+matcher keeping its own — and failed naming the day (`the two halves disagree
+about 2026-08-23`); the "not started" and "fulfilled" cases beside it passed,
+which is what makes it worth having. **A one-day window cannot see any of this**:
+on `fromDay === toDay === today` the wrong question and the right one return the
+same list, so the fixture's window is three weeks long.
+
+**And one e2e assertion was vacuous on its first green run.** `Cut` is the first
+service in the catalogue, so a form that ignored the prefill entirely would
+still have shown `Cut` selected and `toHaveValue` would have passed against no
+prefill at all. The spec now prefills `Colour`, which is not the default — and
+taps two services, so the "she also asked for" line is exercised by the same
+pass.
+
+**What the sweep caught on the way past, and it is not this item's code.** The
+A-069 e2e — *"offers the release beside the no-show, and puts the time on the
+freed list"* — failed on `/staff/opened` with the row simply absent, then passed
+in isolation, then failed again. **A latent coin flip A-109 shipped green.** Its
+fixture starts the no-show forty minutes ago on a 45-minute Cut with a
+ten-minute after-buffer, so the span the desk gives back is `startAt + 55` minus
+the moment of the click — **exactly fifteen minutes, dead on A-109's floor**
+(the fringe trim's 15-minute footprint, which is what `/staff/opened` now
+refuses to go under). `startAt` is floored to the whole minute, so the span also
+loses a uniform 0-59 seconds before anything else happens, and `Math.round` then
+tipped it to fourteen about half the time. The fixture now starts her twenty
+minutes in, leaving ~35: **a test whose subject is not the bound must not sit on
+it**, and the rule A-109 wrote down — that only a small positive value can
+expose a floor — has a mirror image, which is that every OTHER test must be kept
+away from the same value.
+
+**What it left behind.**
+
+- **A lapsed entry is invisible, not closeable.** Its row stays `active` in the
+  table forever and no screen offers to clear it. Deliberate: the status column
+  is not what the listing reads any more, so a stale row costs nothing but a
+  row. A "lapsed" section on the panel — *ring them, or remove them* — is a
+  real backlog row and it is not written yet.
+- **`openWeekdays` ignores date overrides.** A one-off open Sunday does not make
+  Sunday a day to stand waiting for. If a salon starts opening Sundays it sets a
+  weekly window, which is exactly what this reads.

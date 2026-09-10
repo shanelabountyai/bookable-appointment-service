@@ -144,11 +144,116 @@ describe('listWaitlistEntries', () => {
       dayParts: [],
     });
 
-    expect((await listWaitlistEntries(prisma, businessId)).map((e) => e.id)).toEqual([first.id, second.id]);
+    const today = '2026-08-15';
+    expect((await listWaitlistEntries(prisma, { businessId, today })).map((e) => e.id)).toEqual([first.id, second.id]);
 
     await setWaitlistEntryStatus(prisma, { businessId, entryId: first.id, status: 'fulfilled' });
-    expect((await listWaitlistEntries(prisma, businessId)).map((e) => e.id)).toEqual([second.id]);
-    expect((await listWaitlistEntries(prisma, businessId, 'fulfilled')).map((e) => e.id)).toEqual([first.id]);
+    expect((await listWaitlistEntries(prisma, { businessId, today })).map((e) => e.id)).toEqual([second.id]);
+    expect((await listWaitlistEntries(prisma, { businessId, today, status: 'fulfilled' })).map((e) => e.id)).toEqual([
+      first.id,
+    ]);
+  });
+
+  /**
+   * A-110 — AN ENTRY EXPIRES WITH ITS OWN WINDOW, AND THE TWO HALVES OF THE
+   * FEATURE MUST SAY SO TOGETHER.
+   *
+   * `expired` is in the enum and nothing has ever written it, so the standing
+   * queue showed an entry whose `toDay` was in June all through September —
+   * looking exactly like somebody to ring — while `matchFreedSlot` refused to
+   * match her against anything that could still open up. Silently dead and
+   * visibly live.
+   *
+   * THE ASSERTION THAT DEFINES THE ITEM IS THE EQUALITY, not either half on
+   * its own: this repo has now caught the same shape five times (A-093's map,
+   * checkpoint 6's `canSeat`, A-108's badge, A-109's floor), and "make them
+   * agree" only holds if a test says out loud that they do.
+   *
+   * A ONE-DAY WINDOW CANNOT SEE IT — on `fromDay === toDay === today` the
+   * wrong question and the right one return the same list — so the window
+   * here is three weeks long and the walk crosses its closing edge.
+   */
+  describe('expiry, derived from toDay (A-110)', () => {
+    // fromDay far enough back that `fromDay <= day` is never what decides an
+    // answer: the ONLY edge under test is the closing one.
+    const FROM = '2026-08-01';
+    const TO = '2026-08-22'; // a Saturday, and the last day she would take.
+
+    /** Cut, any stylist, any day-part: everything except the window itself is
+     *  satisfied, so a disagreement can only be the window. 60 freed minutes
+     *  against a 45-minute footprint fits with room to spare. */
+    const freedOn = (day: string) => ({
+      businessId,
+      providerId: danaId,
+      serviceId: cutId,
+      day: calendarDay(day),
+      time: wallTime('09:00'),
+      freedMinutes: 60,
+    });
+
+    async function waiting() {
+      return createWaitlistEntry(prisma, {
+        businessId,
+        clientId,
+        serviceId: cutId,
+        providerIds: [],
+        fromDay: FROM,
+        toDay: TO,
+        dayParts: [],
+      });
+    }
+
+    it('is on the queue up to and including its last day, and gone the day after', async () => {
+      const entry = await waiting();
+      const listedOn = async (today: string) =>
+        (await listWaitlistEntries(prisma, { businessId, today })).some((row) => row.id === entry.id);
+
+      expect(await listedOn('2026-08-21')).toBe(true);
+      // Inclusive: "up to Saturday the 22nd" includes Saturday the 22nd.
+      expect(await listedOn(TO)).toBe(true);
+      expect(await listedOn('2026-08-23')).toBe(false);
+      expect(await listedOn('2026-09-09')).toBe(false);
+    });
+
+    it('is still on the queue when its window has not opened yet', async () => {
+      const entry = await createWaitlistEntry(prisma, {
+        businessId,
+        clientId,
+        serviceId: cutId,
+        providerIds: [],
+        fromDay: '2026-10-01',
+        toDay: '2026-10-31',
+        dayParts: [],
+      });
+      // "Not started" is not "lapsed", and a queue that hid her would lose
+      // every client who rang in September about half-term.
+      expect((await listWaitlistEntries(prisma, { businessId, today: '2026-09-09' })).map((r) => r.id)).toEqual([
+        entry.id,
+      ]);
+    });
+
+    it('the queue and the matcher agree on every day across the closing edge', async () => {
+      const entry = await waiting();
+      for (const day of ['2026-08-20', '2026-08-21', TO, '2026-08-23', '2026-08-24', '2026-09-09']) {
+        const listed = (await listWaitlistEntries(prisma, { businessId, today: day })).some(
+          (row) => row.id === entry.id,
+        );
+        const matched = (await matchFreedSlot(prisma, freedOn(day))).some((row) => row.id === entry.id);
+        // The desk works ONE day at a time: whoever is on the queue that day
+        // is exactly whoever an hour freeing that day could be offered to.
+        expect(matched, `the two halves disagree about ${day}`).toBe(listed);
+      }
+    });
+
+    it('a fulfilled entry stays readable however long ago its window was', async () => {
+      const entry = await waiting();
+      await setWaitlistEntryStatus(prisma, { businessId, entryId: entry.id, status: 'fulfilled' });
+      // Expiry qualifies `active` only. Date-filtering history would make the
+      // status filter lie about what the salon actually did last month.
+      expect(
+        (await listWaitlistEntries(prisma, { businessId, today: '2026-12-25', status: 'fulfilled' })).map((r) => r.id),
+      ).toEqual([entry.id]);
+    });
   });
 });
 

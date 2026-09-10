@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listProviders, listServices } from '@bookable/db/settings';
 import { listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
-import { listCallMarks } from '@bookable/db/clients';
-import { instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { openWeekdays } from '@bookable/db/availability';
+import { findClient, listCallMarks } from '@bookable/db/clients';
+import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
@@ -34,8 +35,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
     select: { timezone: true },
   });
 
-  const [entries, providers, services] = await Promise.all([
-    listWaitlistEntries(prisma, staff.businessId),
+  // A-110. The salon's own calendar day, in the salon's zone — what an entry
+  // expires against. Never the server's.
+  const today = toLabel(fromDate(new Date()), zoneId(business.timezone)).day;
+
+  const [entries, providers, services, weekdays] = await Promise.all([
+    listWaitlistEntries(prisma, { businessId: staff.businessId, today }),
     // A-098 — THE WHOLE ROSTER, then narrowed at the one place that needs it.
     //
     // This read was `includeInactive: false`, and it is used for three
@@ -47,7 +52,21 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
     // instead of her name against every waiting client who had asked for her.
     listProviders(prisma, staff.businessId, true),
     listServices(prisma, staff.businessId, false),
+    // A-110 — the days somebody could actually be waiting for. The checkbox
+    // list was the seven weekday names, so "Sunday and Monday only" was an
+    // offerable preference at a salon that shuts on both.
+    openWeekdays(prisma, staff.businessId),
   ]);
+
+  // A-110 — WHAT THE BOOKING PANEL ALREADY HAD IN ITS HANDS.
+  //
+  // The refusal this list exists for is on `/staff/book`, and reaching here
+  // from it used to mean searching for the same client a second time on a
+  // form whose every field was on the screen just abandoned, with her still
+  // on the phone. `addWaitlistEntry` is untouched — this is a prefill, not a
+  // second write path.
+  const prefill = readPrefill(params);
+  const prefillClient = prefill.clientId ? await findClient(prisma, staff.businessId, prefill.clientId) : null;
 
   const freed = freedSlotFrom(params, business.timezone, providers, services);
   const matches = freed ? await matchFreedSlot(prisma, { ...freed.query, businessId: staff.businessId }) : null;
@@ -148,7 +167,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
 
       {/* The one question here that IS about bookability: who a new waiting
           client may ask for. A stylist who has left is not on that list. */}
-      <EntryForm services={services} providers={providers.filter((p) => p.active)} />
+      <EntryForm
+        services={services}
+        providers={providers.filter((p) => p.active)}
+        weekdays={weekdays}
+        prefill={{ ...prefill, client: prefillClient }}
+      />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
@@ -232,5 +256,38 @@ function freedSlotFrom(
     key,
     appointmentId,
     query: { providerId, serviceId, day: label.day, time: label.time, freedMinutes: minutes },
+  };
+}
+
+/**
+ * A-110 — the booking panel's refusal, carried across as form defaults.
+ *
+ * `serviceId` is deliberately the SAME parameter the freed-slot link above
+ * reads: it means the same thing on both doors — the service in question —
+ * and prefilling the form with it is right either way. The freed-slot reader
+ * needs `at` and `minutes` as well, so a prefill link can never be mistaken
+ * for one.
+ *
+ * Everything here is optional and every field stays editable: a prefill that
+ * refuses to be corrected is worse than no prefill, because the desk is
+ * reading it off a client who is changing her mind mid-sentence.
+ */
+function readPrefill(params: Awaited<PageProps<'/staff/waitlist'>['searchParams']>) {
+  const one = (key: string) => (typeof params[key] === 'string' ? (params[key] as string) : null);
+  const many = (key: string) => {
+    const value = params[key];
+    return typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+  };
+  return {
+    clientId: one('clientId'),
+    // MANY, not one: the booking panel refuses a whole VISIT, and a visit can
+    // be "colour then cut". A waitlist entry is one service, so the first is
+    // the default and the rest are said out loud on the form rather than
+    // silently dropped.
+    serviceIds: many('serviceId'),
+    providerIds: many('providerIds'),
+    fromDay: one('fromDay'),
+    toDay: one('toDay'),
+    dayParts: many('dayParts'),
   };
 }

@@ -390,3 +390,30 @@ export async function listDateOverrides(db: Db, businessId: string, providerId: 
     include: { windows: true },
   });
 }
+
+/**
+ * A-110 — WHICH WEEKDAYS THIS SALON IS EVER OPEN, `0` = Sunday.
+ *
+ * The waitlist's "which days" checkboxes were the seven weekday names off
+ * `WEEKDAY_TAGS`, so a client could be put on the list for Sunday and Monday
+ * only — the two days this salon is shut — and `matchesDayParts` would then
+ * correctly refuse her against every slot that ever freed, forever, with
+ * nothing on any screen saying why.
+ *
+ * ANYBODY'S window counts: if one stylist works Sundays, Sunday is a day
+ * somebody can be waiting for. Date overrides that open a normally-shut day
+ * are deliberately not consulted — a standing waitlist preference is about
+ * the weekly pattern, and a one-off open Sunday is not a day to wait for.
+ */
+export async function openWeekdays(db: Db, businessId: string): Promise<number[]> {
+  const rows = await db.weeklyWindow.findMany({
+    where: { businessId },
+    distinct: ['weekday'],
+    select: { weekday: true },
+    orderBy: { weekday: 'asc' },
+  });
+  // A business with no hours set yet is not a business that is shut every
+  // day — it is one nobody has configured, and hiding the whole fieldset
+  // there would make the form silently unfillable on a fresh install.
+  return rows.length ? rows.map((row) => row.weekday) : [0, 1, 2, 3, 4, 5, 6];
+}

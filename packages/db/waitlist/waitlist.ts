@@ -70,15 +70,46 @@ function shape(row: RawRow): WaitlistEntryRow {
   };
 }
 
+/**
+ * A-110 — WAIT-02's EXPIRY, AND IT IS THE ONE COPY OF IT.
+ *
+ * `expired` is in the enum and nothing in this repo has ever written it, so
+ * an entry whose own `toDay` was in June sat on the September queue looking
+ * exactly like somebody to ring — while `matchFreedSlot` below, which has
+ * read `toDay` directly since A-023, correctly refused to match her. Silently
+ * dead and visibly live: two halves of one feature answering "is this entry
+ * still open?" two different ways, which is this repo's most-repeated defect.
+ *
+ * DERIVED ON EVERY READ, NEVER STAMPED BY A JOB. A job is a second write path
+ * that eventually disagrees with the read (A-077's shape for the lapsed call
+ * marks), and it would have to run before every one of these queries to be
+ * worth trusting anyway.
+ *
+ * NOT the same predicate as "covers this day" — the listing must still show
+ * an entry whose window opens next month, so only the closing edge is shared.
+ */
+const notExpiredOn = (day: string) => ({ toDay: { gte: day } });
+
 /** The live queue — everything staff need to work it, oldest first (first
- *  come, first offered, whenever someone gets to calling). */
+ *  come, first offered, whenever someone gets to calling).
+ *
+ *  `today` is the business's own calendar day, passed in: nothing here reads
+ *  a clock, and the day this expires against is a CalendarDay in the salon's
+ *  zone, never the server's. */
 export async function listWaitlistEntries(
   db: Db,
-  businessId: string,
-  status: WaitlistStatus = 'active',
+  args: { businessId: string; today: string; status?: WaitlistStatus },
 ): Promise<WaitlistEntryRow[]> {
+  const status = args.status ?? 'active';
   const rows = await db.waitlistEntry.findMany({
-    where: { businessId, status },
+    where: {
+      businessId: args.businessId,
+      status,
+      // Only an `active` entry can lapse. A fulfilled one stays fulfilled
+      // however long ago its window was, and hiding it would make the status
+      // filter lie about history.
+      ...(status === 'active' ? notExpiredOn(args.today) : {}),
+    },
     orderBy: { createdAt: 'asc' },
     select: rowSelect,
   });
@@ -183,7 +214,8 @@ export async function matchFreedSlot(db: Db, freed: FreedSlot): Promise<MatchedE
       status: 'active',
       serviceId: freed.serviceId,
       fromDay: { lte: freed.day },
-      toDay: { gte: freed.day },
+      // A-110 — the same closing edge the standing queue now filters on.
+      ...notExpiredOn(freed.day),
       OR: [{ providerIds: { isEmpty: true } }, { providerIds: { has: freed.providerId } }],
     },
     select: {
