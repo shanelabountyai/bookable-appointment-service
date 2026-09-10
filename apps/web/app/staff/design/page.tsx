@@ -321,17 +321,17 @@ const DAYS = [
   },
   {
     heading: 'The day — one stylist',
-    note: 'What the desk filters to on a quiet Monday, and what a stylist opens on her own phone.',
+    note: 'What the desk filters to on a quiet Monday, and what a stylist opens on their own phone.',
     model: ONE_STYLIST,
   },
   {
     heading: 'The day — a column forty minutes behind',
-    note: 'The composition this component is riskiest in. Everyone who has not started yet carries BOTH times — the one on her confirmation and the one she is likely to be seen at. The visit already in the chair carries one, because a projected start on it would not be late, it would be wrong.',
+    note: 'The composition this component is riskiest in. Everyone who has not started yet carries BOTH times — the one on their confirmation and the one they are likely to be seen at. The visit already in the chair carries one, because a projected start on it would not be late, it would be wrong.',
     model: RUNNING_FORTY_LATE,
   },
   {
     heading: 'The day — a stylist off',
-    note: 'Her column is still drawn. A missing column reads as a missing stylist rather than a day off — and time off over a working column is drawn as a band, because AVAIL-05 says a collision is surfaced for a human rather than hidden.',
+    note: 'Their column is still drawn. A missing column reads as a missing stylist rather than a day off — and time off over a working column is drawn as a band, because AVAIL-05 says a collision is surfaced for a human rather than hidden.',
     model: A_STYLIST_OFF,
   },
   {

@@ -253,7 +253,7 @@ test.describe('the staff bypass (D-27)', () => {
     await page.getByLabel('Find a client by name or phone number').fill('0101');
     // The flag is on the picker itself — the moment the desk is choosing her,
     // not one screen later.
-    await expect(page.getByText(/⚑ 3 no-shows in the last 12 months\. She cannot book online/)).toBeVisible();
+    await expect(page.getByText(/⚑ 3 no-shows in the last 12 months\. Cannot book online/)).toBeVisible();
     await page.getByRole('button', { name: /Ada Chen/ }).click();
 
     // One tap. No reason to type: the desk is on the phone with her (D-27).

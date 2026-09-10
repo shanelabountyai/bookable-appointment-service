@@ -263,7 +263,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
             it goes through the existing override. */}
         {gapMinutes > 0 ? (
           <Row label="Free inside it">
-            {gapMinutes} min of processing time — she is not needed for it
+            {gapMinutes} min of processing time — the stylist is not needed for it
           </Row>
         ) : null}
         {/* A-046 (RES-01, D-30). WHERE she is — the axis that has been
@@ -314,7 +314,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
       {editable && serviceChoices.length > 0 ? (
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-            What she is having
+            What they are having
           </h2>
           <VisitPanel
             appointmentId={detail.id}
@@ -391,7 +391,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-          Was she told?
+          Was the client told?
         </h2>
         {detail.notifications.length === 0 ? (
           <p className="text-sm text-zinc-600 dark:text-zinc-400">Nothing has been sent about this appointment.</p>

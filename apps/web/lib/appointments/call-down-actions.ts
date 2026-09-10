@@ -39,7 +39,7 @@ export async function recordAttempt(_previous: AttemptState, formData: FormData)
   if (outcome === 'clear') {
     await clearCallAttempt(prisma, { businessId: staff.businessId, appointmentId });
     revalidatePath('/staff/call-down');
-    return { ok: true, message: 'Cleared — she is back on the list.' };
+    return { ok: true, message: 'Cleared — they are back on the list.' };
   }
 
   if (outcome !== 'no_answer' && outcome !== 'left_message') {
@@ -59,5 +59,5 @@ export async function recordAttempt(_previous: AttemptState, formData: FormData)
   // refusal rather than an error.
   return attempt
     ? { ok: true, message: 'Noted.' }
-    : { ok: false, message: 'She is no longer on this list — reload to see where she went.' };
+    : { ok: false, message: 'They are no longer on this list — reload to see where they went.' };
 }

@@ -120,8 +120,8 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
         {slotLabel ? <p className="mt-1 text-zinc-600 dark:text-zinc-400">{slotLabel}</p> : null}
         {droppedServices > 0 ? (
           <p className="mt-1 text-amber-800 dark:text-amber-300">
-            ⚠ {droppedServices} service{droppedServices === 1 ? '' : 's'} from her last visit{' '}
-            {droppedServices === 1 ? 'is' : 'are'} no longer available with this stylist. Check what she is having.
+            ⚠ {droppedServices} service{droppedServices === 1 ? '' : 's'} from the last visit{' '}
+            {droppedServices === 1 ? 'is' : 'are'} no longer available with this stylist. Check what they are having.
           </p>
         ) : null}
       </div>
@@ -145,7 +145,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
                here, her clients are still booked, and the actionable screen is
                the one that works them — not this one. */
             <>
-              {providerRow.displayName} is off the roster — no new bookings with her. Her clients are{' '}
+              {providerRow.displayName} is off the roster — no new bookings with them. Their clients are{' '}
               <Link href={`/staff/conflicts?day=${day}`} className="underline">still booked</Link>.
             </>
           ) : (

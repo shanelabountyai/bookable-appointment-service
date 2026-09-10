@@ -104,7 +104,7 @@ export function VisitPanel({
               <p className="text-sm text-zinc-700 dark:text-zinc-300">
                 {state.reasons?.length
                   ? `${state.reasons.map(readableReason).join('; ')}.`
-                  : 'That time is outside her working hours.'}
+                  : 'That time is outside their working hours.'}
               </p>
               {/* BOOK-05, and the reason is the ceremony — the same words and
                   the same shape the booking panel uses. */}
@@ -133,7 +133,7 @@ export function VisitPanel({
           <input name="reason" className={field} placeholder="Added at the chair" />
         </label>
         <button type="submit" disabled={pending || unchanged || chosen.length === 0} className={primary}>
-          {pending ? 'Changing…' : 'Change what she is having'}
+          {pending ? 'Changing…' : 'Change what they are having'}
         </button>
       </div>
     </form>

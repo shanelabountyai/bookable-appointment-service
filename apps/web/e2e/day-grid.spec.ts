@@ -546,7 +546,7 @@ test.describe('what is still open (A-076)', () => {
     await expect(page.getByText(/\$140\.00 of work the week's figures cannot see/)).toBeVisible();
     await expect(page.getByText('never checked in')).toBeVisible();
 
-    await page.getByRole('button', { name: 'She came' }).click();
+    await page.getByRole('button', { name: 'Came' }).click();
     await expect(page.getByText('Nothing left open — every appointment that has been and gone has an answer against it.')).toBeVisible();
 
     const row = await statusOf(appointment.id);
@@ -562,7 +562,7 @@ test.describe('what is still open (A-076)', () => {
     const appointment = await unclosed('Nora Never');
 
     await page.goto('/staff/unfinished');
-    await page.getByRole('button', { name: "She didn't" }).click();
+    await page.getByRole('button', { name: "Didn't come" }).click();
     await expect(page.getByText(/Nothing left open/)).toBeVisible();
 
     expect((await statusOf(appointment.id)).status).toBe('no_show');

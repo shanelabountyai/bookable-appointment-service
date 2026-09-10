@@ -82,7 +82,7 @@ export function WhoWasThis({
             button would have silently submitted whatever the picker held. */}
         {current ? (
           <button type="submit" name="detach" value="1" disabled={pending} className={secondary}>
-            This wasn’t her — take it off the record
+            This wasn’t them — take it off the record
           </button>
         ) : null}
       </div>

@@ -321,7 +321,7 @@ export function BookingPanel({
 
   const waitlistLink = (
     <Link href={waitlistHref()} className={`${secondary} self-start`}>
-      Put her on the list for this
+      Put them on the list for this
     </Link>
   );
 
@@ -447,7 +447,7 @@ export function BookingPanel({
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-          What is she having?
+          What are they having?
         </legend>
         <ul className="flex flex-wrap gap-2">
           {services.map((service) => {
@@ -541,7 +541,7 @@ export function BookingPanel({
               {slots.length === 0 ? (
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    She is not working that day. Type a time below if you mean to book her anyway.
+                    They are not working that day. Type a time below if you mean to book them anyway.
                   </p>
                   <OpenDays days={openDays} onPick={changeDay} />
                   {waitlistLink}
@@ -651,7 +651,7 @@ export function BookingPanel({
       {walkIn ? (
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-            Who can take her?
+            Who can take them?
           </legend>
           {chosen.length === 0 ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
@@ -694,7 +694,7 @@ export function BookingPanel({
 
               {answer.squeeze.length > 0 ? (
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium">Or squeeze her in:</p>
+                  <p className="text-sm font-medium">Or squeeze them in:</p>
                   <ul className="flex flex-wrap gap-2">
                     {answer.squeeze.map((option) => {
                       const selected = pick?.providerId === option.providerId && pick?.at === option.at;
@@ -772,7 +772,7 @@ export function BookingPanel({
             </label>
           </div>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            1 books just this one. 6 books her next six, this one included — and any week that will not take her is
+            1 books just this one. 6 books the next six, this one included — and any week that will not take them is
             listed rather than skipped.
           </p>
         </fieldset>
@@ -780,7 +780,7 @@ export function BookingPanel({
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-          Who is she?
+          Who is it for?
         </legend>
 
         {/* A-068 lifted this into `components/client-picker.tsx`: the
@@ -815,7 +815,7 @@ export function BookingPanel({
                 : // No reasons means the engine never considered this time a
                   // candidate — it is outside her working hours entirely,
                   // which is BOOK-05's first override case, not a dead end.
-                  'That time is outside her working hours.'}
+                  'That time is outside their working hours.'}
             </p>
           ) : null}
 

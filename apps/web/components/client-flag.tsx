@@ -34,7 +34,7 @@ export function flagSentence(reliability: ClientReliability): string | null {
   // the sentence that gets a long-standing client refused for something that
   // happened four years ago.
   const counted = `${parts.join(' and ')} in the last 12 months`;
-  return reliability.selfServeBlocked ? `${counted}. She cannot book online — the desk can.` : counted;
+  return reliability.selfServeBlocked ? `${counted}. Cannot book online — the desk can.` : counted;
 }
 
 export function ClientFlag({ reliability }: { reliability: ClientReliability | undefined }) {

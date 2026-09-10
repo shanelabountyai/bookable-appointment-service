@@ -14,15 +14,15 @@
  * queries in the first place.
  */
 const REASONS: Record<string, string> = {
-  'outside-working-window': 'outside her working hours',
-  'inside-break': 'during her break',
+  'outside-working-window': 'outside their working hours',
+  'inside-break': 'during their break',
   'crosses-window-close': 'it would run past closing',
-  'overlaps-booking': 'she already has a client then',
+  'overlaps-booking': 'they already have a client then',
   'overlaps-buffer': 'it runs into another appointment’s buffer',
-  'overlaps-time-off': 'she is on time off',
+  'overlaps-time-off': 'they are on time off',
   'overlaps-block': 'that time is blocked out',
-  'provider-running-late': 'she is running behind then',
-  'no-resource-free': 'every chair is taken then — she is free, the room is not',
+  'provider-running-late': 'they are running behind then',
+  'no-resource-free': 'every chair is taken then — they are free, the room is not',
   'in-the-past': 'that time has passed',
   'inside-lead-time': 'inside the booking lead time',
   'nonexistent-local-time': 'that clock time does not exist that day',

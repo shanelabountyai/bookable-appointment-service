@@ -85,7 +85,7 @@ export function StatusControls({
         Reason (needed for some changes)
         <input
           name="reason"
-          placeholder="She walked out / marked wrong yesterday"
+          placeholder="Walked out / marked wrong yesterday"
           className="rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
         />
       </label>
@@ -122,7 +122,7 @@ export function StatusControls({
           disabled={pending}
           className="self-start rounded-md border border-dashed border-zinc-400 px-3 py-2 text-left text-sm disabled:opacity-60 dark:border-zinc-600"
         >
-          She gave us proper notice, or this one&apos;s on us — don&apos;t count it late
+          Proper notice given, or this one&apos;s on us — don&apos;t count it late
           <span className="mt-0.5 block text-xs text-zinc-600 dark:text-zinc-400">
             Needs a reason. Recorded as overruling the cutoff.
           </span>
@@ -174,7 +174,7 @@ function ReleasePanel({
     return (
       <div className="flex flex-col gap-2">
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Her remaining time went back on the market at {release.releasedLabel}. It is on{' '}
+          The remaining time went back on the market at {release.releasedLabel}. It is on{' '}
           <Link href="/staff/opened" className="underline underline-offset-4">
             What&apos;s opened up
           </Link>
@@ -237,7 +237,7 @@ function UnreleasePanel({ appointmentId }: { appointmentId: string }) {
     <form action={action} className="flex flex-col gap-2 text-sm">
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <button type="submit" disabled={pending} className={`${buttonClass} self-start`}>
-        {pending ? 'Putting it back…' : 'She’s here after all — put her time back on the book'}
+        {pending ? 'Putting it back…' : 'They’re here after all — put the time back on the book'}
       </button>
       <p aria-live="polite" className="text-zinc-700 dark:text-zinc-300">
         {state.message ?? ''}

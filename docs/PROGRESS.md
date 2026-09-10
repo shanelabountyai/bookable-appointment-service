@@ -3839,3 +3839,91 @@ away from the same value.
 - **`openWeekdays` ignores date overrides.** A one-off open Sunday does not make
   Sunday a day to stand waiting for. If a salon starts opening Sundays it sets a
   weekly window, which is exactly what this reads.
+
+## A-111 — the product assumed everybody was a woman, on the verbs
+
+**What it built.** Nothing, in the sense of features: **89 strings rewritten
+across 36 files, and one test that makes the next one fail.** `/staff/unfinished`
+is the screen the desk works at close of business, and under every one of its
+124 rows were two buttons reading **"She came"** and **"She didn't"**. The same
+voice was on twelve more staff surfaces — the day grid's *"Told her"*, the
+booking panel's *"Who is she?"* and *"What is she having?"*, the appointment
+detail's *"Was she told?"*, the end-of-series panel's *"do not count it against
+her"* — and, worst of the set because the desk reads it **down the phone to the
+person it is about**, the client record's *"She cannot book online — the desk
+can."* Two of the thirteen seeded clients are men; Tom Byrne and Sam Okafor hold
+**171 of the 718 appointments** and a quarter of the rows on that close-out
+screen. The product does not store, ask for, or infer gender for anybody.
+
+**What it decided, against the backlog row's own scope (D-52).** The row said
+*"this is the client copy only — 'her working hours' about Dana or Tess is
+correct and stays"*. **It is not correct.** The product does not store provider
+gender either, and `setup-seed.ts` seeds **Marcus**, one stylist in four.
+`scheduling-words.ts` — the ONE list of engine refusal reasons every staff
+surface renders, which is the whole point of it existing — said *"outside her
+working hours"*, *"she is on time off"*, *"she already has a client then"*,
+*"she is running behind then"*, and *"every chair is taken then — she is free,
+the room is not"*. That is ~20 of the 89 strings and by far the widest surface,
+because those six sentences are the words every refusal in the product speaks
+with. Sweeping the client half alone would have produced an exemption list
+holding exactly the strings that are wrong about him — CLAUDE.md's A-096 rule,
+*patching the rooms that noticed leaves the door open*, arriving as a config
+file. Both axes went; there is no allowlist.
+
+**The guard: `apps/web/lib/voice.test.ts`.** It parses every `.ts`/`.tsx` under
+`apps/web/app`, `apps/web/components`, `apps/web/lib`, `packages/core` and
+`packages/db` with the TypeScript scanner and fails on `she|her|hers|herself|
+he|him|his|himself` in a **string literal, a template chunk, or JSX text** —
+233 files, and it names the file, the line and the sentence. It parses rather
+than greps for one reason: this codebase narrates in comments constantly (764
+raw pronoun hits repo-wide, of which only 90 were ever rendered), and comments
+are not AST nodes, so they fall out for free. Test files and e2e specs are
+excluded — a test title narrating *"she books at 09:00"* about a named fictional
+client never reaches a screen.
+
+**Why a test and not lint.** `no-restricted-syntax` with a `Literal[value=/…/]`
+selector does the detection in eight lines and fires in the editor, and it was
+the first choice. It lost on **merge semantics**: ESLint rule config REPLACES
+rather than merges, so covering both eslint configs while exempting test
+narration and keeping `packages/core/time`'s existing carve-out meant four
+override blocks each re-listing the D-3 axis selectors — a shape where the next
+person to add a block silently drops one set, which is the same class of defect
+as the thing being guarded. One file was cheaper and says what it means.
+
+**Two things the guard does that a green run cannot fake** — A-096's rule, that
+a green run over nothing looks exactly like a green run. It asserts the scan
+**reached real files** (>150, and `close-out-buttons.tsx` by name), and it runs
+the detector against a **synthetic probe** carrying `<p title="She came">She
+came</p>` under a comment saying the same words, asserting exactly two hits and
+not three. A path typo or a scanner that walked into the comments would fail on
+its own terms rather than passing quietly. Verified the other direction too:
+restoring `She came` fails the suite with
+`apps/web/app/staff/unfinished/close-out-buttons.tsx:32  She came`.
+
+**What the sweep broke on the way past, and it is not a copy bug.** The
+conflicts screen renders a keep form and a cancel form on the same row, each
+with a "don't tell them" checkbox. The keep one already read *"I've already rung
+them — don't text"*; the cancel one read *"Already rung her"*. Neutralising the
+second made it a **SUBSTRING of the first**, and Playwright's `getByLabel`
+matches on substring, so the spec's locator resolved to two checkboxes and
+failed in 432ms. That is not a test problem — one accessible name contained
+inside another is ambiguous to anybody navigating by label, which is the exact
+complaint the comment forty lines above it already makes about the three
+identically-named "Why?" fields. The cancel box now reads *"I've already rung
+them — don't send the cancellation"*: parallel to its sibling, distinct from it,
+and it says which message it suppresses. **A rename can collide with copy that
+was already correct** — the pronoun scan cannot see that, because neither string
+has a pronoun in it afterwards.
+
+**What it left behind.**
+
+- **Comments are untouched, deliberately.** 674 of the 764 raw hits are prose
+  in headers and inline notes narrating a specific scenario — *"she walks in at
+  09:05"*. That is a person telling a story about one imagined client, not the
+  product addressing a real one, and rewriting it is churn with no reader.
+- **e2e `overrideReason` fixtures still say "squeeze her in".** Test-authored
+  data is data; the shipped copy of the same sentence, in
+  `app/staff/design/day-fixtures.ts`, was rewritten because the design gallery
+  is part of the built product.
+- **The seeded client list is still eleven women and two men** — the second half
+  of **A-113**, which is what makes a demo walk able to hear this at all.

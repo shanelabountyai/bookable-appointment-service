@@ -24,8 +24,8 @@ export default async function ResourcesPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">The room</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Chairs, basins, rooms — whatever a client occupies that is not a person. A client holds one for her whole
-          visit including any developing time, so a colour keeps its chair through the hour her stylist is with somebody
+          Chairs, basins, rooms — whatever a client occupies that is not a person. A client holds one for their whole
+          visit including any developing time, so a colour keeps its chair through the hour their stylist is with somebody
           else. Which services need one is set on each service.
         </p>
       </div>

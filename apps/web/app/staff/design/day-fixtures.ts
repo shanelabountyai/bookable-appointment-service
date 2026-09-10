@@ -301,7 +301,7 @@ export const A_DOUBLE_BOOKED_HOUR = model({
           title: 'Ruth Adeyemi',
           detail: 'Colour',
           isOverride: true,
-          overrideReason: 'Dana said to squeeze her in — mother of the bride.',
+          overrideReason: 'Dana said to squeeze them in — mother of the bride.',
         }),
         chip({ top: 210, minutes: 45, startTime: '12:30', title: 'Tom Byrne', detail: 'Root touch-up' }),
       ],

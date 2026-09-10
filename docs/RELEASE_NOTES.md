@@ -3903,3 +3903,55 @@ while looking like flakiness. The fixture now sits nowhere near the boundary.
 The rule the previous item wrote down — *only a small positive value can expose
 a floor* — has a mirror image: every test whose subject is **not** the bound has
 to be kept away from it.
+
+## A-111 — the software assumed every customer was a woman
+
+Under every row of the screen the front desk works at close of business were two
+buttons: **"She came"** and **"She didn't"**. A quarter of the appointments on
+that screen belong to men. The same voice ran through twelve more staff screens
+— *"Who is she?"*, *"What is she having?"*, *"Was she told?"* — and the worst of
+them is the one a receptionist reads out loud, down the phone, to the person it
+is about: *"She cannot book online — the desk can."* The product has never
+stored, asked for, or inferred anybody's gender. It was asserting one anyway,
+248 times on a single screen.
+
+**Nothing caught it, and nothing could.** It compiles. All 1,590 unit tests and
+305 browser tests passed. Automated accessibility scanning does not read
+English. The internal design gallery rendered the same strings and presented
+them as correct. Eight demo walk-throughs went past it.
+
+**The backlog item was wrong about its own scope, and that was the interesting
+part.** It said to fix the copy about customers only, because *"her working
+hours"* about a stylist is correct. It is not: the software does not store
+stylist gender either, and one of the four in the sample salon is a man. The
+single worst offender turned out to be the shared list of reasons the scheduler
+gives when it refuses a time — *"outside her working hours"*, *"she is on time
+off"*, *"she is running behind then"* — which is not one screen but the voice
+every refusal in the product speaks with. Fixing only the customer half would
+have required an exceptions list containing precisely the sentences that were
+wrong about him. Both halves went. There are no exceptions.
+
+**89 sentences across 36 files, and almost every rewrite is shorter**: *Came* /
+*Didn't come*, *This wasn't them*, *Was the client told?*, *Put the time back on
+the book*.
+
+**The part that outlives the fix.** A test now reads every string the product
+can put in front of a human — 233 files, parsed rather than searched, so the
+tens of thousands of words of developer commentary are correctly ignored — and
+fails the build on any gendered pronoun, naming the file, the line and the
+sentence. It also proves it is working: it checks that it actually reached the
+files it claims to scan, and runs itself against a planted copy of the original
+defect sitting underneath a comment containing the same words, confirming it
+catches one and not the other. A guard that quietly scans nothing looks exactly
+like a guard that passes.
+
+**And one thing the rewrite broke, which the guard could never have seen.** On
+the screen that handles a stylist calling in sick, two checkboxes sit side by
+side — one on the "keep the appointment" form, one on the "cancel it" form —
+both meaning *I have already phoned them, don't send a message*. The first
+already read *"I've already rung them — don't text"*. Neutralising the second
+turned it into *"Already rung them"*, which is a **substring** of the first, and
+one control's name sitting inside another's is ambiguous to anyone navigating
+the page by label rather than by sight. It now says which message it suppresses.
+Neither string contains a pronoun, so no scan for pronouns could have found it:
+a rename can collide with wording that was already correct.

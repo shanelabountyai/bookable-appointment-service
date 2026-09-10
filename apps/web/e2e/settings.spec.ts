@@ -135,7 +135,7 @@ test.describe('business settings & providers (A-025)', () => {
     await page.getByRole('button', { name: 'Deactivate' }).click();
 
     // Refused with the LIST, not a bare count — client, phone, date, service.
-    await expect(page.getByText('1 future appointment is booked with her.')).toBeVisible();
+    await expect(page.getByText('1 future appointment is booked with them.')).toBeVisible();
     await expect(page.getByText('Ada Chen')).toBeVisible();
     await expect(page.getByText('5125550101')).toBeVisible();
     await expect(page.getByText('Not taking bookings')).toHaveCount(0);

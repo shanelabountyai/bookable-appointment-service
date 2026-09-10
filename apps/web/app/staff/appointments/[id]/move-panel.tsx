@@ -129,7 +129,7 @@ export function MovePanel({
         ) : times.length === 0 ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-ink-muted">
-              {looked ? 'Nothing free that day for this visit.' : 'Pick a day to see her free times.'}
+              {looked ? 'Nothing free that day for this visit.' : 'Pick a day to see free times.'}
             </p>
             {/* Picking a day here re-runs `look`, so the times below are the
                 ones for the day just chosen — the list is a shortcut into the

@@ -75,8 +75,8 @@ export default async function OpenedPage() {
           <div>
             <h2 className="text-section font-semibold tracking-tight">Nobody came &mdash; still blocked</h2>
             <p className="mt-1 text-body text-ink-muted">
-              A no-show keeps her time on the book, which is right for the record. Giving the rest of it back is a
-              decision, never a timer &mdash; she may be eight minutes away.
+              A no-show keeps the time on the book, which is right for the record. Giving the rest of it back is a
+              decision, never a timer &mdash; they may be eight minutes away.
             </p>
           </div>
           <ul className="flex flex-col gap-3">

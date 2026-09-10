@@ -271,13 +271,13 @@ test.describe('the waitlist, staff half (A-023)', () => {
     await page.getByPlaceholder('Name or phone number').fill('Beth');
     await page.getByRole('button', { name: /Beth Waits/ }).click();
 
-    await page.getByRole('link', { name: 'Put her on the list for this' }).click();
+    await page.getByRole('link', { name: 'Put them on the list for this' }).click();
     await expect(page).toHaveURL(/\/staff\/waitlist/);
 
     // EVERY field the panel held, on the form — this is the item.
     await expect(page.getByText('For Beth Waits')).toBeVisible();
     await expect(page.getByLabel('Service')).toHaveValue(colourId);
-    await expect(page.getByText(/She also asked for Cut/)).toBeVisible();
+    await expect(page.getByText(/They also asked for Cut/)).toBeVisible();
     await expect(page.getByLabel('From', { exact: true })).toHaveValue(SUNDAY);
     await expect(page.getByLabel('To', { exact: true })).toHaveValue(SUNDAY);
     // The day she actually asked about, checked — even though the salon is

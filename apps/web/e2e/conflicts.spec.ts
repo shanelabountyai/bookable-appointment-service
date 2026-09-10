@@ -234,7 +234,7 @@ test.describe('the impact workflow (A-019)', () => {
     await page.goto(`/staff/conflicts?day=${DAY}`);
 
     await page.getByLabel('Cancel — why?').fill('Salon closed, rebooking her');
-    await page.getByLabel('Already rung her').check();
+    await page.getByLabel(/don’t send the cancellation/).check();
     await page.getByRole('button', { name: 'Cancel it' }).click();
 
     const prisma = new PrismaClient();

@@ -29,7 +29,7 @@ export function CloseOutButtons({ appointmentId }: { appointmentId: string }) {
         disabled={pending}
         className="rounded-md border border-zinc-400 px-3 py-1.5 text-sm font-medium disabled:opacity-60 dark:border-zinc-600"
       >
-        She came
+        Came
       </button>
       {/* Not styled as a danger button. It is not a punishment, it is the other
           half of the truth — and CLIENT-04's counter is only worth anything if
@@ -41,7 +41,7 @@ export function CloseOutButtons({ appointmentId }: { appointmentId: string }) {
         disabled={pending}
         className="rounded-md border border-zinc-400 px-3 py-1.5 text-sm font-medium disabled:opacity-60 dark:border-zinc-600"
       >
-        She didn&apos;t
+        Didn&apos;t come
       </button>
       {state.message ? (
         <span aria-live="polite" className="text-xs text-zinc-600 dark:text-zinc-400">

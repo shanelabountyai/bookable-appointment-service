@@ -188,7 +188,7 @@ test.describe('segmented durations (A-029, A-030)', () => {
   test('a booked colour states its free minutes on the appointment', async ({ page }) => {
     const appointmentId = await bookDanasColour();
     await page.goto(`/staff/appointments/${appointmentId}`);
-    await expect(page.getByText('40 min of processing time — she is not needed for it')).toBeVisible();
+    await expect(page.getByText('40 min of processing time — the stylist is not needed for it')).toBeVisible();
   });
 
   // SEG-04/SEG-05, the operator's own acceptance scenario, through the UI: the

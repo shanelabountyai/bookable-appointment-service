@@ -120,7 +120,7 @@ export async function toggleProviderActive(
     if (stranded.length > 0) {
       return {
         errors: {
-          _confirm: `${stranded.length} future appointment${stranded.length === 1 ? '' : 's'} ${stranded.length === 1 ? 'is' : 'are'} booked with her.`,
+          _confirm: `${stranded.length} future appointment${stranded.length === 1 ? '' : 's'} ${stranded.length === 1 ? 'is' : 'are'} booked with them.`,
         },
         stranded,
       };

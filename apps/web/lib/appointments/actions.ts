@@ -72,7 +72,7 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
       return {
         ok: false,
         message:
-          'Her time has been sold to somebody else, so that correction cannot go back on the book. Put her time back first if the slot is still free.',
+          'That time has been sold to somebody else, so that correction cannot go back on the book. Put the time back first if the slot is still free.',
       };
     }
     throw error;
@@ -150,13 +150,13 @@ export async function unreleaseTime(_previous: DetailState, formData: FormData):
     revalidatePath('/staff/day');
     revalidatePath('/staff/opened');
 
-    return { ok: true, message: `${restored.minutes} min back on her booking. Mark her completed when she is done.` };
+    return { ok: true, message: `${restored.minutes} min back on the booking. Mark it completed when they are done.` };
   } catch (error) {
     if (error instanceof NotReleasable) return { ok: false, message: error.message };
     if (error instanceof SlotTaken) {
       return {
         ok: false,
-        message: 'Somebody has already taken that time — it cannot go back on her booking.',
+        message: 'Somebody has already taken that time — it cannot go back on the booking.',
       };
     }
     throw error;
@@ -190,7 +190,7 @@ function refusalWording(error: TransitionRefused): string {
     case 'outside-cancellation-cutoff':
       return 'The cutoff moved while this screen was open. Reload and try again.';
     case 'before-appointment-start':
-      return 'She cannot be a no-show before her appointment has started.';
+      return 'This cannot be a no-show before the appointment has started.';
     case 'correction-window-closed':
       return 'Too long ago to correct — that window is seven days.';
     case 'actor-not-permitted':

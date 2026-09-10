@@ -119,7 +119,7 @@ export async function endSeries(_previous: SeriesEndState, formData: FormData): 
  *  next action, so they are never collapsed into "could not". */
 const PROBLEMS: Record<string, string> = {
   'already-happened': 'already happened',
-  'in-the-chair': 'she is in the chair',
+  'in-the-chair': 'they are in the chair',
   'already-moved': 'somebody else just changed it',
 };
 

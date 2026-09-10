@@ -137,7 +137,7 @@ export function ColumnControls({
                 a hidden feature is a feature nobody has. "She's caught up,
                 pull it back 20" is an instruction the desk gives out loud. */}
             <p id={`push-hint-${providerId}`} className="text-zinc-600 dark:text-zinc-400">
-              Minus to pull the column earlier — <code>-20</code> when she has caught up.
+              Minus to pull the column earlier — <code>-20</code> when they have caught up.
             </p>
 
             {previewing ? <p className="text-zinc-600 dark:text-zinc-400">Checking…</p> : null}
@@ -152,7 +152,7 @@ export function ColumnControls({
                           moves, because a column that half-moved is worse
                           than one that did not. */}
                       {row.problem === 'past-closing' ? ' — stays: would run past closing' : ''}
-                      {row.problem === 'before-opening' ? ' — stays: would start before she opens' : ''}
+                      {row.problem === 'before-opening' ? ' — stays: would start before they open' : ''}
                       {row.problem === 'blocked-by-one-that-stays' ? ' — stays: blocked by one that stays' : ''}
                       {row.problem === 'no-chair-free' ? ' — stays: no chair free at the new time' : ''}
                       {/* A-079. Everything else standing in the column: the
@@ -310,7 +310,7 @@ function RingRound({
                     stops there: who rang her and when is one line down, and a
                     button that repeated it made a screen reader say it twice
                     per row. */}
-                <span aria-hidden="true">{call.told ? '✓ Told her' : 'Told her'}</span>
+                <span aria-hidden="true">{call.told ? '✓ Told them' : 'Told them'}</span>
                 <span className="sr-only">
                   {call.told ? `Undo told for ${call.clientName}` : `Mark ${call.clientName} as told`}
                 </span>

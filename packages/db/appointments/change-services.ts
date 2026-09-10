@@ -207,7 +207,7 @@ export async function changeVisitServices(
           // Writing an event that says nothing happened, and re-pointing a
           // token that has not moved, is the same refusal `rescheduleAppointment`
           // makes for a move to where it already is.
-          throw new BookingRejected('serviceIds', 'That is what she is already booked for.');
+          throw new BookingRejected('serviceIds', 'That is what they are already booked for.');
         }
 
         // D-29's snapshot, re-taken because the SHAPE of the visit genuinely

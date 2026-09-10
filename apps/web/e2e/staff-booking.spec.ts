@@ -209,7 +209,7 @@ test.describe('staff booking (A-017)', () => {
     // all; the override must still be on offer, or "book outside hours" is
     // the one BOOK-05 case with no way past.
     await expect(page.getByText('That time is not free.')).toBeVisible();
-    await expect(page.getByText(/outside her working hours/)).toBeVisible();
+    await expect(page.getByText(/outside their working hours/)).toBeVisible();
 
     await page.getByLabel('Book it anyway').check();
     await page.getByLabel('Why?').fill('Wedding party, agreed with Dana');
@@ -395,7 +395,7 @@ test.describe('staff booking (A-017)', () => {
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
     // A-032's deferred half: the time is still listed, dimmed, saying WHY.
-    const occupied = page.getByRole('button', { name: `${taken} — she already has a client then` });
+    const occupied = page.getByRole('button', { name: `${taken} — they already have a client then` });
     await expect(occupied).toBeVisible();
     await occupied.click();
 
@@ -407,7 +407,7 @@ test.describe('staff booking (A-017)', () => {
     // EXACT, because the chips on the list now say the same words: this has
     // to be the refusal's own sentence (which ends in a full stop), not the
     // annotation on the button that caused it.
-    await expect(page.getByText('she already has a client then.', { exact: true })).toBeVisible();
+    await expect(page.getByText('they already have a client then.', { exact: true })).toBeVisible();
 
     await page.getByLabel('Book it anyway').check();
     await page.getByLabel('Why?').fill('Wedding party, agreed with Dana');
@@ -458,7 +458,7 @@ test.describe('staff booking (A-017)', () => {
     await page.getByRole('button', { name: 'No name' }).click();
     await page.getByRole('button', { name: 'Book', exact: true }).click();
 
-    await expect(page.getByText(/outside her working hours/)).toBeVisible();
+    await expect(page.getByText(/outside their working hours/)).toBeVisible();
     await page.getByLabel('Book it anyway').check();
     await page.getByLabel('Why?').fill('Staying late for the wedding party');
     await page.getByRole('button', { name: 'Book', exact: true }).click();
@@ -742,7 +742,7 @@ test.describe('standing appointments (A-049)', () => {
     await expect(page.getByText('Booked 2 of 3. The rest are below, with the reason.')).toBeVisible();
     // The REASON, in the salon's words, against the week it belongs to.
     await expect(page.getByText('not booked')).toBeVisible();
-    await expect(page.getByText(/she already has a client then/)).toBeVisible();
+    await expect(page.getByText(/they already have a client then/)).toBeVisible();
     await expect(page.getByRole('link', { name: 'booked' })).toHaveCount(2);
 
     const prisma2 = new PrismaClient();
@@ -1004,7 +1004,7 @@ test.describe('the walk-in nobody is free for (A-103)', () => {
 
     // "We could squeeze you in" — answer two, with the engine's OWN reason on
     // the chip. An override typed against a reason nobody read is a guess.
-    const squeeze = page.getByRole('button', { name: /she is on time off/ });
+    const squeeze = page.getByRole('button', { name: /they are on time off/ });
     await expect(squeeze.first()).toBeVisible();
 
     await squeeze.first().click();
@@ -1017,7 +1017,7 @@ test.describe('the walk-in nobody is free for (A-103)', () => {
     // The refusal's OWN sentence, which the panel punctuates — the chips above
     // carry the same words unpunctuated, and matching loosely would pass on
     // them while the refusal said something else entirely.
-    await expect(page.getByText('she is on time off.', { exact: true })).toBeVisible();
+    await expect(page.getByText('they are on time off.', { exact: true })).toBeVisible();
 
     await page.getByLabel('Book it anyway').check();
     await page.getByLabel('Why?').fill('walk-in, agreed with her on the phone');

@@ -330,12 +330,12 @@ test.describe('the appointment detail panel (A-027)', () => {
 test.describe('changing what she is having (A-055)', () => {
   const detail = async (page: Page, id: string) => {
     await page.goto(`/staff/appointments/${id}`);
-    await expect(page.getByRole('heading', { name: 'What she is having' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What they are having' })).toBeVisible();
   };
 
   /** The move panel below carries its own "Why? (optional)", so anything
    *  ambiguous is scoped to this section rather than to the page. */
-  const panel = (page: Page) => page.locator('section').filter({ hasText: 'What she is having' });
+  const panel = (page: Page) => page.locator('section').filter({ hasText: 'What they are having' });
 
   test('adds a service at the chair, and cancels nothing', async ({ page }) => {
     const appointment = await bookOne();
@@ -345,7 +345,7 @@ test.describe('changing what she is having (A-055)', () => {
     await expect(page.getByRole('button', { name: /^Cut\d/ })).toHaveAttribute('aria-pressed', 'true');
 
     await page.getByRole('button', { name: /Blow-dry/ }).click();
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
     await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
 
     const prisma = new PrismaClient();
@@ -387,7 +387,7 @@ test.describe('changing what she is having (A-055)', () => {
     await expect(page.getByRole('heading', { name: 'Move this appointment' })).toHaveCount(0);
 
     await page.getByRole('button', { name: /Blow-dry/ }).click();
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
     await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
   });
 
@@ -397,12 +397,12 @@ test.describe('changing what she is having (A-055)', () => {
 
     // Add, then take it off again through the same control.
     await page.getByRole('button', { name: /Blow-dry/ }).click();
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
     await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
 
     await page.reload();
     await page.getByRole('button', { name: /Blow-dry/ }).click();
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
     await expect(page.getByText(/took off Blow-dry/)).toBeVisible();
     await expect(page.getByText(/minutes back on the book/)).toBeVisible();
 
@@ -425,7 +425,7 @@ test.describe('changing what she is having (A-055)', () => {
     const appointment = await bookOne();
     await detail(page, appointment.id);
     await page.getByRole('button', { name: /Blow-dry/ }).click();
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
     await expect(page.getByText(/Added Blow-dry/)).toBeVisible();
 
     await page.reload();
@@ -445,17 +445,17 @@ test.describe('changing what she is having (A-055)', () => {
     await detail(page, appointment.id);
 
     await page.getByRole('button', { name: /Colour/ }).click();
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
 
     await expect(page.getByText('That would not fit.')).toBeVisible();
     // The engine's OWN word for it, in the salon's vocabulary.
-    await expect(page.getByText('during her break.')).toBeVisible();
+    await expect(page.getByText('during their break.')).toBeVisible();
 
     // BOOK-05: the desk decides to work through lunch, knowingly and on the
     // record.
     await panel(page).getByLabel('Do it anyway').check();
     await panel(page).getByLabel('Why?', { exact: true }).fill('She is only in today, Dana agreed');
-    await page.getByRole('button', { name: 'Change what she is having' }).click();
+    await page.getByRole('button', { name: 'Change what they are having' }).click();
     await expect(page.getByText(/Added Colour/)).toBeVisible();
 
     const prisma = new PrismaClient();
@@ -728,7 +728,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
     await expect(page.getByText(/went back on the market at/)).toBeVisible();
     await page.reload();
     // The log says WHAT was done and by whom — nothing about her status moved.
-    await expect(page.getByText(/Her remaining time was put back on the market by Front desk/)).toBeVisible();
+    await expect(page.getByText(/The remaining time was put back on the market by Front desk/)).toBeVisible();
     await expect(page.getByText('Rang twice, no answer')).toBeVisible();
 
     // …and it reaches the one screen whose job is selling it (A-067).
@@ -771,14 +771,14 @@ test.describe("a no-show's time, given back (A-069)", () => {
     await page.getByRole('button', { name: /Put \d+ min back on the market/ }).click();
     await expect(page.getByText(/went back on the market at/)).toBeVisible();
 
-    await page.getByRole('button', { name: /put her time back on the book/ }).click();
+    await page.getByRole('button', { name: /put the time back on the book/ }).click();
 
     // The SETTLED state, not the toast: the action revalidates this panel, so
     // the transient message is replaced before it can be read. The offer being
     // on the table again IS the assertion — the time is hers.
     await expect(page.getByText(/minutes of this slot are still blocked/)).toBeVisible();
     await page.reload();
-    await expect(page.getByText(/Her time was put back on the book by Front desk/)).toBeVisible();
+    await expect(page.getByText(/The time was put back on the book by Front desk/)).toBeVisible();
   });
 
   test('has no accessibility violations', async ({ page }) => {

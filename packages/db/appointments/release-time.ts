@@ -99,8 +99,8 @@ export function releasableAt(
 const REFUSAL_WORDS: Record<Exclude<Releasable, { releasable: true }>['why'], string | undefined> = {
   'not-a-no-show': undefined,
   'already-released': 'This one has already had its time given back.',
-  'before-start': 'She cannot be released before she was due.',
-  'nothing-left': 'Her time is already over — there is nothing left to give back.',
+  'before-start': 'This cannot be released before it was due.',
+  'nothing-left': 'That time is already over — there is nothing left to give back.',
 };
 
 export interface ReleaseNoShowTimeInput {
@@ -247,7 +247,7 @@ export async function unreleaseNoShowTime(
       });
       if (!appointment) throw new NotReleasable('missing', 'That appointment is not in this business.');
       if (appointment.releasedAt === null) {
-        throw new NotReleasable(appointment.status, 'Her time was never given back, so there is nothing to undo.');
+        throw new NotReleasable(appointment.status, 'That time was never given back, so there is nothing to undo.');
       }
       // The trigger honours `releasedAt` only while the status is `no_show`, so
       // off that status the range is already whole and this would be a no-op

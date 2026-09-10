@@ -161,7 +161,7 @@ function KeepForm({ appointmentId }: { appointmentId: string }) {
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <label className="flex flex-col gap-1 text-xs">
         Keep — why?
-        <input name="reason" placeholder="Called her, coming anyway" className={field} />
+        <input name="reason" placeholder="Called them, coming anyway" className={field} />
       </label>
       <button type="submit" disabled={pending} className={small}>
         Keep
@@ -180,11 +180,16 @@ function CancelForm({ appointmentId }: { appointmentId: string }) {
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <label className="flex flex-col gap-1 text-xs">
         Cancel — why?
-        <input name="reason" placeholder="Salon closed, rebooking her" className={field} />
+        <input name="reason" placeholder="Salon closed, rebooking them" className={field} />
       </label>
+      {/* Parallel to the keep form's box above, and deliberately NOT the
+          shorter "Already rung them": both forms render on the same row, and
+          a label that is a SUBSTRING of its sibling's is one accessible name
+          inside another — ambiguous to a screen reader looking for either,
+          which is the same complaint the comment on the keep form makes. */}
       <label className="flex items-center gap-1 text-xs">
         <input type="checkbox" name="skipNotice" />
-        Already rung her
+        I’ve already rung them — don’t send the cancellation
       </label>
       <button type="submit" disabled={pending} className={small}>
         Cancel it

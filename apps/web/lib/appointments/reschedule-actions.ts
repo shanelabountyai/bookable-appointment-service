@@ -191,7 +191,7 @@ export async function moveAppointment(_previous: MoveState, formData: FormData):
   // TOKEN-02: her existing link still works and now points at the new time —
   // `rescheduleAppointment` re-points it rather than reissuing, so the desk
   // never has to send a fresh one.
-  return { ok: true, message: 'Moved. Her existing link still works, and she has been sent the new time.' };
+  return { ok: true, message: 'Moved. The existing link still works, and they have been sent the new time.' };
 }
 
 /**
@@ -204,14 +204,14 @@ export async function moveAppointment(_previous: MoveState, formData: FormData):
  */
 function staffWordingFor(error: unknown): string {
   if (error instanceof SlotTaken) {
-    return 'That time went while you were deciding — her appointment is unchanged. Pick another.';
+    return 'That time went while you were deciding — this appointment is unchanged. Pick another.';
   }
   // A-034/RES-04. The stylist is free and the ROOM is not, which is a
   // different decision from "that time went": the desk can override, or seat
   // her somewhere else. Saying "taken" would send them hunting for an
   // appointment that is not there.
   if (error instanceof NoResourceFree) {
-    return `Every ${error.resourceTypeName} is taken at that time — she is free, the room is not.`;
+    return `Every ${error.resourceTypeName} is taken at that time — they are free, the room is not.`;
   }
   if (error instanceof AppointmentAlreadyMoved) {
     return 'Somebody else moved this one just now. Reload to see where it went.';
@@ -243,5 +243,5 @@ function staffWordingFor(error: unknown): string {
 const REFUSALS: Partial<Record<TransitionRefusal, string>> = {
   'not-permitted': 'This one cannot be moved — start a new appointment instead.',
   'actor-not-permitted': 'This one cannot be moved from here.',
-  'inside-cancellation-cutoff': 'Too close for the client to move it herself — but you can.',
+  'inside-cancellation-cutoff': 'Too close for the client to move it themselves — but you can.',
 };

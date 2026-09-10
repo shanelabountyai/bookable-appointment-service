@@ -95,7 +95,7 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
         <Field
           label="Minimum lead time (minutes)"
           name="minimumLeadMinutes"
-          hint="How far ahead a customer must book. Must be at least as long as every cancellation cutoff, or a client can book a slot she is already unable to cancel."
+          hint="How far ahead a customer must book. Must be at least as long as every cancellation cutoff, or a client can book a slot they are already unable to cancel."
           error={err('minimumLeadMinutes')}
         >
           <input id="minimumLeadMinutes" name="minimumLeadMinutes" type="number" min={0} defaultValue={settings.minimumLeadMinutes}

@@ -128,7 +128,7 @@ export async function cancelConflicting(_previous: ImpactState, formData: FormDa
     notify,
   });
   revalidatePath('/staff/conflicts');
-  return { ok: true, message: notify ? 'Cancelled, and she has been told.' : 'Cancelled. No message sent.' };
+  return { ok: true, message: notify ? 'Cancelled, and they have been told.' : 'Cancelled. No message sent.' };
 }
 
 /** "Reassign Saturday to Priya where qualified." Partial by design. */
@@ -217,7 +217,7 @@ function readable(failure: string | undefined): string {
     case 'not-qualified':
       return 'not qualified for the service';
     case 'provider-busy':
-      return 'she is already booked then';
+      return 'they are already booked then';
     case 'not-active':
       return 'that stylist is not active';
     default:

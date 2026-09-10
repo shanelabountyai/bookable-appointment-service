@@ -31,7 +31,7 @@ export async function closeOut(_previous: CloseOutState, formData: FormData): Pr
   const appointmentId = String(formData.get('appointmentId') ?? '');
   const came = String(formData.get('came') ?? '');
 
-  if (came !== 'yes' && came !== 'no') return { ok: false, message: 'Say whether she came.' };
+  if (came !== 'yes' && came !== 'no') return { ok: false, message: 'Say whether they came.' };
 
   try {
     await transitionAppointment(prisma, {
@@ -50,7 +50,7 @@ export async function closeOut(_previous: CloseOutState, formData: FormData): Pr
       return { ok: false, message: 'That one cannot be closed from here — open it and see what happened.' };
     }
     if (error instanceof SlotTaken) {
-      return { ok: false, message: 'Her time has been sold to somebody else, so that cannot go back on the book.' };
+      return { ok: false, message: 'That time has been sold to somebody else, so that cannot go back on the book.' };
     }
     throw error;
   }

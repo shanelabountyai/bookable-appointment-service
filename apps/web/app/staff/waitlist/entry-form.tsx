@@ -155,7 +155,7 @@ export function EntryForm({
           also asked for Cut…". */}
       {alsoAsked.length ? (
         <p className="-mt-2 text-xs text-ink-muted">
-          She also asked for {alsoAsked.join(' and ')} — one service per entry, so say so when you ring her.
+          They also asked for {alsoAsked.join(' and ')} — one service per entry, so say so when you ring them.
         </p>
       ) : null}
 

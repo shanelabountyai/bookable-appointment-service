@@ -12,7 +12,7 @@ export default async function ProvidersPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Providers</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Deactivating a provider stops her being offered for new bookings. It never deletes her, and never touches
+          Deactivating a provider stops them being offered for new bookings. It never deletes them, and never touches
           appointments already in the book.
         </p>
       </div>

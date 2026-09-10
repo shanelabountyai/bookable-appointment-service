@@ -44,7 +44,7 @@ export type EventType = (typeof EVENT_TYPES)[number];
  *  link, for the system, and for events stamped before anybody was named. */
 const ACTORS: Record<string, string> = {
   staff: 'the front desk',
-  customer_token: 'the client, using her link',
+  customer_token: 'the client, using their link',
   system: 'the system',
 };
 
@@ -159,8 +159,8 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
       // column going back to where it was, not two unrelated facts, which is
       // the same reasoning `client_changed` above uses.
       return payload.restored === true
-        ? `Her time was put back on the book by ${who} — she arrived after all.`
-        : `Her remaining time was put back on the market by ${who}, from ${clock(payload.releasedAt, zone)}.`;
+        ? `The time was put back on the book by ${who} — they arrived after all.`
+        : `The remaining time was put back on the market by ${who}, from ${clock(payload.releasedAt, zone)}.`;
     case 'column_pushed':
       return `Pushed ${String(payload.minutes ?? '')} minutes later by ${who}, with the day running behind.`;
     case 'conflict_acknowledged':
@@ -254,7 +254,7 @@ export const TEMPLATE_WORDS: Record<string, string> = {
   // was sent.
   'appointment.moved_earlier': 'Brought forward',
   'appointment.reminder': 'Reminder',
-  'appointment.services_changed': 'What she is having changed',
+  'appointment.services_changed': 'Services changed',
   'appointment.provider_changed': 'New stylist',
   'appointment.cancelled': 'Cancellation',
 };

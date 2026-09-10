@@ -93,7 +93,7 @@ export async function toggleToldAbout(_previous: DayActionState, formData: FormD
   // no longer exists.
   return mark
     ? { ok: true, message: 'Marked as told.' }
-    : { ok: false, message: 'That column is back on time — nothing left to tell her about.' };
+    : { ok: false, message: 'That column is back on time — nothing left to tell anybody about.' };
 }
 
 export interface PreviewShape {
@@ -218,7 +218,7 @@ function deltaWords(result: { runningLateMinutes: number; runningLateAfter: numb
 const PROBLEMS: Record<string, string> = {
   'past-closing': 'would run past closing',
   // A-059's mirror, reachable only on a pull-forward.
-  'before-opening': 'would start before she opens',
+  'before-opening': 'would start before they open',
   'blocked-by-one-that-stays': 'blocked by one that stayed',
   'no-chair-free': 'no chair free at the new time',
   // A-079. Not a casualty of the push — a bystander the push was never going

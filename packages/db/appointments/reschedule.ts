@@ -606,6 +606,6 @@ async function assertProviderCanTakeIt(
     serviceIds: appointment.lines.map((l) => l.serviceId),
   });
   if (!qualified) {
-    throw new BookingRejected('toProviderId', 'She is not set up to do everything in this visit.');
+    throw new BookingRejected('toProviderId', 'They are not set up to do everything in this visit.');
   }
 }

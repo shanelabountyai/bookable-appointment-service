@@ -93,8 +93,8 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
           <ClientFlag reliability={reliability} />
           {reliability.selfServeBlocked ? (
             <p className="text-sm">
-              She is over the salon&rsquo;s limit of {reliability.threshold}, so the website tells her to call.
-              Booking her from here still works.
+              Over the salon&rsquo;s limit of {reliability.threshold}, so the website says to call.
+              Booking from here still works.
             </p>
           ) : null}
           <ul className="flex flex-col gap-1 text-sm">
@@ -117,7 +117,7 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Rebook last visit</h2>
           <p className="text-sm">
             {rebook.serviceNames.join(' + ')} with {rebook.providerName}. Last in on{' '}
-            {readableDay(rebook.lastVisitDay)} — she comes about every {rebook.intervalDays} days, so this starts on{' '}
+            {readableDay(rebook.lastVisitDay)} — about every {rebook.intervalDays} days between visits, so this starts on{' '}
             {readableDay(rebook.fromDay)}.
           </p>
           {/* A-040: the STAFF surface, not `/book`.

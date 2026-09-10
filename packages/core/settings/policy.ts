@@ -130,8 +130,8 @@ function cutoffTrapMessage(leadMinutes: number, worst: WorstCutoff): string {
       : `“${worst.serviceName}”’s cancellation cutoff`;
   return (
     `Minimum lead time (${formatMinutes(leadMinutes)}) is shorter than ${who} ` +
-    `(${formatMinutes(worst.minutes)}). A client could book a slot she is already unable to cancel, ` +
-    `then be charged a late cancellation she had no way to avoid. Raise the lead time to at least ` +
+    `(${formatMinutes(worst.minutes)}). A client could book a slot they are already unable to cancel, ` +
+    `then be charged a late cancellation they had no way to avoid. Raise the lead time to at least ` +
     `${formatMinutes(worst.minutes)}, or shorten the cutoff.`
   );
 }

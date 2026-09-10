@@ -53,7 +53,7 @@ export async function changeServices(_previous: VisitState, formData: FormData):
   const overrideReason = String(formData.get('overrideReason') ?? '');
   const reason = String(formData.get('reason') ?? '');
 
-  if (serviceIds.length === 0) return { ok: false, message: 'She has to be having something.' };
+  if (serviceIds.length === 0) return { ok: false, message: 'They have to be having something.' };
 
   try {
     const changed = await changeVisitServices(prisma, {
@@ -78,7 +78,7 @@ export async function changeServices(_previous: VisitState, formData: FormData):
     if (error instanceof SlotTaken) {
       return {
         ok: false,
-        message: 'That would run into her next client.',
+        message: 'That would run into the next client.',
         canOverride: true,
         reasons: error.reasons.length > 0 ? [...error.reasons] : ['overlaps-booking'],
       };
@@ -125,7 +125,7 @@ function sentenceFor(changed: {
 export async function readableRefusal(reasons: string[]): Promise<string> {
   return reasons.length > 0
     ? `${reasons.map(readableReason).join('; ')}.`
-    : 'That time is outside her working hours.';
+    : 'That time is outside their working hours.';
 }
 
 /**
@@ -190,7 +190,7 @@ export async function setAppointmentClientAction(
     if (error instanceof NoResourceFree) {
       return {
         ok: false,
-        message: `${error.message} She is sharing a chair with her own other appointment, and taking this one off her record would need two. Move one of them first.`,
+        message: `${error.message} They are sharing a chair with their own other appointment, and taking this one off their record would need two. Move one of them first.`,
       };
     }
     throw error;

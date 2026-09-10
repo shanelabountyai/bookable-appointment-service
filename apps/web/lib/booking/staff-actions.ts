@@ -293,7 +293,7 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
     if (isOverride) {
       return {
         ok: false,
-        message: 'An override books one appointment. Book this one, then set the repeat up from a time she is free.',
+        message: 'An override books one appointment. Book this one, then set the repeat up from a time they are free.',
       };
     }
     return bookStandingSeries(staff, {

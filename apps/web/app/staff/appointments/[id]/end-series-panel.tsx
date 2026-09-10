@@ -34,7 +34,7 @@ export function EndSeriesPanel({ appointmentId }: { appointmentId: string }) {
       <summary className="cursor-pointer font-medium">End this series here</summary>
       <div className="mt-3 flex flex-col gap-3">
         <p className="text-zinc-600 dark:text-zinc-400">
-          Cancels this appointment and the ones after it. The ones she has already had are not touched.
+          Cancels this appointment and the ones after it. Earlier ones are not touched.
         </p>
 
         <button
@@ -67,7 +67,7 @@ export function EndSeriesPanel({ appointmentId }: { appointmentId: string }) {
                 Why?
                 <input
                   name="reason"
-                  placeholder="She is moving away"
+                  placeholder="Moving away"
                   className="rounded-md border border-zinc-400 bg-transparent px-2 py-1 dark:border-zinc-600"
                 />
               </label>
@@ -79,13 +79,13 @@ export function EndSeriesPanel({ appointmentId }: { appointmentId: string }) {
                   was overruled, so none of it lands on her record. */}
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="onUs" />
-                This one is on us — do not count it against her
+                This one is on us — do not count it against them
               </label>
               {/* D-32: UNTICKED means she is told. The box exists for the desk
                   that rang her first — it is never the default. */}
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="skipNotice" />
-                I have already rung her — do not send anything
+                I have already rung them — do not send anything
               </label>
               <button
                 type="submit"
