@@ -4013,7 +4013,7 @@ a table refusing every reinstatement refuses the free ones too.
 
 ## A-113 — the double-booked hour no install could show, and a client list of one kind of person
 
-**Commit `(recorded in the follow-up commit)`.**
+**Commit `777aaf5`.**
 
 Two halves, both about the demo book rather than the product. Checkpoint 9
 measured **zero overlapping same-provider pairs** on the seeded book, so A-099's
