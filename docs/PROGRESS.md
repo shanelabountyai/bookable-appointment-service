@@ -3842,6 +3842,8 @@ away from the same value.
 
 ## A-111 — the product assumed everybody was a woman, on the verbs
 
+*Commit `d4bf7bd`.*
+
 **What it built.** Nothing, in the sense of features: **89 strings rewritten
 across 36 files, and one test that makes the next one fail.** `/staff/unfinished`
 is the screen the desk works at close of business, and under every one of its

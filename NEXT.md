@@ -1,79 +1,93 @@
 # Next
 
-**A-110 is done, gate green (1624 unit + 1 skipped, 312/312 e2e in 3.5m).**
-Commits `7fd4dae` (work) + the SHA record, pushed together in ONE push.
+**A-111 is done, gate green (1627 unit + 1 skipped, 312/312 e2e in 3.7m).**
+Commits `d4bf7bd` (work) + the SHA record, pushed together in ONE push.
 **Confirm the CI run went green before trusting this file.**
 
-`grep "⬜ A-" docs/prds/06-backlog.md` returns **A-111 … A-113**, so the next
-session is **A-111** — read its row before anything else.
+`grep "⬜ A-" docs/prds/06-backlog.md` returns **A-112 … A-113**, so the next
+session is **A-112** — read its row before anything else. It says **DECIDE
+FIRST (a new D-number), THEN BUILD**: may a mis-tapped cancellation be undone,
+and under what guard? The row already names the recommendation (an APPT-06-style
+`cancelled | cancelled_late → booked` edge inside the 7-day window, refused by
+the exclusion constraint and mapped through `errors.ts` to a sentence) and the
+two alternatives. **Note the D-number collision**: `07-decisions.md` has TWO
+rows numbered D-51 (lines 82 and 83). A-111 appended **D-52**, so A-112 takes
+**D-53** — do not re-derive the next number by counting.
 
-## What A-110 changed (in case A-111 trips over it)
+## What A-111 changed (in case A-112 trips over it)
 
-- **`listWaitlistEntries` takes an args object and a `today`:**
-  `listWaitlistEntries(db, { businessId, today, status? })`. `today` is the
-  BUSINESS's CalendarDay (`toLabel(fromDate(now), zoneId(tz)).day`), resolved by
-  the caller — nothing in the module reads a clock.
-- **`notExpiredOn(day)` is the one copy of the closing edge**, private to
-  `packages/db/waitlist/waitlist.ts`, used by the listing and by
-  `matchFreedSlot`. It is deliberately NOT "covers this day": an entry whose
-  window opens next month is still listed. Expiry qualifies `active` ONLY.
-- **`openWeekdays(db, businessId)` is new in `@bookable/db/availability`** —
-  distinct weekdays across everybody's `WeeklyWindow`, ascending, falling back
-  to all seven when a business has no hours yet (a fresh install must not
-  render an unfillable form).
-- **`/staff/waitlist` now reads prefill params**: `clientId`, `serviceId`
-  (REPEATED — the whole visit, first one wins the select, the rest are named on
-  screen), `providerIds`, `fromDay`, `toDay`, `dayParts`. `serviceId` is
-  deliberately shared with the freed-slot link, which also needs `at` and
-  `minutes`, so the two doors cannot be confused.
-- **`booking-panel.tsx` has `waitlistHref()` / `waitlistLink`**, rendered under
-  `OpenDays` on both refusals.
+- **There are no gendered pronouns in ANY string the product renders**, client
+  copy and provider copy alike (D-52 — this went beyond the backlog row, which
+  had exempted staff copy; `setup-seed.ts` seeds **Marcus**, one stylist in
+  four, and `scheduling-words.ts` was calling him "she").
+- **`apps/web/lib/voice.test.ts` enforces it.** It parses every `.ts`/`.tsx`
+  under `apps/web/{app,components,lib}` and `packages/{core,db}` — 233 files —
+  and fails on `she|her|hers|herself|he|him|his|himself` in a **string literal,
+  template chunk, or JSX text**. Comments are fine and always were: they are
+  not AST nodes. `*.test.ts` / `*.spec.ts` are excluded by filename.
+- **Copy A-112 will touch, in its new wording:** `errors.ts` sentences are
+  unchanged, but `release-time.ts`'s refusals now read *"This cannot be
+  released before it was due."* / *"That time is already over…"* / *"That time
+  was never given back…"*, and `actions.ts` says *"That time has been sold to
+  somebody else… Put the time back first if the slot is still free."*
+- **`event-language.ts`:** `'appointment.services_changed'` is now
+  **`'Services changed'`** (was "What she is having changed"), and the restore
+  lines read *"The time was put back on the book by …"* / *"The remaining time
+  was put back on the market by …"*.
+- **`conflict-list.tsx`'s cancel-side checkbox** is now *"I've already rung them
+  — don't send the cancellation"*, deliberately NOT the shorter "Already rung
+  them" (see the rule below).
 
-## The rule A-110 leaves behind
+## The rules A-111 leaves behind
 
-**ONE FACT, TWO READERS, AND THE ENUM VALUE NOBODY EVER WROTE.** `expired` sat
-in `WaitlistStatus` from A-023 and no code path has ever set it, while the
-listing filtered on `status` alone and `matchFreedSlot` read `toDay` directly.
-Silently dead and visibly live. **A status value with no writer is not a
-lifecycle — it is a comment**, and the fix is to derive it rather than to add
-the job that would eventually disagree. Grep for enum values with no writer;
-each one is a promise the schema makes that the code does not keep.
+**A SCOPE LINE IN A BACKLOG ROW IS A CLAIM, NOT A CONSTRAINT — CHECK IT AGAINST
+THE SEED.** A-111's row said in bold *"this is the client copy only — 'her
+working hours' about Dana or Tess is correct and stays."* It is not correct:
+the product stores no gender for providers either, and one of the four seeded
+stylists is a man. Honouring the row would have produced an **allowlist holding
+exactly the ~20 strings that are wrong about him** — which is A-096's rule
+(*patching the rooms that noticed leaves the door open*) arriving as a config
+file. **When an item hands you an exemption, ask what the fixture says about
+it before you build the exemption in.**
 
-Its companion, this repo's most-repeated defect, now caught the fifth time:
-**one shared predicate plus a test asserting the two answers are EQUAL**, run
-on a fixture interesting enough for them to differ. **A one-day window cannot
-see it** — on `fromDay === toDay === today` the wrong question and the right
-one return the same list — so the fixture's window is three weeks and the test
-walks across its closing edge.
+**A RENAME CAN COLLIDE WITH COPY THAT WAS ALREADY CORRECT, AND NO SCAN FOR THE
+THING YOU CHANGED CAN SEE IT.** The conflicts row renders a keep form and a
+cancel form side by side, each with a "don't tell them" checkbox. The keep one
+already read *"I've already rung them — don't text"*; neutralising the cancel
+one to *"Already rung them"* made it a **SUBSTRING** of its sibling, so
+`getByLabel` resolved to two checkboxes — and one accessible name sitting inside
+another is ambiguous to anyone navigating by label, not just to Playwright.
+**Neither string contains a pronoun afterwards**, so the guard is blind to it.
+The tell was a **432 ms** failure: a strict-mode violation fails instantly,
+where a wrong locator burns the full 30 s timeout.
 
-**And a green assertion can be vacuous because of a DEFAULT.** The prefill e2e
-first checked the Service select with `Cut`, which is the catalogue's FIRST
-option, so an empty form shows it too — the assertion would have passed against
-no prefill at all. It now uses `Colour`. Whenever you assert a form field, ask
-what that field shows with nothing filled in.
+**LINT LOST TO A TEST ON MERGE SEMANTICS, AND THAT IS WORTH REMEMBERING BEFORE
+REACHING FOR `no-restricted-syntax` AGAIN.** A `Literal[value=/…/]` selector
+does this detection in eight lines and fires in the editor. But **ESLint rule
+config REPLACES rather than merges**, so covering both eslint configs while
+exempting test narration and preserving `packages/core/time`'s existing
+`'no-restricted-syntax': 'off'` carve-out meant four override blocks each
+re-listing the D-3 axis selectors — a shape where the next person to add a
+block silently drops one set, which is the same defect class being guarded.
 
-## What A-110 deliberately did not do
+**AND THE GUARD ASSERTS IT SCANNED SOMETHING** (A-096). Three tests, not one:
+the file list is non-empty and contains `close-out-buttons.tsx` by name; the
+detector is run against a planted `<p title="She came">She came</p>` sitting
+under a comment saying the same words, expecting **two** hits and not three;
+then the real scan. Verified failing against the unfixed string — it prints
+`apps/web/app/staff/unfinished/close-out-buttons.tsx:32  She came`.
 
-- **A lapsed entry is invisible, not closeable.** Its row stays `active`
-  forever and no screen offers to clear it. A "lapsed — ring them or remove
-  them" section on the panel is a real backlog row and **it is not written
-  yet**.
-- **A waitlist entry is still ONE service.** The panel refuses a whole visit;
-  the form names the extras in a line of copy rather than modelling them.
-  Multi-service entries are a schema change.
-- **`openWeekdays` ignores date overrides.** A one-off open Sunday is not a day
-  to stand waiting for.
+## What A-111 deliberately did not do
 
-## The A-109 flake this session found and fixed
-
-`appointment-detail.spec.ts`'s `pastNoShow()` started her **40** minutes ago on
-a 45-minute Cut with a 10-minute after-buffer, so the released span was
-`startAt + 55` minus the click — **exactly 15 minutes, dead on A-109's
-catalogue floor** — and `startAt` is floored to the whole minute, so it also
-lost a uniform 0-59 seconds before anything else. `Math.round` tipped it to 14
-about half the time and `/staff/opened` correctly dropped the row. It is now
-**20** minutes, leaving ~35. **A test whose subject is not the bound must not
-sit on it** — the mirror of A-109's own rule.
+- **Comments are untouched.** 674 of the 764 raw pronoun hits are prose in
+  headers narrating one imagined client — *"she walks in at 09:05"*. That is a
+  person telling a story, not the product addressing anybody.
+- **e2e `overrideReason` fixtures still say "squeeze her in".** Test-authored
+  data is data. The *shipped* copy of that same sentence, in
+  `app/staff/design/day-fixtures.ts`, was rewritten — the design gallery is
+  part of the built product.
+- **The seeded client list is still eleven women and two men.** That is the
+  second half of **A-113**, and it is what makes a demo walk able to hear this.
 
 ## Environment notes that cost previous sessions a pass
 
@@ -93,15 +107,11 @@ sit on it** — the mirror of A-109's own rule.
   SKIPS and the file merely "fails". Same for `playwright --list`.
 - **An e2e failure alarm must grep `✘` ONLY.** A wider alternation on `Error:`
   fires on `[WebServer] ⨯ Error: The destination stream closed early`, which is
-  benign. The whole 312-spec sweep is ~3.5m.
+  benign. The whole 312-spec sweep is ~3.7m; two specs alone are ~39s, which is
+  worth running before committing to a full sweep after a copy change.
 - **KILLING THE SWEEP ON THE ALARM COSTS YOU THE DIAGNOSTICS.** Playwright's
   `list` reporter buffers every failure block until the END of the run, so a
-  killed sweep leaves a `✘` line and nothing else. If the failing test is not
-  obviously catastrophic, let the run finish once to get the error, then fix.
-- **Verify a new bound test against the UNFIXED code, and stub only ONE side.**
-  Stubbing the shared predicate broke BOTH halves of the A-110 equality test,
-  which made them agree and the test pass. Reproduce the real asymmetry
-  instead: remove the predicate from the reader that never had it.
+  killed sweep leaves a `✘` line and nothing else. Let it finish once.
 - **A hand-written appointment fixture must land on WHOLE MINUTES** —
   `appointment_instants_whole_minutes` refuses the seconds `new Date()` came
   with. Floor it.
@@ -121,7 +131,7 @@ sit on it** — the mirror of A-109's own rule.
 - **The seed is not uniform.** Dana/Priya: 09:00-17:00 Tue-Sat, 12:00-13:00
   break. Marcus: split Thursday. Tess: no break, JUNIOR (Cut, Blow-dry, Fringe
   trim, Treatment only). **All four work Tue-Sat**, so Sunday and Monday are
-  the only closed days — which is what A-110's `openWeekdays` e2e leans on.
+  the only closed days.
 - **The catalogue's FIRST service is `Cut`** — never assert a prefilled select
   with it.
 - **"Cut" is a prefix of "Cut & finish"** — anchor service-button locators
