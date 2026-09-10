@@ -533,9 +533,10 @@ test.describe('cancelling is one button (A-060)', () => {
 
     await page.getByRole('button', { name: 'Cancel — counts as late' }).click();
 
-    // The controls REPLACE themselves once it is terminal, so the log line is
-    // the confirmation the screen actually gives — the same one every other
-    // status test in this file reads.
+    // The log line is the confirmation the screen actually gives — the same one
+    // every other status test in this file reads. (A-112 left ONE control
+    // standing on a cancellation, the way back; the status buttons are still
+    // gone.)
     await expect(page.getByText('Changed from booked to cancelled late by Front desk.')).toBeVisible();
     expect(await statusOf(appointment.id)).toBe('cancelled_late');
   });
@@ -586,6 +587,164 @@ test.describe('cancelling is one button (A-060)', () => {
  * creation was the client merge — and the schema has promised this door since
  * the first migration.
  */
+/**
+ * A-112 (D-53) — THE MIS-TAPPED CANCELLATION, PUT BACK.
+ *
+ * The desk cancels the wrong row — two names a thumb-width apart on a Saturday
+ * — and until this item the recovery was a NEW appointment: new id, new manage
+ * link, an event log split across two rows, and a `cancelled_late` sitting on
+ * her twelve-month record with no way off it.
+ *
+ * What the SCREEN has to say is the whole item: the way back has to be visible
+ * on the cancelled appointment itself, and when the time has since been sold
+ * the refusal has to be a sentence about the salon rather than a stack trace.
+ */
+test.describe('putting a mis-tapped cancellation back on the book (A-112)', () => {
+  const REINSTATE = 'Put it back on the book';
+
+  const statusOf = async (id: string) => {
+    const prisma = new PrismaClient();
+    try {
+      return (await prisma.appointment.findUniqueOrThrow({ where: { id }, select: { status: true } })).status;
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  /** Somebody else takes the freed 10:00 while the desk is still working out
+   *  what it did. A second CLIENT, not a second booking for Ada: the chair
+   *  constraint relaxes for one holder (A-063) and the point is a stranger. */
+  const sellTheSlotToSomebodyElse = async () => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const other = await prisma.client.create({
+        data: { businessId: business.id, name: 'Nour Haddad', phone: '5125550188' },
+      });
+      return await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: dana.id,
+        serviceIds: [service.id],
+        clientId: other.id,
+        startAt: at('10:00'),
+        now: toDate(instant(fromDate(at('10:00')) - 3 * 60 * 60_000)),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  const cancelIt = async (page: Page, id: string) => {
+    await page.goto(`/staff/appointments/${id}`);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByText('Changed from booked to cancelled by Front desk.')).toBeVisible();
+  };
+
+  test('offers the way back on the cancelled appointment itself', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+
+    await page.getByLabel(/Reason/).fill('Rang off the wrong client');
+    await page.getByRole('button', { name: REINSTATE }).click();
+
+    // "Corrected", not "Changed": this is the one sentence that distinguishes
+    // a mis-tap being undone from a second thing simply happening.
+    await expect(page.getByText('Corrected from cancelled to booked by Front desk.')).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('booked');
+  });
+
+  test('says so when the reason box is empty, rather than doing it quietly', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+
+    await page.getByRole('button', { name: REINSTATE }).click();
+
+    await expect(page.getByText('That one needs a reason — it is the only record of why.')).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('cancelled');
+  });
+
+  /**
+   * THE CHIP STOPS SAYING "CANCELLED", WHICH IS THE ONLY PLACE THE SALON LOOKS.
+   *
+   * Note what is NOT asserted: that the chip appears. A cancelled appointment
+   * is drawn on the grid on purpose — struck through, so the desk can see what
+   * was lost — so "it comes back" was never the visible fact and asserting it
+   * would have passed against a reinstatement that did nothing at all. What
+   * changes is the word the chip's accessible name ends on.
+   */
+  test('stops calling her cancelled in the column, where the salon will see it', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+
+    // Scoped to Dana's COLUMN for the same reason the chip test above is: the
+    // page carries a second view of the same appointment in the room strip.
+    const chip = () => page.getByRole('region', { name: /Dana/ }).getByRole('link', { name: /Ada Chen/ });
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expect(chip()).toHaveAccessibleName(/, cancelled$/);
+
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    await page.getByLabel(/Reason/).fill('Rang off the wrong client');
+    await page.getByRole('button', { name: REINSTATE }).click();
+    await expect(page.getByText('Corrected from cancelled to booked by Front desk.')).toBeVisible();
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expect(chip()).toHaveAccessibleName(/, booked$/);
+  });
+
+  /**
+   * D-45's mechanism, on the screen. The exclusion constraint is what knows
+   * whether the time has been sold, so it is what refuses — and A-034's rule
+   * is that the desk meets a sentence, never a SQLSTATE. The wording is the
+   * REINSTATEMENT'S, not the unrelease's: there is nothing to put back here,
+   * the slot is simply somebody else's now.
+   */
+  test('refuses in words once somebody else has been sold the time', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+    await sellTheSlotToSomebodyElse();
+
+    await page.getByLabel(/Reason/).fill('Rang off the wrong client');
+    await page.getByRole('button', { name: REINSTATE }).click();
+
+    await expect(
+      page.getByText(/That time has been sold to somebody else since it was cancelled/),
+    ).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('cancelled');
+  });
+
+  /** D-32's checkbox, defaulted the other way — the only opt-IN notice in the
+   *  product. She has already been texted a cancellation, and the desk is
+   *  usually on the phone before it is on this screen. */
+  test('sends no second message unless the desk asks for one', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+
+    const box = page.getByLabel(/Text them to say it/);
+    await expect(box).not.toBeChecked();
+
+    await page.getByLabel(/Reason/).fill('Rang off the wrong client');
+    await box.check();
+    await page.getByRole('button', { name: REINSTATE }).click();
+    await expect(page.getByText('Corrected from cancelled to booked by Front desk.')).toBeVisible();
+
+    // The outbox row is on the screen too — "was she actually told?" is what
+    // this panel is for, and the word has to be its own rather than reading as
+    // a duplicate booking confirmation.
+    await expect(page.getByText('Cancellation undone')).toBeVisible();
+  });
+
+  test('has no accessibility violations', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+    await expectNoAxeViolations(page);
+  });
+});
+
 test.describe('who was this? (A-068)', () => {
   test('names a walk-in from the appointment, using the booking screen\'s own picker', async ({ page }) => {
     const appointment = await bookWalkIn();

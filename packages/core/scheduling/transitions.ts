@@ -172,9 +172,37 @@ const TRANSITIONS: Partial<Record<AppointmentStatus, Partial<Record<AppointmentS
   no_show: {
     completed: [{ actor: 'staff', precondition: 'within-correction-window', requiresReason: true }],
   },
-  // cancelled and cancelled_late have no outgoing edges at all. Reinstating a
-  // cancellation is a NEW booking, because the slot was genuinely released and
-  // may already have been sold to somebody else.
+  // A-112 (D-53) — UNDOING A MIS-TAPPED CANCELLATION.
+  //
+  // This used to read "cancelled and cancelled_late have no outgoing edges at
+  // all", on the argument that the slot was genuinely released and may already
+  // have been sold. The second half is true and the conclusion did not follow:
+  // D-45 answered the identical objection on the release axis by letting
+  // `appointment_block_no_overlap` decide and telling the desk in words. The
+  // constraint knows whether the time has been sold; a table cannot, so a
+  // table refusing every reinstatement refuses the ones that are free too.
+  //
+  // What the missing edge cost: the desk's recovery was a NEW appointment —
+  // new id, new manage token, an event log split across two rows — which is
+  // APPT-07's promise coming apart, on top of a client who had already been
+  // texted a cancellation she was not owed and a `cancelled_late` sitting on
+  // four surfaces of her twelve-month record with no correction path. The
+  // identical daily mis-tap on `no_show` has had one since D-7.
+  //
+  // `booked`, not `confirmed`: a confirmation is an act she performed, and the
+  // desk pressing a button here cannot perform it again. `confirmedAt` is left
+  // standing, so the log still says she once confirmed.
+  //
+  // Same clause as APPT-06's terminal corrections and for the same reasons —
+  // staff only, seven days from the appointment's END, and a reason, because
+  // it is the only record of why a cancellation that a client was told about
+  // stopped being true.
+  cancelled: {
+    booked: [{ actor: 'staff', precondition: 'within-correction-window', requiresReason: true }],
+  },
+  cancelled_late: {
+    booked: [{ actor: 'staff', precondition: 'within-correction-window', requiresReason: true }],
+  },
 };
 
 /**
@@ -243,13 +271,25 @@ function decide(clauses: readonly Clause[] | undefined, context: TransitionConte
   return { allowed: false, refusal: firstRefusal! };
 }
 
-/** A terminal→terminal move: APPT-06's `no_show ↔ completed` mis-tap fix.
- *  Surfaced so callers can log it as a CORRECTION rather than as an ordinary
- *  status change — "we got this wrong" is a different fact from "this
- *  happened", and the operator asked for it to read that way. */
-export function isCorrection(from: AppointmentStatus, to: AppointmentStatus): boolean {
-  const terminal = TERMINAL_STATUSES as readonly string[];
-  return terminal.includes(from) && terminal.includes(to);
+/**
+ * A move OUT OF a terminal status: APPT-06's `no_show ↔ completed` mis-tap fix
+ * and A-112's reinstatement.
+ *
+ * Surfaced so callers can log it as a CORRECTION rather than as an ordinary
+ * status change — "we got this wrong" is a different fact from "this
+ * happened", and the operator asked for it to read that way.
+ *
+ * A-112: this asked for terminal on BOTH sides, which was the same predicate
+ * while every edge leaving a terminal status landed on another one. It is not
+ * the same predicate now — `cancelled → booked` is the plainest "we got this
+ * wrong" in the product and would have logged as `status_changed`, so the
+ * detail panel would have narrated a mis-tap and its undo as two things that
+ * simply happened. What makes a correction a correction is where it comes
+ * FROM: nothing legitimately leaves a terminal status, so anything that does
+ * is somebody fixing a record.
+ */
+export function isCorrection(from: AppointmentStatus, _to: AppointmentStatus): boolean {
+  return (TERMINAL_STATUSES as readonly string[]).includes(from);
 }
 
 /** Every status reachable from here by anyone, ignoring preconditions. For

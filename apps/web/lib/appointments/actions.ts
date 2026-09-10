@@ -42,6 +42,12 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
   // cancellation even by accident.
   const cancel = formData.get('cancel');
   const cancellation = cancel === 'derive' || cancel === 'override' ? cancel : undefined;
+  // A-112 (D-53). OPT-IN, and the only checkbox in the product that is: every
+  // other one suppresses a message the salon would otherwise send, where this
+  // one sends a second message to somebody who has just been told she is
+  // cancelled. `undefined` — not `false` — when it is unticked, so the
+  // cancellation branch keeps its own opt-OUT default untouched.
+  const tellThem = formData.get('tellThem') !== null || undefined;
 
   try {
     await transitionAppointment(prisma, {
@@ -51,6 +57,7 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
       actor: staffActor(staff.id),
       now: new Date(),
       reason,
+      notify: tellThem,
       // The screen showed a status, so it says which one — turning "the button
       // did nothing surprising" into an explicit answer when somebody else got
       // there first.
@@ -68,11 +75,17 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
     // blocked range, and the constraint refuses that once the freed tail has
     // been sold. Until now it reached the panel as a raw database error on the
     // one screen whose job is explaining itself.
+    // A-112 (D-53) sends the reinstatement down this same path, and the second
+    // sentence differs: an unrelease is fixed by putting the released time
+    // back, and a reinstatement has nothing to put back — the slot is simply
+    // somebody else's now, and what the desk does next is find another one.
     if (error instanceof SlotTaken) {
       return {
         ok: false,
         message:
-          'That time has been sold to somebody else, so that correction cannot go back on the book. Put the time back first if the slot is still free.',
+          expectedFrom === 'cancelled' || expectedFrom === 'cancelled_late'
+            ? 'That time has been sold to somebody else since it was cancelled, so it cannot go back on the book. Book them in somewhere else.'
+            : 'That time has been sold to somebody else, so that correction cannot go back on the book. Put the time back first if the slot is still free.',
       };
     }
     throw error;

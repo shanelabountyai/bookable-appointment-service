@@ -19,6 +19,7 @@ import { computeDaySlots } from '../scheduling';
 import { saveStaffMember } from '../auth';
 import { reliabilityFor } from '../clients';
 import { loadAppointmentDetail } from './detail';
+import { SlotTaken } from '../booking/errors';
 import { AppointmentMovedFirst, TransitionRefused, transitionAppointment } from './transition';
 
 const prisma = new PrismaClient();
@@ -747,5 +748,210 @@ describe('A-060 — one cancel button, the machine classifies', () => {
     });
     expect(result.to).toBe('confirmed');
     expect((await payloadOf(appointment.id)).payload.overruled).toBeUndefined();
+  });
+});
+
+/**
+ * A-112 (D-53) — PUTTING A MIS-TAPPED CANCELLATION BACK ON THE BOOK.
+ *
+ * The pure table is asserted next door. What only a database can be wrong
+ * about is everything the edge does NOT say and was supposed to get for free:
+ * the time coming back off the market, the constraint refusing when it has
+ * been sold, the flag leaving her record, the id and the manage link
+ * surviving, and — the one that is not free — the outbox no longer treating
+ * her second, real cancellation as a duplicate of the first.
+ */
+describe('A-112 — reinstating a cancellation', () => {
+  const REASON = 'Rang off the wrong client — this one never cancelled';
+
+  const cancelThen = async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    return { appointment };
+  };
+
+  const reinstate = (appointmentId: string, over: Partial<Parameters<typeof transitionAppointment>[1]> = {}) =>
+    transitionAppointment(prisma, {
+      appointmentId,
+      to: 'booked',
+      actor: STAFF,
+      now: BEFORE,
+      reason: REASON,
+      ...over,
+    });
+
+  it('takes the time back off the market', async () => {
+    const { appointment } = await cancelThen();
+    expect(await tenAmOffered()).toBe(true);
+
+    await reinstate(appointment.id);
+
+    // Nothing in the reinstatement touches a range: the two triggers rewrite
+    // the blocks and the chair hold from the parent row's new status, and the
+    // engine reads what they wrote. This is that claim, checked.
+    expect(await tenAmOffered()).toBe(false);
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.status).toBe('booked');
+  });
+
+  /**
+   * THE WHOLE REASON THE EDGE MAY EXIST (D-45's mechanism).
+   *
+   * The table cannot know whether the slot was resold; the constraint can, so
+   * the constraint decides — and the desk is told in words rather than meeting
+   * a raw SQLSTATE on the one screen whose job is explaining itself.
+   *
+   * ONE ERROR SHAPE IS REACHABLE HERE, and that is a fact about this path
+   * rather than an omission (A-078). `transitionAppointment` opens its own
+   * transaction and never issues `SET CONSTRAINTS ... DEFERRED` — `grep` finds
+   * that only in `push-column.ts` — so the violation always surfaces at
+   * statement end, as Prisma's `P2010` shape. The deferred, SQLSTATE-less
+   * shape is provoked for real against `isSlotTakenError` in
+   * `constraint.test.ts`, which is the mapper both paths share.
+   */
+  it('is refused, in the codebase vocabulary, once the time has been sold', async () => {
+    const { appointment } = await cancelThen();
+    const sold = await book({ idempotencyKey: 'somebody-else' });
+    expect(sold.id).not.toBe(appointment.id);
+
+    await expect(reinstate(appointment.id)).rejects.toBeInstanceOf(SlotTaken);
+
+    // And the refusal left NOTHING behind: same-row rollback, so she is not
+    // half-reinstated and the client who really does hold 10:00 keeps it.
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.status).toBe('cancelled');
+    expect(await prisma.appointmentEvent.count({ where: { appointmentId: appointment.id, type: 'status_corrected' } })).toBe(0);
+  });
+
+  /**
+   * CLIENT-04's flag was the third harm and the only one with no correction
+   * path at all. It derives from the status column, so this is the assertion
+   * that the derivation really is the whole mechanism — a stored counter would
+   * have needed its own decrement and this test would be red.
+   */
+  it('takes the late cancel off her twelve-month record', async () => {
+    const appointment = await book();
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled_late',
+      actor: STAFF,
+      now: TEN_AM,
+    });
+    expect((await reliabilityFor(prisma, { businessId, clientId, today: DAY })).lateCancels).toBe(1);
+
+    await reinstate(appointment.id, { now: TEN_AM });
+    expect((await reliabilityFor(prisma, { businessId, clientId, today: DAY })).lateCancels).toBe(0);
+  });
+
+  /**
+   * APPT-07's promise, and the reason this is an edge rather than a rebooking.
+   *
+   * A new appointment would mint a new manage token and leave the one in her
+   * confirmation text pointing at a cancelled row — she would open the link
+   * she has and be told she has no appointment. Nothing here re-points
+   * anything, deliberately: the row survives and `endAt` never moved, so the
+   * token issued at booking is still correct. That is the claim being pinned,
+   * because "it needs no work" is exactly the kind of claim that stops being
+   * true without failing.
+   */
+  it('keeps the id, the history and the client\'s own link', async () => {
+    const { appointment } = await cancelThen();
+    const before = await prisma.manageToken.findMany({ where: { appointmentId: appointment.id } });
+    expect(before).toHaveLength(1);
+
+    const result = await reinstate(appointment.id);
+    expect(result.id).toBe(appointment.id);
+
+    const after = await prisma.manageToken.findMany({ where: { appointmentId: appointment.id } });
+    expect(after).toHaveLength(1);
+    expect(after[0]!.id).toBe(before[0]!.id);
+    expect(after[0]!.revokedAt).toBeNull();
+    expect(after[0]!.expiresAt.toISOString()).toBe(before[0]!.expiresAt.toISOString());
+  });
+
+  /** "We got this wrong" is a different fact from "this happened", and the
+   *  detail panel renders them differently. A reinstatement logged as an
+   *  ordinary status change would narrate the mis-tap and its undo as two
+   *  things that simply occurred. */
+  it('logs it as a correction, carrying the reason', async () => {
+    const { appointment } = await cancelThen();
+    const result = await reinstate(appointment.id);
+    expect(result.isCorrection).toBe(true);
+
+    const event = await prisma.appointmentEvent.findFirstOrThrow({
+      where: { appointmentId: appointment.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(event.type).toBe('status_corrected');
+    expect(event.reason).toBe(REASON);
+    expect(event.payload).toMatchObject({ from: 'cancelled', to: 'booked' });
+  });
+
+  /** D-32's checkbox, inverted. She has just been texted a cancellation and
+   *  the desk is usually already on the phone, so an automatic second message
+   *  is the salon talking over itself. `notify` must be explicitly true. */
+  describe('the notice, opt-in', () => {
+    const reinstatements = () => prisma.notificationOutbox.findMany({ where: { template: 'appointment.reinstated' } });
+
+    it('sends nothing by default', async () => {
+      const { appointment } = await cancelThen();
+      await reinstate(appointment.id);
+      expect(await reinstatements()).toHaveLength(0);
+    });
+
+    it('sends one when the desk ticks the box', async () => {
+      const { appointment } = await cancelThen();
+      await reinstate(appointment.id, { notify: true });
+      const [notice] = await reinstatements();
+      if (!notice) throw new Error('no notice was enqueued');
+      expect(notice.appointmentId).toBe(appointment.id);
+      expect(notice.recipient).toBe('5125550101');
+      expect(notice.payload).toMatchObject({ reason: REASON });
+    });
+  });
+
+  /**
+   * THE READER THE NEW EDGE BREAKS, AND IT BREAKS SILENTLY.
+   *
+   * The cancellation notice was keyed `cancelled:<appointmentId>` — "one
+   * cancellation of an appointment is one fact" — which was true only while
+   * `cancelled` was a dead end. Cancel, reinstate, cancel for real is now an
+   * ordinary week, and the second notice carried the first one's key: the
+   * outbox would have swallowed it as a duplicate and left a client who really
+   * is cancelled with no message, while the screen said she had been told.
+   *
+   * Keyed on the EVENT now, which is the act rather than the appointment.
+   */
+  it('texts her again when a reinstated appointment is cancelled for real', async () => {
+    const { appointment } = await cancelThen();
+    await reinstate(appointment.id);
+    await transitionAppointment(prisma, {
+      appointmentId: appointment.id,
+      to: 'cancelled',
+      actor: STAFF,
+      now: BEFORE,
+      reason: 'She rang herself this time',
+    });
+
+    const notices = await prisma.notificationOutbox.findMany({
+      where: { appointmentId: appointment.id, template: 'appointment.cancelled' },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(notices).toHaveLength(2);
+    expect(new Set(notices.map((n) => n.dedupeKey)).size).toBe(2);
+    expect(notices[1]!.payload).toMatchObject({ reason: 'She rang herself this time' });
+  });
+
+  it('is not something the client can do to her own cancellation', async () => {
+    const { appointment } = await cancelThen();
+    await expect(reinstate(appointment.id, { actor: CUSTOMER })).rejects.toBeInstanceOf(TransitionRefused);
+  });
+
+  it('closes seven days after the appointment ended', async () => {
+    const { appointment } = await cancelThen();
+    const tooLate = at('2026-06-17T12:00:00-05:00');
+    await expect(reinstate(appointment.id, { now: tooLate })).rejects.toMatchObject({
+      refusal: 'correction-window-closed',
+    });
   });
 });

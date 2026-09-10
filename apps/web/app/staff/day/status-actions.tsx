@@ -83,7 +83,10 @@ export function StatusActions({
  *  Shared with the detail panel's controls: two surfaces calling the same move
  *  by two different names is its own small lie. */
 export const STATUS_ACTION_LABELS = {
-  booked: 'Put back to booked',
+  // A-112 (D-53). `booked` was an unreachable entry in a total map until the
+  // reinstatement edge existed; now it is the one button that undoes a
+  // mis-tapped cancellation, so it says what the desk would say.
+  booked: 'Put it back on the book',
   confirmed: 'Confirm',
   checked_in: 'Check in',
   in_progress: 'Start',

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import type { AppointmentStatus } from '@bookable/core/scheduling';
+import { type AppointmentStatus, SLOT_FREEING_STATUSES } from '@bookable/core/scheduling';
 import { type DetailState, changeStatus, releaseTime, unreleaseTime } from '@/lib/appointments/actions';
 import { STATUS_ACTION_LABELS } from '@/app/staff/day/status-actions';
 
@@ -56,6 +56,11 @@ export function StatusControls({
 }) {
   const [state, action, pending] = useActionState(changeStatus, initial);
 
+  // A-112 (D-53). Asked of the STATUS, not of `available`: the server already
+  // decided whether the edge is on the table (seven days, staff, reason), and
+  // this only decides whether the notice checkbox has anything to be about.
+  const reinstating = (SLOT_FREEING_STATUSES as readonly string[]).includes(status);
+
   // A-069's panel is its OWN form (its own action), so it sits beside this one
   // rather than inside it — nested forms are invalid, and more to the point a
   // control that changes no status has no business in the form that does.
@@ -89,6 +94,24 @@ export function StatusControls({
           className="rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
         />
       </label>
+
+      {/* A-112 (D-53) — the only OPT-IN notice in the product, and the only
+          place a checkbox here means "send" rather than "don't send".
+          Rendered from the status rather than from the button list because it
+          belongs to one move: the cancellation this is undoing has already
+          been texted, so a second message is a decision, not a default. The
+          desk's usual first move is the phone. */}
+      {reinstating ? (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="tellThem" className="mt-0.5" />
+          <span>
+            Text them to say it&apos;s back on
+            <span className="mt-0.5 block text-xs text-zinc-600 dark:text-zinc-400">
+              They were already sent a cancellation. Leave this alone if you&apos;re ringing them.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {available.map((to) => (

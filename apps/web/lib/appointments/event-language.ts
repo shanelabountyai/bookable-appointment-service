@@ -257,4 +257,9 @@ export const TEMPLATE_WORDS: Record<string, string> = {
   'appointment.services_changed': 'Services changed',
   'appointment.provider_changed': 'New stylist',
   'appointment.cancelled': 'Cancellation',
+  // A-112 (D-53). Its own word, because it is the ONE message in the outbox
+  // that contradicts an earlier one: "Booking confirmation" on a row sent
+  // after a cancellation would read as a duplicate of the original booking and
+  // hide the fact that she was told twice.
+  'appointment.reinstated': 'Cancellation undone',
 };

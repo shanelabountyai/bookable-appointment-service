@@ -8,8 +8,11 @@
  * line-by-line diff by eye.
  *
  * Every one of the 64 ordered pairs is asserted, including the diagonal and
- * including `booked` as a destination — "nothing transitions back to booked"
- * is a rule, and a rule nobody tests is a rule that quietly stops being true.
+ * including `booked` as a destination. "Nothing transitions back to booked"
+ * WAS a rule and this is where it was tested — A-112 (D-53) made it false for
+ * exactly two cells, and the fact that changing the table alone turned seven
+ * tests here red, naming both cells and the rule by its own words, is the
+ * property this file is for.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -49,8 +52,8 @@ checked_in     | ·      | ·         | -          | S           | S         | �
 in_progress    | ·      | ·         | ·          | -           | S         | ·       | S+r       | ·
 completed      | ·      | ·         | ·          | ·           | -         | S7r     | ·         | ·
 no_show        | ·      | ·         | ·          | ·           | S7r       | -       | ·         | ·
-cancelled      | ·      | ·         | ·          | ·           | ·         | ·       | -         | ·
-cancelled_late | ·      | ·         | ·          | ·           | ·         | ·       | ·         | -
+cancelled      | S7r    | ·         | ·          | ·           | ·         | ·       | -         | ·
+cancelled_late | S7r    | ·         | ·          | ·           | ·         | ·       | ·         | -
 `;
 
 type Cell = '·' | '-' | 'S' | 'S,C' | 'S*' | 'S,C-out' | 'S,C-in' | 'S+r' | 'S7r';
@@ -149,10 +152,22 @@ describe('§7 — every ordered pair of statuses', () => {
     expect(decision).toEqual({ allowed: false, refusal: 'same-status' });
   });
 
-  it.each(APPOINTMENT_STATUSES)('nothing transitions back to booked (from %s)', (from) => {
+  /**
+   * A-112 (D-53). This was "nothing transitions back to booked" and is now
+   * "only a CANCELLATION does" — kept as its own named rule rather than left
+   * to the grid above, because the grid is a transcription and this is the
+   * invariant somebody would reason from. Two cells, staff only, and nothing
+   * else: a `completed` visit that is put back on the book is a fabricated
+   * booking, and a `no_show` that goes back is D-7's correction path pretending
+   * she is still coming.
+   */
+  it.each(APPOINTMENT_STATUSES)('only a cancellation transitions back to booked (from %s)', (from) => {
     if (from === 'booked') return;
+    const reinstatable = from === 'cancelled' || from === 'cancelled_late';
     for (const actor of ACTORS) {
-      expect(canTransition(from, 'booked', permissive({ actor })).allowed).toBe(false);
+      expect(canTransition(from, 'booked', permissive({ actor })).allowed).toBe(
+        reinstatable && actor === 'staff',
+      );
     }
   });
 
@@ -253,7 +268,7 @@ describe('APPT-06 — terminal corrections', () => {
     });
   });
 
-  it('flags terminal-to-terminal moves as corrections, and others not', () => {
+  it('flags moves OUT OF a terminal status as corrections, and others not', () => {
     expect(isCorrection('no_show', 'completed')).toBe(true);
     expect(isCorrection('completed', 'no_show')).toBe(true);
     expect(isCorrection('booked', 'confirmed')).toBe(false);
@@ -262,10 +277,58 @@ describe('APPT-06 — terminal corrections', () => {
     expect(decision).toEqual({ allowed: true, isCorrection: true });
   });
 
-  // A cancellation released the slot and it may already be resold — so
-  // "un-cancelling" is a new booking, not a transition.
-  it.each(['cancelled', 'cancelled_late'] as const)('gives %s no outgoing transitions at all', (from) => {
-    expect(possibleTransitionsFrom(from)).toEqual([]);
+  /**
+   * A-112 (D-53) — THE REINSTATEMENT IS A CORRECTION, AND IT IS THE ONE THAT
+   * WOULD HAVE BEEN MISSED.
+   *
+   * `isCorrection` asked for terminal on BOTH sides, which is the same
+   * predicate as "leaves a terminal status" for as long as every such edge
+   * lands on another terminal one. `cancelled → booked` does not, so the
+   * plainest "we got this wrong" in the product would have been logged as
+   * `status_changed` and narrated by the detail panel as an ordinary thing
+   * that happened — the mis-tap and its undo reading as two bookings.
+   */
+  it.each(['cancelled', 'cancelled_late'] as const)('flags a %s put back on the book as a correction', (from) => {
+    expect(isCorrection(from, 'booked')).toBe(true);
+    expect(canTransition(from, 'booked', permissive())).toEqual({ allowed: true, isCorrection: true });
+  });
+
+  // A-112 (D-53). One edge each and no more: a cancellation may be undone, it
+  // may not be turned into a completed visit or a no-show.
+  it.each(['cancelled', 'cancelled_late'] as const)('gives %s exactly one outgoing transition', (from) => {
+    expect(possibleTransitionsFrom(from)).toEqual(['booked']);
+  });
+
+  it.each(['cancelled', 'cancelled_late'] as const)('refuses to reinstate %s without a reason', (from) => {
+    expect(canTransition(from, 'booked', permissive({ reason: null }))).toEqual({
+      allowed: false,
+      refusal: 'reason-required',
+    });
+  });
+
+  it.each(['cancelled', 'cancelled_late'] as const)('closes the seven-day window on %s too', (from) => {
+    const late = permissive({ now: instant(END + CORRECTION_WINDOW_MS + 1) });
+    expect(canTransition(from, 'booked', late)).toEqual({
+      allowed: false,
+      refusal: 'correction-window-closed',
+    });
+  });
+
+  /** The mis-tap the desk actually makes is on NEXT Thursday's colour, so the
+   *  window has to be open before the appointment has even happened — `now -
+   *  endAt` is negative there, which is inside seven days by arithmetic and
+   *  worth pinning, because a reader expecting "seven days AFTER" would be
+   *  tempted to add a lower bound. */
+  it.each(['cancelled', 'cancelled_late'] as const)('reinstates %s that has not happened yet', (from) => {
+    const beforeIt = permissive({ now: instant(START - 5 * 24 * 60 * 60 * 1000) });
+    expect(canTransition(from, 'booked', beforeIt).allowed).toBe(true);
+  });
+
+  it.each(['cancelled', 'cancelled_late'] as const)('never lets a customer token reinstate %s', (from) => {
+    expect(canTransition(from, 'booked', permissive({ actor: 'customer_token' }))).toEqual({
+      allowed: false,
+      refusal: 'actor-not-permitted',
+    });
   });
 });
 
@@ -423,9 +486,18 @@ describe('A-035 — what may be done right now', () => {
     expect(availableTransitions('booked', permissive({ actor: 'customer_token' }))).not.toContain('checked_in');
   });
 
-  it('is empty for a terminal appointment, so a screen can render nothing', () => {
-    expect(availableTransitions('cancelled', permissive())).toEqual([]);
-    expect(availableTransitions('cancelled_late', permissive())).toEqual([]);
+  /** A-112 (D-53). The panel renders its own dead-end sentence off an empty
+   *  list, so this is what makes "Put it back on the book" appear at all — and
+   *  what makes it disappear again on day eight, with no screen deciding. */
+  it('offers a cancellation its way back, and nothing else', () => {
+    expect(availableTransitions('cancelled', permissive())).toEqual(['booked']);
+    expect(availableTransitions('cancelled_late', permissive())).toEqual(['booked']);
+  });
+
+  it('is empty for a cancellation the correction window has closed on', () => {
+    const late = permissive({ now: instant(END + CORRECTION_WINDOW_MS + 1) });
+    expect(availableTransitions('cancelled', late)).toEqual([]);
+    expect(availableTransitions('cancelled_late', late)).toEqual([]);
   });
 
   it('closes the correction window it opened', () => {

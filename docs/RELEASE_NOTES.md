@@ -3955,3 +3955,53 @@ one control's name sitting inside another's is ambiguous to anyone navigating
 the page by label rather than by sight. It now says which message it suppresses.
 Neither string contains a pronoun, so no scan for pronouns could have found it:
 a rename can collide with wording that was already correct.
+
+## A-112 — the cancellation that could not be taken back
+
+Two names a thumb-width apart on a Saturday, and the desk cancels the wrong one.
+Until this item the appointment book had no way to say *"no, not her"*. The
+state machine gave `cancelled` and `cancelled_late` **no outgoing edges at all**,
+so the only recovery was to book a second appointment — a different id, a
+different manage link, and a history split across two records — while the client
+who was never cancelled had already been sent a cancellation, and a *late
+cancel* she did not earn sat on four surfaces of her twelve-month record with no
+way to remove it. The identical daily mis-tap on *no-show* had had a correction
+path since the first month, for the stated reason that "mis-taps are daily and
+the alternative is SQL surgery".
+
+**The argument that kept it shut was half right.** The old table carried its
+reasoning in a comment: the slot was genuinely released and may already have
+been sold to somebody else. True — and not a reason for a *table* to refuse,
+because a table cannot know. The database can. The same exclusion constraint
+that stops two clients being sold one chair is what now decides: putting the
+appointment back on the book puts it back inside the constraint's reach, and if
+the time went to somebody else in the meantime the write is refused and the desk
+reads a sentence about the salon rather than a database error. That mechanism
+was already settled one axis over; this item is it applied a second time rather
+than a new invention.
+
+**Why it is an edge and not a rebooking.** The appointment row survives, so the
+id survives, the event log stays one continuous story, and the link in her
+original confirmation text still opens her booking — nothing is re-pointed,
+because nothing moved. Her late-cancel flag disappears on its own, because that
+count is derived from status rather than stored. The button appears on the
+cancelled appointment and vanishes on day eight, and no screen decides either:
+both read the same transition table the write path reads.
+
+**The message is the one thing that inverts.** Every other notice in this system
+is opt-out — the salon changing an appointment without telling the client is the
+failure mode it guards against. This one is opt-in. She has just been texted
+that she is cancelled, and the desk's first move is almost always the phone; an
+automatic second message arriving on top of that conversation is the salon
+talking over itself.
+
+**The defect this item created, found before it shipped.** The cancellation
+notice was keyed on the appointment, on the reasoning that one appointment has
+one cancellation. That was true for precisely as long as a cancellation was
+permanent. Cancel, reinstate, then cancel for real is now an ordinary week — and
+the second message carried the first one's key, so the outbox discarded it as a
+duplicate and a genuinely cancelled client would have been told nothing while
+the screen reported she had been told. It fails as silence, never as an error.
+It is keyed on the cancellation *act* now. **A state change is never one edit:
+the readers to find are the ones holding an assumption that only held while the
+old rule did.**

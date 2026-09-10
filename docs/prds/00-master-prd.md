@@ -155,18 +155,22 @@ The full correctness specification, function signature, and ~90-case edge matrix
 
 Rows = from, columns = to. ✓ = allowed (actor / precondition), · = refused. Actors: **S** staff, **C** customer token, **Y** system.
 
-| from \ to | confirmed | checked_in | in_progress | completed | no_show | cancelled | cancelled_late |
-|---|---|---|---|---|---|---|---|
-| **booked** | ✓ S,C | ✓ S | ✓ S | ✓ S (only after `startAt`) — A-076/D-46 | ✓ S (only after `startAt`) | ✓ S any time; C outside cutoff | ✓ S; C inside cutoff per policy |
-| **confirmed** | · | ✓ S | ✓ S | ✓ S (after `startAt`) — A-076/D-46 | ✓ S (after `startAt`) | ✓ S; C outside cutoff | ✓ S; C inside cutoff |
-| **checked_in** | · | · | ✓ S | ✓ S | · (they're here) | ✓ S | · |
-| **in_progress** | · | · | · | ✓ S | · | ✓ S (walk-out, reason) | · |
-| **completed** | · | · | · | — | ✓ S ≤7d, reason (APPT-06) | · | · |
-| **no_show** | · | · | · | ✓ S ≤7d, reason | — | · | · |
-| **cancelled** | · | · | · | · | · | — | · |
-| **cancelled_late** | · | · | · | · | · | · | — |
+| from \ to | booked | confirmed | checked_in | in_progress | completed | no_show | cancelled | cancelled_late |
+|---|---|---|---|---|---|---|---|---|
+| **booked** | — | ✓ S,C | ✓ S | ✓ S | ✓ S (only after `startAt`) — A-076/D-46 | ✓ S (only after `startAt`) | ✓ S any time; C outside cutoff | ✓ S; C inside cutoff per policy |
+| **confirmed** | · | — | ✓ S | ✓ S | ✓ S (after `startAt`) — A-076/D-46 | ✓ S (after `startAt`) | ✓ S; C outside cutoff | ✓ S; C inside cutoff |
+| **checked_in** | · | · | — | ✓ S | ✓ S | · (they're here) | ✓ S | · |
+| **in_progress** | · | · | · | — | ✓ S | · | ✓ S (walk-out, reason) | · |
+| **completed** | · | · | · | · | — | ✓ S ≤7d, reason (APPT-06) | · | · |
+| **no_show** | · | · | · | · | ✓ S ≤7d, reason | — | · | · |
+| **cancelled** | ✓ S ≤7d, reason (A-112/D-53) | · | · | · | · | · | — | · |
+| **cancelled_late** | ✓ S ≤7d, reason (A-112/D-53) | · | · | · | · | · | · | — |
+
+**The `booked` column is explicit** so that "nothing transitions back to booked" is a written rule with two written exceptions, rather than an absence a reader has to infer from a missing column.
 
 Reschedule is not a column: it is an event on a surviving appointment (D-6), permitted from `booked`/`confirmed` only, gated by the same cutoff for the token actor.
+
+**A-112 (D-53) added the two `→ booked` edges from `cancelled` and `cancelled_late`,** which this table originally refused on the reasoning that the slot was genuinely released and may already have been sold — the second half true, the conclusion not following. D-45 had already answered the identical objection on the release axis: the **exclusion constraint** knows whether the time was resold and a table does not, so the constraint refuses the reinstatement and the desk is told in words. Without the edge the recovery from a mis-tap was a NEW appointment — new id, new manage token, an event log split across two rows — which is APPT-07's promise coming apart, plus a `cancelled_late` on the client's twelve-month record with no correction path, while the identical daily mis-tap on `no_show` has had one since D-7. `booked` rather than `confirmed`: confirming is an act she performed and a button cannot perform it again.
 
 **A-076 (D-46) added the two `→ completed` edges from `booked` and `confirmed`,** which this table originally refused. Closing out Saturday on Monday otherwise meant tapping `checked_in` and then `completed` — twenty-two taps for eleven appointments, and a Monday-morning check-in timestamp written onto a client who sat down on Saturday, corrupting APPT-03's actual-vs-scheduled split to satisfy the table. `after-start` for the same reason `no_show` carries it: an appointment that has not begun cannot have been finished. **A `completed` reached this way leaves `startedAt` and `endedAt` NULL** — nobody knows when she sat down, and a missing timestamp is honest where a Monday-morning one is a lie in the audit trail.
 

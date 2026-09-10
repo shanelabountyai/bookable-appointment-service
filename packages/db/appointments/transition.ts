@@ -87,11 +87,17 @@ export interface TransitionInput {
    */
   expectedFrom?: AppointmentStatus;
   /**
-   * A-036 (operator P-5). `false` = "I already rang her, don't text."
+   * A-036 (operator P-5). `false` = "I already rang them, don't text."
    *
-   * Only ever consulted for a STAFF cancellation. A client who cancels through
-   * her own manage link does not need telling what she just did, and nothing
-   * in this product cancels on its own (A-021: no auto-cancel, ever).
+   * Only ever consulted for a STAFF move. A client who cancels through her own
+   * manage link does not need telling what she just did, and nothing in this
+   * product cancels on its own (A-021: no auto-cancel, ever).
+   *
+   * A-112 (D-53): the two notices this drives read it in OPPOSITE directions,
+   * deliberately. A cancellation is opt-OUT (undefined means send). A
+   * reinstatement is opt-IN — `true` and nothing else — because the client has
+   * just been told the opposite and the desk is usually already on the phone.
+   * Both are spelled out at the enqueue sites below, where the argument is.
    */
   notify?: boolean;
   /**
@@ -129,6 +135,17 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
     // meantime the constraint refuses it — correctly, and until now as a raw
     // SQLSTATE 23P01 landing on the appointment panel, whose entire job is
     // explaining itself.
+    //
+    // A-112 (D-53) makes it the ORDINARY case rather than the exception, and
+    // the whole reason reinstatement can exist at all. `cancelled → booked`
+    // puts the appointment back into the constraint's predicate — the two
+    // triggers rewrite its blocks and its chair hold from the parent row's new
+    // status — so the database, which is the only thing that knows whether the
+    // time has been sold since, is what decides. Nothing here checks first;
+    // check-then-write is never the mechanism. Note that it reinstates into
+    // the appointment's OWN chair (`resourceId` survived the cancellation), so
+    // a refusal can mean "that chair is taken" while another sits empty — the
+    // conservative direction, and the desk can move it afterwards.
     //
     // Mapped to the SAME error every other lost race in the codebase raises,
     // so the desk reads one vocabulary for one cause (`scheduling-words.ts`).
@@ -230,7 +247,7 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
     }
 
     const correction = isCorrection(from, to);
-    await tx.appointmentEvent.create({
+    const event = await tx.appointmentEvent.create({
       data: {
         businessId: appointment.businessId,
         appointmentId: appointment.id,
@@ -262,6 +279,8 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
       },
     });
 
+    const freeing = SLOT_FREEING_STATUSES as readonly AppointmentStatus[];
+
     // A-036: the other half of "nothing is silently cancelled". The row goes
     // in THIS transaction, so a cancellation that commits without its notice
     // is not a state the database can hold — the same coupling the booking
@@ -269,15 +288,25 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
     //
     // Staff only, and derived from the status module rather than hand-typed
     // (CLAUDE.md: a status list is never one edit).
-    if (
-      input.actor.type === 'staff' &&
-      input.notify !== false &&
-      (SLOT_FREEING_STATUSES as readonly AppointmentStatus[]).includes(to)
-    ) {
+    if (input.actor.type === 'staff' && input.notify !== false && freeing.includes(to)) {
       await enqueueNotification(tx, {
-        // One cancellation of an appointment is one fact, so the appointment
-        // id IS the key: a retried write path does not text her twice.
-        dedupeKey: `cancelled:${appointment.id}`,
+        // A-112 — KEYED ON THE EVENT, NOT ON THE APPOINTMENT.
+        //
+        // This read `cancelled:${appointment.id}` — "one cancellation of an
+        // appointment is one fact" — which was true for exactly as long as
+        // `cancelled` was a dead end. D-53's reinstatement makes cancel →
+        // reinstate → cancel an ordinary week at the front desk, and the
+        // SECOND cancellation would have carried the same key as the first,
+        // been swallowed by the outbox as a duplicate, and left a client who
+        // really is cancelled with no message and a screen saying she was
+        // told. Silent, and on the one path A-036 exists to make impossible.
+        //
+        // The event row is the cancellation ACT and it is created in this same
+        // transaction, so it is the honest unit: one notice per act, and a
+        // rolled-back attempt takes its key with it. The double-tap this used
+        // to absorb is already refused a layer up by the conditional UPDATE —
+        // the second transaction cannot find the status it expects.
+        dedupeKey: `cancelled:${event.id}`,
         businessId: appointment.businessId,
         appointmentId: appointment.id,
         channel: appointment.client?.email ? 'email' : 'sms',
@@ -288,6 +317,37 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
           startAt: appointment.startAt.toISOString(),
           // A-019's reason, forwarded. "Salon closed Saturday" is the entire
           // message as far as the client is concerned.
+          reason: input.reason?.trim() || null,
+        },
+      });
+    }
+
+    /**
+     * A-112 (D-53) — TELLING HER THE CANCELLATION WAS OURS.
+     *
+     * D-32's checkbox, DEFAULTED THE OTHER WAY. Every other notice in this
+     * file is opt-out, because the salon changing a client's appointment
+     * without telling her is the failure mode. Here she has already been
+     * texted that she is cancelled, and the desk's first move is almost always
+     * the phone — a reinstatement is an apology, and an automatic second text
+     * arriving before or instead of that conversation is the salon talking
+     * over itself. So this one is opt-IN: `notify` must be explicitly true.
+     *
+     * Derived from the same set as the cancellation above rather than testing
+     * for `booked` by hand: the fact is "the time was given back and has been
+     * taken again", and a ninth status must not need a second edit here.
+     */
+    if (input.actor.type === 'staff' && input.notify === true && freeing.includes(from) && !freeing.includes(to)) {
+      await enqueueNotification(tx, {
+        dedupeKey: `reinstated:${event.id}`,
+        businessId: appointment.businessId,
+        appointmentId: appointment.id,
+        channel: appointment.client?.email ? 'email' : 'sms',
+        template: 'appointment.reinstated',
+        recipient: appointment.client?.email ?? appointment.client?.phone ?? null,
+        payload: {
+          appointmentId: appointment.id,
+          startAt: appointment.startAt.toISOString(),
           reason: input.reason?.trim() || null,
         },
       });

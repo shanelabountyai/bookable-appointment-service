@@ -75,9 +75,19 @@ export const SELF_SERVE_BLOCKING_STATUSES = ['no_show'] as const;
  */
 export const REMINDER_ELIGIBLE_STATUSES = ['booked', 'confirmed'] as const;
 
-/** Terminal states: no transition leaves them, except the ≤7d staff correction
- *  between `no_show` and `completed` (APPT-06 — mis-taps are daily and the
- *  alternative is SQL surgery). */
+/**
+ * Terminal states: WHERE A VISIT ENDS UP, not where it is stuck.
+ *
+ * Every edge that leaves one is a CORRECTION — the ≤7d staff move between
+ * `no_show` and `completed` (APPT-06) and, since A-112/D-53, either
+ * cancellation back to `booked`. Both exist for the same stated reason:
+ * mis-taps are daily and the alternative is SQL surgery.
+ *
+ * Which is exactly what `isCorrection` reads this list for. "Nothing
+ * legitimately leaves a terminal status, so anything that does is somebody
+ * fixing a record" is the property, and it survived the new edges; "no
+ * transition leaves them" was the old wording here and did not.
+ */
 export const TERMINAL_STATUSES = ['completed', 'no_show', 'cancelled', 'cancelled_late'] as const;
 
 /**

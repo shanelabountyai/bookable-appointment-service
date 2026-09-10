@@ -3929,3 +3929,82 @@ has a pronoun in it afterwards.
   is part of the built product.
 - **The seeded client list is still eleven women and two men** — the second half
   of **A-113**, which is what makes a demo walk able to hear this at all.
+
+## A-112 — the cancellation that could not be taken back
+
+**Decision first (D-53), then build.** §7 gave `cancelled` and `cancelled_late`
+no outgoing edges at all, on a comment reasoning that "the slot was genuinely
+released and may already have been sold to somebody else". The second half is
+true; the conclusion does not follow, and **D-45 had already answered the
+identical objection on the release axis** — let the exclusion constraint decide,
+and tell the desk in words. A table cannot know whether the time was resold, so
+a table refusing every reinstatement refuses the free ones too.
+
+### What it built
+
+- **Two edges, one clause each** (`packages/core/scheduling/transitions.ts`):
+  `cancelled | cancelled_late → booked`, staff only, inside APPT-06's existing
+  seven-day window, reason required. The same clause the terminal corrections
+  use, so nothing new was added to the clause machinery.
+- **The database is the guard, not a check.** `cancelled → booked` puts the row
+  back inside the three exclusion constraints' predicate — the two triggers
+  rewrite its blocks and its chair hold from the parent row's new status — so
+  the constraint refuses when the time has been sold. Already mapped by
+  `isSlotTakenError`; `transitionAppointment`'s existing catch (A-075) needed no
+  change.
+- **The appointment survives, and so does everything hanging off it**: same id,
+  one continuous event log, and the manage token from her original confirmation
+  still live and still correct, because `endAt` never moved. Nothing re-points
+  anything — that is the whole argument for an edge over a rebooking, and it is
+  now pinned by a test rather than left as a claim.
+- **The late-cancel flag comes off her record for free**, because `reliability.ts`
+  counts by status in one grouped query. Asserted, because "it derives" is
+  exactly the claim A-055 made and A-067 had to correct.
+- **The panel and the chip needed no new logic.** Both read
+  `availableTransitions`, so "Put it back on the book" appears and — on day
+  eight — disappears with no screen deciding anything.
+- **The notice is opt-IN**, the only one in the product that is: `notify === true`
+  and nothing else. She has just been texted that she is cancelled and the desk's
+  first move is the phone.
+
+### What it decided
+
+- **D-53**, recorded in full. `booked` and not `confirmed`: confirming is an act
+  she performed, and a button here cannot perform it again — `confirmedAt` is
+  left standing so the log still says she once did.
+- **`isCorrection` widened from "terminal on both sides" to "leaves a terminal
+  status".** Those are the same predicate only while every edge out of a
+  terminal status lands on another one. This one does not, so the plainest "we
+  got this wrong" in the product would have been logged as an ordinary
+  `status_changed` and narrated as a second thing that simply happened.
+- The `booked` COLUMN is now explicit in the normative §7 table, so "nothing
+  transitions back to booked" is a written rule with two written exceptions
+  rather than an absence inferred from a missing column.
+
+### What it left behind
+
+- **The reader the new edge broke, and it broke silently.** The cancellation
+  notice was keyed `cancelled:<appointmentId>` — "one cancellation of an
+  appointment is one fact" — which was true for exactly as long as `cancelled`
+  was a dead end. Cancel → reinstate → cancel for real is now an ordinary week,
+  and the second notice carried the first one's key: the outbox swallowed it as
+  a duplicate and left a genuinely cancelled client with **no message while the
+  screen said she had been told**. Verified against the unfixed code — one
+  notice, no error. Keyed on the EVENT id now, which is the act rather than the
+  appointment.
+- **One error shape is reachable on this path, and that is a fact rather than an
+  omission.** A-078's rule is to provoke both; `transitionAppointment` owns its
+  transaction and never issues `SET CONSTRAINTS ... DEFERRED` (grep finds that
+  only in `push-column.ts`), so the violation always surfaces at statement end.
+  The deferred, SQLSTATE-less shape is provoked for real against the shared
+  mapper in `constraint.test.ts`. Written down in the test rather than left for
+  the next person to re-derive.
+- **The e2e assertion that would have passed against a reinstatement doing
+  nothing.** The first draft asserted the chip came back on the day grid — but a
+  cancelled appointment is drawn there on purpose, struck through, so "it
+  appears" was never the visible fact. The real change is the word the chip's
+  accessible name ends on: `, cancelled` → `, booked`.
+- **A cancellation reinstates into its OWN chair** (`resourceId` survived), so a
+  refusal can mean "that chair is taken" while another sits empty. Conservative
+  in the safe direction, and the desk can move it afterwards — but it is a real
+  narrowing, and the sentence the desk gets does not distinguish the two cases.
