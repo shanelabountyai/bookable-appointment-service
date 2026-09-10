@@ -124,6 +124,10 @@ export interface DensitySeedResult {
   callMarks: number;
   callDownAttempts: number;
   lapsedClients: number;
+  /** A-113 — BOOK-05 overrides on the moving book, so A-099's lanes have a
+   *  pair to draw. Returned and printed for A-095's reason: it was zero on
+   *  every install ever made, and nothing said so. */
+  overrides: number;
 }
 
 export async function seedDensity(
@@ -665,6 +669,72 @@ export async function seedDensity(
     }
   }
 
+  // ── A-113 — TWO CLIENTS, ONE STYLIST, ONE INSTANT ─────────────────────
+  //
+  // D-8 promises the day view draws a knowing double-booking as two people,
+  // and A-099 built it — and checkpoint 9 measured ZERO overlapping
+  // same-provider pairs on this book, because every row above went through the
+  // engine, and the engine never offers an occupied instant. So the one Phase
+  // 11 item that is purely a rendering promise could not be walked, printed or
+  // shown to anybody without a hand-built fixture: A-095's complaint, one
+  // feature over.
+  //
+  // LAST, after every PRNG draw and every positional pick above, and it draws
+  // nothing from the PRNG itself. A row added any earlier moves the unfinished
+  // modulo, the cancelled index and tomorrow's call-down list.
+  //
+  // A FUTURE day, not today: a pair at ten on today's grid is history by lunch
+  // on the day somebody demos it. An UNSEGMENTED partner, so both chips are one
+  // block each and the lanes are the only thing on screen being shown. Through
+  // the REAL override path, so it carries exactly what the desk's BOOK-05 form
+  // writes: the zero-width blocked range, `overriddenFromRange`, no chair, and
+  // an `override_booked` event with the reason on it.
+  let overrides = 0;
+  const partner = await prisma.appointment.findFirst({
+    where: {
+      businessId: business.id,
+      startDay: { in: recentDays.filter((day) => day > today) },
+      status: 'booked',
+      segmentPattern: { isEmpty: true },
+      clientId: { not: null },
+    },
+    orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      providerId: true,
+      startAt: true,
+      endAt: true,
+      lines: { orderBy: { ordinal: 'asc' }, select: { serviceId: true } },
+    },
+  });
+  if (partner) {
+    // Somebody not already in a chair at that instant, with anybody: one
+    // client in two columns at once is a different picture, and a wrong one.
+    const seated = await prisma.appointment.findMany({
+      where: { businessId: business.id, startAt: { lt: partner.endAt }, endAt: { gt: partner.startAt } },
+      select: { clientId: true },
+    });
+    const taken = new Set(seated.map((row) => row.clientId));
+    const squeezedIn = clients.find((client) => !taken.has(client.id));
+    if (squeezedIn) {
+      await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: partner.providerId,
+        serviceIds: partner.lines.map((line) => line.serviceId),
+        clientId: squeezedIn.id,
+        startAt: partner.startAt,
+        now,
+        actor: staffActor('seed'),
+        audience: 'staff',
+        isOverride: true,
+        overrideReason: 'Only free hour before the wedding — agreed to double up',
+        idempotencyKey: `seed:override:${partner.id}`,
+      });
+      overrides += 1;
+      appointmentsCreated += 1;
+    }
+  }
+
   // A-108 — DISPATCH WHAT THIS SEED ENQUEUED.
   //
   // Every booking above writes a confirmation through the real path, and
@@ -690,6 +760,7 @@ export async function seedDensity(
     callMarks,
     callDownAttempts,
     lapsedClients,
+    overrides,
   };
 }
 
@@ -730,10 +801,13 @@ async function seedLapsedHistory(
   // again, which is the exact defect this function exists to close.
   const people = [
     ['Bea Lindqvist', '+15125550111', LAPSED_WEEKS + 8],
-    ['Corinne Adeyemi', '+15125550112', LAPSED_WEEKS + 14],
+    ['Kwame Adeyemi', '+15125550112', LAPSED_WEEKS + 14],
     ['Harriet Vance', '+15125550113', LAPSED_WEEKS + 21],
-    ['Joyce Tabora', '+15125550114', LAPSED_WEEKS + 29],
-    ['Nell Fairweather', '+15125550115', LAPSED_WEEKS + 40],
+    ['Mateo Tabora', '+15125550114', LAPSED_WEEKS + 29],
+    // A-113 — the long one lives HERE, off the pool `fill` draws from: a row
+    // on a list has room for it, and a half-width chip beside an override does
+    // not.
+    ['Jordan Fairweather-Okonkwo', '+15125550115', LAPSED_WEEKS + 40],
   ] as const;
 
   let created = 0;
@@ -808,17 +882,25 @@ async function seedLapsedHistory(
 }
 
 async function seedClients(prisma: PrismaClient, businessId: string) {
+  // A-113 — NOT ALL THE SAME PERSON. Checkpoint 9 read "She came" about Tom
+  // Byrne on a book of eleven women and two men, after eight walks and 1,895
+  // tests had read that button without hearing it: a demo book is the only
+  // place the product's voice is audible, and it cannot be heard over a list
+  // where everybody is alike. Renamed IN PLACE — same count, same order, same
+  // phones — because `fill` picks from this list off the PRNG: another LENGTH
+  // re-deals every client, the chair follows the client (A-063), and A-024's
+  // frozen 1290/2100 is measured over the bookings that result.
   const names = [
     ['Alice Hall', '+15125550101'],
-    ['Jenny Moore', '+15125550102'],
+    ['Dev Iyer', '+15125550102'],
     ['Sam Okafor', '+15125550103'],
-    ['Rae Whitfield', '+15125550104'],
+    ['Rae Núñez', '+15125550104'],
     ['Nadia Rahman', '+15125550105'],
     ['Tom Byrne', '+15125550106'],
     // D-17: a household shares a number. Two separate clients, one phone —
     // the exact case a unique index would have silently merged.
     ['Marcy Dunn', '+15125550107'],
-    ['Ellie Dunn', '+15125550107'],
+    ['Leo Dunn', '+15125550107'],
   ] as const;
 
   const created = [];

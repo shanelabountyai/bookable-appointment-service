@@ -138,9 +138,18 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
     column.runningLateMinutes !== null ||
     !(column.closed || column.offRoster);
 
+  // D-54 (A-113) — A DOUBLE-BOOKED DAY WIDENS ITS COLUMN, by as many tracks as
+  // its widest cluster has lanes. At the 13rem minimum a half lane left ~46px
+  // for a name after the time, so the seeded override pair read "Leo D…" beside
+  // "Dev I…" — the desk overrode IN ORDER to see both people, and could not
+  // read either. All day rather than for the hour: a column is one track wide
+  // top to bottom, and the ordinary one-lane column is untouched.
+  const lanes = Math.max(1, ...column.items.map((item) => item.lanes ?? 1));
+
   return (
     <section
       className="row-span-2 grid grid-rows-subgrid"
+      style={lanes > 1 ? { gridColumn: `span ${lanes}` } : undefined}
       aria-label={`${column.providerName}${column.offRoster ? ', off the roster, still has clients booked' : ''}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
     >
       {/* ROW ONE — everything above the day. Wrapped, so that however much of

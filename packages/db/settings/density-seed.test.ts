@@ -499,6 +499,53 @@ describe('determinism and safety', () => {
 
   // D-17: a household shares a phone number, and they must remain SEPARATE
   // clients — the case a unique index would have silently merged.
+  /**
+   * A-113 — THE PAIR A-099 DRAWS, ON THE BOOK A DEMO ACTUALLY OPENS.
+   *
+   * Checkpoint 9's own query, run against the seed. It returned 0, so the
+   * lanes had nothing to draw on any install. EXACTLY one, not "at least one":
+   * a second pair nobody seeded on purpose is a double-booking the engine let
+   * through, and `> 0` would pass against it.
+   */
+  it('double-books exactly one stylist, at one instant, by override (A-113)', async () => {
+    const business = await prisma.business.findFirstOrThrow();
+    const pairs = await prisma.$queryRawUnsafe<
+      {
+        aStart: Date;
+        bStart: Date;
+        aClient: string | null;
+        bClient: string | null;
+        overrides: number;
+        reason: string | null;
+        day: string;
+      }[]
+    >(`
+      SELECT a."startAt" AS "aStart", b."startAt" AS "bStart",
+             a."clientId" AS "aClient", b."clientId" AS "bClient",
+             a."isOverride"::int + b."isOverride"::int AS overrides,
+             coalesce(a."overrideReason", b."overrideReason") AS reason,
+             a."startDay" AS day
+        FROM "Appointment" a JOIN "Appointment" b
+          ON a."providerId" = b."providerId" AND a.id < b.id
+       WHERE a.status NOT IN ('cancelled','cancelled_late')
+         AND b.status NOT IN ('cancelled','cancelled_late')
+         AND a."startAt" < b."endAt" AND b."startAt" < a."endAt"
+    `);
+    expect(shared.overrides).toBe(1);
+    expect(pairs).toHaveLength(1);
+    const [pair] = pairs as [(typeof pairs)[number]];
+    // ONE of the two is the override: the other is the client who was already
+    // in the book, which is the one A-099 found disappearing.
+    expect(pair.overrides).toBe(1);
+    expect(pair.reason?.trim()).toBeTruthy();
+    // Same instant, so the same `top` on the grid — the shape that hid one.
+    expect(fromDate(pair.aStart)).toBe(fromDate(pair.bStart));
+    expect(pair.aClient).not.toBe(pair.bClient);
+    // On the moving book, and ahead of today, so a demo can still walk it.
+    expect(shared.recentDays).toContain(pair.day);
+    expect(pair.day > seedToday(business.timezone)).toBe(true);
+  });
+
   it('seeds two clients sharing one phone number', async () => {
     const rows = await prisma.client.groupBy({ by: ['phone'], _count: { _all: true } });
     expect(rows.some((r) => r._count._all > 1)).toBe(true);

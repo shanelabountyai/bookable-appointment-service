@@ -29,7 +29,10 @@ async function main(): Promise<void> {
         `${density.waitlistEntries} on the waitlist, ${density.callMarks} call marks, ` +
         `${density.callDownAttempts} call-down attempts, ${density.lapsedClients} lapsed; ` +
         // A-108. This was zero on every install ever made, and nothing said so.
-        `${density.dispatched} messages sent)`,
+        `${density.dispatched} messages sent, ` +
+        // A-113. Zero overlapping pairs on every install, so A-099's lanes
+        // had nothing to draw on the demo book.
+        `${density.overrides} double-booked by override)`,
     );
   } finally {
     await prisma.$disconnect();

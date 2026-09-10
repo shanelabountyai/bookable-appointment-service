@@ -4005,3 +4005,48 @@ the screen reported she had been told. It fails as silence, never as an error.
 It is keyed on the cancellation *act* now. **A state change is never one edit:
 the readers to find are the ones holding an assumption that only held while the
 old rule did.**
+
+## A-113 — the demo book that could not show its own best feature
+
+A salon double-books on purpose. The mother of the bride has one free hour, the
+stylist says yes, and the desk overrides the calendar with a typed reason. The
+system has always allowed that and recorded why, and one item earlier it learned
+to *draw* it: two chips side by side at ten o'clock, instead of the later
+client's chip painted over the earlier one, so the client already in the book
+does not silently vanish.
+
+**Nobody could see it.** The seeded demo book is built through the real booking
+path, and the real booking path never offers a time that is already taken, so
+the seed contained **zero** double-booked hours. The feature was correct,
+tested with hand-built fixtures, and absent from every install anyone would
+walk through. This item adds one knowing double-booking to the demo book, made
+through the same override path the front desk uses, and the end-to-end test
+runs the **real seed** and checks what the screen does with it: both chips at
+the same height, neither covering the other, both names readable rather than
+cut to an ellipsis, and the printed day sheet saying on both rows that the two
+clients are booked at the same time.
+
+**The test found what the feature had been hiding.** Asserting the names were
+*readable* rather than merely *present* failed at once: side by side in a
+standard-width column, each client got about as much room as five letters, so
+the desk saw "Leo D…" beside "Dev I…" — two people it had overridden the
+calendar specifically in order to see. The earlier test had checked visibility,
+and an ellipsis is visible. The decision taken was to widen the column: a
+stylist with a double-booking that day gets a column as many tracks wide as
+there are clients at once, so every chip keeps its time and its whole name.
+
+**The constraint that made it delicate.** The demo book is deterministic: a
+seeded random generator, pinned by a test that asserts an exact utilization
+figure to the minute and another that compares every column of every table
+across two runs. The new booking is added after every random draw and every
+position-based choice the seed makes, and draws nothing itself, so nothing
+already in the book moves.
+
+**The second half is about voice.** The seeded clients were eleven women and two
+men. That is how a close-out button reading *"She came"* passed eight demo
+walk-throughs and nearly two thousand tests before anyone read it next to a
+man's name. A demo book is the only place a product's wording meets real names,
+so the names now vary. They were renamed in place rather than added to, because
+the size of that list decides which client each seeded booking gets, and so
+which chair is free.
+

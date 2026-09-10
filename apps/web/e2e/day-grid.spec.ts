@@ -11,7 +11,7 @@
 import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
-import { seedSetup } from '@bookable/db/settings';
+import { seedDensity, seedSetup } from '@bookable/db/settings';
 import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
@@ -779,5 +779,84 @@ test.describe('two clients in one hour (A-099, D-8)', () => {
     // No `provider=`: that tab renders the LIST. The grid is the everyone view.
     await page.goto(`/staff/day?day=${DAY}`);
     await expectNoAxeViolations(page);
+  });
+});
+
+/**
+ * A-113 — THE SAME PROMISE, ON THE BOOK A DEMO ACTUALLY OPENS.
+ *
+ * Everything above hand-builds its pair, which is how A-099 could be right and
+ * still invisible on every install: the density seed held no overlapping
+ * same-provider pair to draw. This runs the REAL seed and reads the pair back
+ * rather than naming it — which clients and which day are the seed's business —
+ * and asserts what the screen says about them.
+ *
+ * `now` is FROZEN, as in the seed's own tests: the moving book is anchored to
+ * it, and `?day=` pins the page, so nothing here reads the wall clock.
+ */
+test.describe('the seeded double-booking (A-113)', () => {
+  test('is drawn side by side on the grid, legibly, and printed as a pair on the sheet', async ({ page }) => {
+    // Hundreds of appointments through the real write path, one at a time.
+    test.setTimeout(240_000);
+    const prisma = new PrismaClient();
+    let pair: { day: string; providerId: string; reason: string; squeezedIn: string; already: string };
+    try {
+      await seedDensity(prisma, { now: at('2026-09-02T15:30:00-05:00') });
+      const override = await prisma.appointment.findFirstOrThrow({
+        where: { isOverride: true },
+        select: { providerId: true, startAt: true, startDay: true, overrideReason: true, client: { select: { name: true } } },
+      });
+      const other = await prisma.appointment.findFirstOrThrow({
+        where: { providerId: override.providerId, startAt: override.startAt, isOverride: false },
+        select: { client: { select: { name: true } } },
+      });
+      pair = {
+        day: override.startDay,
+        providerId: override.providerId,
+        reason: override.overrideReason!,
+        squeezedIn: override.client!.name!,
+        already: other.client!.name!,
+      };
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // No `provider=`: that tab renders the LIST. The grid is the everyone view.
+    // Found by the accessible name's pairing, never by a name alone: the seeded
+    // clients recur all day, and only these two are "at the same time as".
+    await page.goto(`/staff/day?day=${pair.day}`);
+    const chip = (who: string, withWhom: string) =>
+      page.getByRole('link', { name: new RegExp(`${who}.*at the same time as ${withWhom}`) }).locator('xpath=ancestor::li[1]');
+    const already = chip(pair.already, pair.squeezedIn);
+    const squeezed = chip(pair.squeezedIn, pair.already);
+    await expect(already).toBeVisible();
+    await expect(squeezed).toBeVisible();
+
+    const a = (await already.boundingBox())!;
+    const b = (await squeezed.boundingBox())!;
+    expect(Math.abs(a.y - b.y)).toBeLessThan(2);
+    const apart = a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1;
+    expect(apart, `chips overlap: ${JSON.stringify({ a, b })}`).toBe(true);
+
+    // LEGIBLE, not merely present. The name is the part of line one that gives
+    // way in a narrow lane (the chip's own truncation order), so `toBeVisible`
+    // passes on "Ma…" — measure whether the text actually fits.
+    for (const [box, name] of [
+      [already, pair.already],
+      [squeezed, pair.squeezedIn],
+    ] as const) {
+      const label = box.getByText(name, { exact: true });
+      await expect(label).toBeVisible();
+      expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), `${name} is cut off`).toBe(true);
+    }
+
+    // The paper has no geometry, so it says it in words — on BOTH rows, and the
+    // override's row carries the reason somebody typed.
+    await page.goto(`/staff/day?day=${pair.day}&provider=${pair.providerId}&sheet=1`);
+    const row = (who: string, withWhom: string) =>
+      page.locator('tbody tr').filter({ hasText: `At the same time as ${withWhom}.` }).filter({ hasText: who });
+    await expect(row(pair.already, pair.squeezedIn)).toHaveCount(1);
+    await expect(row(pair.squeezedIn, pair.already)).toHaveCount(1);
+    await expect(row(pair.squeezedIn, pair.already)).toContainText(pair.reason);
   });
 });

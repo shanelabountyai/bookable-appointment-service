@@ -4010,3 +4010,85 @@ a table refusing every reinstatement refuses the free ones too.
   refusal can mean "that chair is taken" while another sits empty. Conservative
   in the safe direction, and the desk can move it afterwards — but it is a real
   narrowing, and the sentence the desk gets does not distinguish the two cases.
+
+## A-113 — the double-booked hour no install could show, and a client list of one kind of person
+
+**Commit `(recorded in the follow-up commit)`.**
+
+Two halves, both about the demo book rather than the product. Checkpoint 9
+measured **zero overlapping same-provider pairs** on the seeded book, so A-099's
+lanes — the one Phase 11 item that is purely a rendering promise — could not be
+walked, printed or shown to anybody. And its thirteen seeded clients were eleven
+women and two men, which is how *"She came"* survived eight demo walks.
+
+### What it built
+
+- **One BOOK-05 override, seeded LAST** in `seedDensity`, just before the outbox
+  drain: the earliest unsegmented `booked` row on a moving-book day after today,
+  and a second client at the same instant with the same stylist. The second
+  client is the first in the pool not already seated anywhere at that instant.
+  It goes through `bookAppointment` with `isOverride` and a typed reason, so it
+  carries exactly what the desk's form writes: the zero-width blocked range,
+  `overriddenFromRange`, no chair, and an `override_booked` event.
+- **`overrides` is returned and printed** in the seed's log line, for A-095's
+  reason: the number that was zero on every install is now one somebody can see
+  go back to zero.
+- **Client names widened, in place.** Pool: Jenny Moore → Dev Iyer, Rae
+  Whitfield → Rae Núñez, Ellie Dunn → Leo Dunn (D-17's shared-phone household
+  still holds). Lapsed: Corinne → Kwame Adeyemi, Joyce → Mateo Tabora, Nell
+  Fairweather → Jordan Fairweather-Okonkwo. Eleven women and two men becomes
+  five, five, and three names that do not say.
+- **A double-booked day widens its column (D-54)** — `day-grid.tsx`'s `Column`
+  spans as many grid tracks as its widest cluster has lanes. Found by this
+  item's own legibility assertion, below: at the 13rem minimum a half lane cut
+  "Leo Dunn" to "Leo D…".
+- **Unit (`density-seed.test.ts`)**: checkpoint 9's own query returns EXACTLY
+  one pair, one side an override with a reason, same instant, different clients,
+  on a moving-book day ahead of the seed's today.
+- **e2e (`day-grid.spec.ts`)**: runs the real seed at a frozen `now`, reads the
+  pair back rather than naming it, and asserts the screen — same `top`, no
+  horizontal overlap, BOTH names fitting their chip (`scrollWidth <=
+  clientWidth`, because `toBeVisible` passes on a truncated "Ma…"), and both
+  sheet rows saying *"At the same time as …"* with the reason on the override's.
+
+### What it decided
+
+- **D-54 — widen the column, not the chip.** Taken at the decision prompt over
+  the recommendation (hide the start time on laned chips) and over deferring.
+  The seed was always going to be a fixture; asserting the screen made it a
+  rendering decision too, because A-099's lanes had never been measured for
+  legibility — its spec asserted `toBeVisible`, which passes on "Ruth Ade…".
+- **Renamed in place rather than adding clients.** `fill` picks from the pool
+  off the PRNG, so another LENGTH re-deals every client; the chair follows the
+  client (A-063), and A-024's frozen 1290/2100 is measured over the bookings
+  that result. Same count, same order, same phones — and the full suite
+  (1649 + 1 skipped) confirms A-024 and A-045 both unmoved.
+- **Last in the function, and no PRNG draw.** A row added any earlier moves
+  `recentPast`'s `index % 4`, the cancelled row at index 3, and tomorrow's
+  call-down indices — three fixtures that are positional on purpose.
+- **A future day, not today** — a pair at ten on today's grid is history by
+  lunch on the day somebody demos it. **An unsegmented partner**, so both chips
+  are one block and the lanes are the only thing on screen being shown.
+- **The long hyphenated name is a lapsed client**, off the pool `fill` draws
+  from: a list row has room for it, a half-width chip beside an override does
+  not, and the e2e legibility assertion would then be testing a name rather
+  than the lanes.
+
+### What it left behind
+
+- **Legibility is measured at Playwright's Desktop Chrome width only.** The
+  grid is the desk's screen; the stylist's phone reads the list, which says the
+  pair in words and is already covered by A-099's spec.
+- **The column is wide ALL DAY** for what is usually one hour (D-54's stated
+  cost), and at 1280px a four-stylist grid with a pair in it scrolls sideways.
+- **The rule it leaves: an assertion that something is VISIBLE passes on an
+  ellipsis.** A-099 shipped lanes with `toBeVisible` on both chips and the
+  names were cut off from the day it shipped — invisible on hand-built fixtures
+  whose names nobody read at column width. Where the claim is "you can read
+  it", measure `scrollWidth <= clientWidth`.
+- **`overrides` can be 0** if a demo is seeded on a date whose whole forward
+  window is closed or inside a fixed fixture's ±3 margin. Checked against the
+  worst case (the week before `FALL_BACK_DAY`): two open days survive. If it
+  ever happens, the log line says so rather than the grid going quietly back to
+  one chip.
+
