@@ -3932,6 +3932,8 @@ has a pronoun in it afterwards.
 
 ## A-112 — the cancellation that could not be taken back
 
+**Commit `f303f30`.**
+
 **Decision first (D-53), then build.** §7 gave `cancelled` and `cancelled_late`
 no outgoing edges at all, on a comment reasoning that "the slot was genuinely
 released and may already have been sold to somebody else". The second half is
