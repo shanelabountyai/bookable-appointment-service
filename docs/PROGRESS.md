@@ -3734,6 +3734,8 @@ catalogue already carries one.
 
 ## A-110 — the waitlist had one door in and none out
 
+*Commit `7fd4dae`.*
+
 **WAIT-01, WAIT-02, BOOK-04.** `/staff/book`, `/staff/day` and `lib/booking/`
 contained **zero references to the waitlist**. So the exact moment WAIT-01
 exists for — *"Nobody can take that on Thursday"*, said out loud by
