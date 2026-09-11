@@ -4092,3 +4092,79 @@ women and two men, which is how *"She came"* survived eight demo walks.
   ever happens, the log line says so rather than the grid going quietly back to
   one chip.
 
+
+---
+
+## Demo checkpoint 10 and the Phase 12 close — a scoping pass, not a build
+
+**Commit:** `TBD`
+
+**What it produced.** `docs/reviews/21-demo-checkpoint-10.md` (the walk),
+`docs/reviews/21-operator-review-phase-12-close.md` (the operator review), and
+**seven new backlog rows, A-114…A-120**, as Phase 13. No product code changed.
+`grep "⬜ A-"` returned 0 after A-113, which is the state that means the job is
+scoping.
+
+**THE CHECKPOINT BOOKED ONLINE AS A REGULAR, WHICH NO WALK HAD DONE IN TEN
+PHASES.** NEXT.md said to read the rendered text against A-113's new names, and
+the one place those names meet a form the product does not control is the public
+booking page. Alice Hall is blocked from booking online after three no-shows.
+Typing her number as `+1 512 555 0101` gets *"We can't book this one online"*.
+Typing `(512) 555-0101` gets **"Your appointment is confirmed"** and a second
+Alice Hall with a clean record. `normalizePhone` keeps a leading `+`, so one
+number has three identities, and `confirmAppointment` reuses a client only on an
+exact `(phone, name)` match. The name has the same fault (`insensitive` folds
+neither accents nor Unicode form, so "Rae Nunez" is a stranger and the desk's
+search for "nunez" finds nobody). Meanwhile the desk's phone search matches
+digits anywhere and shows every copy. **The desk sees one client while the
+website makes three.** The code documents the NAME trade (D-17, households) and
+nobody ever decided the phone format. All thirteen seeded phones are stored
+`+1…`, so on the demo install every returning client who books the natural way
+is duplicated.
+
+**The checkpoint's second finding is one condition.** A-106's day list and
+A-110's waitlist door sit behind `offered.length === 0`, and A-042 made
+`offered` carry refused times. So Dana's FULL Saturday (32 refused times) gets
+neither, and asking about the salon's SHUT Sunday produces *"The next days with
+room: Tuesday 22 September"*. The move panel, asking of bookable slots only,
+answers the full day correctly. The row that scoped A-106 measured a full book
+and prescribed *"a MULTI-DAY absence"* as the fixture, and an absence is the
+one shape that returns no candidates.
+
+**Its third is two screens reading 686 identical rows.** Every one is
+`deliveredBy = log`. The appointment page says "queued" (A-044/A-048's
+`reallyDelivered`), and `/staff/messages` says *"Everything has gone out."*
+
+**The operator review found the same kind of sameness on the time axis.** D-6
+and D-53 keep a row's id through a change, and every reader keyed on the id
+alone is still asking about before. The reinstatement returns into its OWN
+chair, which `findFreeResource`'s lowest-name ordering guarantees the next
+booking took: refused with *"sold to somebody else"* while Dana's column is
+empty, and the rebooking it prescribes restores every harm D-53 removed. The
+missed-reminder list asks whether an appointment was ever reminded, not whether
+it was reminded for its current start, and the badge counts outbox rows that a
+missed tick never writes.
+
+**What it decided.** *No D-number taken.* Rows 116 (A-114, phone and name
+identity) and 121 (A-119, the multi-service waitlist entry) each need a NEW one.
+The next is D-55, and whichever is decided first takes it. The backlog orders the
+two reviews' rows by consequence rather than by review, so the operator's
+proposed A-114/A-115/A-116 are A-116/A-117/A-119. The review doc's closing
+section records the mapping. The walk ran on a new database, `bookable_cp10`,
+rather than a dropped and re-seeded `bookable_dev`, and the operator review had
+`bookable_test` to itself.
+
+**What it left behind.**
+
+- **`bookable_cp10` still exists** on the laptop; drop it by hand.
+- **A-109's floor was not exercisable on the demo book** (one 25-minute opened
+  row, and nothing decays without time passing), and A-111's source-parsing
+  guard was not run by either review. The checkpoint's rendered-text grep is the
+  only Phase 12 measurement of the voice.
+- **The operator's load-bearing list stands unscoped on purpose:** the
+  stylist's phone view (`provider-day.tsx:28`) still says "not working today"
+  on a day she was booked in, and `route.ts` has no per-tenant isolation between
+  the sweep and the dispatch.
+- **The checkpoint's harness lesson:** loading `/staff/book?...&day=` does not
+  run the panel's client-side lookups. A walk that only loads URLs reports the
+  day list missing everywhere, including where it works.

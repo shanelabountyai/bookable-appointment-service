@@ -4050,3 +4050,104 @@ so the names now vary. They were renamed in place rather than added to, because
 the size of that list decides which client each seeded booking gets, and so
 which chair is free.
 
+
+---
+
+## The walk that booked online as a regular
+
+*Demo checkpoint 10 and the Phase 12 close: a scoping pass. No product code
+changed. What follows is what two independent reviews found on a
+691-appointment book, and why every one of the findings had a test standing in
+front of it that could not fail.*
+
+Twelve phases in, the product has stopped getting arithmetic wrong. What is
+left are **equalities**: places where two parts of the system each decide whether
+two things are the same, and decide differently.
+
+### The client who was two clients
+
+The salon blocks a client from booking online after three no-shows. The rule is
+enforced in the database-backed write path, and the desk sees a flag on every
+screen: *"Cannot book online — the desk can."*
+
+The walk booked online as that client, twice:
+
+```
+"Alice Hall"  +1 512 555 0101   →  "We can't book this one online. Please call the salon."
+"Alice Hall"  (512) 555-0101    →  "Your appointment is confirmed."
+```
+
+The second attempt created a new client record, with no history, no notes and
+no flag. The phone normaliser keeps a leading `+`, so one number has three
+spellings and three identities, and the booking reuses a client only on an exact
+match. The desk's search matches digits anywhere, so it shows both records side
+by side. **The desk sees one person while the website makes three.** An accented
+name has the same fault: "Rae Nunez" is a stranger to a record that says
+"Rae Núñez".
+
+Nothing had caught it because the end-to-end test that proves a returning client
+is recognised types `(512) 555-0101` and then asserts `5125550101`. The same
+person writes the number on both sides of the equality, which proves the
+normaliser is deterministic, not that it recognises anybody. The fix is scoped
+as a decision first: what the canonical form of a phone number is, and how a
+name compares. Merging a household that shares a phone was rejected, in writing,
+eleven phases ago, and that stays.
+
+### The answer on the wrong branch
+
+Phase 12 gave the front desk what the customer already had: when a stylist
+cannot take a booking on the day asked, the panel names the next days that have
+room, and offers to put the client on the waitlist. The walk drove it on the
+panel's own date picker:
+
+```
+Dana, Colour, Saturday (fully booked)   →  32 times, every one refused. No day list. No waitlist.
+Dana, Colour, Sunday (salon shut)       →  "The next days with room: Tuesday 22 September" + waitlist
+```
+
+The answer only appears when the desk asks about a day the salon is closed. The
+panel lists refused times on purpose, so the desk can knowingly double-book, and
+a fully refused day is therefore never "empty". The move panel asks the same
+question of bookable times only, and gets it right. The backlog row that scoped
+the feature measured a full book, then prescribed an **absence** as its test
+fixture, and an absence is exactly the case that works.
+
+### Two screens, one table
+
+Every notification in this build goes through a logging adapter, and by design
+a real messaging channel is still out of scope. Each appointment page says so
+honestly: every message is *"queued"*. The screen whose heading is *"Messages
+that did not go out"* reads the same 686 rows and says *"Everything has gone
+out."*
+
+### The operator's half: rows that survive a change
+
+The operator review found the same kind of sameness on the time axis. A
+reschedule and a cancellation-undo both deliberately keep the appointment's id,
+so its history and its manage link survive. Readers keyed on the id alone are
+then answering about the appointment as it was before the change:
+
+- **Undoing a cancellation asks whether the old chair is free.** The chair
+  picker hands out the lowest-numbered free chair, so the freed chair goes to the
+  next booking every time. The undo is refused with *"That time has been sold to
+  somebody else"* while the stylist's column is empty and two chairs sit free.
+- **The "never reminded" list asks whether an appointment was ever reminded,
+  not whether it was reminded for its current time.** A client reminded for
+  Saturday and moved to Wednesday drops off the list, while the job that sends
+  reminders, correctly, writes them a second one.
+
+### Why this is the interesting part
+
+Every finding in this pass had a test pointing at it, and every test passed:
+
+- The fixture that exercised "the desk can see when Dana is free" gave Dana a
+  week off.
+- The seed that put a long name in the book put it where it fits.
+- The test that proves a client is recognised typed her number once.
+
+None of these is careless. Each is the natural way to write the case down, and
+each chose the version of the case its author was already picturing. The rule
+the phase leaves behind is that **when a backlog row carries a measurement, the
+test must reproduce the measurement's shape, not the sentence written about it**.
+An equality between two things two different people type needs two different
+people typing.
