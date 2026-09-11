@@ -193,7 +193,7 @@ test.describe("what's opened up (A-043)", () => {
     await expect(page.getByText(/10:00 · 55 min/)).toBeVisible();
     await expect(page.getByText(/Cut · Dana/)).toBeVisible();
     // The other half of the errand: ring the client who just gave it back.
-    await expect(page.getByRole('link', { name: '5125550100' })).toHaveAttribute('href', 'tel:5125550100');
+    await expect(page.getByRole('link', { name: '+15125550100' })).toHaveAttribute('href', 'tel:+15125550100');
 
     // …and into the matcher that has existed since A-023 with one door.
     await page.getByRole('link', { name: 'Who wants this slot?' }).click();
@@ -220,7 +220,7 @@ test.describe("what's opened up (A-043)", () => {
     // WHAT freed it, because the phone call is a different call: you do not
     // offer Mrs Hall another time, she is still coming.
     await expect(page.getByText('Mrs Hall dropped the Colour')).toBeVisible();
-    await expect(page.getByRole('link', { name: '5125550188' })).toHaveAttribute('href', 'tel:5125550188');
+    await expect(page.getByRole('link', { name: '+15125550188' })).toHaveAttribute('href', 'tel:+15125550188');
 
     // …and the service to ring the waitlist about is the one she DROPPED.
     await page.getByRole('link', { name: 'Who wants this slot?' }).click();

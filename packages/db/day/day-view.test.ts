@@ -164,7 +164,7 @@ describe('the appointments', () => {
     const [appointment] = (await columnFor(danaId)).appointments;
 
     expect(appointment?.clientName).toBe('Ada Chen');
-    expect(appointment?.clientPhone).toBe('5125550101');
+    expect(appointment?.clientPhone).toBe('+15125550101');
     // CLIENT-03: an allergy belongs on the chip, not one click away.
     expect(appointment?.clientNotes).toBe('Allergic to PPD.');
     expect(appointment?.serviceNames).toEqual(['Cut']);

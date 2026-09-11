@@ -4151,3 +4151,44 @@ the phase leaves behind is that **when a backlog row carries a measurement, the
 test must reproduce the measurement's shape, not the sentence written about it**.
 An equality between two things two different people type needs two different
 people typing.
+
+## A-114 — one client, however two people type her
+
+A salon can stop a client with three no-shows from booking online; she is told
+to call, and the desk books her. That rule is attached to the client's
+**record**, which means it only works if the website can find the record.
+
+**It could not, if she typed her number differently from the desk.** The front
+desk wrote her down as `+1 512 555 0101`; she typed `(512) 555-0101` at home.
+The software treated those as two different people, so she was told
+*"Your appointment is confirmed"* and handed a brand-new, spotless record, while
+her real one sat blocked. Names had the same problem: "Rae Nunez" was a stranger
+to "Rae Núñez", and the desk's own search for "nunez" found nobody. Every test
+had passed, because each typed a number in and read the *same* number back: one
+person typing twice, never two people typing.
+
+**The fix makes the database the only authority on what a phone number and a
+name are.** Two small functions define them: the phone as `+1` and ten digits
+however it was punctuated, and the name with accents, case, spacing and Unicode
+encoding folded away. A trigger applies them to every write, from the website,
+the desk, the demo seed, or a hand-written test row. Every lookup asks those
+same functions about what was typed. There is no second copy of either rule to
+drift, and the migration that rewrote existing records *is* that trigger,
+rather than a third copy.
+
+Three details carry the engineering:
+
+- **A household still is not one person.** A mother and daughter who share a
+  phone stay two clients, with separate no-show records. Same number *and* same
+  name is the whole test, and the test suite proves both directions.
+- **The repair could not reopen the hole.** Records already split are pointed
+  out on the client page for the desk to merge; nothing merges on its own,
+  because a merge cannot be undone. A merged-away record keeps its old name and
+  number so that number still finds her, which means the website's lookup has
+  to step over it to the surviving record. Otherwise her next online booking
+  would land on a record nobody looks at, and the block would be skipped again
+  through the very mechanism meant to fix it.
+- **The tests are two people typing.** Every equality in the new suite has a
+  different string on each side: brackets against `+1`, "rae nunez" against
+  "Rae Núñez", and the same accented letter encoded two ways that look
+  identical on screen.

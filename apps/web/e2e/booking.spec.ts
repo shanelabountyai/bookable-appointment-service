@@ -82,10 +82,45 @@ test.describe('customer booking flow (A-010)', () => {
       });
       expect(appointment.status).toBe('booked');
       expect(appointment.lines).toHaveLength(1);
-      // Normalized on the way in, so the same person typing it either way is
-      // one client (CLIENT-01).
-      expect(appointment.client?.phone).toBe('5125550101');
+      // Stored CANONICALLY (D-55) — a different string from the one typed.
+      // Whether that makes her one client is the next test's question, and it
+      // needs a second person typing.
+      expect(appointment.client?.phone).toBe('+15125550101');
       expect(await prisma.appointmentEvent.count()).toBeGreaterThan(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * A-114 / D-55 — TWO PEOPLE TYPING. The desk wrote her with a +1 and her
+   * accents; she types brackets and no accents. One client, and the booking is
+   * on it. The assertion above used to type a number and read the same number
+   * back — one person typing twice — and passed while this made a second client.
+   */
+  test('books onto the record the desk wrote, however she types her number and name', async ({ page }) => {
+    const seed = new PrismaClient();
+    let deskId: string;
+    try {
+      const business = await seed.business.findFirstOrThrow();
+      deskId = (
+        await seed.client.create({ data: { businessId: business.id, name: 'Rae Núñez', phone: '+1 512 555 0104' } })
+      ).id;
+    } finally {
+      await seed.$disconnect();
+    }
+
+    await reachTheTimeList(page);
+    await firstOption(page).click();
+    await page.getByLabel('Your name').fill('rae nunez');
+    await page.getByLabel('Phone').fill('(512) 555-0104');
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      expect(await prisma.client.count({ where: { phone: '+15125550104' } })).toBe(1);
+      expect((await prisma.appointment.findFirstOrThrow()).clientId).toBe(deskId);
     } finally {
       await prisma.$disconnect();
     }
@@ -543,9 +578,9 @@ test.describe('a whole visit, and only what may be sold online (A-058)', () => {
  * somebody else across the other.
  */
 test.describe('the chair she is already in (A-105)', () => {
-  /** Typed into the form exactly as the seeded row carries it: a client is
-   *  reused only on an exact (phone, name) match, and the row it finds is the
-   *  whole of this item. */
+  /** Typed into the form as a different string from the seeded row: a client is
+   *  reused on the same CANONICAL (phone, name) (D-55), and the row it finds is
+   *  the whole of this item. */
   const HER = { name: 'Marcy Dunn', typed: '(512) 555-0177', stored: '5125550177' };
 
   /** Her Cut: body 13:00–13:45, envelope 13:00–13:55 with the after-buffer.

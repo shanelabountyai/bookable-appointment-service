@@ -4168,3 +4168,70 @@ rather than a dropped and re-seeded `bookable_dev`, and the operator review had
 - **The checkpoint's harness lesson:** loading `/staff/book?...&day=` does not
   run the panel's client-side lookups. A walk that only loads URLs reports the
   day list missing everywhere, including where it works.
+
+## A-114 — one client, however two people type her (D-55)
+
+**Commit `(recorded in the follow-up commit)`.**
+
+Checkpoint 10 proved it through the real `/book` flow. Alice Hall, blocked
+under CLIENT-04, was refused with `+1 512 555 0101` and booked with
+`(512) 555-0101`, which also made a second, clean Alice Hall. Nobody had ever
+decided what a phone number *is*, and the name had the same fault: "nunez" was a
+stranger to "Rae Núñez".
+
+### What it built
+
+- **Migration `20260911120000_client_identity`:** the `unaccent` extension,
+  `bookable_phone(text)` (E.164, US default, canonicalising not validating),
+  `bookable_fold(text)` (NFC → unaccent → lower → whitespace collapsed), a
+  `Client.nameFolded` column, and a `BEFORE INSERT OR UPDATE` trigger
+  `client_identity` that rewrites `phone` and derives `nameFolded` on every
+  write. The backfill is `UPDATE "Client" SET phone = phone`, which is the
+  trigger itself, not a third copy of the rule. There is an index on
+  `(businessId, phone, nameFolded)`. CI now asserts the trigger and the
+  extension exist.
+- **`normalizePhone` is deleted.** `isPlausiblePhone` takes the raw string and
+  only decides whether the form may be submitted.
+- **`findReturningClient`** (`packages/db/clients`) is the website's reuse
+  match. It asks the database for the canonical forms of what was typed and
+  matches on `(phone, nameFolded)`. It returns a live record first (the oldest)
+  and otherwise follows a tombstone to its survivor. `confirmAppointment` calls
+  it instead of its inline `findFirst`.
+- **`searchClients`** matches `nameFolded contains bookable_fold(query)`, so the
+  desk, the merge picker, the waitlist picker and the booking panel all find
+  "Rae Núñez" from "nunez". `findClientsByPhone` asks the same function.
+- **`findSplitRecords`** lists other live records with the same canonical phone
+  and folded name. The client page says *"Another record has this number and
+  name. Merge it if it is the same person."*, and the merge panel opens with
+  that record already listed.
+- **Tests:** `packages/db/clients/identity.test.ts` has 12 tests, and every
+  equality in it has a different string on each side: formats, NFD, case and
+  spacing, the household, the business boundary, the tombstone that is the
+  older row, and the split that stops being named once merged. e2e adds three:
+  the block holds under brackets and no accents (`no-show-block.spec.ts`), the
+  website books onto the desk's record (`booking.spec.ts`), and the desk search
+  plus the note-to-merge flow with axe (`clients.spec.ts`).
+
+### What it decided
+
+- **D-55.** Both rules live only in the database, because the stored rows need
+  a backfill, and a JS rule plus a SQL backfill is one fact under two names.
+  The trigger also makes the forty hand-written e2e fixtures that insert
+  `5125550101` canonical, rather than rows the product can no longer produce.
+  There is no `Business` phone-country column (every business is in the US; a
+  `ponytail:` note marks the arm to change). The page suggests a merge and
+  nothing auto-merges. D-17 and D-27 stand unchanged.
+- **The reuse match returns a survivor.** A tombstone keeps its name and
+  number, so after the desk merges a split pair both rows still match. Writing
+  onto the tombstone would hide the booking from her history and from the
+  no-show count, so the recovery would have reopened the hole.
+
+### What it left behind
+
+- **Display is unchanged.** The desk reads `+15125550101`, as the seeded book
+  already did. Twenty-one assertions that read a raw-inserted `5125550101` back
+  now read `+15125550101`. A display formatter is its own item if anyone asks.
+- **A 10-digit non-NANP number typed without `+`** is stored as `+1…`. That is
+  wrong but harmless, and it still matches itself.
+- **`bookable_cp10`** from checkpoint 10 still holds the split Alice Hall. Walk
+  the client page there to see the note on real data, then drop it.

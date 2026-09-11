@@ -11,9 +11,11 @@
  *
  * So every lookup here returns a LIST and staff choose. Nothing in this file
  * ever decides that two records are the same person; it only carries out the
- * decision when a human makes it.
+ * decision when a human makes it. The one exception is `findReturningClient`,
+ * and it decides only what the website already decided before D-55 — same
+ * number, same name — asked about the canonical forms instead of the typing.
  */
-import { naturalIntervalDays, normalizePhone } from '../../core/clients';
+import { naturalIntervalDays } from '../../core/clients';
 import { addDays, calendarDay } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -36,6 +38,24 @@ export interface ClientSummary {
 const SUMMARY = { id: true, name: true, phone: true, email: true, notes: true } as const;
 
 /**
+ * D-55 — what the database WILL STORE for what somebody typed.
+ *
+ * Asked of the database rather than worked out here: `bookable_phone` and
+ * `bookable_fold` (the `client_identity` migration) are the only definitions,
+ * and the trigger applies them to every write. A-114 was a JS copy of the
+ * phone rule and an ILIKE standing in for the name rule, each disagreeing with
+ * the other side of the equality it was used in.
+ */
+async function canonicalForms(
+  db: Db,
+  typed: { phone?: string; name?: string },
+): Promise<{ phone: string | null; nameFolded: string | null }> {
+  const [row] = await db.$queryRaw<{ phone: string | null; nameFolded: string | null }[]>`
+    SELECT bookable_phone(${typed.phone ?? ''}) AS phone, bookable_fold(${typed.name ?? ''}) AS "nameFolded"`;
+  return row!;
+}
+
+/**
  * CLIENT-01's lookup. Returns a LIST, never a single client.
  *
  * A tombstone that matches resolves to its survivor (R-10) and is flagged, so
@@ -47,8 +67,8 @@ export async function findClientsByPhone(
   businessId: string,
   rawPhone: string,
 ): Promise<ClientSummary[]> {
-  const phone = normalizePhone(rawPhone);
-  if (phone === '') return [];
+  const { phone } = await canonicalForms(db, { phone: rawPhone });
+  if (phone === null) return [];
 
   const matches = await db.client.findMany({
     where: { businessId, phone },
@@ -61,19 +81,21 @@ export async function findClientsByPhone(
 
 /**
  * Partial search across name and phone, for a front desk that has half of one
- * or the other. Case-insensitive on the name; digits-only on the phone, so
- * "555 0101" finds `5125550101`.
+ * or the other. On the FOLDED name (D-55), so "nunez" finds "Rae Núñez" however
+ * her name was typed; digits-only on the phone, so "555 0101" finds
+ * `+15125550101`.
  */
 export async function searchClients(db: Db, businessId: string, query: string): Promise<ClientSummary[]> {
   const text = query.trim();
   if (text === '') return [];
 
   const digits = text.replace(/[^\d]/g, '');
+  const { nameFolded } = await canonicalForms(db, { name: text });
   const matches = await db.client.findMany({
     where: {
       businessId,
       OR: [
-        { name: { contains: text, mode: 'insensitive' } },
+        { nameFolded: { contains: nameFolded ?? text } },
         ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
       ],
     },
@@ -83,6 +105,69 @@ export async function searchClients(db: Db, businessId: string, query: string): 
   });
 
   return resolveTombstones(db, businessId, matches);
+}
+
+/**
+ * CLIENT-01's reuse match for the WEBSITE's write (D-17, D-55).
+ *
+ * Same number and same name, both compared CANONICALLY: `(512) 555-0101` is
+ * `+1 512 555 0101`, and "rae nunez" is "Rae Núñez" in either Unicode form.
+ * A different name on the same number is still a different person — D-17's
+ * household, untouched.
+ *
+ * Returns a SURVIVOR's id, never a tombstone's. A merged-away record keeps its
+ * name and number (R-10), so after the desk merges her duplicate the pair
+ * still both match — and an appointment written onto the tombstone is missing
+ * from her history and invisible to CLIENT-04's count, which is the block this
+ * item exists to close, reopened by the recovery for it.
+ *
+ * Two LIVE matches is a split nobody has merged yet; the oldest is the one the
+ * salon made, and the client page names the other (`findSplitRecords`).
+ */
+export async function findReturningClient(
+  db: Db,
+  businessId: string,
+  typed: { phone: string; name: string },
+): Promise<string | null> {
+  const { phone, nameFolded } = await canonicalForms(db, typed);
+  if (phone === null || nameFolded === null) return null;
+
+  const rows = await db.client.findMany({
+    where: { businessId, phone, nameFolded },
+    select: { id: true, mergedIntoClientId: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const live = rows.find((row) => row.mergedIntoClientId === null);
+  return live?.id ?? rows[0]?.mergedIntoClientId ?? null;
+}
+
+/**
+ * D-55's recovery half: the OTHER live records that are this one typed another
+ * way — same canonical number AND same folded name. The rows A-114's bug made,
+ * and any the desk makes by hand.
+ *
+ * Only ever a suggestion to merge. A shared number with a different name is
+ * not listed (D-17), and nothing here merges: which record survives is the
+ * desk's decision (A-015).
+ */
+export async function findSplitRecords(db: Db, businessId: string, clientId: string): Promise<ClientSummary[]> {
+  const self = await db.client.findFirst({
+    where: { id: clientId, businessId },
+    select: { phone: true, nameFolded: true },
+  });
+  if (!self?.phone || !self.nameFolded) return [];
+
+  return db.client.findMany({
+    where: {
+      businessId,
+      phone: self.phone,
+      nameFolded: self.nameFolded,
+      mergedIntoClientId: null,
+      id: { not: clientId },
+    },
+    select: SUMMARY,
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
 export async function findClient(db: Db, businessId: string, id: string): Promise<ClientSummary | null> {

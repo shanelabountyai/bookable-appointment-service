@@ -128,7 +128,7 @@ test.describe('the impact workflow (A-019)', () => {
 
     await expect(page.getByText('Client 1')).toBeVisible();
     await expect(page.getByText('Client 2')).toBeVisible();
-    await expect(page.getByRole('link', { name: '5125550100' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '+15125550100' })).toBeVisible();
 
     const prisma = new PrismaClient();
     try {

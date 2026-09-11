@@ -279,7 +279,7 @@ test.describe('messages that did not go out (A-051)', () => {
     await expect(page.getByText('Ada Chen')).toBeVisible();
     // Through PhoneLink (A-092): the stored formatting is stripped out of the
     // href, so a number typed with brackets still dials.
-    await expect(page.getByRole('link', { name: '(512) 555-0188' })).toHaveAttribute('href', 'tel:5125550188');
+    await expect(page.getByRole('link', { name: '+15125550188' })).toHaveAttribute('href', 'tel:+15125550188');
     await expect(page.getByText(/Everything has gone out/)).toHaveCount(0);
   });
 

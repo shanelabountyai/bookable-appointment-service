@@ -235,7 +235,7 @@ test.describe('a stylist off the roster (A-098)', () => {
     await expect(page.getByText('Left Behind 1')).toBeVisible();
     await expect(page.getByText('Left Behind 2')).toBeVisible();
     // With the number, because the resolution to this is a phone call.
-    await expect(page.getByRole('link', { name: '5125550200' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '+15125550200' })).toBeVisible();
 
     // Nothing has been done TO them: AVAIL-05's rule is that the system never
     // cancels, moves or hides quietly, and a departure is not an exception.

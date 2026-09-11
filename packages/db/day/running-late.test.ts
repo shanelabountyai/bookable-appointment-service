@@ -373,7 +373,7 @@ describe('A-059 — who still has to be rung', () => {
     expect(hhmm(call!.scheduled)).toBe('14:00');
     expect(hhmm(call!.projected)).toBe('14:30');
     expect(call!.clientName).toBe('Ada Chen');
-    expect(call!.clientPhone).toBe('5125550101');
+    expect(call!.clientPhone).toBe('+15125550101');
 
     // D-22 unchanged: the confirmation she is holding still says 14:00.
     const row = await prisma.appointment.findFirstOrThrow();

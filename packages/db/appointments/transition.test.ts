@@ -446,7 +446,7 @@ describe('A-036 — the cancellation notice', () => {
     expect(rest).toHaveLength(0);
     if (!notice) throw new Error('no notice was enqueued');
     expect(notice.appointmentId).toBe(appointment.id);
-    expect(notice.recipient).toBe('5125550101');
+    expect(notice.recipient).toBe('+15125550101');
     expect(notice.payload).toMatchObject({ reason: 'Salon closed Saturday' });
   });
 
@@ -905,7 +905,7 @@ describe('A-112 — reinstating a cancellation', () => {
       const [notice] = await reinstatements();
       if (!notice) throw new Error('no notice was enqueued');
       expect(notice.appointmentId).toBe(appointment.id);
-      expect(notice.recipient).toBe('5125550101');
+      expect(notice.recipient).toBe('+15125550101');
       expect(notice.payload).toMatchObject({ reason: REASON });
     });
   });

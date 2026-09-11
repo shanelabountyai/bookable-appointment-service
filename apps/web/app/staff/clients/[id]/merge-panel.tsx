@@ -17,10 +17,20 @@ const initial: FormState = {};
  * you happened to open. A merge is not reversible by a second merge, and "into
  * which one?" is the whole decision.
  */
-export function MergePanel({ survivorId, survivorName }: { survivorId: string; survivorName: string }) {
+export function MergePanel({
+  survivorId,
+  survivorName,
+  split = [],
+}: {
+  survivorId: string;
+  survivorName: string;
+  /** D-55: records with this one's number AND name, already listed, so the
+   *  desk that followed the page's "another record" note lands on a button. */
+  split?: ClientSummary[];
+}) {
   const [state, formAction, merging] = useActionState(mergeClientRecords, initial);
   const [query, setQuery] = useState('');
-  const [candidates, setCandidates] = useState<ClientSummary[]>([]);
+  const [candidates, setCandidates] = useState<ClientSummary[]>(split);
   const [searching, startSearching] = useTransition();
 
   function search(text: string) {
@@ -31,7 +41,7 @@ export function MergePanel({ survivorId, survivorName }: { survivorId: string; s
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
+    <section id="merge" className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Merge a duplicate</h2>
       <p className="text-sm text-ink-muted">
         Find the duplicate record. Its appointments and notes move into {survivorName}, and its phone number keeps

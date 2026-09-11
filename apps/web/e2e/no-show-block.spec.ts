@@ -232,6 +232,28 @@ test.describe('the self-serve block (CLIENT-04)', () => {
     }
   });
 
+  /**
+   * A-114 — the block is on the CLIENT RECORD (D-27), so it holds only if the
+   * website finds the record. The desk wrote her one way and she types it
+   * another. Before D-55 this was "Your appointment is confirmed" and a second,
+   * clean record: every other test here types the seeded literal back.
+   */
+  test('holds however she writes her number and her name', async ({ page }) => {
+    await seedMisses({ name: 'Rae Núñez', phone: '+1 512 555 0104' }, 3);
+
+    await bookAsCustomer(page, { name: 'rae nunez', phone: '(512) 555-0104' });
+
+    await expect(page.getByText(/call the salon/i)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    try {
+      expect(await prisma.appointment.count({ where: { status: 'booked' } })).toBe(0);
+      expect(await prisma.client.count({ where: { phone: '+15125550104' } })).toBe(1);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   test('lets a client one below the threshold book as normal', async ({ page }) => {
     await seedMisses(OFFENDER, 2);
 

@@ -80,7 +80,7 @@ test.describe('the call-down list (A-021)', () => {
 
     await page.goto('/staff/call-down');
     await expect(page.getByText('Ada Chen')).toBeVisible();
-    await expect(page.getByRole('link', { name: '5125550101' })).toHaveAttribute('href', 'tel:5125550101');
+    await expect(page.getByRole('link', { name: '+15125550101' })).toHaveAttribute('href', 'tel:+15125550101');
   });
 
   test('confirming from the list moves her off it', async ({ page }) => {

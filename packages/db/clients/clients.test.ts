@@ -254,7 +254,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
     expect(survivor.email).toBe('mei@example.test');
     // The survivor is the record staff CHOSE — moving her to the number they
     // just called the old one would undo the decision.
-    expect(survivor.phone).toBe(SHARED_PHONE);
+    expect(survivor.phone).toBe('+15125550101');
   });
 
   /** R-10, the whole point of the tombstone. */

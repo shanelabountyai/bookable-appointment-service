@@ -200,7 +200,7 @@ describe('a stylist taken off the roster', () => {
     const conflicts = await conflictsForDay(prisma, { businessId, day: DAY });
     expect(conflicts.map((c) => c.id)).toContain(stillBooked.id);
     // …with the phone number, because the resolution to this is a phone call.
-    expect(conflicts.find((c) => c.id === stillBooked.id)!.clientPhone).toBe('5125550101');
+    expect(conflicts.find((c) => c.id === stillBooked.id)!.clientPhone).toBe('+15125550101');
 
     // 3. CLOSING OUT. Her last Saturday is a visit that HAPPENED; leaving it
     //    unfinishable freezes it at `booked` forever and poisons the no-show

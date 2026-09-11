@@ -411,7 +411,7 @@ test.describe('the ring-round (A-059)', () => {
     await expect(list.getByText(`→ ${projected}`)).toBeVisible();
 
     // TEL, not a number to read off a screen and re-key at a busy desk.
-    await expect(list.getByRole('link', { name: '5125550100' })).toHaveAttribute('href', 'tel:5125550100');
+    await expect(list.getByRole('link', { name: '+15125550100' })).toHaveAttribute('href', 'tel:+15125550100');
 
     /**
      * A-044's line, held: NOTHING was sent. A screen saying "queued" beside a

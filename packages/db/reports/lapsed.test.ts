@@ -121,7 +121,7 @@ describe('who is on it', () => {
     expect(row).toMatchObject({
       clientId: ada,
       name: 'Ada Chen',
-      phone: '5125550101',
+      phone: '+15125550101',
       lastProviderName: 'Dana',
       lastServiceNames: ['Colour'],
       // Her OWN line price (D-16) — the catalogue has moved since, and "she

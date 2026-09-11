@@ -123,6 +123,15 @@ jobs:
             IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='btree_gist') THEN
               RAISE EXCEPTION 'btree_gist extension is missing';
             END IF;
+            -- A-114/D-55: the ONLY definition of a client's canonical phone and
+            -- folded name. Lose the trigger and every writer stores what was
+            -- typed again, while every reader still asks the canonical form.
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='client_identity') THEN
+              RAISE EXCEPTION 'client_identity trigger is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname='unaccent') THEN
+              RAISE EXCEPTION 'unaccent extension is missing';
+            END IF;
           END $$;
           EOSQL
 

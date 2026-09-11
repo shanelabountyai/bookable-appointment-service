@@ -186,7 +186,7 @@ describe('a visit shortened at the chair (A-055)', () => {
       appointmentId: appointment.id,
       providerName: 'Dana',
       clientName: 'Ada Chen',
-      clientPhone: '5125550101',
+      clientPhone: '+15125550101',
       freedMinutes: 95,
       // `matchFreedSlot` filters the waitlist on ONE serviceId, and it is the
       // colour she dropped that somebody else wants — not the cut she kept.

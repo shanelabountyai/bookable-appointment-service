@@ -3,36 +3,21 @@
  */
 import { describe, expect, it } from 'vitest';
 import { calendarDay } from '../time';
-import { isPlausiblePhone, normalizePhone } from './phone';
+import { isPlausiblePhone } from './phone';
 import { DEFAULT_REBOOK_INTERVAL_DAYS, naturalIntervalDays } from './rebook';
 
-describe('normalizePhone (CLIENT-01)', () => {
-  // The case that matters: the same person typing it two ways at two different
-  // moments — once on her phone at home, once read out to the front desk.
-  it('makes the same number out of every way a human writes it', () => {
-    const written = ['(512) 555-0101', '512-555-0101', '512.555.0101', '512 555 0101', '5125550101'];
-    expect(new Set(written.map(normalizePhone))).toEqual(new Set(['5125550101']));
+// What a number is STORED as is the database's (D-55) and is tested against it
+// in packages/db/clients/identity.test.ts — this is only whether the form may
+// be submitted.
+describe('isPlausiblePhone (CLIENT-01)', () => {
+  it('accepts a local number without an area code, however it is punctuated', () => {
+    expect(isPlausiblePhone('555-0101')).toBe(true);
+    expect(isPlausiblePhone('+1 (512) 555-0101')).toBe(true);
   });
 
-  it('keeps a leading + and nothing else', () => {
-    expect(normalizePhone('+1 (512) 555-0101')).toBe('+15125550101');
-    // Without the +, this is indistinguishable from a local number starting 1.
-    expect(normalizePhone('1 (512) 555-0101')).toBe('15125550101');
-  });
-
-  it('is idempotent, so re-normalizing a stored number changes nothing', () => {
-    const once = normalizePhone('(512) 555-0101');
-    expect(normalizePhone(once)).toBe(once);
-  });
-
-  it('returns empty for input with no digits, rather than guessing', () => {
-    expect(normalizePhone('   ')).toBe('');
-    expect(normalizePhone('call the salon')).toBe('');
-  });
-
-  it('accepts a local number without an area code', () => {
-    expect(isPlausiblePhone(normalizePhone('555-0101'))).toBe(true);
-    expect(isPlausiblePhone(normalizePhone('5550'))).toBe(false);
+  it('refuses too few digits, and words with none', () => {
+    expect(isPlausiblePhone('5550')).toBe(false);
+    expect(isPlausiblePhone('call the salon')).toBe(false);
   });
 });
 

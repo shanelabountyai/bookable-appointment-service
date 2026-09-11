@@ -140,7 +140,7 @@ describe('AVAIL-05 — the sick day', () => {
       endAt: at('2026-06-09T12:00:00-05:00'),
     });
     expect(conflict?.clientName).toBe('Ada Chen');
-    expect(conflict?.clientPhone).toBe('5125550101');
+    expect(conflict?.clientPhone).toBe('+15125550101');
     expect(conflict?.serviceNames).toEqual(['Cut']);
   });
 
@@ -737,7 +737,7 @@ describe('A-036 — a reassign tells the client', () => {
     const [notice, ...rest] = await noticesFor(appointment.id);
     expect(rest).toHaveLength(0);
     if (!notice) throw new Error('no notice was enqueued');
-    expect(notice.recipient).toBe('5125550101');
+    expect(notice.recipient).toBe('+15125550101');
     expect(notice.status).toBe('pending');
     expect(notice.payload).toMatchObject({ providerName: 'Priya', reason: 'Dana off sick' });
   });

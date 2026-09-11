@@ -189,7 +189,7 @@ describe('what is on it', () => {
     expect(slot).toMatchObject({
       providerName: 'Dana',
       clientName: 'Ada Chen',
-      clientPhone: '5125550101',
+      clientPhone: '+15125550101',
       serviceNames: ['Colour'],
       primaryServiceId: colourId,
       freedMinutes: 180,

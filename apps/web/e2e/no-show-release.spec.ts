@@ -125,7 +125,7 @@ test.describe('a no-show nobody has given back (A-102)', () => {
     await expect(page.getByText(new RegExp(`${startedAt} · ${minutes} min still blocked`))).toBeVisible();
     await expect(page.getByText('Ada Chen never came, and the rest of the slot is still on the book')).toBeVisible();
     // The reason D-44 refused a timer: one more ring before anybody gives it up.
-    await expect(page.getByRole('link', { name: '5125550101' })).toHaveAttribute('href', 'tel:5125550101');
+    await expect(page.getByRole('link', { name: '+15125550101' })).toHaveAttribute('href', 'tel:+15125550101');
 
     await page.getByRole('button', { name: `Put ${minutes} min back on the market` }).click();
 

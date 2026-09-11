@@ -432,7 +432,7 @@ describe('listMissedReminders (D-51)', () => {
     const missed = await listMissedReminders(prisma, { businessId, now: NOW });
     expect(missed).toHaveLength(1);
     expect(missed[0]!.clientName).toBe('Ada Chen');
-    expect(missed[0]!.phone).toBe('5125550101');
+    expect(missed[0]!.phone).toBe('+15125550101');
   });
 
   it('drops her the moment a reminder exists for her', async () => {

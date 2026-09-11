@@ -92,6 +92,50 @@ test.describe('the client record (A-015)', () => {
     await expect(page.getByRole('link', { name: /Chen/ })).toHaveCount(2);
   });
 
+  /** A-114 / D-55 — the desk's search asks the folded name, as the website's
+   *  write does. Before, "nunez" answered "Nobody matches". */
+  test('finds an accented name from a plain search', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      await prisma.client.create({ data: { businessId: business.id, name: 'Rae Núñez', phone: '+1 512 555 0104' } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await search(page, 'nunez');
+    await expect(page.getByRole('link', { name: /Rae Núñez/ })).toBeVisible();
+  });
+
+  /**
+   * D-55's recovery half. A record split before D-55 — the same person typed
+   * another way — is NAMED on the record and merged from there. Mei shares the
+   * number and is never offered (D-17).
+   */
+  test('names a record that is the same person typed another way, and merges it from the note', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let adaId: string;
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      adaId = (await prisma.client.findFirstOrThrow({ where: { name: 'Ada Chen' } })).id;
+      await prisma.client.create({ data: { businessId: business.id, name: 'ada chen', phone: '(512) 555-0101' } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/clients/${adaId}`);
+    await expect(page.getByText(/Another record has this number and name/)).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    await page.getByRole('link', { name: 'Merge it' }).click();
+    await expect(page.getByRole('button', { name: /^Merge into/ })).toHaveCount(1);
+    await page.getByRole('button', { name: 'Merge into Ada Chen' }).click();
+    await expect(page.getByText(/Merged\. 0 appointments moved across/)).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByText(/Another record has this number and name/)).toHaveCount(0);
+  });
+
   test('saves the pinned note (CLIENT-03)', async ({ page }) => {
     await search(page, 'Ada');
     await page.getByRole('link', { name: /Ada Chen/ }).click();

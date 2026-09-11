@@ -32,7 +32,6 @@ import {
 } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability, deskSearchLastDay } from '@bookable/db/scheduling';
 import { clientReliability, searchClients } from '@bookable/db/clients';
-import { normalizePhone } from '@bookable/core/clients';
 import { calendarDay, fromDate, instantFromIso, resolve, toDate, toLabel, wallTime, zoneId } from '@bookable/core/time';
 import { InvalidSeries } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
@@ -155,15 +154,16 @@ export async function findClientsForBooking(query: string, atIso: string, servic
   );
 }
 
-/** CLIENT-01's "staff choose or create". Phone-first, and normalized on the
- *  way in so the record is findable by whoever types the number next. */
+/** CLIENT-01's "staff choose or create". Phone-first; the database stores the
+ *  number CANONICALLY (D-55's trigger), so whoever types it next — the desk or
+ *  the website, brackets or `+1` — finds this record. */
 export async function createClientForBooking(name: string, phone: string): Promise<ClientChoice | null> {
   const staff = await requireStaff();
   const trimmed = name.trim();
   if (trimmed === '') return null;
 
   const client = await prisma.client.create({
-    data: { businessId: staff.businessId, name: trimmed, phone: normalizePhone(phone) || null },
+    data: { businessId: staff.businessId, name: trimmed, phone: phone.trim() || null },
     select: { id: true, name: true, phone: true },
   });
   return client;

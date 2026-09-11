@@ -5,6 +5,7 @@ import {
   type ClientVisit,
   clientHistory,
   findClient,
+  findSplitRecords,
   missedAppointments,
   rebookSuggestion,
   reliabilityFor,
@@ -41,11 +42,12 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
   const now = new Date();
   const today = toLabel(fromDate(now), zoneId(business.timezone)).day;
 
-  const [history, rebook, reliability, missed] = await Promise.all([
+  const [history, rebook, reliability, missed, split] = await Promise.all([
     clientHistory(prisma, staff.businessId, client.id),
     rebookSuggestion(prisma, staff.businessId, client.id, today),
     reliabilityFor(prisma, { businessId: staff.businessId, clientId: client.id, today }),
     missedAppointments(prisma, { businessId: staff.businessId, clientId: client.id, today }),
+    findSplitRecords(prisma, staff.businessId, client.id),
   ]);
 
   // `history` arrives startAt DESC (packages/db/clients/clients.ts) — that
@@ -69,6 +71,16 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
         {client.reachedByOldNumber ? (
           <p className="mt-1 text-sm text-amber-700 dark:text-amber-500">
             You reached this record through a number that was merged into it.
+          </p>
+        ) : null}
+        {/* D-55: the same person typed two ways, found BY THE PAGE rather than
+            left for the desk to stumble on. Only same number AND same name —
+            a household on one number is never suggested (D-17). */}
+        {split.length > 0 ? (
+          <p className="mt-1 text-sm text-amber-700 dark:text-amber-500">
+            {split.length === 1 ? 'Another record has' : `${split.length} other records have`} this number and
+            name. <a href="#merge" className="underline">Merge {split.length === 1 ? 'it' : 'them'}</a> if{' '}
+            {split.length === 1 ? 'it is' : 'they are'} the same person.
           </p>
         ) : null}
       </div>
@@ -197,7 +209,7 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
         )}
       </section>
 
-      <MergePanel survivorId={client.id} survivorName={client.name ?? 'this record'} />
+      <MergePanel survivorId={client.id} survivorName={client.name ?? 'this record'} split={split} />
     </main>
   );
 }

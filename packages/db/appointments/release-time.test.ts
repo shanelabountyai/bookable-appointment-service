@@ -772,7 +772,7 @@ describe('A-102 — the no-shows nobody has given back', () => {
       appointmentId: appointment.id,
       providerName: 'Dana',
       clientName: 'Ada Chen',
-      clientPhone: '5125550101',
+      clientPhone: '+15125550101',
       serviceNames: ['Colour'],
     });
     // BOTH EDGES. 10:20 to the envelope's 11:50 is 90 minutes; measuring to

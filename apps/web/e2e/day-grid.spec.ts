@@ -391,7 +391,7 @@ test.describe('the staff day grid (A-016)', () => {
     // The chip whose ground the violation needed — asserted present, so a
     // fixture that silently stops rendering it cannot make this test pass for
     // the wrong reason.
-    await expect(page.getByText('Cut · 5125550101').first()).toBeVisible();
+    await expect(page.getByText('Cut · +15125550101').first()).toBeVisible();
 
     // BOTH SCHEMES — the helper runs light AND dark, because half of a palette
     // that flips with `prefers-color-scheme` had never been measured at all

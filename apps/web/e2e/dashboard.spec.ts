@@ -243,7 +243,7 @@ test.describe('the clients who have stopped coming (A-073)', () => {
     // What the call is about: how long, what she had, and what she was worth.
     await expect(page.getByText(/30 weeks/)).toBeVisible();
     await expect(page.getByText(/Cut · Dana · \$140\.00/)).toBeVisible();
-    await expect(page.getByRole('link', { name: '5125550188' })).toHaveAttribute('href', 'tel:5125550188');
+    await expect(page.getByRole('link', { name: '+15125550188' })).toHaveAttribute('href', 'tel:+15125550188');
 
     // A-072's marks, reused — thirty calls do not happen in one sitting.
     await page.getByRole('button', { name: 'Left a message' }).click();
@@ -400,7 +400,7 @@ test.describe('the clients who have stopped coming (A-073)', () => {
     await page.goto('/staff/dashboard/lapsed');
 
     const row = page.getByRole('listitem').filter({ hasText: 'Olive Gone' });
-    const phone = row.getByRole('link', { name: '5125550188' });
+    const phone = row.getByRole('link', { name: '+15125550188' });
     const box = await phone.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
 

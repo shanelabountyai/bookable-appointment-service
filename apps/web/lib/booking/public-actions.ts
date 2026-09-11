@@ -30,7 +30,8 @@ import {
 } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
-import { isPlausiblePhone, normalizePhone } from '@bookable/core/clients';
+import { isPlausiblePhone } from '@bookable/core/clients';
+import { findReturningClient } from '@bookable/db/clients';
 
 export interface OfferedTime {
   /** The appointment's identity is its INSTANT (D-4). An offset-bearing ISO
@@ -331,9 +332,9 @@ export interface ConfirmResult {
 /**
  * Creates the appointment.
  *
- * Phone-first identity (CLIENT-01): the client is looked up by normalized
- * phone, which is deliberately NOT unique (D-17) because households share a
- * number. A match is only reused when the NAME matches too — otherwise a
+ * Phone-first identity (CLIENT-01): the client is looked up by CANONICAL
+ * phone and FOLDED name (D-55), and the phone is deliberately NOT unique
+ * (D-17) because households share a number. A match is only reused when the NAME matches too — otherwise a
  * mother booking for her daughter would silently inherit the mother's record,
  * her notes and her no-show count.
  */
@@ -370,7 +371,7 @@ export async function confirmAppointment(input: {
 }): Promise<ConfirmResult> {
   const fieldErrors: Record<string, string> = {};
   const name = input.name.trim();
-  const phone = normalizePhone(input.phone);
+  const phone = input.phone.trim();
   if (name.length === 0) fieldErrors.name = 'Please give us a name for the appointment.';
   if (!isPlausiblePhone(phone)) fieldErrors.phone = 'Please give us a phone number we can reach you on.';
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
@@ -384,24 +385,27 @@ export async function confirmAppointment(input: {
 
   const business = await businessId();
 
-  // Reuse only on an exact (phone, name) match — see the note above.
+  // Reuse on the same (phone, name) — CANONICALLY, see the note above. Before
+  // D-55 this compared what she typed against what was stored, so writing her
+  // number with brackets made a second, clean record and walked past CLIENT-04.
   //
-  // A client blocked under CLIENT-04 can therefore get past the block by
-  // typing her name differently, and that is the deliberate trade rather than
-  // an oversight: keying the block on the PHONE NUMBER would block every
-  // member of a household that shares one, which is precisely the harm D-17
-  // exists to prevent ("the daughter's two no-shows block the mother"). The
-  // salon still sees the flag the moment the desk looks the number up, and
-  // merging the duplicate (A-015) combines the counts.
-  const existing = await prisma.client.findFirst({
-    where: { businessId: business, phone, name: { equals: name, mode: 'insensitive' } },
-    select: { id: true },
-  });
-  const client =
-    existing ??
-    (await prisma.client.create({
-      data: { businessId: business, name, phone, email: input.email?.trim() || null },
-    }));
+  // A client blocked under CLIENT-04 can still get past the block by typing a
+  // genuinely DIFFERENT name, and that is the deliberate trade rather than an
+  // oversight: keying the block on the PHONE NUMBER would block every member
+  // of a household that shares one, which is precisely the harm D-17 exists to
+  // prevent ("the daughter's two no-shows block the mother"). The salon still
+  // sees the flag the moment the desk looks the number up, and merging the
+  // duplicate (A-015) combines the counts.
+  const client = {
+    id:
+      (await findReturningClient(prisma, business, { phone, name })) ??
+      (
+        await prisma.client.create({
+          data: { businessId: business, name, phone, email: input.email?.trim() || null },
+          select: { id: true },
+        })
+      ).id,
+  };
 
   try {
     await bookAppointment(prisma, {

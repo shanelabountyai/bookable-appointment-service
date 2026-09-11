@@ -1,32 +1,21 @@
 /**
- * THE ONE PHONE NORMALIZER (CLIENT-01, D-17).
+ * CLIENT-01's form check — and ONLY the form check (D-55).
  *
- * "Client is LOOKED UP by normalized phone" only means anything if writing and
- * looking up normalize identically. This lived in the customer booking flow's
- * server actions, where the staff lookup could not reach it — so the second
- * caller would have written a second copy, and a mother typing
- * `(512) 555-0101` at home would not have matched the `5125550101` the front
- * desk typed for her.
+ * What a phone number is STORED as is not decided here. It is the database's:
+ * `bookable_phone` in the `client_identity` trigger rewrites every write, and
+ * every lookup asks that same function about what was typed. This used to be
+ * `normalizePhone`, a JS copy of the rule that kept a leading `+` — so
+ * `+15125550101` and `5125550101` were two clients, and a blocked client
+ * booked past CLIENT-04 by writing her number with brackets (A-114). A second
+ * copy of the rule is how that happens again, so there is none.
  *
  * DELIBERATELY FORGIVING, and deliberately NOT E.164 validation. A salon takes
  * numbers over the phone with a client half out of the door; refusing one that
- * a human can plainly read costs a booking, and a number that reaches nobody
- * is a problem the SMS adapter reports, not one the front desk should be
- * arguing with a form about.
+ * a human can plainly read costs a booking.
  *
- * The leading `+` is kept because it is the only part of an international
- * number that carries meaning here: `+15125550101` and `15125550101` are the
- * same number written two ways, but dropping the `+` from the first would make
- * it indistinguishable from a local number that happens to start with a 1.
+ * Seven digits is a local number without an area code — the shortest thing a
+ * salon would ever write down.
  */
-export function normalizePhone(raw: string): string {
-  const trimmed = raw.trim();
-  const digits = trimmed.replace(/[^\d]/g, '');
-  return trimmed.startsWith('+') ? `+${digits}` : digits;
-}
-
-/** Enough digits to be a phone number at all. Seven is a local number without
- *  an area code — the shortest thing a salon would ever write down. */
-export function isPlausiblePhone(normalized: string): boolean {
-  return normalized.replace('+', '').length >= 7;
+export function isPlausiblePhone(raw: string): boolean {
+  return raw.replace(/\D/g, '').length >= 7;
 }

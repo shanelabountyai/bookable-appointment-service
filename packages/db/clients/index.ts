@@ -7,6 +7,8 @@ export {
   clientHistory,
   findClient,
   findClientsByPhone,
+  findReturningClient,
+  findSplitRecords,
   mergeClients,
   rebookSuggestion,
   searchClients,

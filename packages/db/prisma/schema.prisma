@@ -582,8 +582,14 @@ model Client {
   id           String   @id @default(cuid())
   businessId   String
   name         String?
-  /// Normalized E.164 at write time.
+  /// D-55: CANONICAL, and the database's to write — the `client_identity`
+  /// trigger rewrites whatever is supplied through `bookable_phone` (10 digits
+  /// become +1…, a leading + is kept). Canonicalised, never validated.
   phone        String?
+  /// D-55: `bookable_fold(name)` — NFC, accents and case off, whitespace
+  /// collapsed. Written ONLY by the trigger; what the website's reuse match and
+  /// the desk's search compare, so "Rae Nunez" is the client "Rae Núñez".
+  nameFolded   String?
   email        String?
   /// Pinned notes render on every appointment surface (CLIENT-03).
   notes        String?
@@ -622,6 +628,7 @@ model Client {
   mergedFrom Client[] @relation("ClientMerge")
 
   @@index([businessId, phone])
+  @@index([businessId, phone, nameFolded])
   @@index([businessId, name])
   @@index([mergedIntoClientId])
 }
