@@ -1,38 +1,22 @@
 # Next
 
-**The Phase 12 close is done: demo checkpoint 10, the operator review, and Phase 13
-scoped as A-114 … A-120 in `docs/prds/06-backlog.md`.** Docs only, no product code.
-Commits: the scoping pass, then the SHA record, pushed together in ONE push.
-**Confirm with `gh run list --limit 1` before trusting this file.** A docs-only push
-is skipped by `paths-ignore`, so "no new run" is the expected answer.
+**A-114 is done (D-55: canonical phone + folded name, owned by the database).**
+Commits: the build, then the SHA record, pushed together in ONE push.
+**Confirm with `gh run list --limit 1` before trusting this file** — that run
+must be green.
 
-## The next item: A-114 — DECIDE FIRST, then build
+## The next item: A-115 — "When can Dana fit me in?" on a FULL day
 
-**A-114: the website makes a second client out of a phone number written with
-brackets, and a blocked client books straight past CLIENT-04.** Proved through the
-real `/book` flow at checkpoint 10. Alice Hall has 3 no-shows and is blocked from
-booking online. Typing `+1 512 555 0101` gets *"We can't book this one online"*.
-Typing `(512) 555-0101` gets *"Your appointment is confirmed"* and a second Alice
-Hall with a clean record. `normalizePhone` keeps a leading `+`, so one number has
-three identities, and `confirmAppointment` reuses a client only on an exact
-`(phone, name)` match. The name has the same fault: `mode: 'insensitive'` does not
-fold accents or Unicode form, so "Rae Nunez" is a stranger and the desk's search
-for "nunez" finds nobody.
+A-106's day list and A-110's waitlist door sit behind `offered.length === 0`
+(`booking-panel.tsx:284`), and a full day is never empty because A-042 made
+`offered` carry refused times. Ask the question of the BOOKABLE times
+(`offered.every(slot => slot.reasons.length > 0)`), keep A-042's refused list
+AND the day list and door beneath it. **The fixture is a full day with no
+absence anywhere in it**, asserted on the named arm AND against the move
+panel's answer for the same day (`move-panel.tsx:77`) — they must agree.
 
-**It needs a NEW D-number before any code: D-55.** `07-decisions.md` has TWO rows
-numbered D-51; the last is D-54. Do not re-derive the number by counting. Frame it
-as a clickable question. The row lists the parts: a canonical phone form
-(canonicalising is not validating, so `phone.ts`'s "not E.164 validation" can
-stand), a migration of stored phones, and one folded name comparison used by both
-the write and the desk search. D-17's household trade (the name distinguishes
-people who share a phone) is settled and stays.
-
-**The fixture is the item:** two different people typing. Format A on one side,
-format B on the other; an accented name one way and the other. `booking.spec.ts:71`
-and `:87` write the same literal on both sides, which is why nothing caught this.
-
-Then A-115 … A-120 top to bottom. **A-119 also needs a NEW D-number** (whichever
-decision is taken first gets D-55).
+Then A-116 … A-120 top to bottom. **A-119 needs a NEW D-number: D-56** (D-55
+was taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
 
 ## What the close found, in case an item trips over it
 
@@ -78,8 +62,8 @@ decision is taken first gets D-55).
   `npm test -- <path> -t "<name>"` works; bare `npx vitest` skips every DB test.
 - **Never overlap a vitest run with a playwright sweep**, and never
   `npm run typecheck` during an e2e build.
-- **`--list` says 319.** Unit total is 1650 (1649 + 1 skipped). Full unit run
-  ~170s; CI ~20 minutes.
+- **`--list` says 323.** Unit total is 1659 (1658 + 1 skipped). Full unit run
+  ~170s; e2e sweep ~6 min; CI ~20 minutes.
 - **No database has a StaffUser after a seed.** Call `seedStaffUser` from
   `@bookable/db/auth` in a script INSIDE the repo (e2e's credentials:
   `owner@shear-genius.test` / `e2e-staff-password`).
@@ -87,5 +71,7 @@ decision is taken first gets D-55).
   invents violations.** Inside the suite, always go through `e2e/axe.ts`.
 - **The seed is not uniform.** Dana and Priya work 09:00–17:00 Tue–Sat with a
   12:00–13:00 break. Tess is junior (Cut, Blow-dry, Fringe trim, Treatment only).
-  All 13 seeded phones are stored `+1…`. Eight clients hold every appointment
+  All 13 seeded phones are stored `+1…`, which is now the ONLY stored form:
+  D-55's `client_identity` trigger canonicalises every write, fixtures included,
+  so an assertion on a phone reads `+15125550101` whatever the fixture typed. Eight clients hold every appointment
   except the five lapsed visits.

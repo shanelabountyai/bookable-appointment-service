@@ -4171,7 +4171,7 @@ rather than a dropped and re-seeded `bookable_dev`, and the operator review had
 
 ## A-114 — one client, however two people type her (D-55)
 
-**Commit `(recorded in the follow-up commit)`.**
+**Commit `a0b4d2f`.**
 
 Checkpoint 10 proved it through the real `/book` flow. Alice Hall, blocked
 under CLIENT-04, was refused with `+1 512 555 0101` and booked with
