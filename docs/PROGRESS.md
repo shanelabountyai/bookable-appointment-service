@@ -4097,7 +4097,7 @@ women and two men, which is how *"She came"* survived eight demo walks.
 
 ## Demo checkpoint 10 and the Phase 12 close — a scoping pass, not a build
 
-**Commit:** `TBD`
+**Commit:** `35c9b68`
 
 **What it produced.** `docs/reviews/21-demo-checkpoint-10.md` (the walk),
 `docs/reviews/21-operator-review-phase-12-close.md` (the operator review), and
