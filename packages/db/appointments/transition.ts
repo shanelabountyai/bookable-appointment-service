@@ -26,7 +26,8 @@ import {
 import { fromDate } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
 import type { Actor } from '../../core/auth';
-import { SlotTaken } from '../booking/errors';
+import { NoResourceFree, SlotTaken } from '../booking/errors';
+import { chairForMove, resourceTypeName } from '../booking/resources';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -142,10 +143,13 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
     // triggers rewrite its blocks and its chair hold from the parent row's new
     // status — so the database, which is the only thing that knows whether the
     // time has been sold since, is what decides. Nothing here checks first;
-    // check-then-write is never the mechanism. Note that it reinstates into
-    // the appointment's OWN chair (`resourceId` survived the cancellation), so
-    // a refusal can mean "that chair is taken" while another sits empty — the
-    // conservative direction, and the desk can move it afterwards.
+    // check-then-write is never the mechanism.
+    //
+    // A-116: WHAT REACHES HERE IS NOW THE STYLIST'S AXIS, or a chair lost in
+    // the race between the re-pick inside the transaction and the write. The
+    // room being full is answered there, as `NoResourceFree`, and never
+    // arrives as this — which is the whole point: "somebody else has that
+    // time" said over an empty column is a sentence the desk stops believing.
     //
     // Mapped to the SAME error every other lost race in the codebase raises,
     // so the desk reads one vocabulary for one cause (`scheduling-words.ts`).
@@ -167,9 +171,23 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
         checkedInAt: true,
         startedAt: true,
         endedAt: true,
+        // A-116. The chair, the holder, and the envelope the trigger already
+        // wrote — `blockedStart`/`blockedEnd` are body plus buffers and a
+        // transition moves neither, so the destination envelope is the one on
+        // the row. Nothing here re-derives the buffer arithmetic.
+        clientId: true,
+        resourceId: true,
+        blockedStart: true,
+        blockedEnd: true,
         business: { select: { cancellationCutoffMinutes: true } },
         client: { select: { email: true, phone: true } },
-        lines: { select: { service: { select: { id: true, name: true, cancellationCutoffMinutes: true } } } },
+        // Ordered, because `resourceTypeName` asks the FIRST line which chair
+        // type the visit needs (RES-01) and an unordered read names whichever
+        // row Postgres hands back.
+        lines: {
+          orderBy: { ordinal: 'asc' },
+          select: { serviceId: true, service: { select: { id: true, name: true, cancellationCutoffMinutes: true } } },
+        },
       },
     });
 
@@ -218,6 +236,62 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
 
     if (!decision.allowed) throw new TransitionRefused(from, to, decision.refusal);
 
+    const freeing = SLOT_FREEING_STATUSES as readonly AppointmentStatus[];
+
+    /**
+     * A-116 — A REINSTATEMENT IS A NEW WAY TO START OCCUPYING TIME, SO IT
+     * PICKS A CHAIR (RES-03, D-30, D-53).
+     *
+     * A-034's rule is *the chair follows the move*, and the reinstatement is
+     * not a move, so nobody grepped for it: D-53 put the appointment back into
+     * the chair `resourceId` still named from before the cancellation, and
+     * called that "the conservative direction, and the desk can move it
+     * afterwards". Both halves were wrong. `findFreeResource` hands out the
+     * lowest-numbered free chair (`resources.ts`), so the chair a cancellation
+     * frees is the one the next overlapping booking — on ANY stylist — is
+     * given; and a cancelled appointment has no move panel, so the only thing
+     * the desk was offered was "book them in somewhere else", which is the new
+     * id, the second manage token, the split log and the late cancel that D-53
+     * exists to take off her record.
+     *
+     * So re-pick, with the chooser every other occupancy change uses and the
+     * same preference: her own chair when it is still free, any other of the
+     * type when it is not. That is a CHOOSER, not a check-then-write — the
+     * exclusion constraint still defends the chosen chair against the race,
+     * and the provider axis stays the database's call exactly as D-53 says.
+     *
+     * Derived from `SLOT_FREEING_STATUSES` rather than testing for
+     * `cancelled`: the fact is "the time was given back and is being taken
+     * again", which is the same predicate the reinstatement notice below
+     * asks, and a ninth status must not need a second edit here.
+     *
+     * NOT the `no_show` correction A-075 guards (`release-time.ts`): `no_show`
+     * still occupies (D-7), so it is not in this set, and un-releasing a
+     * released one restores a range on a chair she was actually sitting in —
+     * the same shape, a different question, and deliberately left alone.
+     */
+    const reinstating = freeing.includes(from) && !freeing.includes(to);
+    const chair =
+      reinstating && appointment.resourceId
+        ? await chairForMove(tx, {
+            businessId: appointment.businessId,
+            appointmentId: appointment.id,
+            resourceId: appointment.resourceId,
+            start: appointment.blockedStart,
+            end: appointment.blockedEnd,
+            // A-063 — she may be sitting beside her own other visit.
+            holder: { key: appointment.clientId, bodyStart: appointment.startAt, bodyEnd: appointment.endAt },
+          })
+        : null;
+    // TWO REFUSALS, WORDED APART. Every chair taken is a fact about the ROOM
+    // and the stylist is free; a lost provider race is a fact about the
+    // stylist. This file used to collapse both into `overlaps-booking`, so the
+    // one screen whose job is explaining itself said "somebody has Dana then"
+    // while Dana's column was empty.
+    if (reinstating && appointment.resourceId && !chair) {
+      throw new NoResourceFree(await resourceTypeName(tx, appointment.lines.map((l) => l.serviceId)));
+    }
+
     // THE WRITE IS CONDITIONAL ON THE STATUS WE DECIDED AGAINST.
     //
     // Not a belt-and-braces re-check: under READ COMMITTED two concurrent
@@ -229,6 +303,10 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
       where: { id: appointment.id, status: from },
       data: {
         status: to,
+        // A-116. Only ever on a reinstatement, and only over a chair she
+        // already held: NULL is never written across a chair, because `chair`
+        // is only computed when there was one to re-pick.
+        ...(chair ? { resourceId: chair } : {}),
         // A-080 (D-47). `now` is a MEASUREMENT of the visit only while the
         // visit is plausibly still happening; past that it is when somebody
         // got round to tapping, which is a different fact. Asked here, where
@@ -278,8 +356,6 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
         } satisfies Prisma.InputJsonValue,
       },
     });
-
-    const freeing = SLOT_FREEING_STATUSES as readonly AppointmentStatus[];
 
     // A-036: the other half of "nothing is silently cancelled". The row goes
     // in THIS transaction, so a cancellation that commits without its notice

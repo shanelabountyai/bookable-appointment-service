@@ -20,7 +20,7 @@ import {
   transitionAppointment,
   unreleaseNoShowTime,
 } from '@bookable/db/appointments';
-import { SlotTaken } from '@bookable/db/booking';
+import { NoResourceFree, SlotTaken } from '@bookable/db/booking';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
@@ -86,6 +86,18 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
           expectedFrom === 'cancelled' || expectedFrom === 'cancelled_late'
             ? 'That time has been sold to somebody else since it was cancelled, so it cannot go back on the book. Book them in somewhere else.'
             : 'That time has been sold to somebody else, so that correction cannot go back on the book. Put the time back first if the slot is still free.',
+      };
+    }
+    // A-116 (RES-03/RES-04). THE OTHER HALF OF THAT SENTENCE, AND IT IS ABOUT
+    // THE ROOM. The reinstatement re-picks a chair now, so this only fires
+    // when EVERY chair is taken across her envelope — and the stylist is free,
+    // which is a different next step: wait for a chair, or reschedule. Saying
+    // "sold to somebody else" here sent the desk hunting for an appointment
+    // that was not there, in a column that was empty.
+    if (error instanceof NoResourceFree) {
+      return {
+        ok: false,
+        message: `Every ${error.resourceTypeName} is taken for that time — they are free, the room is not. Nothing has changed; put it back once one frees up.`,
       };
     }
     throw error;

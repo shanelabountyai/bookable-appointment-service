@@ -717,6 +717,91 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
     expect(await statusOf(appointment.id)).toBe('cancelled');
   });
 
+  /**
+   * A-116 — THE ROOM THIS ACTUALLY HAPPENS IN (RES-03, D-30).
+   *
+   * Ada's cancellation frees Chair 1, and the next call — PRIYA's client, not
+   * Dana's — is seated in it, because the chair picker hands out the lowest
+   * free one. Dana's column is empty, three chairs are free, and until A-116
+   * "Put it back on the book" answered *"that time has been sold to somebody
+   * else"* and sent the desk off to make the new booking D-53 exists to
+   * prevent.
+   */
+  const sellTheChairToAnotherStylistsClient = async () => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const priya = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Priya' } });
+      const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const other = await prisma.client.create({
+        data: { businessId: business.id, name: 'Nour Haddad', phone: '5125550188' },
+      });
+      return await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: priya.id,
+        serviceIds: [service.id],
+        clientId: other.id,
+        startAt: at('10:00'),
+        now: toDate(instant(fromDate(at('10:00')) - 3 * 60 * 60_000)),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  /** Every chair but the one Ada was in, out of service — so the room really
+   *  is full once Priya's client has hers, and the refusal below is correct.
+   *  A one-chair room is the only size where the OLD behaviour was right. */
+  const closeEveryChairBut = async (appointmentId: string) => {
+    const prisma = new PrismaClient();
+    try {
+      const hold = await prisma.appointmentResourceHold.findUniqueOrThrow({ where: { appointmentId } });
+      await prisma.resource.updateMany({
+        where: { id: { not: hold.resourceId } },
+        data: { active: false },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+
+  test('puts her back when another stylist took the chair and hers is free (A-116)', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+    await sellTheChairToAnotherStylistsClient();
+
+    await page.getByLabel(/Reason/).fill('Rang off the wrong client');
+    await page.getByRole('button', { name: REINSTATE }).click();
+
+    await expect(page.getByText('Corrected from cancelled to booked by Front desk.')).toBeVisible();
+    expect(await statusOf(appointment.id)).toBe('booked');
+
+    // The fact the grid shows, which is what the desk actually checks: she is
+    // back in Dana's column, and the stranger kept the chair.
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expect(
+      page.getByRole('region', { name: /Dana/ }).getByRole('link', { name: /Ada Chen/ }),
+    ).toHaveAccessibleName(/, booked$/);
+  });
+
+  /** The other sentence, and the reason they had to be worded apart: this one
+   *  is about the ROOM, and the stylist is free. */
+  test('says the room is full, not that the stylist is taken (A-116)', async ({ page }) => {
+    const appointment = await bookOne();
+    await closeEveryChairBut(appointment.id);
+    await cancelIt(page, appointment.id);
+    await sellTheChairToAnotherStylistsClient();
+
+    await page.getByLabel(/Reason/).fill('Rang off the wrong client');
+    await page.getByRole('button', { name: REINSTATE }).click();
+
+    await expect(page.getByText(/Every Chair is taken for that time — they are free, the room is not/)).toBeVisible();
+    await expect(page.getByText(/That time has been sold to somebody else/)).toHaveCount(0);
+    expect(await statusOf(appointment.id)).toBe('cancelled');
+  });
+
   /** D-32's checkbox, defaulted the other way — the only opt-IN notice in the
    *  product. She has already been texted a cancellation, and the desk is
    *  usually on the phone before it is on this screen. */

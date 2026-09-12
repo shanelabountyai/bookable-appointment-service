@@ -4223,3 +4223,31 @@ to the same question than the booking screen did.
   sick for a week, which returns no candidates at all and so would have passed
   against the bug untouched. The day in the test is an ordinary Tuesday with
   every minute of it sold.
+
+## A-116 — the undo that failed in the room it was built for
+
+The salon's worst mis-tap is cancelling the wrong client: two similar names, a
+busy Friday, one thumb. An earlier release made that undoable — the same
+appointment goes back on the book, keeping its id, its link to the client and
+its history, instead of being re-created as a new booking with a cancellation
+already texted.
+
+It did not work in the room where the mis-tap happens. A cancellation frees the
+chair the client was sitting in, and the next booking the salon takes — for any
+stylist — is given that chair, because the chair picker always hands out the
+lowest-numbered free one. The undo then asked for *her* chair, by name, and was
+refused. What the desk was shown was "that time has been sold to somebody else",
+beside a stylist's column that was visibly empty and two chairs standing free,
+with the only suggested next step being the re-booking the feature existed to
+avoid — which puts a late cancellation back on the client's record.
+
+- **The undo now picks a chair, the way every other change to an appointment
+  already does.** Her own if it is still free, another if it is not. The database
+  constraint that guarantees two clients are never put in one chair is unchanged
+  and still has the final word; this only decides what to ask it for.
+- **Two different refusals stopped sharing one sentence.** "The stylist is
+  taken" and "every chair is taken, and the stylist is free" are different
+  problems with different answers, and the desk now gets the one that is true.
+- **The test room has three chairs.** In a one-chair salon the old refusal was
+  correct, so a test written there would have passed against the fault — the
+  reason it survived to be found by a working operator rather than by the suite.

@@ -4289,3 +4289,71 @@ move panel, asked the identical question, answered it correctly.
   MULTI-DAY ABSENCE, which is the one shape that returns no candidates at all
   and so passes against this bug. A predicate over a list needs a fixture where
   the list is non-empty and every member fails.
+
+## A-116 — reinstating into the chair somebody else took
+
+**Commit `TBD`.**
+
+D-53 made "Put it back on the book" a same-row edge and let the exclusion
+constraint decide whether the time may come back. What it did not decide is
+WHICH CHAIR comes back with it. `resourceId` survived the cancellation, so the
+reinstatement asked for the chair she was in — and `findFreeResource` hands out
+the lowest-numbered free chair, so the chair a cancellation frees is precisely
+the one the next overlapping booking, **on any stylist**, is given. The operator
+reproduced it on three days and three chairs: Dana's column empty, two chairs
+free, and the reinstatement refused as `SlotTaken ['overlaps-booking']` — worded
+*"That time has been sold to somebody else… Book them in somewhere else."*
+Doing as told rebuilt every harm D-53 exists to remove: a new id, a second
+manage token, a split event log, a cancellation notice already sent, and the
+`cancelled_late` back on her twelve-month record.
+
+### What it built
+
+- **The reinstatement re-picks its chair, with the chooser every other
+  occupancy change already uses.** `chairForMove` inside the transition's own
+  transaction, preferring her own chair (A-034's rule: a re-pick is not a
+  reshuffle), falling back to any free one of the type. A chooser, not a
+  check-then-write — the exclusion constraint still defends the chosen chair.
+- **The envelope comes off the row, not off arithmetic.** A transition moves no
+  ranges, so `blockedStart`/`blockedEnd` — body plus buffers, written by the
+  trigger — are already the destination envelope. Nothing here re-derives buffer
+  minutes, which is the second copy that drifts.
+- **The predicate is derived, never typed.** `freeing.includes(from) &&
+  !freeing.includes(to)` off `SLOT_FREEING_STATUSES` — the same question the
+  reinstatement notice below it asks, so a ninth status needs no second edit.
+  `no_show` is deliberately outside it: it still occupies (D-7).
+- **Two refusals, worded apart.** Every chair taken now raises `NoResourceFree`
+  and reaches the panel as *"Every Chair is taken for that time — they are free,
+  the room is not."* `SlotTaken ['overlaps-booking']` is left meaning what it
+  says: the stylist. The one screen whose job is explaining itself stopped
+  saying "somebody has Dana then" over an empty column.
+- **Four unit tests and two e2e**, all on a room with more than one chair.
+
+### What it decided
+
+- **No new D-number.** D-53's guard is untouched — the constraint still decides
+  whether the time may come back — and choosing a chair at write time is
+  D-30/A-034's existing mechanism, not a new one.
+- **A-075's un-release is left alone, deliberately.** Same shape (a range coming
+  back through the trigger onto a chair that may be gone), different question: a
+  released `no_show` was never off the clock — `no_show` occupies — and she was
+  physically in that chair for the part of the visit before the desk gave up.
+  Re-picking there would move a client who had already sat down. Read, not run,
+  and named in the code so the next reader does not assume it was missed.
+- **Only a reinstatement re-picks.** Every other transition writes no
+  `resourceId` at all, so `NULL` can never be written across a chair she holds.
+
+### What it left behind
+
+- **The refusal that reaches the outer `catch` is now the stylist's axis** (or a
+  chair lost in the race between the re-pick and the write, which is the
+  ordinary lost race). The room being full never arrives there any more.
+- **The fixture rule, twice over.** On a ONE-CHAIR room the old refusal was
+  correct, so a test written there passes against the bug — the item's room has
+  three, and the one-chair case is kept as the assertion for the *other*
+  sentence. And the chair has to be taken by a DIFFERENT stylist's client:
+  A-063 relaxes the envelope constraint for one holder, so Ada re-taking her own
+  chair collides with nothing.
+- **Verified red before green.** With the re-pick disabled, the two item tests
+  fail and the two control tests (her own chair kept; the stylist genuinely
+  taken) stay green — which is what says the controls are controls.

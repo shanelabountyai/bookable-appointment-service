@@ -955,3 +955,139 @@ describe('A-112 — reinstating a cancellation', () => {
     });
   });
 });
+
+/**
+ * A-116 — REINSTATING INTO THE CHAIR SOMEBODY ELSE TOOK (RES-03, D-30, D-53).
+ *
+ * D-53 put the appointment back into the chair `resourceId` still named from
+ * before the cancellation and called that conservative. `findFreeResource`
+ * hands out the lowest-numbered free chair, so the chair a cancellation frees
+ * is the one the next overlapping booking — on ANY stylist — is given, and the
+ * reinstatement was then refused as `overlaps-booking` while the stylist's
+ * column was empty and two chairs stood free. The only way out the desk was
+ * offered was a new booking, which is every harm D-53 exists to remove.
+ *
+ * THE FIXTURE IS THE ITEM. Three chairs, the freed one taken by a DIFFERENT
+ * stylist, the others free, Dana free. On a one-chair room the old refusal was
+ * correct — a test written there passes against the bug, which is why the
+ * one-chair case is here too, asserting the OTHER sentence.
+ */
+describe('A-116 — reinstating into the chair somebody else took', () => {
+  const REASON = 'Rang off the wrong Bea';
+
+  /** Chairs, and a Cut that needs one. Local rather than in the shared
+   *  `beforeEach`: the rest of this file is deliberately a roomless business,
+   *  which is what `resourceId IS NULL` means (D-30). */
+  const aRoomOf = async (chairs: number) => {
+    const type = await prisma.resourceType.create({ data: { businessId, name: 'Chair' } });
+    for (let n = 1; n <= chairs; n += 1) {
+      await prisma.resource.create({ data: { businessId, resourceTypeId: type.id, name: `Chair ${n}` } });
+    }
+    await prisma.service.update({ where: { id: serviceId }, data: { requiredResourceTypeId: type.id } });
+    return type;
+  };
+
+  /** A SECOND STYLIST, which is the half of the fixture that matters: two
+   *  bookings for one client share a chair by A-063, and the whole point is a
+   *  stranger in the chair Ada's cancellation freed. */
+  const priyaBooks = async () => {
+    const priya = await prisma.provider.create({ data: { businessId, displayName: 'Priya' } });
+    await prisma.serviceProvider.create({ data: { businessId, serviceId, providerId: priya.id } });
+    await createWeeklyWindow(
+      prisma,
+      { businessId, providerId: priya.id, weekday: 2, open: '09:00', close: '17:00', endsNextDay: false },
+      STAFF_ROW,
+    );
+    const nour = await prisma.client.create({ data: { businessId, name: 'Nour Haddad', phone: '5125550188' } });
+    return book({ providerId: priya.id, clientId: nour.id, idempotencyKey: 'priya-took-the-chair' });
+  };
+
+  const chairOf = async (appointmentId: string) =>
+    prisma.appointmentResourceHold.findUniqueOrThrow({
+      where: { appointmentId },
+      select: { resourceId: true, status: true, blockedStart: true, blockedEnd: true, bodyStart: true, bodyEnd: true },
+    });
+
+  const cancelThen = async (chairs: number) => {
+    await aRoomOf(chairs);
+    const appointment = await book();
+    const seated = (await chairOf(appointment.id)).resourceId;
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    return { appointment, seated };
+  };
+
+  const reinstate = (appointmentId: string) =>
+    transitionAppointment(prisma, { appointmentId, to: 'booked', actor: STAFF, now: BEFORE, reason: REASON });
+
+  it('puts her back while the stylist is free and another chair is empty', async () => {
+    const { appointment, seated } = await cancelThen(3);
+    const priya = await priyaBooks();
+    // The precondition, asserted rather than assumed: Priya really is in the
+    // chair the cancellation freed. Without this the test could pass because
+    // nothing ever collided.
+    expect((await chairOf(priya.id)).resourceId).toBe(seated);
+
+    await reinstate(appointment.id);
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.status).toBe('booked');
+
+    // She is in the room, in a DIFFERENT chair, and Priya kept hers.
+    const hers = await chairOf(appointment.id);
+    expect(hers.resourceId).not.toBe(seated);
+    expect((await chairOf(priya.id)).resourceId).toBe(seated);
+
+    // BOTH EDGES of the hold, because an assertion on the end alone passes
+    // against a range written from the wrong start (A-093). The trigger
+    // rewrote the whole row from the parent's new status, envelope and body.
+    expect(hers.status).toBe('booked');
+    expect(hers.blockedStart).toEqual(row.blockedStart);
+    expect(hers.blockedEnd).toEqual(row.blockedEnd);
+    expect(hers.bodyStart).toEqual(row.startAt);
+    expect(hers.bodyEnd).toEqual(row.endAt);
+  });
+
+  /** A-034's preference, on this path too: the re-pick is not a reshuffle. */
+  it('keeps the chair she was in when nobody took it', async () => {
+    const { appointment, seated } = await cancelThen(3);
+
+    await reinstate(appointment.id);
+
+    expect((await chairOf(appointment.id)).resourceId).toBe(seated);
+  });
+
+  /**
+   * THE OTHER SENTENCE. One chair, and the room genuinely is full — so the
+   * refusal is correct, and it is a fact about the ROOM while the stylist is
+   * free. `overlaps-booking` here is the lie the desk stopped believing.
+   */
+  it('says the room is full, not that the stylist is taken, when every chair is gone', async () => {
+    const { appointment } = await cancelThen(1);
+    await priyaBooks();
+
+    await expect(reinstate(appointment.id)).rejects.toMatchObject({
+      name: 'NoResourceFree',
+      resourceTypeName: 'Chair',
+    });
+
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    expect(row.status).toBe('cancelled');
+    expect(await prisma.appointmentEvent.count({ where: { appointmentId: appointment.id, type: 'status_corrected' } })).toBe(0);
+  });
+
+  /**
+   * And the stylist's axis still says the stylist. This is the assertion that
+   * the two refusals are genuinely apart rather than one sentence renamed:
+   * same room, two free chairs, and Dana herself has the 10:00.
+   */
+  it('still refuses as a taken stylist when it is the stylist who is taken', async () => {
+    const { appointment } = await cancelThen(3);
+    await book({ idempotencyKey: 'dana-took-it-back' });
+
+    await expect(reinstate(appointment.id)).rejects.toMatchObject({
+      name: 'SlotTaken',
+      reasons: ['overlaps-booking'],
+    });
+    expect((await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).status).toBe('cancelled');
+  });
+});
