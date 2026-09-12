@@ -1,30 +1,35 @@
 # Next
 
-**A-114 is done (D-55: canonical phone + folded name, owned by the database).**
-Commits: the build, then the SHA record, pushed together in ONE push.
-**Confirm with `gh run list --limit 1` before trusting this file** — that run
-must be green.
+**A-115 is done (a full day answers "when can she fit me in?").**
+Commits: the build (`70edb87`), then the SHA record, pushed together in ONE
+push. **Confirm with `gh run list --limit 1` before trusting this file** — that
+run must be green.
 
-## The next item: A-115 — "When can Dana fit me in?" on a FULL day
+## The next item: A-116 — reinstating into the chair somebody else took
 
-A-106's day list and A-110's waitlist door sit behind `offered.length === 0`
-(`booking-panel.tsx:284`), and a full day is never empty because A-042 made
-`offered` carry refused times. Ask the question of the BOOKABLE times
-(`offered.every(slot => slot.reasons.length > 0)`), keep A-042's refused list
-AND the day list and door beneath it. **The fixture is a full day with no
-absence anywhere in it**, asserted on the named arm AND against the move
-panel's answer for the same day (`move-panel.tsx:77`) — they must agree.
+D-53 lets the exclusion constraint decide whether a cancelled appointment may
+return, into its OWN chair (`transition.ts:145-148`). But `findFreeResource`
+hands the freed chair to the next overlapping booking on ANY stylist
+(`resources.ts:130`), so the reinstatement is refused as `SlotTaken
+['overlaps-booking']` while the stylist's column is empty and two chairs are
+free — and the refusal's wording (`actions.ts:87`) tells the desk to book them
+in somewhere else, which rebuilds every harm D-53 closed.
 
-Then A-116 … A-120 top to bottom. **A-119 needs a NEW D-number: D-56** (D-55
+Re-pick the chair inside the reinstatement's transaction with `chairForMove`
+(`resources.ts:180`, as at `reschedule.ts:167`, `change-services.ts:487`,
+`attach-client.ts:279`), preferring her own. Word the two refusals apart —
+`transition.ts:152` collapses no-chair into `overlaps-booking`. **Ride along,
+read and not run:** A-075's un-release, same shape (`release-time.ts:261`).
+
+**The fixture is the item:** two or more chairs, the freed one taken by a
+DIFFERENT stylist, another chair free, the stylist free. On ONE chair the
+refusal is correct and the test passes against the bug.
+
+Then A-117 … A-120 top to bottom. **A-119 needs a NEW D-number: D-56** (D-55
 was taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
 
 ## What the close found, in case an item trips over it
 
-- **A-115:** A-106's day list and A-110's waitlist door are behind
-  `offered.length === 0` (`booking-panel.tsx:284`), so a FULL day (every time
-  refused) gets neither. The move panel gets it right.
-- **A-116:** the reinstatement returns into its OWN chair (`transition.ts:145-148`),
-  and `findFreeResource` gives the freed chair to the next booking.
 - **A-117:** the Messages badge counts outbox rows only, and a missed tick writes
   none. Predicate 4 ignores a moved `startAt`.
 - **A-118:** *"Everything has gone out"* is printed over 686 rows all
@@ -32,6 +37,13 @@ was taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
 - **A-119:** the waitlist stores one `serviceId`.
 - **A-120:** on the demo book the missed-reminder list is empty by construction,
   the long name never reaches a chip, and the flag's second clause is always cut.
+
+## What A-115 left for anyone near the booking panel
+
+- **The panel's lookup and A-106's fortnight walk are ONE transition**, so on a
+  full day the refused chips now wait on the walk (~2.5s warm, more cold). A
+  spec that expects chips within the default 5s fails as "the fix did not work"
+  on a slow machine — wait for `Looking…` to go.
 
 ## Environment notes
 

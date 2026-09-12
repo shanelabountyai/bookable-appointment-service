@@ -4238,7 +4238,7 @@ stranger to "Rae Núñez".
 
 ## A-115 — the day she is full is a question, not a dead end
 
-**Commit `PENDING`.**
+**Commit `70edb87`.**
 
 A-106 gave the desk an answer to "when CAN you fit me in?" and A-110 put the
 waitlist door beside it. Both sat behind `offered.length === 0`, and A-042 had
