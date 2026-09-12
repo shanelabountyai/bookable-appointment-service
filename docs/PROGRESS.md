@@ -4292,7 +4292,7 @@ move panel, asked the identical question, answered it correctly.
 
 ## A-116 — reinstating into the chair somebody else took
 
-**Commit `TBD`.**
+**Commit `76f299c`.**
 
 D-53 made "Put it back on the book" a same-row edge and let the exclusion
 constraint decide whether the time may come back. What it did not decide is
