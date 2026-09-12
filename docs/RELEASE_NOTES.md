@@ -4192,3 +4192,34 @@ Three details carry the engineering:
   different string on each side: brackets against `+1`, "rae nunez" against
   "Rae Núñez", and the same accented letter encoded two ways that look
   identical on screen.
+
+## A-115 — "when can she fit me in?", on the day she is full
+
+The desk could answer that question on a day the salon was closed, and not on
+a day that was simply booked out — which is the day the phone actually rings
+about. A fully sold column showed every time, each one crossed out, and then
+stopped: no list of the next days with room, no way to put the caller on the
+waitlist without starting again on another screen.
+
+The cause is worth naming because it is the kind of thing that survives a lot
+of testing. An earlier feature had made the list of times carry the *refused*
+ones too, so the desk could see a full day and deliberately double-book into
+it. That was right. But the "we have nothing" answer was still deciding by
+asking whether the list was empty, and a full day's list is not empty — it is
+full of times that cannot be sold. The question had to change from "is there
+anything on the screen?" to "is there anything she can actually book?"
+
+The same screen already had the right answer fourteen lines up: the rescheduler
+asks exactly that, which is how a second surface came to give a better answer
+to the same question than the booking screen did.
+
+- **Nothing was taken away.** The crossed-out column stays, overrides and all;
+  the next open days and the waitlist door appear underneath it.
+- **Two surfaces, one assertion.** The test does not check a sentence. It puts
+  the identical question to both screens and requires the same first day back
+  from each — a booking screen that drifted from the rescheduler again would
+  fail here rather than in front of a client.
+- **The fixture is the feature.** The original write-up specified a stylist off
+  sick for a week, which returns no candidates at all and so would have passed
+  against the bug untouched. The day in the test is an ordinary Tuesday with
+  every minute of it sold.

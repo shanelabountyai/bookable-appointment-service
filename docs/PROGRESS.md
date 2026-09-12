@@ -4235,3 +4235,57 @@ stranger to "Rae Núñez".
   wrong but harmless, and it still matches itself.
 - **`bookable_cp10`** from checkpoint 10 still holds the split Alice Hall. Walk
   the client page there to see the note on real data, then drop it.
+
+## A-115 — the day she is full is a question, not a dead end
+
+**Commit `PENDING`.**
+
+A-106 gave the desk an answer to "when CAN you fit me in?" and A-110 put the
+waitlist door beside it. Both sat behind `offered.length === 0`, and A-042 had
+already made `offered` carry the REFUSED times — so the answer was reachable
+only on a day the salon is SHUT. A fully booked Saturday, the busiest shape a
+book has and the one where the caller most needs the answer, got neither. The
+move panel, asked the identical question, answered it correctly.
+
+### What it built
+
+- **The refusal is asked of the BOOKABLE times.** `booking-panel.tsx` already
+  computed `bookable` three lines above the call (A-042's preselect needs it);
+  `answerWhenNot` now takes `bookable.length === 0` instead of
+  `offered.length === 0`. One character of logic, and the same predicate the
+  move panel has used since A-106 (`found.length === 0` of bookable slots only).
+- **The day list and the door moved BENEATH the column rather than instead of
+  it.** The render was one ternary — either "They are not working that day"
+  with the answer, or the chips. It is now the chips (or that sentence), and
+  then a single branch on `slots.every(slot => slot.reasons.length > 0)`. `every`
+  on an empty list is true, so one branch covers both refusals: no candidates at
+  all, and every candidate refused. A-042's chips keep their overrides (D-8).
+- **A full day now says so**, in the move panel's exact words — "Nothing free
+  that day for this visit." — printed only when there were candidates to
+  refuse. On a day she is not working the older sentence still stands.
+- **One e2e test, asserted against the other surface.** Dana's Tuesday sold
+  end to end (two appointments either side of her 12:00–13:00 break, no absence
+  anywhere), then the same question — Colour, with Dana, on that day — put to
+  the booking panel and to the move panel, and the first day each offers has to
+  be the same string.
+
+### What it decided
+
+- **The lookup and the fortnight walk stay ONE transition.** On a full day the
+  chips now wait on the walk (~2.5s warm) where they used to paint at once.
+  Splitting them would drop A-054's staleness guard into a second update and
+  risk the drift A-106's comment names — a day list belonging to a different
+  (day, stylist) pair than the times above it. The move panel awaits it inline
+  for the same reason, and the item's own measurement put the walk at ~0.3s on
+  the demo book.
+
+### What it left behind
+
+- **The spec waits for "Looking…" to go, not a bare 5s on the chips.** The
+  first cold run of this test failed at exactly that — the walk had not
+  finished — which reads as "the fix did not work" on a machine that is merely
+  slow.
+- **The fixture rule again, from the other side.** Row 108 prescribed a
+  MULTI-DAY ABSENCE, which is the one shape that returns no candidates at all
+  and so passes against this bug. A predicate over a list needs a fixture where
+  the list is non-empty and every member fails.

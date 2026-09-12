@@ -277,11 +277,18 @@ export function BookingPanel({
         setChosenSlot(
           keep ?? bookable.find((slot) => !anchor || slot.at >= anchor)?.at ?? anchor ?? bookable[0]?.at ?? null,
         );
-        // "She is not working that day" is the refusal this answers, and the
-        // engine says that by returning NO CANDIDATES AT ALL — not by refusing
-        // them. A day where every time is refused still has A-042's list, an
-        // override behind each chip, and nothing to be redirected away from.
-        await answerWhenNot(offered.length === 0, provider.id);
+        // A-115 — ASKED OF THE BOOKABLE TIMES, NOT OF THE LIST.
+        //
+        // "She is not working that day" and "she is full that day" are one
+        // question to the caller — "when CAN she fit me in?" — and only the
+        // first used to reach the answer. A-042 made `offered` carry the
+        // REFUSED times too, so a fully booked Saturday is never empty and a
+        // FULL day, the busiest shape the book has, got neither the day list
+        // nor the waitlist door. The override behind each chip is how the desk
+        // double-books deliberately (D-8); it is not an answer to somebody on
+        // the phone. The move panel asks it of bookable slots only
+        // (`move-panel.tsx`), and the two surfaces must agree.
+        await answerWhenNot(bookable.length === 0, provider.id);
       });
     }
   }
@@ -539,13 +546,9 @@ export function BookingPanel({
           ) : (
             <>
               {slots.length === 0 ? (
-                <div className="flex flex-col gap-3">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    They are not working that day. Type a time below if you mean to book them anyway.
-                  </p>
-                  <OpenDays days={openDays} onPick={changeDay} />
-                  {waitlistLink}
-                </div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  They are not working that day. Type a time below if you mean to book them anyway.
+                </p>
               ) : (
                 <ul className="flex flex-wrap gap-2">
                   {/* A-042 — the WHOLE column, offered and refused alike, in
@@ -581,6 +584,23 @@ export function BookingPanel({
                   })}
                 </ul>
               )}
+
+              {/* A-115 — BENEATH THE LIST, not instead of it. `every` on an
+                  empty list is true, so this is the one branch for both
+                  refusals: no candidates at all (she is not working) and every
+                  candidate refused (she is full). A-042's chips stay above it
+                  with their overrides intact. */}
+              {slots.every((slot) => slot.reasons.length > 0) ? (
+                <div className="flex flex-col gap-3">
+                  {slots.length > 0 ? (
+                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                      Nothing free that day for this visit.
+                    </p>
+                  ) : null}
+                  <OpenDays days={openDays} onPick={changeDay} />
+                  {waitlistLink}
+                </div>
+              ) : null}
 
               {/* The grid stops at the working windows: with candidates
                   anchored to window-open, 18:00 on a day that shuts at 17:00

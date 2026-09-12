@@ -1123,3 +1123,159 @@ test.describe('what the booking panel says when it has no stylist (A-104)', () =
     await expect(page.getByText(NOT_ON_TODAY)).toHaveCount(0);
   });
 });
+
+/**
+ * A-115 — "WHEN CAN DANA FIT ME IN?" ON THE DAY SHE IS FULL.
+ *
+ * A-106's day list and A-110's waitlist door both sat behind
+ * `offered.length === 0`, and A-042 had already made `offered` carry the
+ * REFUSED times — so the one shape where the caller most needs an answer, a
+ * fully booked column, got neither. Only a day the salon is SHUT reached it.
+ *
+ * THE FIXTURE IS THE ITEM, and row 108 got it wrong: it prescribed a
+ * multi-day ABSENCE, which is the one shape that returns no candidates at all
+ * and so passes against the bug. This day has no absence anywhere in it —
+ * Dana is working her ordinary Tuesday and every minute of it is sold.
+ *
+ * And the assertion that makes it a defect rather than a preference: the MOVE
+ * panel, asked the identical question (Colour, with Dana, on this day),
+ * already answered it correctly. Two surfaces, one operational question —
+ * they are asserted against each other, not against a sentence.
+ */
+test.describe('a full day answers "when can she fit me in?" (A-115)', () => {
+  /** The first day offered under "The next days with room:", on whichever
+   *  panel is on screen. Located off the sentence rather than off a container
+   *  class, so the two surfaces are read exactly the same way. */
+  async function firstOpenDay(page: Page): Promise<string> {
+    const days = page
+      .getByText('The next days with room:')
+      .locator('xpath=following-sibling::ul')
+      .locator('li button');
+    await expect(days.first()).toBeVisible();
+    return (await days.first().innerText()).trim();
+  }
+
+  let danaId = '';
+  let moverId = '';
+
+  test.beforeEach(async () => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const colour = await prisma.service.findFirstOrThrow({ where: { name: 'Colour' } });
+      danaId = dana.id;
+
+      // HER WHOLE TUESDAY, SOLD. Two blocks either side of the 12:00–13:00
+      // break, so every candidate the grid anchors inside her windows overlaps
+      // one of them. No time off, no override, no closed day: the engine still
+      // returns the full column and refuses every chip in it, which is the
+      // state the bug could not see.
+      const fill = async (from: string, to: string, name: string, phone: string) => {
+        const client = await prisma.client.create({ data: { businessId: business.id, name, phone } });
+        const startAt = at(from);
+        const endAt = at(to);
+        await prisma.appointment.create({
+          data: {
+            businessId: business.id,
+            providerId: dana.id,
+            clientId: client.id,
+            startAt,
+            endAt,
+            blockedStart: startAt,
+            blockedEnd: endAt,
+            startDay: DAY,
+            startWallTime: from,
+            lines: {
+              create: {
+                businessId: business.id,
+                serviceId: colour.id,
+                ordinal: 0,
+                priceCents: colour.priceCents,
+                durationMinutes: colour.durationMinutes,
+              },
+            },
+          },
+        });
+      };
+      await fill('09:00', '12:00', 'Morning Full', '5125550301');
+      await fill('13:00', '17:00', 'Afternoon Full', '5125550302');
+
+      // The appointment the MOVE panel will be asked to move onto that day —
+      // the same service with the same stylist, a week out, on a column that
+      // is empty. Its client holds nothing else, so both surfaces are asking
+      // the strict question (A-082) and any disagreement is the defect.
+      const moverClient = await prisma.client.create({
+        data: { businessId: business.id, name: 'Wants The Full Day', phone: '5125550303' },
+      });
+      const nextWeek = addDays(calendarDay(DAY), 7);
+      const moverStart = toDate(
+        (() => {
+          const resolution = resolve(calendarDay(nextWeek), wallTime('09:00'), zoneId(ZONE));
+          if (resolution.kind !== 'unique') throw new Error(`${nextWeek} 09:00 is not unique in ${ZONE}`);
+          return resolution.at;
+        })(),
+      );
+      const moverEnd = toDate(instant(fromDate(moverStart) + colour.durationMinutes * 60_000));
+      const mover = await prisma.appointment.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          clientId: moverClient.id,
+          startAt: moverStart,
+          endAt: moverEnd,
+          // A-098: the buffers are the service's, and the TRIGGER owns the
+          // envelope. A fixture that writes its own envelope writes a row the
+          // product cannot produce.
+          bufferBeforeMinutes: colour.bufferBeforeMinutes,
+          bufferAfterMinutes: colour.bufferAfterMinutes,
+          blockedStart: moverStart,
+          blockedEnd: moverEnd,
+          startDay: nextWeek,
+          startWallTime: '09:00',
+          lines: {
+            create: {
+              businessId: business.id,
+              serviceId: colour.id,
+              ordinal: 0,
+              priceCents: colour.priceCents,
+              durationMinutes: colour.durationMinutes,
+            },
+          },
+        },
+      });
+      moverId = mover.id;
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('keeps the refused column AND answers with the next days and the waitlist door', async ({ page }) => {
+    await page.goto(`/staff/book?provider=${danaId}&day=${DAY}`);
+    await page.getByRole('button', { name: /^Colour/ }).click();
+
+    // A-042's list is still there — this is the half the bug was protecting,
+    // and every chip in it is refused. A BARE "09:00" is a bookable chip: if
+    // one existed the day would not be full and this fixture would be lying.
+    // THE LOOKUP AND THE FORTNIGHT WALK ARE ONE TRANSITION (A-054's staleness
+    // guard, and the move panel does the same), so on a full day the chips now
+    // wait on the walk too — ~2.5s warm here, more on a cold worker. Waiting
+    // for "Looking…" to go is the honest wait; a bare 5s expect on the chips
+    // fails as "the fix did not work" on a machine that is merely slow.
+    await expect(page.getByText('Looking…')).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByRole('button', { name: /^\d\d:\d\d — / }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /^\d\d:\d\d$/ })).toHaveCount(0);
+
+    // …and now the answer to the question actually being asked on the phone.
+    await expect(page.getByText('Nothing free that day for this visit.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Put them on the list for this' })).toBeVisible();
+    const fromBooking = await firstOpenDay(page);
+    expect(fromBooking).not.toBe('');
+
+    // THE AGREEMENT. Same stylist, same service, same day, the other surface.
+    await page.goto(`/staff/appointments/${moverId}`);
+    await page.getByLabel('Move to which day?').fill(DAY);
+    await expect(page.getByText('Nothing free that day for this visit.')).toBeVisible();
+    expect(await firstOpenDay(page)).toBe(fromBooking);
+  });
+});
