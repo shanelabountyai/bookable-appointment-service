@@ -4362,7 +4362,7 @@ manage token, a split event log, a cancellation notice already sent, and the
 
 ## A-117 — the badge cannot see the one failure D-51 was for
 
-**Commit `TBD`.**
+**Commit `595f87e`.**
 
 D-51 built the list of people the reminder job never reached, and the operator
 proved it exact: one five-minute tick skipped on a 43-appointment cohort, four
