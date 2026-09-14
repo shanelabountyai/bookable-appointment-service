@@ -36,7 +36,7 @@
  * to tell apart, and only a stamp on every run can.
  */
 import { REMINDER_ELIGIBLE_STATUSES } from '../../core/scheduling';
-import { REMINDER_TEMPLATE, reminderWindow } from '../../core/notifications';
+import { REMINDER_TEMPLATE, reminderDedupeKey, reminderWindow } from '../../core/notifications';
 import { fromDate, toDate } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 // Direct file import, not the `../appointments` barrel: that barrel pulls in
@@ -109,7 +109,7 @@ async function sweepOneBusiness(
   let duplicate = 0;
 
   for (const appointment of due) {
-    const dedupeKey = `reminder-24h:${appointment.id}:${fromDate(appointment.startAt)}`;
+    const dedupeKey = reminderDedupeKey(appointment.id, fromDate(appointment.startAt));
 
     // Checked BEFORE touching the token, not just left to enqueueNotification's
     // own unique-constraint catch: an interval trigger firing more often than

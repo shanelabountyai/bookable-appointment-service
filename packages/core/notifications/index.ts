@@ -12,6 +12,7 @@ export {
   REMINDER_LEAD_MS,
   REMINDER_TEMPLATE,
   REMINDER_WINDOW_MS,
+  reminderDedupeKey,
   reminderWindow,
 } from './reminder';
 export { type FailureKind, MAX_ATTEMPTS, classifyFailure, retryDelayMs } from './retry';

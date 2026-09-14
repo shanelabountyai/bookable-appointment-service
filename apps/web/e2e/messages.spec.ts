@@ -283,6 +283,28 @@ test.describe('messages that did not go out (A-051)', () => {
     await expect(page.getByText(/Everything has gone out/)).toHaveCount(0);
   });
 
+  /**
+   * A-117 — AND THE SHELL SAYS SO FROM WHEREVER SHE IS STANDING.
+   *
+   * The whole of the operator's measurement in one assertion: a skipped tick
+   * writes no outbox row, so there is nothing stuck and nothing failed, and
+   * the badge that counted the outbox alone read 0 while this screen listed a
+   * person nobody had rung. The desk does not open `/staff/messages` on a
+   * hunch — the badge is what sends them.
+   */
+  test('the shell badge counts the cohort that left no outbox row', async ({ page }) => {
+    await bookedButNeverReminded({ name: 'Ada Chen', phone: '(512) 555-0188' });
+
+    await signIn(page);
+    const nav = page.getByRole('navigation', { name: 'Staff' });
+    // Asserted on the DAY GRID, not on the messages screen: "visible from
+    // anywhere" is the property, and sign-in lands here.
+    await expect(nav.getByRole('link', { name: 'Messages 1', exact: true })).toBeVisible();
+
+    await nav.getByRole('link', { name: /^Messages/ }).click();
+    await expect(page.getByRole('heading', { name: /never reminded \(1\)/ })).toBeVisible();
+  });
+
   /** Scanned with ALL THREE sections on screen at once — A-108 added two, and
    *  a fixture carrying only the original one measures a page the desk will
    *  rarely see. */

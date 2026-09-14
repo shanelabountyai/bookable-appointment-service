@@ -43,3 +43,23 @@ export function reminderWindow(now: Instant): ReminderWindow {
     end: instant(now + REMINDER_LEAD_MS + REMINDER_WINDOW_MS),
   };
 }
+
+/**
+ * THE IDENTITY OF ONE REMINDER — the appointment AND the instant it is a
+ * reminder FOR, which the schema has required since P1-7 and which this
+ * function now makes the only way to say.
+ *
+ * A-117 exported it because the second reader got it wrong. `sendDueReminders`
+ * built this string inline; `listMissedReminders` asked instead whether the
+ * appointment held ANY reminder row, and those two are the same question only
+ * until somebody moves. A client reminded for Saturday and moved to Wednesday
+ * holds a row keyed to Saturday's instant — so she vanished off the list of
+ * people nobody has told, while the Wednesday sweep correctly wrote her a
+ * second key. The wrong half was the one that decides what the desk SEES.
+ *
+ * Takes an `Instant`, not a `Date`: the key is an instant identity (D-4), and
+ * a caller that has a `Date` converts through the one module that may.
+ */
+export function reminderDedupeKey(appointmentId: string, startAt: Instant): string {
+  return `reminder-24h:${appointmentId}:${startAt}`;
+}

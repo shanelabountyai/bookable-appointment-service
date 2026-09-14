@@ -13,7 +13,9 @@ import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/not
 import { dispatchPendingNotifications } from './dispatch';
 import { enqueueNotification } from './enqueue';
 import { sendDueReminders } from './reminders';
-import { lastReminderSweep, listMissedReminders } from './missed-reminders';
+import { MOVING_EVENT_TYPES, countMissedReminders, lastReminderSweep, listMissedReminders } from './missed-reminders';
+import { countUnsentNotifications } from './stuck';
+import { reminderDedupeKey } from '../../core/notifications';
 
 const prisma = new PrismaClient();
 
@@ -402,13 +404,13 @@ describe('listMissedReminders (D-51)', () => {
    * written explicitly rather than being whatever the insert happened to
    * stamp.
    */
-  async function booked(args: { inMs: number; bookedAgoMs: number; status?: string }) {
+  async function booked(args: { inMs: number; bookedAgoMs: number; status?: string; providerId?: string }) {
     const startAt = toDate(instant(fromDate(NOW) + args.inMs));
     const endAt = toDate(instant(fromDate(NOW) + args.inMs + HOUR));
     const appointment = await prisma.appointment.create({
       data: {
         businessId,
-        providerId,
+        providerId: args.providerId ?? providerId,
         clientId,
         status: (args.status ?? 'booked') as 'booked',
         startAt,
@@ -424,6 +426,27 @@ describe('listMissedReminders (D-51)', () => {
       instant(fromDate(NOW) - args.bookedAgoMs),
     )} WHERE id = ${appointment.id}`;
     return appointment;
+  }
+
+  /**
+   * An event that REWROTE `startAt`, stamped `agoMs` before now.
+   *
+   * Written directly rather than through `rescheduleAppointment`: the axis
+   * under test is WHEN the move happened, and the log is append-only by
+   * trigger (CLAUDE.md) — a row cannot be backdated after the fact, so the
+   * moment goes in at insert. The appointment's own `startAt` is already where
+   * `booked` put it; this is the log entry that says it got there by moving.
+   */
+  async function moved(args: { appointmentId: string; type: string; agoMs: number }) {
+    await prisma.appointmentEvent.create({
+      data: {
+        businessId,
+        appointmentId: args.appointmentId,
+        type: args.type,
+        actor: 'staff',
+        createdAt: toDate(instant(fromDate(NOW) - args.agoMs)),
+      },
+    });
   }
 
   it('names the client, with a number to ring', async () => {
@@ -496,6 +519,107 @@ describe('listMissedReminders (D-51)', () => {
    * written. That minute is the whole distinction the list is about, and a
    * fixture that read at `NOW` would pass with the lower bound anywhere.
    */
+  /**
+   * A-117 / PART 2 — SHE WAS REMINDED OF A TIME SHE IS NO LONGER COMING AT.
+   *
+   * The sweep's identity is `reminder-24h:{id}:{startAtMs}` (P1-7), and the
+   * schema says so at `dedupeKey`. Predicate 4 asked whether the APPOINTMENT
+   * held ANY reminder row, so Sam — reminded for Saturday, then moved to
+   * Wednesday on D-6's same row — counted as told and was absent from the list,
+   * while the Wednesday sweep correctly wrote him a second key. The list that
+   * decides what the desk SEES was the half that was wrong.
+   *
+   * The move is stamped TWO DAYS AGO, which is what makes it a real miss
+   * rather than a booking that was never eligible: the reminder band for the
+   * new time passed a day after he was moved into it, and nothing swept.
+   */
+  for (const type of MOVING_EVENT_TYPES) {
+    it(`lists her when the reminder she holds is for the time before a ${type}`, async () => {
+      const appointment = await booked({ inMs: 12 * HOUR, bookedAgoMs: 10 * 24 * HOUR });
+      // Keyed to where she USED to be — three days out, as the sweep would
+      // have written it before the move.
+      await enqueueNotification(prisma, {
+        businessId,
+        dedupeKey: reminderDedupeKey(appointment.id, instant(fromDate(appointment.startAt) + 3 * 24 * HOUR)),
+        appointmentId: appointment.id,
+        channel: 'email',
+        template: 'appointment.reminder',
+        recipient: 'ada@example.test',
+        payload: {},
+      });
+      await moved({ appointmentId: appointment.id, type, agoMs: 2 * 24 * HOUR });
+
+      const missed = await listMissedReminders(prisma, { businessId, now: NOW });
+      expect(missed).toHaveLength(1);
+      expect(missed[0]!.appointmentId).toBe(appointment.id);
+    });
+
+    /**
+     * And the same predicate from the other side (predicate 3). Moved into
+     * this afternoon two hours ago, her band is already behind her — no sweep
+     * could ever have caught this time, so she is not a job that failed. It
+     * was `createdAt` alone until A-117, which answered about a booking made
+     * ten days ago for a time she is no longer coming at, and so accused the
+     * job of missing somebody it was never offered.
+     */
+    it(`does not accuse the job of missing a ${type} into this afternoon`, async () => {
+      const appointment = await booked({ inMs: 4 * HOUR, bookedAgoMs: 10 * 24 * HOUR });
+      await moved({ appointmentId: appointment.id, type, agoMs: 2 * HOUR });
+
+      expect(await listMissedReminders(prisma, { businessId, now: NOW })).toHaveLength(0);
+    });
+  }
+
+  /**
+   * A-117 / PART 1 — THE BADGE, on the one failure D-51 was written for.
+   *
+   * The operator skipped a single five-minute tick and ran every other one.
+   * Nothing is stuck, because nothing was ever written: the outbox holds only
+   * the rows the ticks that DID run enqueued, and they are minutes old, so the
+   * actionable count is 0. The badge was that count alone — 0 over a screen
+   * listing the person nobody rang. It now counts the cohort from
+   * `listMissedReminders` itself rather than from a second, cheaper predicate.
+   */
+  it('counts the skipped tick, which wrote no outbox row to count', async () => {
+    // THREE CHAIRS, five minutes apart: the operator's cohort was 43 ten
+    // o'clocks across a salon, and one stylist cannot hold three hour-long
+    // visits five minutes apart — the exclusion constraint says so.
+    const chairs = await Promise.all(
+      ['Priya', 'Tess'].map((displayName) => prisma.provider.create({ data: { businessId, displayName } })),
+    );
+    const first = await booked({ inMs: 24 * HOUR + 60_000, bookedAgoMs: 3 * 24 * HOUR });
+    const skipped = await booked({
+      inMs: 24 * HOUR + 6 * 60_000,
+      bookedAgoMs: 3 * 24 * HOUR,
+      providerId: chairs[0]!.id,
+    });
+    const third = await booked({
+      inMs: 24 * HOUR + 11 * 60_000,
+      bookedAgoMs: 3 * 24 * HOUR,
+      providerId: chairs[1]!.id,
+    });
+
+    const tick = (afterMs: number) => sendDueReminders(prisma, toDate(instant(fromDate(NOW) + afterMs)));
+    await tick(60_000);
+    // 6 minutes: the tick that did not run.
+    await tick(11 * 60_000);
+
+    const readAt = toDate(instant(fromDate(NOW) + 20 * 60_000));
+    const rows = await prisma.notificationOutbox.findMany({ select: { appointmentId: true } });
+    expect(rows.map((r) => r.appointmentId).sort()).toEqual([first.id, third.id].sort());
+
+    // What the desk saw before this item: nothing stuck, a watermark minutes
+    // old, and a badge reading zero.
+    expect(await countUnsentNotifications(prisma, businessId, readAt)).toBe(0);
+    expect(await lastReminderSweep(prisma, businessId)).toEqual(toDate(instant(fromDate(NOW) + 11 * 60_000)));
+
+    const missed = await listMissedReminders(prisma, { businessId, now: readAt });
+    expect(missed.map((m) => m.appointmentId)).toEqual([skipped.id]);
+    // The badge's own number, from the list itself and never a second
+    // predicate — this equality is the whole of part 1.
+    expect(await countMissedReminders(prisma, { businessId, now: readAt })).toBe(missed.length);
+  });
+
   it('is emptied by the sweep that should have caught her', async () => {
     await booked({ inMs: 24 * HOUR, bookedAgoMs: 3 * 24 * HOUR });
     const aMinuteLater = toDate(instant(fromDate(NOW) + 60_000));

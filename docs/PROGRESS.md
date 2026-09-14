@@ -4357,3 +4357,84 @@ manage token, a split event log, a cancellation notice already sent, and the
 - **Verified red before green.** With the re-pick disabled, the two item tests
   fail and the two control tests (her own chair kept; the stylist genuinely
   taken) stay green — which is what says the controls are controls.
+
+---
+
+## A-117 — the badge cannot see the one failure D-51 was for
+
+**Commit `TBD`.**
+
+D-51 built the list of people the reminder job never reached, and the operator
+proved it exact: one five-minute tick skipped on a 43-appointment cohort, four
+unreminded, four listed. Both halves that decide whether anybody ever READS that
+list were wrong, and in the same way — each asked about the APPOINTMENT where
+the sweep asks about the INSTANT.
+
+**The badge.** `countUnsentNotifications` counts OUTBOX rows, and a missed tick
+writes none; the next tick drains everything else. At 07:00 the shell badge read
+**0**, the stuck list was empty, and the watermark said the job had run at 06:55
+— while four ten o'clocks had never been rung. `stuck.ts` defines that number as
+*"how many NOBODY HAS BEEN TOLD ABOUT"*, and the cohort it cannot hold is
+precisely the one nobody has been told about.
+
+**The list.** Predicate 4 asked whether the appointment held ANY reminder row,
+while the sweep's identity is `reminder-24h:{id}:{startAtMs}` — which the schema
+has required since P1-7 and says so at `dedupeKey`. Sam Okafor, reminded for
+Saturday and moved to Wednesday on D-6's same row, held a Saturday-keyed row, so
+he counted as told and was absent from a 41-row list, while the Wednesday sweep
+correctly wrote him a second key.
+
+### What it built
+
+- **`reminderDedupeKey(appointmentId, startAt)` in `core/notifications`**, and
+  both readers go through it. The sweep built the string inline and the list did
+  not build it at all; one exported builder is the only way the two questions
+  can stay the same question. Takes an `Instant`, never a `Date` (D-4).
+- **Predicate 4 is the key from the row's CURRENT `startAt`.** The reminder rows
+  come back on the candidate, and a row whose key is for a time she is no longer
+  coming at no longer counts as having told her.
+- **Predicate 3 moved with it:** "booked early enough to have been swept"
+  becomes "at THIS time early enough" — the latest event that rewrote `startAt`
+  (`MOVING_EVENT_TYPES`, exported so a test iterates it), else `createdAt`. The
+  same sentence from the other side: a visit MOVED into this afternoon two hours
+  ago was never offered to a 24-hour sweep either, and the old predicate accused
+  the job of missing her because the BOOKING was ten days old.
+- **`countMissedReminders`, which is `listMissedReminders().length`** — one
+  predicate, never a second cheaper one — added to the shell badge beside the
+  actionable outbox count. Both lists live on `/staff/messages` and answer one
+  question, so the badge adds them, exactly as the opened badge adds its two.
+- **The `limit` now applies to the ANSWER, not to the query.** Predicate 4 left
+  SQL, so a `take` would have capped CANDIDATES — hiding missed people behind
+  reminded ones. The candidate set is one day of one salon's book.
+- **Five unit tests and one e2e.** The e2e asserts the badge from the DAY GRID,
+  because "visible from anywhere" is the property.
+
+### What it decided
+
+- **No new D-number.** D-51's choice stands in full: the cohort is derived and
+  the desk decides what to say. Nothing here enqueues a catch-up (D-51 (b)), and
+  no cron-interval alarm was added.
+- **The badge sums rather than picks.** A second number would be a second door;
+  one number over one screen holding both lists is what D-49/D-50 already
+  settled for `Opened up`.
+
+### What it left behind
+
+- **`MOVING_EVENT_TYPES` is a list to grep.** A third way to move an appointment
+  belongs in it, and the cost of forgetting is a client who is silently never
+  listed — CLAUDE.md's "a STATE CHANGE is never one edit", arriving at a READER
+  this time. The tests iterate the list, so a new type is covered the moment it
+  is added.
+- **Verified red before green.** With the two predicates reverted, the four
+  part-2 tests fail and the other 32 in the file stay green.
+- **The fixture rule, again, twice.** A ONE-DAY-old booking that never moved
+  reads identically under both versions of predicate 3, and an appointment that
+  never moved reads identically under both versions of predicate 4 — so every
+  test D-51 shipped passed against both bugs. The new fixtures are a client who
+  MOVED and a tick that was SKIPPED. And the skipped-tick cohort needed THREE
+  CHAIRS: one stylist cannot hold three hour-long visits five minutes apart, and
+  the exclusion constraint says so.
+- **The badge is honest about the cap.** `countMissedReminders` inherits
+  `listMissedReminders`' default limit of 100, so a salon with more than a
+  hundred unreminded clients sees 100. That is a number worth acting on either
+  way.

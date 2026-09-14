@@ -4251,3 +4251,32 @@ avoid — which puts a late cancellation back on the client's record.
 - **The test room has three chairs.** In a one-chair salon the old refusal was
   correct, so a test written there would have passed against the fault — the
   reason it survived to be found by a working operator rather than by the suite.
+
+---
+
+## A-117 — the alarm that could not see the silence
+
+The product already had a screen listing every client the reminder job never
+reached — not a time range, a list of names and phone numbers, because the
+answer to "nobody was reminded" is somebody picking up the phone.
+
+Nothing sent the desk to that screen. The badge on it counted queued messages
+that had gone wrong, and the failure the screen exists for produces no queued
+message at all: a reminder run that is skipped writes nothing, and the next run
+clears everything else. Measured on a real morning — one five-minute run missed
+out of a 43-client day — the desk saw a badge reading zero, an empty list of
+stuck messages, and a status line saying the job had run five minutes ago, while
+four ten o'clock clients had been told nothing.
+
+- **The badge now counts the people, not the paperwork.** It adds the two lists
+  on that screen together, and it asks the screen's own question to do it rather
+  than a cheaper one that happens to be easy to count.
+- **A client reminded of a time she is no longer coming at is not a client who
+  has been reminded.** Moved from Saturday to Wednesday, she held a Saturday
+  reminder — and dropped off the list of people nobody had told, while the
+  system correctly queued her a second message. The list now asks about the time
+  she is actually booked for.
+- **And the reverse: the job is no longer accused of missing somebody it was
+  never offered.** A visit moved into this afternoon two hours ago is past its
+  own reminder window, exactly like a booking taken this morning for this
+  afternoon. Both are the salon's business, neither is a fault to chase.

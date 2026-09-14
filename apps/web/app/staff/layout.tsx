@@ -1,7 +1,7 @@
 import { prisma } from '@bookable/db';
 import { listSwitchableStaff } from '@bookable/db/auth';
 import { countUnfinished, listOpenedSlots, listUnreleasedNoShows } from '@bookable/db/appointments';
-import { countUnsentNotifications } from '@bookable/db/notifications';
+import { countMissedReminders, countUnsentNotifications } from '@bookable/db/notifications';
 import { currentStaff } from '@/lib/auth/session';
 import { DeskBar } from './desk-bar';
 import { StaffNav } from './staff-nav';
@@ -37,7 +37,7 @@ import { StaffNav } from './staff-nav';
  * answer one question — what can this salon still sell today — so the badge
  * adds them rather than picking one.
  *
- * ponytail: four queries on every staff page render, one of them per-candidate
+ * ponytail: five queries on every staff page render, one of them per-candidate
  * over a fortnight of freed time. That is what "visible from anywhere" costs at
  * a salon's scale. If it ever shows up, the fix is a cached count that is still
  * derived from these same two calls, never a cheaper predicate.
@@ -47,7 +47,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   if (!staff) return <>{children}</>;
 
   const now = new Date();
-  const [options, opened, stillBlocked, unfinished, unsentMessages] = await Promise.all([
+  const [options, opened, stillBlocked, unfinished, unsentRows, missedReminders] = await Promise.all([
     listSwitchableStaff(prisma, staff.businessId),
     listOpenedSlots(prisma, { businessId: staff.businessId, now }),
     listUnreleasedNoShows(prisma, { businessId: staff.businessId, now }),
@@ -56,13 +56,24 @@ export default async function StaffLayout({ children }: { children: React.ReactN
     // touched is one nobody has been told about either, and the badge that
     // read 0 beside 713 of them is the defect this item exists to close.
     countUnsentNotifications(prisma, staff.businessId, now),
+    // A-117 — AND THE COHORT THE OUTBOX CANNOT HOLD. The failure D-51 exists
+    // for writes no row at all: a skipped tick reminds nobody and leaves
+    // nothing stuck, so a badge counting only the outbox reads 0 while four
+    // ten o'clocks go unrung. Both lists are on `/staff/messages`, they are
+    // one question — is anybody not going to hear from us — so the badge adds
+    // them, exactly as the opened badge adds its two.
+    countMissedReminders(prisma, { businessId: staff.businessId, now }),
   ]);
 
   return (
     <>
       <DeskBar currentName={staff.name} options={options} />
       <StaffNav
-        counts={{ opened: opened.length + stillBlocked.length, unfinished, unsentMessages }}
+        counts={{
+          opened: opened.length + stillBlocked.length,
+          unfinished,
+          unsentMessages: unsentRows + missedReminders,
+        }}
         isOwner={staff.role === 'owner'}
       />
       {children}
