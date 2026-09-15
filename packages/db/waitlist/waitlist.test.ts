@@ -18,6 +18,7 @@ const prisma = new PrismaClient();
 let businessId: string;
 let danaId: string;
 let priyaId: string;
+let tessId: string;
 let colourId: string;
 let cutId: string;
 let clientId: string;
@@ -48,16 +49,27 @@ beforeEach(async () => {
     data: { businessId, name: 'Colour', durationMinutes: 90, bufferBeforeMinutes: 5, bufferAfterMinutes: 15, priceCents: 12000 },
   });
   const cut = await prisma.service.create({
-    data: { businessId, name: 'Cut', durationMinutes: 45, priceCents: 5500 },
+    data: { businessId, name: 'Cut', durationMinutes: 45, bufferBeforeMinutes: 10, bufferAfterMinutes: 5, priceCents: 5500 },
   });
   colourId = colour.id;
   cutId = cut.id;
+
+  // A-119 — THE JUNIOR, and she is the whole of the qualification half of
+  // D-56. Tess does cuts and not colour, so a Cut+Colour entry has no
+  // footprint at her chair at all: dropping the line she cannot do would
+  // compose a SHORTER visit that fits more spans, which is the
+  // offered-then-refused shape this repo keeps catching.
+  const tess = await prisma.provider.create({ data: { businessId, displayName: 'Tess', displayOrder: 2 } });
+  tessId = tess.id;
 
   // Dana runs colour a little faster than the base duration.
   await prisma.serviceProvider.create({
     data: { businessId, serviceId: colour.id, providerId: dana.id, durationOverrideMinutes: 75 },
   });
   await prisma.serviceProvider.create({ data: { businessId, serviceId: colour.id, providerId: priya.id } });
+  for (const providerId of [dana.id, priya.id, tess.id]) {
+    await prisma.serviceProvider.create({ data: { businessId, serviceId: cut.id, providerId } });
+  }
 
   clientId = (await prisma.client.create({ data: { businessId, name: 'Ada Chen', phone: '5125550101' } })).id;
 });
@@ -68,7 +80,7 @@ describe('createWaitlistEntry', () => {
       createWaitlistEntry(prisma, {
         businessId,
         clientId,
-        serviceId: colourId,
+        serviceIds: [colourId],
         providerIds: [],
         fromDay: '2026-09-01',
         toDay: '2026-08-01',
@@ -82,7 +94,7 @@ describe('createWaitlistEntry', () => {
       createWaitlistEntry(prisma, {
         businessId,
         clientId,
-        serviceId: colourId,
+        serviceIds: [colourId],
         providerIds: [],
         fromDay: '2026-08-01',
         toDay: '2026-09-01',
@@ -98,7 +110,7 @@ describe('createWaitlistEntry', () => {
       createWaitlistEntry(prisma, {
         businessId,
         clientId,
-        serviceId: colourId,
+        serviceIds: [colourId],
         providerIds: [stranger.id],
         fromDay: '2026-08-01',
         toDay: '2026-09-01',
@@ -107,18 +119,83 @@ describe('createWaitlistEntry', () => {
     ).rejects.toThrow(WaitlistEntryRejected);
   });
 
+  it('D-56 — rejects an entry with no services at all', async () => {
+    // An empty array is a legal TEXT[], and an empty visit composes to a ZERO
+    // footprint, which fits every span that ever frees: she would be offered
+    // the whole book, forever. The column cannot say this; this is the guard.
+    await expect(
+      createWaitlistEntry(prisma, {
+        businessId,
+        clientId,
+        serviceIds: [],
+        providerIds: [],
+        fromDay: '2026-08-01',
+        toDay: '2026-09-01',
+        dayParts: [],
+      }),
+    ).rejects.toThrow(WaitlistEntryRejected);
+  });
+
+  it('D-56 — rejects the same service twice, which would double her footprint', async () => {
+    await expect(
+      createWaitlistEntry(prisma, {
+        businessId,
+        clientId,
+        serviceIds: [colourId, colourId],
+        providerIds: [],
+        fromDay: '2026-08-01',
+        toDay: '2026-09-01',
+        dayParts: [],
+      }),
+    ).rejects.toThrow(WaitlistEntryRejected);
+  });
+
+  it('D-56 — rejects a service that is not on this business', async () => {
+    const other = await prisma.business.create({ data: { name: 'Other Salon', timezone: 'America/Chicago' } });
+    const theirs = await prisma.service.create({
+      data: { businessId: other.id, name: 'Perm', durationMinutes: 60, priceCents: 9000 },
+    });
+    await expect(
+      createWaitlistEntry(prisma, {
+        businessId,
+        clientId,
+        serviceIds: [cutId, theirs.id],
+        providerIds: [],
+        fromDay: '2026-08-01',
+        toDay: '2026-09-01',
+        dayParts: [],
+      }),
+    ).rejects.toThrow(WaitlistEntryRejected);
+  });
+
+  it('D-56 — keeps the visit in the order it was asked for', async () => {
+    const entry = await createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      serviceIds: [cutId, colourId],
+      providerIds: [],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-01',
+      dayParts: [],
+    });
+    // Not sorted, not de-duplicated into a set: D-23's footprint reads the
+    // first and last entries of this array.
+    expect(entry.serviceIds).toEqual([cutId, colourId]);
+    expect(entry.serviceNames).toEqual(['Cut', 'Colour']);
+  });
+
   it('creates and shapes the row — "any Saturday morning, Dana or Priya"', async () => {
     const entry = await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [danaId, priyaId],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
       dayParts: ['saturday', 'morning'],
     });
     expect(entry.clientName).toBe('Ada Chen');
-    expect(entry.serviceName).toBe('Colour');
+    expect(entry.serviceNames).toEqual(['Colour']);
     expect(entry.status).toBe('active');
   });
 });
@@ -128,7 +205,7 @@ describe('listWaitlistEntries', () => {
     const first = await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
@@ -137,7 +214,7 @@ describe('listWaitlistEntries', () => {
     const second = await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: cutId,
+      serviceIds: [cutId],
       providerIds: [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
@@ -185,8 +262,7 @@ describe('listWaitlistEntries', () => {
     const freedOn = (day: string) => ({
       businessId,
       providerId: danaId,
-      serviceId: cutId,
-      day: calendarDay(day),
+            day: calendarDay(day),
       time: wallTime('09:00'),
       freedMinutes: 60,
     });
@@ -195,7 +271,7 @@ describe('listWaitlistEntries', () => {
       return createWaitlistEntry(prisma, {
         businessId,
         clientId,
-        serviceId: cutId,
+        serviceIds: [cutId],
         providerIds: [],
         fromDay: FROM,
         toDay: TO,
@@ -219,7 +295,7 @@ describe('listWaitlistEntries', () => {
       const entry = await createWaitlistEntry(prisma, {
         businessId,
         clientId,
-        serviceId: cutId,
+        serviceIds: [cutId],
         providerIds: [],
         fromDay: '2026-10-01',
         toDay: '2026-10-31',
@@ -264,7 +340,7 @@ describe('matchFreedSlot', () => {
     const entry = await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
@@ -275,7 +351,6 @@ describe('matchFreedSlot', () => {
     const matches = await matchFreedSlot(prisma, {
       businessId,
       providerId: danaId,
-      serviceId: colourId,
       ...saturdayMorning,
       freedMinutes: 95,
     });
@@ -286,7 +361,7 @@ describe('matchFreedSlot', () => {
     await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
@@ -296,7 +371,6 @@ describe('matchFreedSlot', () => {
     const matches = await matchFreedSlot(prisma, {
       businessId,
       providerId: danaId,
-      serviceId: colourId,
       ...saturdayMorning,
       freedMinutes: 94,
     });
@@ -307,7 +381,7 @@ describe('matchFreedSlot', () => {
     await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [priyaId],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
@@ -317,7 +391,6 @@ describe('matchFreedSlot', () => {
     const matches = await matchFreedSlot(prisma, {
       businessId,
       providerId: danaId,
-      serviceId: colourId,
       ...saturdayMorning,
       freedMinutes: 95,
     });
@@ -328,7 +401,7 @@ describe('matchFreedSlot', () => {
     await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [],
       fromDay: '2026-09-01',
       toDay: '2026-09-30',
@@ -338,7 +411,6 @@ describe('matchFreedSlot', () => {
     const matches = await matchFreedSlot(prisma, {
       businessId,
       providerId: danaId,
-      serviceId: colourId,
       ...saturdayMorning,
       freedMinutes: 95,
     });
@@ -349,7 +421,7 @@ describe('matchFreedSlot', () => {
     await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: colourId,
+      serviceIds: [colourId],
       providerIds: [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
@@ -359,32 +431,162 @@ describe('matchFreedSlot', () => {
     const matches = await matchFreedSlot(prisma, {
       businessId,
       providerId: danaId,
-      serviceId: colourId,
-      day: calendarDay('2026-08-22'),
+            day: calendarDay('2026-08-22'),
       time: wallTime('14:00'),
       freedMinutes: 95,
     });
     expect(matches).toEqual([]);
   });
 
-  it('a different service never matches, even for the same client and day', async () => {
-    await createWaitlistEntry(prisma, {
+  it('D-56 — a span freed by a service she never asked for still matches, because she fits it', async () => {
+    const entry = await createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceId: cutId,
+      serviceIds: [cutId],
       providerIds: [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
       dayParts: [],
     });
 
+    // A COLOUR came free. Before D-56 this filtered `serviceId` in SQL and
+    // returned nobody: a waiting cut was invisible to every span the salon
+    // did not free by cutting somebody's hair. Her footprint at Dana is
+    // 10 + 45 + 5 = 60, and there are 95 minutes going spare.
     const matches = await matchFreedSlot(prisma, {
       businessId,
       providerId: danaId,
-      serviceId: colourId,
       ...saturdayMorning,
       freedMinutes: 95,
     });
-    expect(matches).toEqual([]);
+    expect(matches.map((m) => m.id)).toEqual([entry.id]);
+    expect(matches[0]?.footprintMinutes).toBe(60);
+  });
+});
+
+/**
+ * A-119 / D-56 — THE TWO-SERVICE VISIT, WHICH IS HALF THE SALON'S SATURDAY.
+ *
+ * The operator measured this before it was built: a Cut+Colour waitlisting
+ * stored as `Cut` MATCHED a freed cut that cannot hold her appointment and was
+ * NOT offered the three-hour span that can. The two errors run in OPPOSITE
+ * directions, so the fixture has to run both ways against the same entry —
+ * asserting only the second would pass against the bug that was there.
+ *
+ * Priya has no overrides, so her Cut+Colour is D-23's composition of the
+ * catalogue: the FIRST line's `bufferBefore` (cut, 10) + 45 + 90 + the LAST
+ * line's `bufferAfter` (colour, 15) = 160. Buffers do NOT stack between the
+ * lines — the 5 and the 10 in the middle are the client sitting in the chair,
+ * not the chair being tidied between clients.
+ */
+describe('matchFreedSlot — a whole visit (D-56)', () => {
+  const saturdayMorning = { day: calendarDay('2026-08-22'), time: wallTime('09:00') };
+  const CUT_THEN_COLOUR_AT_PRIYA = 160;
+
+  const cutThenColour = () =>
+    createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      serviceIds: [cutId, colourId],
+      providerIds: [priyaId],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-01',
+      dayParts: [],
+    });
+
+  const at = (freedMinutes: number, providerId = priyaId) =>
+    matchFreedSlot(prisma, { businessId, providerId, ...saturdayMorning, freedMinutes });
+
+  it('THE FALSE MATCH: a span holding her first service but not her visit is refused', async () => {
+    const entry = await cutThenColour();
+    // 100 minutes: comfortably longer than her cut's 60-minute footprint,
+    // nowhere near the 160 her appointment needs. The old matcher measured
+    // the stored `Cut` and put her name against exactly this.
+    expect(await at(100)).toEqual([]);
+    // …and it is the LENGTH refusing her, not the entry being broken.
+    expect((await at(CUT_THEN_COLOUR_AT_PRIYA)).map((m) => m.id)).toEqual([entry.id]);
+  });
+
+  it('THE MISSED MATCH: a long span freed by a service that is not hers is offered', async () => {
+    const entry = await cutThenColour();
+    // Nothing on this call names a service at all any more — the structural
+    // half of D-56. A 190-minute hole in Priya's Saturday holds her whole
+    // visit, and what vacated it is not a question the matcher can ask.
+    const matches = await at(190);
+    expect(matches.map((m) => m.id)).toEqual([entry.id]);
+    expect(matches[0]?.serviceNames).toEqual(['Cut', 'Colour']);
+    expect(matches[0]?.footprintMinutes).toBe(CUT_THEN_COLOUR_AT_PRIYA);
+  });
+
+  it('EXACTLY the footprint fits, and one minute under does not', async () => {
+    await cutThenColour();
+    expect((await at(CUT_THEN_COLOUR_AT_PRIYA)).length).toBe(1);
+    expect(await at(CUT_THEN_COLOUR_AT_PRIYA - 1)).toEqual([]);
+  });
+
+  it('ORDER IS THE FOOTPRINT: colour-then-cut is a different length from cut-then-colour', async () => {
+    // 5 + 90 + 45 + 5 = 145, against 160 the other way round. Same two
+    // services, same provider; only the ENDS differ, which is exactly what
+    // D-23 composes. A matcher that sorted or de-duplicated these ids would
+    // quietly re-price every combination booking in the salon.
+    await createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      serviceIds: [colourId, cutId],
+      providerIds: [priyaId],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-01',
+      dayParts: [],
+    });
+    expect((await at(145)).map((m) => m.footprintMinutes)).toEqual([145]);
+    expect(await at(144)).toEqual([]);
+  });
+
+  it("composes at THIS provider's own durations, not the catalogue's", async () => {
+    await createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      // No preference: she will take whoever, so ONE entry is measured
+      // against two different chairs.
+      serviceIds: [cutId, colourId],
+      providerIds: [],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-01',
+      dayParts: [],
+    });
+    // Dana colours in 75 rather than 90 (SVC-02): 10 + 45 + 75 + 15 = 145.
+    expect((await at(145, danaId)).map((m) => m.footprintMinutes)).toEqual([145]);
+    expect(await at(144, danaId)).toEqual([]);
+    // Priya's chair, the same entry, fifteen minutes longer.
+    expect(await at(145)).toEqual([]);
+  });
+
+  it('A LINE SHE CANNOT DO IS A REFUSAL, NOT A ZERO — the junior is never offered the visit', async () => {
+    await createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      serviceIds: [cutId, colourId],
+      providerIds: [],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-01',
+      dayParts: [],
+    });
+    // Tess cuts and does not colour. A whole day of her time is still not a
+    // span this visit fits, and the failure to rule out is the one that SKIPS
+    // the unqualified line and offers her the 60-minute cut instead — which
+    // fits, and is a booking the write would then refuse.
+    expect(await at(600, tessId)).toEqual([]);
+    // The same span, a cut-only entry, the same junior: she IS offered that,
+    // so the refusal above is about the colour and not about Tess.
+    await createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      serviceIds: [cutId],
+      providerIds: [],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-01',
+      dayParts: [],
+    });
+    expect((await at(600, tessId)).map((m) => m.footprintMinutes)).toEqual([60]);
   });
 });

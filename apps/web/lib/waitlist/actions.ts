@@ -32,7 +32,12 @@ export async function addWaitlistEntry(_previous: FormState, formData: FormData)
     const entry = await createWaitlistEntry(prisma, {
       businessId: staff.businessId,
       clientId: String(formData.get('clientId') ?? ''),
-      serviceId: String(formData.get('serviceId') ?? ''),
+      // D-56 — EVERY box, in the order the form renders them, which is the
+      // order she asked for. `getAll` on a checkbox group returns them in
+      // document order, and D-23's footprint takes the first line's
+      // `bufferBefore` and the last line's `bufferAfter`, so that order is
+      // load-bearing rather than cosmetic.
+      serviceIds: formData.getAll('serviceIds').map(String),
       providerIds: formData.getAll('providerIds').map(String),
       fromDay: String(formData.get('fromDay') ?? ''),
       toDay: String(formData.get('toDay') ?? ''),

@@ -4306,3 +4306,36 @@ same messages.
 - **One test loads both screens about the same message**, because the defect
   was never either sentence on its own — it was the product contradicting
   itself, which no test of a single page can see.
+
+## The waitlist that offers the wrong hour
+
+A client rings wanting a cut and a colour on Tuesday. Nothing is free, so she
+goes on the waitlist. Her entry remembered the cut.
+
+So when fifty-five minutes came free, the panel put her name against it — an
+hour that cannot hold her appointment, and a phone call that ends "no, I need
+my colour too". And when three hours came free on the same stylist on the same
+Tuesday, she was not on the list at all, because the hours had been freed by
+somebody else's colour and her entry said `Cut`.
+
+Two errors, opposite directions, one missing idea: **an entry was a service
+where it should have been a visit.** The fix is the decision, not the code —
+what does a freed span match? It matches anyone it can hold. The span is the
+perishable thing; which service vacated it is not a question worth asking.
+
+- The entry stores the whole visit, in order, because the order is the length:
+  a colour-then-cut occupies a different amount of the day than a cut-then
+  colour, and the matcher measures the real footprint at that stylist's own
+  durations.
+- A line she is not qualified for refuses the whole match rather than being
+  quietly skipped. Skipping it composes a shorter visit that fits more spans —
+  an offer the booking screen would then refuse, which is the failure this
+  product treats as worse than no offer at all.
+- The panel's heading stopped naming a service and started naming the span
+  ("3 hr 10 min free with Priya"), and the row the desk rings from now says
+  what she is waiting for and how long it takes.
+
+The test that matters is the one that runs the same entry both ways: a span
+that holds her first service but not her visit must be refused, and a span
+freed by a service she never asked for must be offered. Asserting only the
+second would have passed against the bug.

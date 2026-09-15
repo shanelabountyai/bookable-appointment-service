@@ -8,7 +8,8 @@
  */
 import { DAY_PART_TAGS, matchesDayParts, tagsFor } from '../../core/waitlist';
 import type { CalendarDay, WallTime } from '../../core/time';
-import { fitsFreedSpan, serviceFootprintMinutes } from '../../core/settings';
+import { effectiveDurationMinutes, effectivePriceCents, fitsFreedSpan, serviceFootprintMinutes } from '../../core/settings';
+import { composeVisit } from '../../core/scheduling';
 import type { Prisma, PrismaClient, WaitlistStatus } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -27,8 +28,9 @@ export interface WaitlistEntryRow {
   clientId: string;
   clientName: string | null;
   clientPhone: string | null;
-  serviceId: string;
-  serviceName: string;
+  /** D-56 — the whole visit, in its order. */
+  serviceIds: string[];
+  serviceNames: string[];
   providerIds: string[];
   fromDay: string;
   toDay: string;
@@ -40,7 +42,7 @@ export interface WaitlistEntryRow {
 const rowSelect = {
   id: true,
   clientId: true,
-  serviceId: true,
+  serviceIds: true,
   providerIds: true,
   fromDay: true,
   toDay: true,
@@ -48,19 +50,22 @@ const rowSelect = {
   status: true,
   createdAt: true,
   client: { select: { name: true, phone: true } },
-  service: { select: { name: true } },
 } as const;
 
 type RawRow = Prisma.WaitlistEntryGetPayload<{ select: typeof rowSelect }>;
 
-function shape(row: RawRow): WaitlistEntryRow {
+/** D-56 — the names, from ONE read of the catalogue rather than a relation
+ *  the array column can no longer carry. A service that has gone renders as
+ *  its own absence rather than vanishing from the list, because a line the
+ *  matcher can never fit is exactly what whoever rings her needs to see. */
+function shape(row: RawRow, names: Map<string, string>): WaitlistEntryRow {
   return {
     id: row.id,
     clientId: row.clientId,
     clientName: row.client.name,
     clientPhone: row.client.phone,
-    serviceId: row.serviceId,
-    serviceName: row.service.name,
+    serviceIds: row.serviceIds,
+    serviceNames: row.serviceIds.map((id) => names.get(id) ?? 'A service that has gone'),
     providerIds: row.providerIds,
     fromDay: row.fromDay,
     toDay: row.toDay,
@@ -68,6 +73,15 @@ function shape(row: RawRow): WaitlistEntryRow {
     status: row.status,
     createdAt: row.createdAt,
   };
+}
+
+async function serviceNames(db: Db, businessId: string, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db.service.findMany({
+    where: { businessId, id: { in: [...new Set(ids)] } },
+    select: { id: true, name: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.name]));
 }
 
 /**
@@ -113,13 +127,16 @@ export async function listWaitlistEntries(
     orderBy: { createdAt: 'asc' },
     select: rowSelect,
   });
-  return rows.map(shape);
+  const names = await serviceNames(db, args.businessId, rows.flatMap((row) => row.serviceIds));
+  return rows.map((row) => shape(row, names));
 }
 
 export interface CreateWaitlistEntryInput {
   businessId: string;
   clientId: string;
-  serviceId: string;
+  /** D-56 — the whole visit she was refused, in ITS order (VISIT-01). At
+   *  least one; a duplicate is refused rather than composed twice. */
+  serviceIds: string[];
   /** Empty = any qualified provider. */
   providerIds: string[];
   fromDay: string;
@@ -133,16 +150,27 @@ export async function createWaitlistEntry(db: Db, input: CreateWaitlistEntryInpu
   }
   const badTag = input.dayParts.find((tag) => !(DAY_PART_TAGS as readonly string[]).includes(tag));
   if (badTag) throw new WaitlistEntryRejected('dayParts', `Not a day-part: ${badTag}`);
+  // D-56. An entry with no services is one `matchFreedSlot` composes to a
+  // zero footprint, which fits every span that ever frees — she would be
+  // offered the whole book, forever. The database's column cannot say this
+  // (an empty array is a legal TEXT[]), so this is the guard.
+  if (input.serviceIds.length === 0) throw new WaitlistEntryRejected('serviceIds', 'An entry needs a service.');
+  if (new Set(input.serviceIds).size !== input.serviceIds.length) {
+    throw new WaitlistEntryRejected('serviceIds', 'That service is on the visit twice.');
+  }
 
-  const [client, service, providers] = await Promise.all([
+  const [client, services, providers] = await Promise.all([
     db.client.findFirst({ where: { id: input.clientId, businessId: input.businessId } }),
-    db.service.findFirst({ where: { id: input.serviceId, businessId: input.businessId } }),
+    db.service.findMany({
+      where: { id: { in: input.serviceIds }, businessId: input.businessId },
+      select: { id: true },
+    }),
     input.providerIds.length
       ? db.provider.findMany({ where: { id: { in: input.providerIds }, businessId: input.businessId } })
       : Promise.resolve([]),
   ]);
   if (!client) throw new WaitlistEntryRejected('clientId', 'No such client.');
-  if (!service) throw new WaitlistEntryRejected('serviceId', 'No such service.');
+  if (services.length !== input.serviceIds.length) throw new WaitlistEntryRejected('serviceIds', 'No such service.');
   if (providers.length !== input.providerIds.length) {
     throw new WaitlistEntryRejected('providerIds', 'One of those is not on the roster.');
   }
@@ -151,7 +179,10 @@ export async function createWaitlistEntry(db: Db, input: CreateWaitlistEntryInpu
     data: {
       businessId: input.businessId,
       clientId: input.clientId,
-      serviceId: input.serviceId,
+      // Stored in the ORDER she asked for, because D-23's footprint takes
+      // the first line's `bufferBefore` and the last line's `bufferAfter` —
+      // sorting these would quietly re-price the visit.
+      serviceIds: input.serviceIds,
       providerIds: input.providerIds,
       fromDay: input.fromDay,
       toDay: input.toDay,
@@ -159,7 +190,7 @@ export async function createWaitlistEntry(db: Db, input: CreateWaitlistEntryInpu
     },
     select: rowSelect,
   });
-  return shape(row);
+  return shape(row, await serviceNames(db, input.businessId, row.serviceIds));
 }
 
 /** The whole lifecycle in one setter — `active → fulfilled | expired |
@@ -180,7 +211,6 @@ export async function setWaitlistEntryStatus(
 export interface FreedSlot {
   businessId: string;
   providerId: string;
-  serviceId: string;
   day: CalendarDay;
   time: WallTime;
   /** The length of what actually opened up — `blockedEnd - blockedStart` of
@@ -194,6 +224,15 @@ export interface MatchedEntry {
   clientId: string;
   clientName: string | null;
   clientPhone: string | null;
+  /** D-56 — what she is waiting for, in its order. On this list it is no
+   *  longer whatever freed the span, so the person ringing her cannot infer
+   *  it from the heading and the Book link cannot either. */
+  serviceIds: string[];
+  serviceNames: string[];
+  /** Her whole visit at THIS provider, buffers included (D-23) — the number
+   *  that had to fit. On the screen it is what makes "three hours free, she
+   *  needs 185 minutes" a sentence the desk can check. */
+  footprintMinutes: number;
   fromDay: string;
   toDay: string;
   dayParts: string[];
@@ -201,18 +240,41 @@ export interface MatchedEntry {
 }
 
 /**
- * WAIT-01/02 — "who wants this slot?", for one freed interval on one
- * provider. Candidates are pre-filtered in SQL to what could possibly match
- * (same service, this provider acceptable, the day in range); the day-part
- * tags and the fit check both need data the query alone can't express and
- * run in JS over what's left.
+ * WAIT-01/02 — "who wants this slot?", for one freed interval on one provider.
+ *
+ * D-56 (A-119) — WHAT A FREED SPAN MATCHES, AND IT IS NO LONGER A SERVICE.
+ *
+ * This used to filter `serviceId: freed.serviceId` in SQL and then measure
+ * that ONE service against the span. Both halves were wrong for the salon's
+ * most valuable booking, in opposite directions: a Cut+Colour waitlisted as
+ * `Cut` MATCHED a 55-minute freed cut that cannot hold her appointment, and
+ * was NOT offered a 190-minute span that holds the whole of it. Half the
+ * sample business's Saturday book is cut + colour (D-23).
+ *
+ * So the question is now the one the WRITE will ask when the desk books her:
+ * can this provider do every line, and does the whole visit fit? The span is
+ * the perishable thing, not the service that freed it — the same move A-109
+ * made on `/staff/opened` ("can this salon sell this span to anything").
+ *
+ * THE FIT IS PER-ENTRY NOW, SO THE READS ARE PER-SPAN. Every candidate can
+ * want a different visit, but they all want it from the SAME provider — the
+ * one whose time opened up — so one read of her qualifications carries the
+ * duration override (SVC-02) and the buffers for every line of every
+ * candidate. `composeVisit` is D-23's one copy of the composition rule and
+ * this calls it rather than re-adding the buffers; `fitsFreedSpan` is A-109's
+ * one copy of the comparison.
+ *
+ * A LINE SHE IS NOT QUALIFIED FOR IS A REFUSAL, NOT A ZERO. An entry naming a
+ * service this provider does not do (or one that has since been retired) has
+ * no footprint at her chair at all, and dropping the line would compose a
+ * SHORTER visit that fits more spans — the offered-then-refused class this
+ * repo has caught four times. It is `null`, and `null` does not fit.
  */
 export async function matchFreedSlot(db: Db, freed: FreedSlot): Promise<MatchedEntry[]> {
   const candidates = await db.waitlistEntry.findMany({
     where: {
       businessId: freed.businessId,
       status: 'active',
-      serviceId: freed.serviceId,
       fromDay: { lte: freed.day },
       // A-110 — the same closing edge the standing queue now filters on.
       ...notExpiredOn(freed.day),
@@ -221,6 +283,7 @@ export async function matchFreedSlot(db: Db, freed: FreedSlot): Promise<MatchedE
     select: {
       id: true,
       clientId: true,
+      serviceIds: true,
       fromDay: true,
       toDay: true,
       dayParts: true,
@@ -231,35 +294,75 @@ export async function matchFreedSlot(db: Db, freed: FreedSlot): Promise<MatchedE
   });
   if (candidates.length === 0) return [];
 
-  // Every candidate wants the SAME service (filtered above) with THIS
-  // provider, so "does it fit" is one lookup, not one per entry.
-  const [service, override] = await Promise.all([
-    db.service.findUniqueOrThrow({
-      where: { id: freed.serviceId },
-      select: { durationMinutes: true, bufferBeforeMinutes: true, bufferAfterMinutes: true },
-    }),
-    db.serviceProvider.findUnique({
-      where: { serviceId_providerId: { serviceId: freed.serviceId, providerId: freed.providerId } },
-      select: { durationOverrideMinutes: true },
-    }),
-  ]);
-  // A-109 — THE fit check, and it is now shared with the screen that decides
-  // what to OFFER. It used to live only here, so `/staff/opened` listed spans
-  // this line was always going to refuse: one half of the loop knew the
-  // shortest thing the salon sells and the other half was still selling.
-  if (!fitsFreedSpan(serviceFootprintMinutes(service, override?.durationOverrideMinutes), freed.freedMinutes)) {
-    return [];
-  }
+  // EVERYTHING THIS PROVIDER CAN DO, AND WHAT IT COSTS *HER* (SVC-02): the
+  // junior stylist's longer cut composes at her duration, not the
+  // catalogue's. One read for the whole list — the candidates differ in what
+  // they want, never in whose time this is.
+  const qualified = new Map(
+    (
+      await db.serviceProvider.findMany({
+        where: { businessId: freed.businessId, providerId: freed.providerId },
+        select: {
+          serviceId: true,
+          durationOverrideMinutes: true,
+          priceOverrideCents: true,
+          service: {
+            select: {
+              // The NAME rides along on the read that was happening anyway:
+              // only a qualified line can reach the row below, so there is
+              // no second catalogue lookup to do here.
+              name: true,
+              durationMinutes: true,
+              bufferBeforeMinutes: true,
+              bufferAfterMinutes: true,
+              priceCents: true,
+            },
+          },
+        },
+      })
+    ).map((row) => [row.serviceId, row]),
+  );
+
+  /** D-23's footprint for one entry at this provider, or `null` when she
+   *  cannot do all of it. Price is carried only because `composeVisit` owns
+   *  the composition rule and asks for it — nothing here reads the total. */
+  const footprintFor = (serviceIds: string[]): number | null => {
+    const lines = serviceIds.map((serviceId) => {
+      const q = qualified.get(serviceId);
+      return q === undefined
+        ? null
+        : {
+            serviceId,
+            // SVC-02's resolvers, not a fourth copy of `?? base`.
+            durationMinutes: effectiveDurationMinutes(q.service.durationMinutes, q.durationOverrideMinutes),
+            bufferBeforeMinutes: q.service.bufferBeforeMinutes,
+            bufferAfterMinutes: q.service.bufferAfterMinutes,
+            priceCents: effectivePriceCents(q.service.priceCents, q.priceOverrideCents),
+          };
+    });
+    if (lines.length === 0 || lines.some((line) => line === null)) return null;
+    return serviceFootprintMinutes(composeVisit(lines as NonNullable<(typeof lines)[number]>[]));
+  };
 
   const tags = tagsFor(freed.day, freed.time);
-  return candidates.filter((entry) => matchesDayParts(entry.dayParts, tags)).map((entry) => ({
-    id: entry.id,
-    clientId: entry.clientId,
-    clientName: entry.client.name,
-    clientPhone: entry.client.phone,
-    fromDay: entry.fromDay,
-    toDay: entry.toDay,
-    dayParts: entry.dayParts,
-    createdAt: entry.createdAt,
-  }));
+  return candidates.flatMap((entry) => {
+    if (!matchesDayParts(entry.dayParts, tags)) return [];
+    const footprintMinutes = footprintFor(entry.serviceIds);
+    if (footprintMinutes === null || !fitsFreedSpan(footprintMinutes, freed.freedMinutes)) return [];
+    return [
+      {
+        id: entry.id,
+        clientId: entry.clientId,
+        clientName: entry.client.name,
+        clientPhone: entry.client.phone,
+        serviceIds: entry.serviceIds,
+        serviceNames: entry.serviceIds.map((id) => qualified.get(id)!.service.name),
+        footprintMinutes,
+        fromDay: entry.fromDay,
+        toDay: entry.toDay,
+        dayParts: entry.dayParts,
+        createdAt: entry.createdAt,
+      },
+    ];
+  });
 }

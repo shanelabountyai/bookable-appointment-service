@@ -5,6 +5,7 @@ import { listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
 import { openWeekdays } from '@bookable/db/availability';
 import { findClient, listCallMarks } from '@bookable/db/clients';
 import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { dayPartWords } from '@bookable/core/waitlist';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 import { OFFER_WORDS } from '@/lib/waitlist/offer-words';
@@ -68,7 +69,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   const prefill = readPrefill(params);
   const prefillClient = prefill.clientId ? await findClient(prisma, staff.businessId, prefill.clientId) : null;
 
-  const freed = freedSlotFrom(params, business.timezone, providers, services);
+  const freed = freedSlotFrom(params, business.timezone, providers);
   const matches = freed ? await matchFreedSlot(prisma, { ...freed.query, businessId: staff.businessId }) : null;
   // A-072. Who has already been rung about THIS span — one read for the whole
   // list, keyed on A-067's derived row key so a span freed twice is two rounds
@@ -91,8 +92,14 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
           <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-400">
             Who wants this slot?
           </h2>
+          {/* D-56 — THE SPAN, NOT WHATEVER FREED IT. This read "Colour with
+              Priya", which was the service the matcher filtered the waitlist
+              on. It no longer filters on anything of the sort, and on a
+              released no-show's span — which decays all afternoon (A-109) —
+              the name was of a service that no longer fitted the minutes
+              beside it. What is for sale is a length of Priya's Saturday. */}
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {freed.serviceName} with {freed.providerName}
+            {minutesWords(freed.minutes)} with {freed.providerName}
             {/* A-098. The span is real and sellable; the stylist is not
                 available to sell it. Saying so here is what stops the desk
                 promising Tess to whoever answers the phone. */}
@@ -115,6 +122,16 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                     {entry.clientPhone ? (
                       <PhoneLink phone={entry.clientPhone} />
                     ) : null}
+                    {/* D-56 — WHAT SHE IS WAITING FOR, ON THE ROW THAT IS
+                        RUNG FROM. The span no longer names her services and
+                        never could name a second one, so this is the only
+                        place the caller can read "cut and colour" before
+                        dialling. The footprint beside it is the number that
+                        had to fit: "185 min of the 190 free" is a sentence
+                        the desk can check against the screen it came from. */}
+                    <span className="mt-0.5 block text-xs text-ink-muted">
+                      {entry.serviceNames.join(' then ')} · {entry.footprintMinutes} min
+                    </span>
                   </span>
                   <span className="flex items-center gap-2">
                     <Link
@@ -122,8 +139,15 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                          was has left: booking HER is refused, so a link naming
                          her is an offer the write cannot honour. The instant
                          and the day carry over unchanged — it is the same hour
-                         of the same Saturday, with whoever is free. */
-                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(freed.at)}&day=${freed.query.day}`}
+                         of the same Saturday, with whoever is free.
+
+                         D-56 — AND HER WHOLE VISIT, plus her id. The matcher
+                         now offers a span because the whole visit fits it, so
+                         a Book link that preselects one service (or none)
+                         hands the desk a form that disagrees with the row it
+                         was clicked from. `services` and `client` are the
+                         parameters A-040's rebook already uses. */
+                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(freed.at)}&day=${freed.query.day}&client=${entry.clientId}${entry.serviceIds.map((id) => `&services=${id}`).join('')}`}
                       className="rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium dark:border-zinc-600"
                     >
                       Book
@@ -196,8 +220,16 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                       {entry.clientName ?? 'No name'} <span className="font-normal text-ink-muted">{entry.clientPhone ?? ''}</span>
                     </p>
                     <p className="text-zinc-600 dark:text-zinc-400">
-                      {entry.serviceName} · {providerNames} · {readableDay(entry.fromDay)}–{readableDay(entry.toDay)}
-                      {entry.dayParts.length ? ` · ${entry.dayParts.join(', ')}` : ''}
+                      {entry.serviceNames.join(' then ')} · {providerNames} ·{' '}
+                      {readableDay(entry.fromDay)}–{readableDay(entry.toDay)}
+                      {/* A-119 ride-along. This joined the stored cell raw —
+                          "· saturday, morning" — which is a database row, not
+                          a thing anybody at a desk says. `dayPartWords` also
+                          renders "no preference" out loud, where the raw join
+                          rendered nothing at all and looked like a missing
+                          field. */}
+                      {' · '}
+                      {dayPartWords(entry.dayParts)}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -214,6 +246,17 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   );
 }
 
+/** D-56 — the span's length as the desk would say it. Two hours and ten
+ *  minutes of a Saturday is the thing being sold, and "130 min" is a unit of
+ *  measurement rather than an offer. */
+function minutesWords(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min free`;
+  if (rest === 0) return `${hours} hr free`;
+  return `${hours} hr ${rest} min free`;
+}
+
 /** Reads the freed-interval context off the URL — set by the appointment
  *  detail page's link, never typed by hand. Malformed or partial params fall
  *  back to "no freed slot", quietly: this is internal navigation state, not a
@@ -222,10 +265,8 @@ function freedSlotFrom(
   params: Awaited<PageProps<'/staff/waitlist'>['searchParams']>,
   timezone: string,
   providers: { id: string; displayName: string; active: boolean }[],
-  services: { id: string; name: string }[],
 ) {
   const providerId = typeof params.providerId === 'string' ? params.providerId : null;
-  const serviceId = typeof params.serviceId === 'string' ? params.serviceId : null;
   const at = typeof params.at === 'string' ? params.at : null;
   const minutes = typeof params.minutes === 'string' ? Number(params.minutes) : null;
   // A-072. Absent on a link built before this shipped, and absent is simply
@@ -233,11 +274,10 @@ function freedSlotFrom(
   // matcher, which is the useful half.
   const key = typeof params.key === 'string' ? params.key : null;
   const appointmentId = typeof params.appointmentId === 'string' ? params.appointmentId : null;
-  if (!providerId || !serviceId || !at || !minutes || !Number.isFinite(minutes) || minutes <= 0) return null;
+  if (!providerId || !at || !minutes || !Number.isFinite(minutes) || minutes <= 0) return null;
 
   const provider = providers.find((p) => p.id === providerId);
-  const service = services.find((s) => s.id === serviceId);
-  if (!provider || !service) return null;
+  if (!provider) return null;
 
   let label;
   try {
@@ -251,22 +291,20 @@ function freedSlotFrom(
     providerName: provider.displayName,
     /** A-098. Whether the Book button below may name her at all. */
     providerActive: provider.active,
-    serviceName: service.name,
+    minutes,
     at,
     key,
     appointmentId,
-    query: { providerId, serviceId, day: label.day, time: label.time, freedMinutes: minutes },
+    query: { providerId, day: label.day, time: label.time, freedMinutes: minutes },
   };
 }
 
 /**
  * A-110 — the booking panel's refusal, carried across as form defaults.
  *
- * `serviceId` is deliberately the SAME parameter the freed-slot link above
- * reads: it means the same thing on both doors — the service in question —
- * and prefilling the form with it is right either way. The freed-slot reader
- * needs `at` and `minutes` as well, so a prefill link can never be mistaken
- * for one.
+ * `serviceId` here is the booking panel's own repeated parameter, and since
+ * D-56 it is the ONLY reader of it on this page: the freed-slot link no
+ * longer carries a service at all, so the two doors cannot be confused.
  *
  * Everything here is optional and every field stays editable: a prefill that
  * refuses to be corrected is worse than no prefill, because the desk is
@@ -281,9 +319,9 @@ function readPrefill(params: Awaited<PageProps<'/staff/waitlist'>['searchParams'
   return {
     clientId: one('clientId'),
     // MANY, not one: the booking panel refuses a whole VISIT, and a visit can
-    // be "colour then cut". A waitlist entry is one service, so the first is
-    // the default and the rest are said out loud on the form rather than
-    // silently dropped.
+    // be "colour then cut". D-56 made the entry the same shape, so every one
+    // of them is now a DEFAULT on the form rather than a first line plus a
+    // sentence about the others.
     serviceIds: many('serviceId'),
     providerIds: many('providerIds'),
     fromDay: one('fromDay'),

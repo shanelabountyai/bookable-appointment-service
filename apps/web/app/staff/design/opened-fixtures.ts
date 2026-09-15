@@ -45,7 +45,7 @@ function slot(item: Partial<OpenedSlot> & { startTime: string; freedBy: OpenedSl
     blockedStart: startAt,
     blockedEnd: startAt,
     freedMinutes: 45,
-    primaryServiceId: 'cut',
+    serviceIds: ['cut'],
     serviceNames: ['Cut'],
     status: 'cancelled',
     clientName: 'Mrs Hall',
@@ -96,7 +96,7 @@ export const FREED_SLOTS: { slot: OpenedSlot; marks: CallMark[] }[] = [
       status: 'booked',
       freedMinutes: 120,
       serviceNames: ['Colour'],
-      primaryServiceId: 'colour',
+      serviceIds: ['colour'],
     }),
     marks: [],
   },
@@ -130,9 +130,11 @@ export const FREED_SLOTS: { slot: OpenedSlot; marks: CallMark[] }[] = [
       // name nor a `tel:` link on it.
       clientName: null,
       clientPhone: null,
-      // No seed service, so no matcher link either — the row's other half has
-      // to hold up on its own.
-      primaryServiceId: null,
+      // D-56 — a span whose visit named nothing this catalogue still has.
+      // The matcher link is no longer gated on it (the span is what is for
+      // sale), so the row has to hold up with no service words at all.
+      serviceIds: [],
+      serviceNames: [],
       freedMinutes: 90,
     }),
     marks: [],

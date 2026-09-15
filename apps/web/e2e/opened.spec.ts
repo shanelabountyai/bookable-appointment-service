@@ -198,7 +198,14 @@ test.describe("what's opened up (A-043)", () => {
     // …and into the matcher that has existed since A-023 with one door.
     await page.getByRole('link', { name: 'Who wants this slot?' }).click();
     await expect(page.getByRole('heading', { name: 'Who wants this slot?' })).toBeVisible();
-    await expect(page.getByText(/Cut with Dana/)).toBeVisible();
+    // D-56 — THE SPAN, NOT THE SERVICE THAT FREED IT. This read "Cut with
+    // Dana", which was the service the matcher filtered the waitlist on; it
+    // filters on nothing of the sort now, and what is for sale is
+    // fifty-five minutes of Dana's Tuesday. The minutes carried across from
+    // the row on the previous screen are the assertion that matters — the
+    // two halves have to agree, and the URL no longer carries a service for
+    // them to agree about.
+    await expect(page.getByText(/55 min free with Dana/)).toBeVisible();
   });
 
   /**
@@ -222,9 +229,12 @@ test.describe("what's opened up (A-043)", () => {
     await expect(page.getByText('Mrs Hall dropped the Colour')).toBeVisible();
     await expect(page.getByRole('link', { name: '+15125550188' })).toHaveAttribute('href', 'tel:+15125550188');
 
-    // …and the service to ring the waitlist about is the one she DROPPED.
+    // …and the span to ring the waitlist about is the one she GAVE BACK.
+    // D-56: "Colour with Dana" is what this said, and naming the dropped
+    // service was the matcher's filter. Two hours and ten minutes of a
+    // Saturday is the thing being sold; who fits it is the fit's business.
     await page.getByRole('link', { name: 'Who wants this slot?' }).click();
-    await expect(page.getByText(/Colour with Dana/)).toBeVisible();
+    await expect(page.getByText(/2 hr 10 min free with Dana/)).toBeVisible();
   });
 
   test('has no accessibility violations', async ({ page }) => {

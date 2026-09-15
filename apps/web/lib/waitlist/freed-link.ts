@@ -6,10 +6,16 @@
  * hand-assembled query strings that have to agree on four parameter names is
  * the kind of drift nothing fails on: the second one would simply match
  * nobody, quietly, forever.
+ *
+ * D-56 (A-119) — `serviceId` IS GONE FROM THIS URL. It was the filter the
+ * matcher applied to the waitlist, and a freed span now matches anyone whose
+ * whole visit fits it whatever freed it. Keeping it as decoration would be
+ * worse than dropping it: on a RELEASED no-show's span, which decays all
+ * afternoon (A-109), the parameter named a service that no longer fits the
+ * range it was measured against, and the heading said so out loud.
  */
 export function freedSlotHref(freed: {
   providerId: string;
-  serviceId: string;
   /** The instant, never `{date, time}` (D-4). */
   startAt: Date;
   /** Buffer-inclusive: the range the exclusion constraint let go of. */
@@ -30,7 +36,6 @@ export function freedSlotHref(freed: {
 }): string {
   const params = new URLSearchParams({
     providerId: freed.providerId,
-    serviceId: freed.serviceId,
     at: freed.startAt.toISOString(),
     minutes: String(freed.freedMinutes),
     key: freed.key,

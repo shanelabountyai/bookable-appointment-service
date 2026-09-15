@@ -190,7 +190,7 @@ describe('a visit shortened at the chair (A-055)', () => {
       freedMinutes: 95,
       // `matchFreedSlot` filters the waitlist on ONE serviceId, and it is the
       // colour she dropped that somebody else wants — not the cut she kept.
-      primaryServiceId: colourId,
+      serviceIds: [colourId],
       serviceNames: ['Colour'],
       status: 'booked',
       freedBy: { kind: 'shortened', droppedServiceNames: ['Colour'] },
@@ -440,7 +440,7 @@ describe('the bounds, on a freed tail', () => {
     // 11:15 → 12:30 rather than 12:50: one buffer short, which is the safe
     // direction. It never names time the visit still holds.
     expect(slots).toHaveLength(1);
-    expect(slots[0]).toMatchObject({ freedMinutes: 75, primaryServiceId: cutId });
+    expect(slots[0]).toMatchObject({ freedMinutes: 75, serviceIds: [cutId] });
   });
 });
 
@@ -590,7 +590,7 @@ describe("a no-show's time given back (A-069)", () => {
       await createWaitlistEntry(prisma, {
         businessId,
         clientId,
-        serviceId: fringeId,
+        serviceIds: [fringeId],
         providerIds: [danaId],
         fromDay: '2026-06-09',
         toDay: '2026-06-09',
@@ -606,7 +606,6 @@ describe("a no-show's time given back (A-069)", () => {
         const accepted = await matchFreedSlot(prisma, {
           businessId,
           providerId: danaId,
-          serviceId: fringeId,
           day: label.day,
           time: label.time,
           freedMinutes: left,

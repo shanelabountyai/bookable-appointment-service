@@ -26,9 +26,9 @@ interface Provider {
  */
 export interface EntryPrefill {
   client: ClientSummary | null;
-  /** The whole refused visit, in ITS order (VISIT-01). The first is what the
-   *  entry is for; the rest are named on screen, because a two-service visit
-   *  waitlisted as one service is a promise this form cannot keep. */
+  /** The whole refused visit, in ITS order (VISIT-01) — and since D-56 the
+   *  entry stores all of it, so this is the value rather than a first line
+   *  plus a sentence about the rest. */
   serviceIds: string[];
   providerIds: string[];
   fromDay: string | null;
@@ -58,13 +58,21 @@ export function EntryForm({
   const [candidates, setCandidates] = useState<ClientSummary[]>([]);
   const [client, setClient] = useState<ClientSummary | null>(prefill.client);
   const [searching, startSearching] = useTransition();
-  // The services she was refused, minus the one this entry is for. Named, not
-  // dropped: `matchFreedSlot` will offer her a span long enough for a cut and
-  // whoever rings has to know she also wanted the colour.
-  const alsoAsked = prefill.serviceIds
-    .slice(1)
-    .map((id) => services.find((service) => service.id === id)?.name)
-    .filter((name): name is string => Boolean(name));
+  // D-56 — THE WHOLE VISIT, IN THE ORDER SHE ASKED FOR IT.
+  //
+  // This was a single `<select>` plus a sentence naming the services it could
+  // not hold ("one service per entry, so say so when you ring them"), and the
+  // sentence was on a form somebody filled in last week by the time anybody
+  // needed it. The ordered toggle is the booking panel's own picker
+  // (`booking-panel.tsx`), deliberately rather than a third invention: the
+  // order is on screen as a number because D-23's footprint takes the FIRST
+  // line's `bufferBefore` and the LAST line's `bufferAfter`, so it is not
+  // decoration.
+  const [chosen, setChosen] = useState<string[]>(
+    prefill.serviceIds.filter((id) => services.some((service) => service.id === id)),
+  );
+  const toggleService = (id: string) =>
+    setChosen((current) => (current.includes(id) ? current.filter((s) => s !== id) : [...current, id]));
   // A-110 — the days the salon opens, PLUS whatever day the prefill actually
   // carries. Picking a shut day off a list of seven is the bug; arriving from
   // "she is not working that Monday" with Monday checked is the fact she rang
@@ -92,6 +100,7 @@ export function EntryForm({
     if (state.ok) {
       setClient(null);
       setQuery('');
+      setChosen([]);
     }
   }
 
@@ -140,24 +149,38 @@ export function EntryForm({
         </label>
       )}
 
-      <label className="flex flex-col gap-1 text-sm">
-        Service
-        <select name="serviceId" required defaultValue={prefill.serviceIds[0] ?? undefined} className={field}>
-          {services.map((service) => (
-            <option key={service.id} value={service.id}>
-              {service.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {/* OUTSIDE the label on purpose: inside, this becomes part of the
-          select's accessible name, and the control is called "Service She
-          also asked for Cut…". */}
-      {alsoAsked.length ? (
-        <p className="-mt-2 text-xs text-ink-muted">
-          They also asked for {alsoAsked.join(' and ')} — one service per entry, so say so when you ring them.
-        </p>
-      ) : null}
+      <fieldset className="flex flex-col gap-2 text-sm">
+        <legend>What are they waiting for?</legend>
+        <ul className="flex flex-wrap gap-2">
+          {services.map((service) => {
+            const index = chosen.indexOf(service.id);
+            return (
+              <li key={service.id}>
+                <button
+                  type="button"
+                  aria-pressed={index >= 0}
+                  onClick={() => toggleService(service.id)}
+                  className={`min-h-11 rounded-md border px-3 py-2 text-sm ${index >= 0 ? 'border-zinc-900 bg-zinc-100 font-medium dark:border-zinc-100 dark:bg-zinc-800' : 'border-zinc-400 dark:border-zinc-600'}`}
+                >
+                  {/* A REAL SPACE, not just the margin class: JSX strips the
+                      newline between the span and the name, so a margin-only
+                      version reads "1.Colour" to a screen reader and to
+                      `getByRole`. */}
+                  {index >= 0 && chosen.length > 1 ? (
+                    <span className="text-ink-muted">{`${index + 1}. `}</span>
+                  ) : null}
+                  {service.name}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {/* The submitted value, in `chosen` order rather than in the
+            catalogue's — a `<button>` carries nothing to the server. */}
+        {chosen.map((id) => (
+          <input key={id} type="hidden" name="serviceIds" value={id} />
+        ))}
+      </fieldset>
 
       <fieldset className="flex flex-col gap-1 text-sm">
         <legend>Acceptable providers (none checked = any)</legend>
@@ -217,7 +240,7 @@ export function EntryForm({
 
       <button
         type="submit"
-        disabled={adding || !client}
+        disabled={adding || !client || chosen.length === 0}
         className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
       >
         {adding ? 'Adding…' : 'Add to waitlist'}

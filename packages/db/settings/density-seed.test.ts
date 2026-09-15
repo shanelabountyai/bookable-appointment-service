@@ -391,14 +391,13 @@ describe('determinism and safety', () => {
      * WHAT THE SCREEN SAYS, not what the table holds — and the distinction is
      * the whole of this test rather than a flourish.
      *
-     * `matchFreedSlot` is a conjunction of five conditions, and an entry that
-     * fails any of them leaves `/staff/opened` → "Who wants this slot?"
-     * rendering *"Nobody on the waitlist fits this one"* — WHICH IS EXACTLY
-     * WHAT IT RENDERED WITH NO ENTRIES AT ALL. `waitlistEntry.count() > 0`
-     * passes against that. The first version of this seed's entry was built
-     * from A-069's RELEASED TAIL, whose 25 freed minutes cannot hold the
-     * 150-minute colour its `primaryServiceId` names; it counted 1 and matched
-     * nobody.
+     * `matchFreedSlot` is a conjunction, and an entry that fails any part of
+     * it leaves `/staff/opened` → "Who wants this slot?" rendering *"Nobody on
+     * the waitlist fits this one"* — WHICH IS EXACTLY WHAT IT RENDERED WITH NO
+     * ENTRIES AT ALL. `waitlistEntry.count() > 0` passes against that. The
+     * first version of this seed's entry was built from A-069's RELEASED TAIL,
+     * whose 25 freed minutes cannot hold the 150-minute colour it came from;
+     * it counted 1 and matched nobody.
      */
     it('puts a name against a slot that actually opened up', async () => {
       const business = await prisma.business.findFirstOrThrow();
@@ -414,12 +413,10 @@ describe('determinism and safety', () => {
       const opened = await listOpenedSlots(prisma, { businessId: business.id, now: SEED_NOW });
       const matched = new Map<string, string[]>();
       for (const slot of opened) {
-        if (!slot.primaryServiceId) continue;
         const label = toLabel(fromDate(slot.startAt), zone);
         const who = await matchFreedSlot(prisma, {
           businessId: business.id,
           providerId: slot.providerId,
-          serviceId: slot.primaryServiceId,
           day: label.day,
           time: label.time,
           freedMinutes: slot.freedMinutes,

@@ -107,9 +107,14 @@ export interface OpenedSlot {
   blockedStart: Date;
   blockedEnd: Date;
   freedMinutes: number;
-  /** `matchFreedSlot` matches ONE service, so this is the seed: the service
-   *  she dropped when she dropped one, the visit's first line otherwise. */
-  primaryServiceId: string | null;
+  /** D-56 (A-119) — WHAT FREED THE SPAN, WHICH NO LONGER DECIDES WHO IS ASKED.
+   *
+   *  This was `primaryServiceId`, and it was the seed `matchFreedSlot` filtered
+   *  the waitlist on. A freed span now matches anyone whose whole visit fits
+   *  it, whatever freed it, so these are a LABEL: the services she dropped
+   *  when she dropped some, the whole visit otherwise. Ordered, so the pair
+   *  reads as the visit it was. */
+  serviceIds: string[];
   serviceNames: string[];
   status: string;
   /** Whose time it was — on the row for the same reason AVAIL-05's conflicts
@@ -323,7 +328,7 @@ async function cancelledCandidates(
     blockedStart: row.blockedStart,
     blockedEnd: row.blockedEnd,
     freedMinutes: minutesBetween(row.blockedStart, row.blockedEnd),
-    primaryServiceId: row.lines[0]?.serviceId ?? null,
+    serviceIds: row.lines.map((l) => l.serviceId),
     serviceNames: row.lines.map((l) => l.service.name),
     status: row.status,
     clientName: row.client?.name ?? null,
@@ -443,12 +448,13 @@ async function vacatedCandidates(
         blockedStart: start,
         blockedEnd: span.end,
         freedMinutes: minutesBetween(start, span.end),
-        // The service she DROPPED is the one to ring the waitlist about — "who
-        // else wants a colour on Saturday afternoon?" `removedServiceIds` is
-        // A-067's addition to the payload; events written before it fall back
-        // to what is still on the visit, which fits the span by construction.
+        // The services she DROPPED are what the span WAS — "an hour where a
+        // colour used to be". `removedServiceIds` is A-067's addition to the
+        // payload; events written before it fall back to what is still on the
+        // visit. D-56 made this a label rather than a filter, so a stale
+        // fallback can no longer narrow who gets asked.
         providerActive: provider.active,
-        primaryServiceId: droppedIds[0] ?? appointment.lines[0]?.serviceId ?? null,
+        serviceIds: droppedIds.length > 0 ? droppedIds : appointment.lines.map((l) => l.serviceId),
         serviceNames: droppedNames.length > 0 ? droppedNames : appointment.lines.map((l) => l.service.name),
         status: appointment.status,
         clientName: appointment.client?.name ?? null,

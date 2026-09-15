@@ -48,3 +48,23 @@ function timeBand(time: WallTime): (typeof TIME_BAND_TAGS)[number] {
 export function matchesDayParts(wanted: readonly string[], actual: readonly DayPartTag[]): boolean {
   return wanted.length === 0 || wanted.every((tag) => (actual as readonly string[]).includes(tag));
 }
+
+/**
+ * A-119 ride-along — the tags in the salon's words.
+ *
+ * `dayParts` is a closed vocabulary stored lower-case, and the standing queue
+ * printed the cell: `· saturday, morning`. Nobody at a desk says that. The
+ * conjunction `matchesDayParts` enforces is what the wording has to convey —
+ * "Saturday mornings" is one preference, not two — so the bands attach to the
+ * days rather than being listed beside them.
+ */
+export function dayPartWords(tags: readonly string[]): string {
+  const cap = (word: string) => word[0]!.toUpperCase() + word.slice(1);
+  const days = WEEKDAY_TAGS.filter((day) => tags.includes(day));
+  const bands = TIME_BAND_TAGS.filter((band) => tags.includes(band));
+  if (bands.length === 0) {
+    return days.length ? days.map((day) => `${cap(day)}s`).join(' or ') : 'Any day, any time';
+  }
+  const when = bands.map((band) => `${band}s`).join(' or ');
+  return days.length ? `${days.map(cap).join(' or ')} ${when}` : `Any day, ${when}`;
+}

@@ -134,7 +134,7 @@ The full correctness specification, function signature, and ~90-case edge matrix
 
 ### WAIT — Waitlist (Phase 2)
 
-- **WAIT-01** Entry = service + acceptable providers + date range + day-parts. Matching is against the *freed interval*: the service (at the provider's duration) must actually fit.
+- **WAIT-01** Entry = **the whole visit, as an ordered list of services (D-56)** + acceptable providers + date range + day-parts. Matching is against the *freed interval*: the span's provider must be qualified for **every** line, and the **composed** footprint (D-23: first line's buffer-before, the sum of her own durations, last line's buffer-after) must actually fit. What freed the span is not part of the question.
 - **WAIT-02** v1 of the feature is the staff-facing "who wants this slot?" panel on any freed slot. Automated offer-with-soft-hold (30-min hold, roll to next) is the follow-on; the hold is invisible to self-serve and staff-overridable.
 
 ### RPT — Reporting

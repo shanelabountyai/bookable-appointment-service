@@ -288,11 +288,10 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
 
       {/* WAIT-02's "who wants this slot?" — only once cancelling actually
           freed the time (D-7: no_show/completed still occupy it). */}
-      {(SLOT_FREEING_STATUSES as readonly string[]).includes(status) && detail.primaryServiceId ? (
+      {(SLOT_FREEING_STATUSES as readonly string[]).includes(status) ? (
         <Link
           href={freedSlotHref({
             providerId: detail.providerId,
-            serviceId: detail.primaryServiceId,
             startAt: detail.startAt,
             freedMinutes: freedMinutes(detail),
             // A-072. The same key `/staff/opened` derives for a cancellation,

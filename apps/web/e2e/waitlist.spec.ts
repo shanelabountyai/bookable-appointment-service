@@ -116,10 +116,10 @@ test.describe('the waitlist, staff half (A-023)', () => {
     await page.goto('/staff/waitlist');
     await page.getByPlaceholder('Name or phone number').fill('Beth');
     await page.getByRole('button', { name: /Beth Waits/ }).click();
-    await page.getByLabel('Service').selectOption({ label: 'Cut' });
-    // exact: true — "To" is otherwise a substring match of the Service
-    // select's accessible name, which concatenates every option's text and
-    // happens to include "touch-up" (Root touch-up).
+    // D-56 — an ordered toggle, not a select: an entry holds the whole visit.
+    await page.getByRole('button', { name: 'Cut', exact: true }).click();
+    // exact: true — "To" is otherwise a substring match of other controls'
+    // accessible names on this form.
     await page.getByLabel('From', { exact: true }).fill(DAY);
     await page.getByLabel('To', { exact: true }).fill(DAY);
     await page.getByRole('checkbox', { name: 'tuesday' }).check();
@@ -181,7 +181,7 @@ test.describe('the waitlist, staff half (A-023)', () => {
     await page.goto('/staff/waitlist');
     await page.getByPlaceholder('Name or phone number').fill('Beth');
     await page.getByRole('button', { name: /Beth Waits/ }).click();
-    await page.getByLabel('Service').selectOption({ label: 'Cut' });
+    await page.getByRole('button', { name: 'Cut', exact: true }).click();
     await page.getByLabel('From', { exact: true }).fill(DAY);
     await page.getByLabel('To', { exact: true }).fill(DAY);
     await page.getByRole('checkbox', { name: 'tuesday' }).check();
@@ -245,22 +245,19 @@ test.describe('the waitlist, staff half (A-023)', () => {
    */
   test('carries a booking refusal onto the waitlist, prefilled', async ({ page }) => {
     const prisma = new PrismaClient();
-    let colourId: string;
     try {
       const business = await prisma.business.findFirstOrThrow();
       await prisma.client.create({ data: { businessId: business.id, name: 'Beth Waits', phone: '5125550199' } });
-      // NOT the first service in the list. `Cut` is, so a form that ignored
-      // the prefill entirely would still show `Cut` selected and the
-      // assertion below would pass against no prefill at all.
-      colourId = (await prisma.service.findFirstOrThrow({ where: { name: 'Colour' } })).id;
     } finally {
       await prisma.$disconnect();
     }
 
     // "Anything Sunday? I don't mind who" (SVC-02) — and nobody works Sunday.
     await page.goto(`/staff/book?provider=any&day=${SUNDAY}`);
-    // A WHOLE VISIT, in its order (VISIT-01) — a waitlist entry is ONE
-    // service, so the second one has to be said out loud rather than dropped.
+    // A WHOLE VISIT, in its order (VISIT-01), and COLOUR FIRST on purpose:
+    // `Cut` is the first service in the catalogue, so a form that ignored the
+    // prefill would land on it anyway and the numbering assertion below would
+    // pass against no prefill at all.
     // Anchored: "Cut & finish" is also on this list and `/^Cut/` takes both.
     await page.getByRole('button', { name: /^Colour/ }).click();
     await page.getByRole('button', { name: /^Cut45 min/ }).click();
@@ -276,8 +273,18 @@ test.describe('the waitlist, staff half (A-023)', () => {
 
     // EVERY field the panel held, on the form — this is the item.
     await expect(page.getByText('For Beth Waits')).toBeVisible();
-    await expect(page.getByLabel('Service')).toHaveValue(colourId);
-    await expect(page.getByText(/They also asked for Cut/)).toBeVisible();
+    // A-119 / D-56 — THE WHOLE VISIT, IN ITS ORDER, AS A STORED VALUE.
+    //
+    // This asserted a `<select>` holding the colour and a sentence naming the
+    // cut ("one service per entry, so say so when you ring them") — a warning
+    // on a form that nobody reads again once it is submitted. Both services
+    // are now pressed and numbered, and the numbers are the point: D-23's
+    // footprint takes the first line's `bufferBefore` and the last line's
+    // `bufferAfter`, so "colour then cut" is a different length from "cut
+    // then colour".
+    await expect(page.getByRole('button', { name: /^1\. Colour/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /^2\. Cut/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText(/one service per entry/)).toHaveCount(0);
     await expect(page.getByLabel('From', { exact: true })).toHaveValue(SUNDAY);
     await expect(page.getByLabel('To', { exact: true })).toHaveValue(SUNDAY);
     // The day she actually asked about, checked — even though the salon is
@@ -291,6 +298,12 @@ test.describe('the waitlist, staff half (A-023)', () => {
     await page.getByRole('button', { name: 'Add to waitlist' }).click();
     await expect(page.getByText('Added Beth Waits to the waitlist.')).toBeVisible();
     await expect(page.getByText(/^Waiting \(1\)/)).toBeVisible();
+    // D-56 — AND THE QUEUE SAYS WHAT SHE IS WAITING FOR, both lines of it.
+    // The stored row is what the desk reads next week; the form's sentence
+    // was gone the moment it was submitted. The day-parts beside it are the
+    // ride-along: the cell holds `sunday`, and nobody says "· sunday".
+    await expect(page.getByText(/Colour then Cut/)).toBeVisible();
+    await expect(page.getByText(/Sundays/)).toBeVisible();
   });
 
   /**
@@ -318,7 +331,7 @@ test.describe('the waitlist, staff half (A-023)', () => {
         data: {
           businessId: business.id,
           clientId: client.id,
-          serviceId: service.id,
+          serviceIds: [service.id],
           providerIds: [],
           fromDay: '2020-01-01',
           toDay: '2020-03-01',

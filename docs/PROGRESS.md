@@ -4513,3 +4513,91 @@ turned a blind screen into a contradicting one.
 - **When a real driver lands, this section empties itself** and the old
   sentence comes back, per row rather than per build: that is `reallyDelivered`
   doing exactly what A-048 built it to do.
+
+## A-119 — the waitlist remembers one service of a two-service visit
+
+The waitlist's entry predates VISIT-01. `WaitlistEntry` held one `serviceId`,
+so a client refused a cut **and** a colour was stored as `Cut`, and
+`matchFreedSlot` filtered candidates on the freed appointment's service and
+then measured that one service against the span. Both halves are wrong for the
+same booking, in opposite directions — the operator measured it before this was
+built:
+
+```
+her visit (D-23): 0 + 45 + 120 + 20 = 185 min
+a Cut freed   · Priya · Tue 10:00 ·  55 min  -> MATCHED her   (she does not fit)
+a Colour freed· Priya · Tue 10:00 · 190 min  -> did NOT match  (she fits with room)
+```
+
+The false match is a phone call that ends "no, I need my colour too". The
+missed one is the three-hour Saturday gap the waitlist exists to sell. Cut +
+colour is, in D-23's own words, *half the sample business's Saturday book*.
+
+### What it decided (D-56)
+
+Recorded before any code, because the row demanded it: **(a) — an entry is a
+VISIT, and a freed span matches anyone it can hold.** `serviceId` becomes
+ordered `serviceIds String[]`; the matcher drops the service filter entirely
+and asks the question the WRITE will ask — *is this provider qualified for
+every line, and does the whole visit fit?* The span is the perishable thing,
+not the service that freed it, which is the same move A-109 made on
+`/staff/opened`.
+
+It changes single-service entries too, deliberately and with the owner's
+choice: a waiting Cut is now offered a freed 190-minute colour span, because
+she fits it. (b) — "only spans freed by a shared service" — leaves a freed
+balayage that would hold her cut+colour invisible to her; (c) keeps the false
+match and attaches a warning to it.
+
+### What it built
+
+- **`serviceIds String[]`**, no FK, migrated in one transaction: every existing
+  row is copied to a one-element list **before** the old column is dropped, so
+  a half-applied migration cannot leave an entry with no services — which
+  composes to a zero footprint and would fit every span forever.
+- **`matchFreedSlot` composes through `composeVisit`** (D-23's one copy of the
+  rule) and compares through `fitsFreedSpan` (A-109's one copy of the
+  comparison). It re-adds no buffers of its own.
+- **One read of the span provider's qualifications** carries the SVC-02
+  duration override, the buffers and the name for every line of every
+  candidate: the candidates differ in what they want, never in whose time this
+  is.
+- **An unqualified line is `null`, not a skipped line.** Dropping it would
+  compose a SHORTER visit that fits MORE spans — the offered-then-refused shape
+  this repo has now caught five times.
+- **The entry form is the booking panel's own ordered picker**, numbered,
+  because the order is the footprint. The sentence it replaces (*"one service
+  per entry, so say so when you ring them"*) was a warning on a form nobody
+  reads again once it is submitted.
+- **The match row says what she is waiting for and what it measures** — "Cut
+  then Colour · 185 min" — and its Book link carries her whole visit and her
+  id, so the form agrees with the row it was clicked from.
+- **`primaryServiceId` is gone** from `OpenedSlot` and from the appointment
+  detail model, and `serviceId` is gone from the freed-slot URL. It decided who
+  was asked; nothing decides that now but the fit. On a released no-show's span
+  — which decays all afternoon (A-109) — it named a service that no longer
+  fitted the minutes printed beside it. The panel's heading is the SPAN now:
+  "3 hr 10 min free with Priya".
+- **Ride-along: `dayPartWords`.** The standing queue joined the stored cell
+  raw, `· saturday, morning`. It reads "Saturday mornings", and "Any day, any
+  time" where it used to render an empty string that looked like a field that
+  had failed to load.
+
+### What it left behind
+
+- **The order is the visit's order, and the form's picker is the only place it
+  can be set.** Arriving from the booking panel it is her order; built by hand
+  it is click order. There is no drag to re-order, and a desk that wants
+  colour-before-cut clicks them in that order.
+- **No FK from an entry to a service.** Nothing in this app deletes a service;
+  if one ever does, an entry naming it becomes unqualifiable, which the matcher
+  already treats as "she does not fit" rather than as a crash, and the standing
+  queue renders as *"A service that has gone"*.
+- **`ORDER IS THE FOOTPRINT` is the test to keep.** Colour-then-cut is 145
+  minutes where cut-then-colour is 160, at the same provider with the same two
+  services. Anything that sorts or de-duplicates that array re-prices every
+  combination booking in the salon, and nothing else in the suite would say so.
+- **The numbering note in `07-decisions.md`.** D-51 was assigned twice (A-101's
+  utilization week, A-108's reminder watermark). Both are cited ~50 times
+  across code and PROGRESS, so neither was renumbered; the file now says which
+  is which and that D-56 was the next free number.

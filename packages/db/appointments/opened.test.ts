@@ -191,7 +191,7 @@ describe('what is on it', () => {
       clientName: 'Ada Chen',
       clientPhone: '+15125550101',
       serviceNames: ['Colour'],
-      primaryServiceId: colourId,
+      serviceIds: [colourId],
       freedMinutes: 180,
       status: 'cancelled',
     });

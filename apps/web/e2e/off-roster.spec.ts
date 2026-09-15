@@ -278,7 +278,7 @@ test.describe('a stylist off the roster (A-098)', () => {
         data: {
           businessId: business.id,
           clientId: waiting.id,
-          serviceId: service.id,
+          serviceIds: [service.id],
           // She asked for DANA — the case that matters, because the person on
           // the list is exactly the one whose stylist has just gone.
           providerIds: [dana.id],

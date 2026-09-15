@@ -538,21 +538,21 @@ export async function seedDensity(
   // The waitlist is DERIVED FROM THE ROW THAT WAS CANCELLED, and getting that
   // wrong once is why this comment is long.
   //
-  // `matchFreedSlot` is a conjunction — same service, this provider acceptable,
-  // the day in range, EVERY day-part tag satisfied, and the service's whole
-  // FOOTPRINT inside the freed minutes — so an entry invented independently of
-  // the book matches nothing and the screen renders the same empty state it
-  // did with no entries at all. That failure is INVISIBLE: the list is there,
-  // it simply says nobody fits.
+  // `matchFreedSlot` is a conjunction — this provider acceptable, the day in
+  // range, EVERY day-part tag satisfied, she is qualified for every line, and
+  // the whole VISIT's footprint inside the freed minutes — so an entry
+  // invented independently of the book matches nothing and the screen renders
+  // the same empty state it did with no entries at all. That failure is
+  // INVISIBLE: the list is there, it simply says nobody fits.
   //
   // Deriving it from "whichever span opened up" is not enough either, and that
   // version was written and measured before this one: `/staff/opened` carries
   // A-069's RELEASED TAIL as well as A-043's cancellation, and a tail is
-  // twenty-five minutes of a two-hour colour. Its `primaryServiceId` is still
-  // the colour, whose footprint is 150 minutes, so the last line of
-  // `matchFreedSlot` refuses it — correctly, and silently, and the demo's
-  // first click lands on "Nobody on the waitlist fits this one" exactly as it
-  // did before the entry existed.
+  // twenty-five minutes of a two-hour colour — too short for the visit that
+  // freed it, so the fit check refuses it, correctly and silently, and the
+  // demo's first click lands on "Nobody on the waitlist fits this one" exactly
+  // as it did before the entry existed. D-56 widened WHICH spans an entry can
+  // match but not this: a span shorter than her visit still refuses.
   //
   // THE CANCELLED ROW IS THE ONE SPAN WHOSE FREED MINUTES ARE THE WHOLE
   // FOOTPRINT, by construction: `blockedEnd - blockedStart` is buffers plus
@@ -565,7 +565,7 @@ export async function seedDensity(
   let waitlistEntries = 0;
   let callMarks = 0;
 
-  const wants = freed.find((slot) => slot.appointmentId === toCancel?.id && slot.primaryServiceId !== null);
+  const wants = freed.find((slot) => slot.appointmentId === toCancel?.id && slot.serviceIds.length > 0);
   if (wants) {
     // NOT the client whose appointment freed it — she is the one who dropped
     // the slot, and offering it back to her is the one call the desk would
@@ -577,7 +577,14 @@ export async function seedDensity(
     const entry = await createWaitlistEntry(prisma, {
       businessId: business.id,
       clientId: hopeful.id,
-      serviceId: wants.primaryServiceId!,
+      // D-56 — THE WHOLE CANCELLED VISIT, not its first line. That is what
+      // makes the match guaranteed by arithmetic: the freed minutes ARE this
+      // visit's footprint, so an entry for the same lines at the same salon
+      // fits it exactly, and `fitsFreedSpan` counts equality as a fit. An
+      // entry for the FIRST line alone would still match (it is shorter), and
+      // would demonstrate the defect this seed exists to rule out rather than
+      // the feature.
+      serviceIds: [...wants.serviceIds],
       // Any qualified stylist, no day-part preference: the entry that MUST
       // match, so the freed slot always has at least one name against it.
       providerIds: [],
@@ -618,7 +625,7 @@ export async function seedDensity(
       businessId: business.id,
       clientId,
       // The salon's signature service, and the one worth ringing about.
-      serviceId: services.find((service) => service.name === 'Colour')?.id ?? services[0]!.id,
+      serviceIds: [services.find((service) => service.name === 'Colour')?.id ?? services[0]!.id],
       providerIds: [...providerIds],
       fromDay: recentDays[0]!,
       toDay: addDays(calendarDay(recentDays[recentDays.length - 1]!), 21),

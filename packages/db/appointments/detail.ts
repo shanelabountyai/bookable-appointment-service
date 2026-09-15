@@ -95,11 +95,6 @@ export interface AppointmentDetail {
   /** SEG-03/D-29 — minutes of this appointment the provider is not needed for,
    *  from its own `segmentPattern` snapshot. Zero for an unsegmented visit. */
   gapMinutes: number;
-  /** The primary (first-ordinal) service line. A-023's "who wants this slot?"
-   *  link needs a single serviceId to match against — a multi-service visit
-   *  (VISIT-01) only offers its lead service to the waitlist; matching a
-   *  freed visit's SECOND service is a real gap, deferred until it matters. */
-  primaryServiceId: string;
   /** Body ± buffers (D-16) — the range the exclusion constraint actually
    *  frees on cancellation, wider than `startAt`/`endAt` alone. */
   blockedStart: Date;
@@ -229,7 +224,6 @@ export async function loadAppointmentDetail(
     providerName: appointment.provider.displayName,
     resourceName: appointment.resourceHold?.resource.name ?? null,
     resourceTypeName: appointment.resourceHold?.resource.resourceType.name ?? null,
-    primaryServiceId: appointment.lines[0]?.serviceId ?? '',
     cancellationCutoffMinutes: worstCutoff(
       appointment.business.cancellationCutoffMinutes,
       appointment.lines.map((l) => ({

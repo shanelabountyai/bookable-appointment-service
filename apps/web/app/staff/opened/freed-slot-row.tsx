@@ -87,20 +87,20 @@ export function FreedSlotRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {slot.primaryServiceId ? (
-          <LinkButton
-            href={freedSlotHref({
-              providerId: slot.providerId,
-              serviceId: slot.primaryServiceId,
-              startAt: slot.startAt,
-              freedMinutes: slot.freedMinutes,
-              key: slot.key,
-              appointmentId: slot.appointmentId,
-            })}
-          >
-            Who wants this slot?
-          </LinkButton>
-        ) : null}
+        {/* D-56 — no longer gated on the span having a service to name. The
+            span is what is for sale, and it is for sale whether or not the
+            visit that freed it still has a line on it. */}
+        <LinkButton
+          href={freedSlotHref({
+            providerId: slot.providerId,
+            startAt: slot.startAt,
+            freedMinutes: slot.freedMinutes,
+            key: slot.key,
+            appointmentId: slot.appointmentId,
+          })}
+        >
+          Who wants this slot?
+        </LinkButton>
         <Link
           href={`/staff/appointments/${slot.appointmentId}`}
           className="inline-flex min-h-11 items-center text-caption text-ink-muted underline underline-offset-4"

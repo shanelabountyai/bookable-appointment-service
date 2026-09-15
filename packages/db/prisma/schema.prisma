@@ -318,7 +318,6 @@ model Service {
   serviceProviders ServiceProvider[]
   segments         ServiceSegment[]
   lines            AppointmentServiceLine[]
-  waitlist         WaitlistEntry[]
 
   @@index([businessId, active])
 }
@@ -1069,7 +1068,19 @@ model WaitlistEntry {
   id          String   @id @default(cuid())
   businessId  String
   clientId    String
-  serviceId   String
+  /// D-56 (A-119) — THE WHOLE VISIT, IN ITS ORDER (VISIT-01, D-23).
+  ///
+  /// Was one `serviceId` with an FK. An entry predating VISIT-01 could only
+  /// remember "Cut" of a cut-and-colour, so the matcher offered her a
+  /// 55-minute hole her appointment does not fit in and hid the three-hour
+  /// one it does. Ordered, because D-23's footprint takes the FIRST line's
+  /// `bufferBefore` and the LAST line's `bufferAfter`.
+  ///
+  /// No FK, same as `providerIds` on this table since A-023: nothing in this
+  /// app deletes a service, and an array cannot carry one. A line whose
+  /// service has vanished is unqualifiable, which `matchFreedSlot` already
+  /// treats as "she does not fit" rather than as a crash.
+  serviceIds  String[]
   /// Empty = any qualified provider.
   providerIds String[]
   /// CalendarDay bounds — CHAR(10), never @db.Date.
@@ -1084,7 +1095,6 @@ model WaitlistEntry {
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
   @@index([businessId, status])
   @@index([clientId])

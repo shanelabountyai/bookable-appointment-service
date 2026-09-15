@@ -216,7 +216,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
 
   it('moves waitlist entries too, so an offer still reaches her', async () => {
     await prisma.waitlistEntry.create({
-      data: { businessId, clientId: daughterId, serviceId, fromDay: '2026-06-09', toDay: '2026-06-30', dayParts: [] },
+      data: { businessId, clientId: daughterId, serviceIds: [serviceId], fromDay: '2026-06-09', toDay: '2026-06-30', dayParts: [] },
     });
 
     await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
