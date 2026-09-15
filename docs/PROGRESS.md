@@ -4516,6 +4516,8 @@ turned a blind screen into a contradicting one.
 
 ## A-119 — the waitlist remembers one service of a two-service visit
 
+**Commit `b952045`.**
+
 The waitlist's entry predates VISIT-01. `WaitlistEntry` held one `serviceId`,
 so a client refused a cut **and** a colour was stored as `Cut`, and
 `matchFreedSlot` filtered candidates on the freed appointment's service and
