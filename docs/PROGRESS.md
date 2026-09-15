@@ -4443,7 +4443,7 @@ correctly wrote him a second key.
 
 ## A-118 — "Everything has gone out" over messages nobody sent
 
-**Commit `TBD`.**
+**Commit `bea41e5`.**
 
 `notificationAdapter` is `LoggingChannelAdapter` in every build that exists
 (D-14, A-053 blocked), so on the demo book all 686 outbox rows are

@@ -1,60 +1,65 @@
 # Next
 
-**A-117 is done (the badge cannot see the one failure D-51 was for).**
-Commits: the build (`595f87e`), then the SHA record, pushed together in ONE
+**A-118 is done ("Everything has gone out" over messages nobody sent).**
+Commits: the build (`bea41e5`), then the SHA record, pushed together in ONE
 push. **Confirm with `gh run list --limit 1` before trusting this file** — that
 run must be green.
 
-**The local unit sweep did not finish for A-117, deliberately.** Lint,
-typecheck and the full e2e sweep (327 passed, reconciling against `--list`'s
-326 + the one new spec) were green, and `reminders.test.ts` is 36/36 — but the
-countertop project held ~25 Postgres connections for ten minutes from another
-session and this suite's `beforeAll` connects timed out in files A-117 never
-touched (auth, reports, staff identity). Killed rather than let run. **CI is
-the unit gate for this item** — check it before building on top.
+Full local gate passed for this one: lint, typecheck, unit (1670 passed + 1
+skipped = 1671) and e2e (328 passed) — which also settled A-117's open
+reconciliation, since 1671 − 3 new tests = the 1668 its contaminated run
+reported.
 
-## The next item: A-118 — "Everything has gone out" over messages nobody sent
+## The next item: A-119 — the waitlist stores ONE serviceId
 
-`/staff/messages`' `allClear` (`page.tsx:55`) never asks `reallyDelivered`
-(`provider.ts:33`), while `/staff/appointments/{id}` renders every one of the
-same rows as *"queued"* via `deliveryWord` (`event-language.ts:239-245`).
-`notificationAdapter` is `LoggingChannelAdapter` in every build that exists
-(A-053 blocked), so on the demo book 686 rows are `deliveredBy = log`: the
-screen headed "Messages that did not go out" says everything went out, and
-every appointment page says it did not. Derive the healthy sentence from the
-SAME predicate `deliveryWord` uses, never a second copy, and say what is true
-when nothing was really delivered. Assert on a book of `log` rows that the two
-screens agree. **Not in scope:** any real channel (D-14). No new D-number.
+Backlog row 121. **It needs a NEW D-number: D-56** (D-55 was taken by A-114 —
+and note `07-decisions.md` still has TWO rows numbered D-51, which somebody
+should renumber when they are next in that file).
 
-Then A-119, A-120 top to bottom. **A-119 needs a NEW D-number: D-56** (D-55 was
-taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
+Read the backlog row and the operator review before designing: a client who
+wants a cut AND colour cannot be waitlisted for the visit she actually wants,
+and every surface that matches a freed slot against the waitlist measures one
+service's duration against a footprint the real visit would not fit in.
+
+Then A-120 top to bottom.
 
 ## What the close found, in case an item trips over it
 
-- **A-119:** the waitlist stores one `serviceId`.
-- **A-120:** on the demo book the missed-reminder list is empty by construction,
-  the long name never reaches a chip, and the flag's second clause is always cut.
+- **A-120:** on the demo book the missed-reminder list is empty by
+  construction, the long name never reaches a chip, and the flag's second
+  clause is always cut.
+
+## What A-118 left for anyone near the messages screen or delivery wording
+
+- **`countNotReallySent(db, businessId)`** (`stuck.ts`) is the count of rows
+  marked `sent` that no real driver handled. It groups by `deliveredBy` in SQL
+  and folds with `reallyDelivered` in TypeScript — **never spell that predicate
+  as a `where` clause**, that is the second copy the item exists to prevent.
+- **`allClear` on `/staff/messages` now has three terms**, and the "Nothing has
+  actually been sent" section renders independently of it.
+- **When a real channel is finally wired in (D-14), that section empties itself
+  per row**, and the old healthy sentence comes back on its own.
+- **The page's intro paragraph enumerates its sections** — add a fifth section
+  and that sentence is a reader that needs updating too.
 
 ## What A-117 left for anyone near reminders or the shell badge
 
 - **`reminderDedupeKey(appointmentId, startAt: Instant)`** in
   `@bookable/core/notifications` is the ONLY way to say "the reminder for this
-  appointment at this time". The sweep and the missed list both go through it.
+  appointment at this time". The sweep, the missed list and now the e2e
+  fixtures all go through it.
 - **`MOVING_EVENT_TYPES`** (`missed-reminders.ts`) is `['rescheduled',
   'column_pushed']` — the event types that rewrite `startAt`. A third way to
   move an appointment belongs in it, or that client is silently never listed.
-  The unit tests iterate the list, so a new type is covered when it is added.
-- **The staff shell now runs FIVE queries per render**, one of them the whole
+- **The staff shell runs FIVE queries per render**, one of them the whole
   missed-reminder derivation. If it ever shows up, cache the NUMBER — never ask
   a cheaper question (checkpoint-6 class).
-- **`listMissedReminders`' `limit` now applies to the ANSWER**, not the query.
-  Its candidate set is every eligible appointment in the next 24 hours.
+- **`listMissedReminders`' `limit` applies to the ANSWER**, not the query.
 
 ## What A-116 left for anyone near occupancy
 
 - **A reinstatement RE-PICKS its chair** (`transition.ts`, `chairForMove`), so
-  `resourceId` can change on a `cancelled → booked` edge. Anything caching a
-  chair across a cancellation is stale.
+  `resourceId` can change on a `cancelled → booked` edge.
 - **`transitionAppointment` can throw `NoResourceFree`**, not only
   `SlotTaken`/`TransitionRefused`/`AppointmentMovedFirst`.
 - **A-075's un-release is the same shape and was deliberately NOT changed**
@@ -63,8 +68,8 @@ taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
 ## What A-115 left for anyone near the booking panel
 
 - **The panel's lookup and A-106's fortnight walk are ONE transition**, so on a
-  full day the refused chips now wait on the walk (~2.5s warm, more cold). Wait
-  for `Looking…` to go rather than the default 5s.
+  full day the refused chips wait on the walk (~2.5s warm, more cold). Wait for
+  `Looking…` to go rather than the default 5s.
 
 ## Environment notes
 
@@ -72,9 +77,10 @@ taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
   datname, count(*) FROM pg_stat_activity GROUP BY datname"` — another
   project's test database holding 20+ connections starves this one, and it
   fails as `Hook timed out` on `beforeAll`, in whatever file happened to be
-  running. Not a code regression; retry when it clears.
-- **Leftover demo scripts outlive their session.** Checkpoint 10's browser
-  walk was still running days later, with four headless Chromes. `pgrep -fl
+  running. Not a code regression; retry when it clears. (Cost A-117 its local
+  unit leg.)
+- **Leftover demo scripts outlive their session.** Checkpoint 10's browser walk
+  was still running days later, with four headless Chromes. `pgrep -fl
   "chrome-headless-shell|test-server"` before blaming the suite.
 - **`dropdb bookable_dev` is refused by the auto-mode classifier.** For a
   checkpoint, create a NEW scratch database instead: write
@@ -96,8 +102,8 @@ taken by A-114; `07-decisions.md` still has TWO rows numbered D-51).
   `npm test -- <path> -t "<name>"` works; bare `npx vitest` skips every DB test.
 - **Never overlap a vitest run with a playwright sweep**, and never
   `npm run typecheck` during an e2e build.
-- **`--list` says 327** after A-117. Full unit run ~9.5 min (density-seed alone
-  is ~73s); e2e sweep ~5.7 min; CI ~20 minutes.
+- **`--list` says 328** after A-118. Unit total 1671 (1670 + 1 skipped). Full
+  unit run ~9 min (density-seed alone is ~73s); e2e sweep ~7.6 min; CI ~20 min.
 - **No database has a StaffUser after a seed.** Call `seedStaffUser` from
   `@bookable/db/auth` in a script INSIDE the repo (e2e's credentials:
   `owner@shear-genius.test` / `e2e-staff-password`).
