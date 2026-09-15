@@ -1,5 +1,10 @@
 import { prisma } from '@bookable/db';
-import { lastReminderSweep, listMissedReminders, listStuckNotifications } from '@bookable/db/notifications';
+import {
+  countNotReallySent,
+  lastReminderSweep,
+  listMissedReminders,
+  listStuckNotifications,
+} from '@bookable/db/notifications';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
 import { TEMPLATE_WORDS } from '@/lib/appointments/event-language';
@@ -32,16 +37,28 @@ export const dynamic = 'force-dynamic';
  *    and left no outbox row to find — nothing was stuck, because nothing was
  *    ever written. That cohort is DERIVED from the appointments (D-51), which
  *    is why it is a list of people and phone numbers rather than a time range.
+ *
+ * A-118 — AND THE THIRD, WHICH WAS THE LOUDEST. A row the console adapter
+ * handled is `sent`: not failed, not waiting, not missing, so all three lists
+ * were correctly empty and this screen printed "Everything has gone out" over
+ * 686 messages nobody received. `/staff/appointments/{id}` has rendered those
+ * same rows as "queued" since A-044/A-048, so the product contradicted itself
+ * on every install that exists (`notificationAdapter` is the logging adapter
+ * in all of them — D-14, A-053 blocked). The healthy sentence now goes through
+ * `reallyDelivered`, which is the predicate the appointment page already uses.
  */
 export default async function MessagesPage() {
   const staff = await requireStaff();
   const now = new Date();
 
-  const [business, stuck, missed, sweptAt] = await Promise.all([
+  const [business, stuck, missed, sweptAt, notReallySent] = await Promise.all([
     prisma.business.findUniqueOrThrow({ where: { id: staff.businessId }, select: { timezone: true } }),
     listStuckNotifications(prisma, staff.businessId, { now }),
     listMissedReminders(prisma, { businessId: staff.businessId, now }),
     lastReminderSweep(prisma, staff.businessId),
+    // A-118: the same question `deliveryWord` asks on the appointment page,
+    // through the same predicate. This screen used to ask nothing at all.
+    countNotReallySent(prisma, staff.businessId),
   ]);
 
   // The bucket is decided in `stuck.ts` and carried on the row. This page
@@ -52,7 +69,13 @@ export default async function MessagesPage() {
   const neverTried = stuck.filter((row) => row.kind === 'never-tried');
   const waiting = stuck.filter((row) => row.kind === 'retrying');
 
-  const allClear = stuck.length === 0 && missed.length === 0;
+  // A-118 — "EVERYTHING HAS GONE OUT" NOW HAS TO BE TRUE OF THE ROWS THAT SAY
+  // `sent`, TOO. A row the console adapter handled is not stuck, not failed
+  // and not missing — it is invisible to all three lists, and this sentence
+  // was printed over 686 of them while every appointment page correctly said
+  // "queued" about the same rows. The predicate is `reallyDelivered`'s, asked
+  // once in `countNotReallySent`, never re-spelled here.
+  const allClear = stuck.length === 0 && missed.length === 0 && notReallySent === 0;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
@@ -61,7 +84,7 @@ export default async function MessagesPage() {
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           Confirmations and reminders are tried again on their own for a couple of hours. What is listed here
           either ran out of tries, was refused outright — a dead phone number, an address that does not exist —
-          or was never picked up at all.
+          was never picked up at all, or never went anywhere real.
         </p>
       </div>
 
@@ -69,6 +92,24 @@ export default async function MessagesPage() {
         <p className="text-zinc-600 dark:text-zinc-400">
           Everything has gone out. Nothing is waiting and nothing has been given up on.
         </p>
+      ) : null}
+
+      {/* A-118. Rendered whether or not anything else is listed: a desk told
+          only about the three that failed would read the other six hundred as
+          delivered. The count is in the heading so the sentence needs no
+          plural agreement — and no clause that is cut on every real book. */}
+      {notReallySent > 0 ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+            Nothing has actually been sent ({notReallySent})
+          </h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            These are marked sent, but they were written to the server log rather than handed to a phone or an
+            inbox — which is what every appointment page means when it says “queued” about them. Nobody has
+            been told anything, and there is nothing here to retry: this install has no text or email service
+            connected.
+          </p>
+        </section>
       ) : null}
 
       {givenUp.length > 0 ? (

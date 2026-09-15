@@ -33,6 +33,7 @@
  * the defect this repo has now caught four times.
  */
 import { fromDate, instant, toDate } from '../../core/time';
+import { reallyDelivered } from './provider';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -172,6 +173,41 @@ export async function listStuckNotifications(
  */
 export async function countUnsentNotifications(db: Db, businessId: string, now: Date): Promise<number> {
   return db.notificationOutbox.count({ where: actionableWhere(businessId, now) });
+}
+
+/**
+ * A-118 — OF THE ROWS THIS BUSINESS BELIEVES IT SENT, HOW MANY NEVER LEFT.
+ *
+ * `status = 'sent'` means the adapter succeeded, and with the console adapter
+ * that means a line on a server log. `/staff/appointments/{id}` has said so per
+ * row since A-044/A-048 — it renders exactly these as *"queued"* — while the
+ * screen headed "Messages that did not go out" read the same 686 rows as
+ * nothing at all and printed "Everything has gone out."
+ *
+ * GROUPED IN SQL, JUDGED IN TYPESCRIPT, and that is the whole point of the
+ * shape. Spelling the predicate as a `where` — `deliveredBy IS NULL OR
+ * deliveredBy = 'log'` — would be a SECOND copy of `reallyDelivered`, in a
+ * language that cannot see it drift, and the day a real driver lands the two
+ * copies disagree about every row ever written. Grouping asks the database
+ * only what it is good at (count the rows per adapter; there are a handful of
+ * distinct values, ever) and leaves the judgement to the one function that
+ * makes it.
+ *
+ * NOT part of the badge, deliberately. The badge counts what the desk can ACT
+ * on, and there is nothing to do with a log row: no real channel exists to
+ * retry it into (D-14, A-053 blocked). It is a fact about the INSTALL, said
+ * once on the screen that is about messages.
+ */
+export async function countNotReallySent(db: Db, businessId: string): Promise<number> {
+  const byAdapter = await db.notificationOutbox.groupBy({
+    by: ['deliveredBy'],
+    where: { businessId, status: 'sent' },
+    _count: { _all: true },
+  });
+
+  return byAdapter
+    .filter((row) => !reallyDelivered(row.deliveredBy))
+    .reduce((total, row) => total + row._count._all, 0);
 }
 
 /** Whether a row's kind is one the badge counts — exported so a test can

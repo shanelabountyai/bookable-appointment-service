@@ -17,6 +17,7 @@ import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 import { fromDate, instant, toDate } from '@bookable/core/time';
+import { reminderDedupeKey } from '@bookable/core/notifications';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
 
 async function signIn(page: Page) {
@@ -80,6 +81,7 @@ async function bookedButNeverReminded(args: { name: string; phone: string }) {
       },
     });
     await prisma.$executeRaw`UPDATE "Appointment" SET "createdAt" = now() - interval '5 days' WHERE id = ${appointment.id}`;
+    return appointment;
   } finally {
     await prisma.$disconnect();
   }
@@ -88,10 +90,14 @@ async function bookedButNeverReminded(args: { name: string; phone: string }) {
 /** One outbox row in whatever state the test is about. */
 async function queueRow(args: {
   dedupeKey: string;
-  status: 'pending' | 'failed';
+  status: 'pending' | 'failed' | 'sent';
   attempts: number;
   lastError: string | null;
   nextAttemptAt?: Date | null;
+  /** Which adapter handled it — `log` is what every build that exists today
+   *  stamps (D-14, A-053 blocked), and the whole of A-118. */
+  deliveredBy?: string | null;
+  appointmentId?: string;
 }) {
   const prisma = new PrismaClient();
   try {
@@ -108,6 +114,8 @@ async function queueRow(args: {
         attempts: args.attempts,
         lastError: args.lastError,
         nextAttemptAt: args.nextAttemptAt ?? null,
+        deliveredBy: args.deliveredBy ?? null,
+        appointmentId: args.appointmentId ?? null,
       },
     });
   } finally {
@@ -303,6 +311,47 @@ test.describe('messages that did not go out (A-051)', () => {
 
     await nav.getByRole('link', { name: /^Messages/ }).click();
     await expect(page.getByRole('heading', { name: /never reminded \(1\)/ })).toBeVisible();
+  });
+
+  /**
+   * A-118 — THE TWO SCREENS, ON ONE ROW, SAYING THE SAME THING.
+   *
+   * The demo book in miniature: she WAS reminded, by the console adapter that
+   * every build wires in (D-14, A-053 blocked). So there is nothing failed,
+   * nothing waiting and nothing missing — all three lists correctly empty —
+   * and this screen printed "Everything has gone out" over it while
+   * `/staff/appointments/{id}` said "queued" about the very same row.
+   *
+   * Both halves asserted in one test deliberately: the defect is not either
+   * sentence, it is that the product contradicted itself, and a test that
+   * loads one screen cannot see that.
+   */
+  test('agrees with the appointment page about a message that only reached the log', async ({ page }) => {
+    const appointment = await bookedButNeverReminded({ name: 'Ada Chen', phone: '(512) 555-0188' });
+    await queueRow({
+      // A-117's builder, so this fixture cannot drift from the identity the
+      // sweep and the missed-reminder list both use.
+      dedupeKey: reminderDedupeKey(appointment.id, fromDate(appointment.startAt)),
+      status: 'sent',
+      attempts: 1,
+      lastError: null,
+      deliveredBy: 'log',
+      appointmentId: appointment.id,
+    });
+
+    await signIn(page);
+    await page.goto('/staff/messages');
+
+    await expect(page.getByRole('heading', { name: 'Nothing has actually been sent (1)' })).toBeVisible();
+    await expect(page.getByText(/Everything has gone out/)).toHaveCount(0);
+    // And she is NOT in the missed list — she was reminded. The point is that
+    // being reminded by the log is not the same as having been told.
+    await expect(page.getByRole('heading', { name: /never reminded/ })).toHaveCount(0);
+
+    await page.goto(`/staff/appointments/${appointment.id}`);
+    const told = page.locator('li').filter({ hasText: 'Reminder' });
+    await expect(told).toContainText('queued');
+    await expect(told).not.toContainText('sent');
   });
 
   /** Scanned with ALL THREE sections on screen at once — A-108 added two, and

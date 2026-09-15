@@ -3,6 +3,7 @@ export {
   type StuckKind,
   type StuckNotification,
   UNTRIED_ALARM_MS,
+  countNotReallySent,
   countUnsentNotifications,
   isActionable,
   listStuckNotifications,

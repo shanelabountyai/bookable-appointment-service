@@ -6,10 +6,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ChannelAdapter, OutboundMessage, SendResult } from '../../core/notifications';
 import { PrismaClient } from '../generated/client/index.js';
-import { ChannelSendError, LOGGING_ADAPTER_ID } from '../../core/notifications';
+import { ChannelSendError, LOGGING_ADAPTER_ID, LoggingChannelAdapter } from '../../core/notifications';
 import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import { dispatchPendingNotifications } from './dispatch';
-import { UNTRIED_ALARM_MS, countUnsentNotifications, isActionable, listStuckNotifications, retryNotification } from './stuck';
+import {
+  UNTRIED_ALARM_MS,
+  countNotReallySent,
+  countUnsentNotifications,
+  isActionable,
+  listStuckNotifications,
+  retryNotification,
+} from './stuck';
 import { reallyDelivered } from './provider';
 import { enqueueNotification } from './enqueue';
 import { resetDatabase } from '../testing';
@@ -835,5 +842,79 @@ describe('A-051 — what did not go out', () => {
     // And it really does go out on the next run.
     const working = new FakeAdapter();
     expect((await dispatchPendingNotifications(prisma, working, 100, later(1_000))).sent).toBe(1);
+  });
+});
+
+/**
+ * A-118 — THE ROWS THAT SAY `sent` AND WENT NOWHERE.
+ *
+ * `/staff/appointments/{id}` has called these "queued" since A-044/A-048,
+ * asking `reallyDelivered` of each row. `/staff/messages` asked nothing, so a
+ * book of 686 of them was not failed, not waiting and not missing — all three
+ * lists correctly empty — under the sentence "Everything has gone out."
+ */
+describe('countNotReallySent (A-118)', () => {
+  const queue = (dedupeKey: string) =>
+    enqueueNotification(prisma, {
+      businessId,
+      dedupeKey,
+      channel: 'email',
+      template: 'appointment.confirmed',
+      recipient: 'dana@example.com',
+      payload: {},
+    });
+
+  /**
+   * The demo book, in miniature: every row `sent`, every one of them by the
+   * console adapter. The two assertions beside the count are the reason the
+   * screen could lie — there is genuinely nothing stuck and nothing to act on.
+   */
+  it('counts a book the console adapter sent as nothing sent at all', async () => {
+    await queue('log:one');
+    await queue('log:two');
+    await dispatchPendingNotifications(prisma, new LoggingChannelAdapter(), 100, AT);
+
+    expect(await countNotReallySent(prisma, businessId)).toBe(2);
+    expect(await listStuckNotifications(prisma, businessId, { now: later(60_000) })).toHaveLength(0);
+    expect(await countUnsentNotifications(prisma, businessId, later(60_000))).toBe(0);
+  });
+
+  /**
+   * THE DIRECTION THE BUILD-WIDE PREDICATE GOT WRONG (A-048's argument, one
+   * screen over): the question is asked of the ROW. A real driver's rows stop
+   * counting the moment they are sent, and the console adapter's rows keep
+   * counting after one lands — which is the truth about each message.
+   *
+   * The NULL row is every message written before `deliveredBy` existed, and
+   * `log` is its honest answer.
+   */
+  it('asks the row, not the build, and reads a pre-column NULL as the log', async () => {
+    await queue('real:one');
+    await dispatchPendingNotifications(prisma, new FakeAdapter(), 100, AT);
+    await queue('log:one');
+    await dispatchPendingNotifications(prisma, new LoggingChannelAdapter(), 100, later(1_000));
+
+    const legacy = await queue('legacy:one');
+    await prisma.notificationOutbox.update({
+      where: { id: legacy.id },
+      data: { status: 'sent', deliveredBy: null },
+    });
+
+    expect(await countNotReallySent(prisma, businessId)).toBe(2);
+
+    // And never another salon's rows.
+    const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+    expect(await countNotReallySent(prisma, other.id)).toBe(0);
+  });
+
+  /** A queued or failed row is NOT this question — those are the stuck lists'
+   *  business, and counting them here would put every message on the screen
+   *  twice under two different sentences. */
+  it('leaves the rows that have not claimed to be sent to the other lists', async () => {
+    await queue('waiting:one');
+    await queue('dead:one');
+    await dispatchPendingNotifications(prisma, new CodedAdapter('invalid_recipient'), 100, AT);
+
+    expect(await countNotReallySent(prisma, businessId)).toBe(0);
   });
 });

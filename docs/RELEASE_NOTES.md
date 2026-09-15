@@ -4280,3 +4280,29 @@ four ten o'clock clients had been told nothing.
   never offered.** A visit moved into this afternoon two hours ago is past its
   own reminder window, exactly like a booking taken this morning for this
   afternoon. Both are the salon's business, neither is a fault to chase.
+
+---
+
+## A-118 — the screen that said everything was fine, and the one that disagreed
+
+This build has no text or email service connected — messages are written to the
+server log instead, which is the honest state of an unfinished integration. The
+appointment pages already said so: every message reads "queued", never "sent",
+because a front desk reading "sent" stops worrying about that client.
+
+The screen whose entire job is showing what did **not** go out never asked the
+question. Nothing had failed, nothing was waiting, nothing was missing — so it
+printed "Everything has gone out" over six hundred and eighty-six messages that
+reached nobody, while every appointment page said the opposite about the very
+same messages.
+
+- **The reassuring sentence now has to be true of the messages marked sent,
+  too**, and it asks the same question the appointment pages ask — one
+  predicate, not a second copy that drifts the day a real service is connected.
+- **The screen says what is actually true instead**: how many were written to
+  the log rather than sent, that this is what "queued" means on the appointment
+  pages, and that there is nothing to retry because there is nowhere to retry
+  it to.
+- **One test loads both screens about the same message**, because the defect
+  was never either sentence on its own — it was the product contradicting
+  itself, which no test of a single page can see.

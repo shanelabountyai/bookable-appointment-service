@@ -4438,3 +4438,78 @@ correctly wrote him a second key.
   `listMissedReminders`' default limit of 100, so a salon with more than a
   hundred unreminded clients sees 100. That is a number worth acting on either
   way.
+
+---
+
+## A-118 — "Everything has gone out" over messages nobody sent
+
+**Commit `TBD`.**
+
+`notificationAdapter` is `LoggingChannelAdapter` in every build that exists
+(D-14, A-053 blocked), so on the demo book all 686 outbox rows are
+`status = sent, deliveredBy = log`. A row like that is **not failed, not
+waiting and not missing** — so all three of this screen's lists were correctly
+empty, and `allClear` (`page.tsx:55`) printed *"Everything has gone out.
+Nothing is waiting and nothing has been given up on."* over the lot.
+
+`/staff/appointments/{id}` renders those same rows as *"queued"*, and has since
+A-044/A-048, for the reason `provider.ts` states in full: *"'Told: Cancellation
+— sent' is read at the front desk as 'no need to call her'"*. So on every
+install in existence the screen headed **"Messages that did not go out"** said
+everything went out, and every appointment page said it did not.
+
+A-044/A-048 already fixed this sentence once, on the appointment page. A-108
+rebuilt this screen and inherited the older reading; its seed dispatch then
+turned a blind screen into a contradicting one.
+
+### What it built
+
+- **`countNotReallySent` (`stuck.ts`)** — how many of the rows this business
+  believes it sent never left the building. `allClear` now includes it, so the
+  healthy sentence has to be true of the `sent` rows as well as the others.
+- **GROUPED IN SQL, JUDGED IN TYPESCRIPT**, and that is the whole shape of it.
+  A `where` clause spelling `deliveredBy IS NULL OR deliveredBy = 'log'` would
+  be a SECOND copy of `reallyDelivered`, in a language that cannot see it
+  drift — and the day a real driver lands, the two copies disagree about every
+  row ever written. `groupBy(['deliveredBy'])` asks the database only what it
+  is good at (a handful of distinct values, ever) and leaves the judgement to
+  the one function that makes it.
+- **A section that says what IS true**, headed *"Nothing has actually been sent
+  (686)"*: marked sent, written to the server log rather than handed to a phone
+  or an inbox, *"which is what every appointment page means when it says
+  'queued' about them"* — naming the other screen, because the desk has both.
+- **The count is in the heading**, so the sentence needs no plural agreement
+  and carries no conditional clause. A-120 has already found a flag on this
+  product whose second clause is cut on every real book.
+- **Rendered whether or not anything else is listed.** A desk told only about
+  the three that failed reads the other six hundred as delivered.
+- **Three unit tests and one e2e**, the e2e asserting BOTH screens on ONE row.
+
+### What it decided
+
+- **No new D-number.** D-14 stands; nothing here wires a channel or changes
+  what `reallyDelivered` means. This is one screen stopping saying the opposite
+  of the predicate it should have been asking.
+- **NOT added to the shell badge, deliberately.** The badge counts what the
+  desk can ACT on (A-051's reasoning, A-117's addition). There is no action for
+  a log row — no real channel exists to retry it into — so it is a fact about
+  the INSTALL, said once, on the screen that is about messages.
+- **`status = 'sent'` only.** A `pending` or `failed` row is the stuck lists'
+  business; counting it here would put one message on the screen twice under
+  two different sentences.
+
+### What it left behind
+
+- **The intro paragraph is a reader too.** It enumerates what is listed below
+  ("ran out of tries, refused outright, never picked up at all") and now ends
+  "or never went anywhere real" — a page that describes three of its four
+  sections is the same defect one layer down.
+- **Verified red before green.** With `allClear` reverted and the section cut,
+  the new e2e fails on *"Everything has gone out"* still being on screen.
+- **The fixture is one row and two screens.** The defect is not either sentence
+  on its own — it is that the product contradicted itself — so a test that
+  loads one screen cannot see it. A-118's e2e asserts the messages page and the
+  appointment page about the SAME outbox row, in one test.
+- **When a real driver lands, this section empties itself** and the old
+  sentence comes back, per row rather than per build: that is `reallyDelivered`
+  doing exactly what A-048 built it to do.
