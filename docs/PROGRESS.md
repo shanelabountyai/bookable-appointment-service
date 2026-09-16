@@ -4824,7 +4824,7 @@ named in the diff), green with the fix.
 
 ## A-122 — a cancelled chip and the time it freed, side by side
 
-**Commit `PENDING`.**
+**Commit `296b986`.**
 
 **What it built.** A cancelled appointment's freed time is a gap, and gaps paint
 `z-10` above chips (A-030), so the gap link covered the struck-through chip
