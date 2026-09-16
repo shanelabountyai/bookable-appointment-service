@@ -7,7 +7,7 @@ import { addDays, calendarDay, fromDate, toLabel, zoneId } from '@bookable/core/
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 import { toGridModel } from '@/lib/day/view-model';
-import { flagSentence } from '@/components/client-flag';
+import { flagOnAChip, flagSentence } from '@/components/client-flag';
 import { DateJump } from '@/components/date-jump';
 import { Tab, Tabs } from '@/components/ui/tabs';
 import { DayGrid } from './day-grid';
@@ -59,10 +59,13 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
     clientIds: view.columns.flatMap((c) => c.appointments.map((a) => a.clientId).filter((id) => id !== null)),
     today,
   });
+  // BOTH WIDTHS, from the one module that words this flag (A-120 / D-57): the
+  // chip has 180 pixels and everything else on this screen has a row.
   const missedByClient = new Map(
     [...flags].flatMap(([id, reliability]) => {
       const sentence = flagSentence(reliability);
-      return sentence ? [[id, sentence] as const] : [];
+      const short = flagOnAChip(reliability);
+      return sentence && short ? [[id, { sentence, short }] as const] : [];
     }),
   );
 

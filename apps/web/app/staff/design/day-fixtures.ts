@@ -153,7 +153,14 @@ export const FOUR_STYLISTS = model({
           label: 'Book 120 minutes free, 10:00–12:00, with Tess',
           href: '/staff/design',
         },
-        chip({ top: 195, minutes: 60, startTime: '12:15', title: 'Alice Hall', detail: 'Colour', missed: '2 no-shows in the last 12 months' }),
+        chip({
+          top: 195,
+          minutes: 60,
+          startTime: '12:15',
+          title: 'Alice Hall',
+          detail: 'Colour',
+          missed: { sentence: '2 no-shows in the last 12 months', short: '2 no-shows' },
+        }),
       ],
     }),
   ],
@@ -347,7 +354,27 @@ export const MODIFIER_MATRIX: { caption: string; item: GridItem }[] = [
       startTime: '10:00',
       title: 'Ada Chen',
       detail: 'Cut',
-      missed: '2 no-shows in the last 12 months',
+      missed: { sentence: '2 no-shows in the last 12 months', short: '2 no-shows' },
+    }),
+  },
+  {
+    // A-120 / D-57 — THE BLOCKED ONE, which is the cell this gallery was
+    // missing: the sentence is 386 px and the chip is 180, so for nine items
+    // the clause the desk acts on was cut off everywhere it mattered and drawn
+    // here, once, at full width where it looked correct. The chip carries the
+    // consequence; `sentence` is what the accessible name and every roomier
+    // surface say.
+    caption: 'reliability flag — blocked from booking online',
+    item: chip({
+      top: 0,
+      minutes: 60,
+      startTime: '10:00',
+      title: 'Ada Chen',
+      detail: 'Cut',
+      missed: {
+        sentence: '3 no-shows in the last 12 months. Cannot book online — the desk can.',
+        short: 'Desk books only',
+      },
     }),
   },
   {

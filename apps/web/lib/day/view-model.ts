@@ -79,10 +79,19 @@ export interface GridItem extends Laned {
    * because per-visit notes bury the allergy line.
    */
   visitNote?: string;
-  /** CLIENT-04's flag, already worded. On the chip for the same reason as the
-   *  note: the day grid is where the desk decides who to ring this morning,
-   *  and "she has missed the last two" is that decision. */
-  missed?: string;
+  /**
+   * CLIENT-04's flag, already worded, in BOTH of the two widths it is read at.
+   * On the chip for the same reason as the note: the day grid is where the
+   * desk decides who to ring this morning, and "she has missed the last two"
+   * is that decision.
+   *
+   * A-120 / D-57 — TWO WORDINGS BECAUSE THERE ARE TWO WIDTHS, and a pair
+   * rather than a second optional field so a new renderer of this model has to
+   * SAY which one it has room for. `sentence` was the only form for nine
+   * items, and the one surface with 180 pixels rendered it and cut off the
+   * clause the desk acts on, silently, on every ordinary chip.
+   */
+  missed?: { sentence: string; short: string };
   status?: AppointmentStatus;
   /** A-035. Present on appointment items only — the status buttons post it. */
   appointmentId?: string;
@@ -157,7 +166,7 @@ export interface CallRow {
   /** CLIENT-03's pinned note and CLIENT-04's flag, the same two the chip
    *  carries — the desk decides how to open the call from these. */
   note?: string;
-  missed?: string;
+  missed?: { sentence: string; short: string };
   /** "Told at 14:12 by Sam", or absent. */
   told?: string;
   /** She was told about a materially different number and is owed a second
@@ -238,9 +247,10 @@ export function toGridModel(
   view: DayView,
   now: Date,
   dayLabel: string,
-  /** CLIENT-04 flags by client id, already worded by the caller. Optional so
-   *  the model stays testable without a database. */
-  missedByClient: ReadonlyMap<string, string> = new Map(),
+  /** CLIENT-04 flags by client id, already worded by the caller — both
+   *  widths, see `GridItem.missed`. Optional so the model stays testable
+   *  without a database. */
+  missedByClient: ReadonlyMap<string, { sentence: string; short: string }> = new Map(),
   /** A-037's names by staff id, so "told by" is a person rather than "the
    *  front desk" — which is four people. */
   staffNames: ReadonlyMap<string, string> = new Map(),
@@ -342,7 +352,7 @@ function toColumn(
   f: Formatters,
   day: string,
   now: Date,
-  missedByClient: ReadonlyMap<string, string>,
+  missedByClient: ReadonlyMap<string, { sentence: string; short: string }>,
   cutoffMinutes: number,
   staffNames: ReadonlyMap<string, string>,
 ): GridColumn {
@@ -455,7 +465,10 @@ function toColumn(
           // Worded so the two cannot be confused when they are read aloud one
           // after the other: one is about her, one is about today.
           appointment.notes ? `today: ${appointment.notes}` : '',
-          missed ?? '',
+          // THE WHOLE SENTENCE, never the chip's short form: the accessible
+          // name has no width, and it is the only place a reader gets both
+          // the evidence and the consequence in one go.
+          missed?.sentence ?? '',
           // THE TWO TIMES, IN WORDS (§4). The name opens with the booked
           // range, so this has to say which time it is talking about rather
           // than adding a fourth bare clock reading to a sentence that

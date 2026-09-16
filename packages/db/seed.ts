@@ -32,7 +32,10 @@ async function main(): Promise<void> {
         `${density.dispatched} messages sent, ` +
         // A-113. Zero overlapping pairs on every install, so A-099's lanes
         // had nothing to draw on the demo book.
-        `${density.overrides} double-booked by override)`,
+        `${density.overrides} double-booked by override; ` +
+        // A-120. The never-reminded screen's only sentence on every install
+        // was "the job has never run"; these two are what changed that.
+        `${density.remindersSent} reminders swept, ${density.remindersMissed} left by the skipped band)`,
     );
   } finally {
     await prisma.$disconnect();

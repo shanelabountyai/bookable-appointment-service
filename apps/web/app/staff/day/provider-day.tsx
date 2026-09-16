@@ -121,7 +121,7 @@ export function ProviderDay({ column }: { column: GridColumn }) {
             <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">✎ {item.visitNote}</p>
           ) : null}
           {item.missed ? (
-            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed}</p>
+            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed.sentence}</p>
           ) : null}
 
           {/* A-070's whole point: writing it here rather than three taps and a

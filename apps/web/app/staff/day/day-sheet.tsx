@@ -204,7 +204,7 @@ export function DaySheet({
                         <div className='font-semibold'>⚑ {item.pinnedNote}</div>
                       ) : null}
                       {item.missed ? (
-                        <div className='font-semibold'>⚑ {item.missed}</div>
+                        <div className='font-semibold'>⚑ {item.missed.sentence}</div>
                       ) : null}
                       {/* A-070. On the paper at last, and VISUALLY DISTINCT
                           from the pinned note above it — ✎ and italic rather

@@ -327,7 +327,7 @@ function RingRound({
               </span>
             ) : null}
             {call.note ? <span className="w-full font-medium text-amber-900 dark:text-amber-200">⚑ {call.note}</span> : null}
-            {call.missed ? <span className="w-full font-medium text-amber-900 dark:text-amber-200">⚑ {call.missed}</span> : null}
+            {call.missed ? <span className="w-full font-medium text-amber-900 dark:text-amber-200">⚑ {call.missed.sentence}</span> : null}
           </li>
         ))}
       </ul>

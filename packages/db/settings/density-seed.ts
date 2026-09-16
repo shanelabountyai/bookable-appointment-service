@@ -33,6 +33,8 @@ import { bookAppointment } from '../booking';
 // reminders.ts, which reaches back into `../appointments` — the same cycle
 // reminders.ts's own header warns about, through the other door.
 import { dispatchPendingNotifications } from '../notifications/dispatch';
+import { listMissedReminders } from '../notifications/missed-reminders';
+import { sendDueReminders } from '../notifications/reminders';
 import { computeDaySlots } from '../scheduling';
 import {
   listOpenedSlots,
@@ -45,7 +47,7 @@ import { recordCallMark } from '../clients';
 import { LAPSED_WEEKS, listLapsedClients } from '../reports';
 import { createWaitlistEntry } from '../waitlist';
 import { staffActor } from '../../core/auth';
-import { LOGGING_ADAPTER_ID } from '../../core/notifications';
+import { LOGGING_ADAPTER_ID, REMINDER_LEAD_MS, REMINDER_WINDOW_MS } from '../../core/notifications';
 import type { ChannelAdapter, SendResult } from '../../core/notifications';
 import {
   type ZoneId,
@@ -128,6 +130,12 @@ export interface DensitySeedResult {
    *  pair to draw. Returned and printed for A-095's reason: it was zero on
    *  every install ever made, and nothing said so. */
   overrides: number;
+  /** A-120 — reminders the seeded sweep actually enqueued, and how many people
+   *  the one deliberately-skipped band left un-reminded. Both printed, for
+   *  A-095's reason a fourth time: `remindersMissed` going to zero is the
+   *  never-reminded screen going empty again, and nothing else would say so. */
+  remindersSent: number;
+  remindersMissed: number;
 }
 
 export async function seedDensity(
@@ -534,6 +542,16 @@ export async function seedDensity(
   // one exception is `seedLapsedHistory`, whose rows are deliberately in the
   // past — see its own header for why that cannot use the write path.
   const lapsedClients = await seedLapsedHistory(prisma, business.id, now, zone, reserved, providers, services);
+  // A-120 — COUNTED, exactly as `seedNoShowHistory` above is and for the same
+  // reason it had to be: these are rows in `Appointment`, and omitting them
+  // made the seed's own log under-report its total (686 printed against 691
+  // present). The same defect, the same file, twice — so the rule is the
+  // lesson: every function here that INSERTS an appointment adds to this
+  // counter at its call site, whatever else it is called for.
+  //
+  // One completed visit per lapsed client, which is why one number serves
+  // both; a fixture giving somebody two would have to return them apart.
+  appointmentsCreated += lapsedClients;
 
   // The waitlist is DERIVED FROM THE ROW THAT WAS CANCELLED, and getting that
   // wrong once is why this comment is long.
@@ -742,6 +760,75 @@ export async function seedDensity(
     }
   }
 
+  // ── A-120 (D-57) — THE REMINDER JOB HAS BEEN RUNNING, AND IT MISSED ONE ──
+  //
+  // A-108 built the never-reminded list and A-117 made it exact, and on a
+  // freshly seeded book it has never had a row on it — not because the
+  // derivation is wrong but because the BOOK cannot produce one. Measured on a
+  // fresh seed: 31 booked appointments start inside the next 24 hours, ZERO
+  // were created 24 hours before they start, and `remindersLastRunAt` is NULL.
+  // So predicate 3 excludes every one of them (they were all written at seed
+  // time, which is a same-day booking as far as the list is concerned) and the
+  // screen's only sentence is *"The reminder job has never run"* — A-095's
+  // complaint one feature over, for the third time.
+  //
+  // TWO THINGS ARE WRONG AND BOTH ARE THE SEED'S, so both are fixed here.
+  //
+  // 1. NOBODY BOOKED ANYTHING IN ADVANCE. A salon's book three weeks out was
+  //    not written this morning. Backdating `createdAt` is what makes the
+  //    future half of the moving book a book rather than a snapshot, and it is
+  //    predicate 3's whole input. The triggers recompute the blocked range and
+  //    the per-block rows from values this UPDATE does not touch, so they
+  //    rewrite exactly what is already there — the override's zero-width range
+  //    included.
+  //
+  // 2. THE JOB HAD NEVER RUN. Run it, the way A-108 made this seed drain its
+  //    own outbox rather than teaching the screen to forgive an empty one: the
+  //    screen was right and the book was wrong. One band is skipped on
+  //    purpose, because a job that has run perfectly is a screen with nothing
+  //    on it, and a demo of an alarm needs the alarm.
+  //
+  // ONLY THE TICKS THAT HAVE SOMETHING DUE, plus the last one. A sweep over an
+  // empty band does exactly one thing — stamp the monotonic watermark — so 288
+  // blind ticks and these few leave byte-identical rows behind, and the last
+  // tick is included unconditionally so the watermark reads "five minutes ago"
+  // rather than "whenever the final reminder happened to fall".
+  //
+  // THE COHORT COMES FROM `listMissedReminders` ITSELF, not from a second copy
+  // of its four predicates. Before any sweep has run, "everyone due inside the
+  // lead window whom nobody has reminded" IS everyone the sweep is about to
+  // reach — so the reader the screen uses is also the one that picks the band,
+  // and the two cannot drift apart. (A-117's rule, from the other end: the
+  // badge counts the cohort from the list rather than asking a cheaper
+  // question of its own.)
+  const nowMs = fromDate(now);
+  await prisma.$executeRaw`
+    UPDATE "Appointment"
+       SET "createdAt" = "startAt" - interval '21 days'
+     WHERE "businessId" = ${business.id} AND "startAt" > ${now}`;
+
+  // The band a given start belongs to: tick k covers `[now + k·5m, +5m)` and
+  // fires at `now - 24h + k·5m`. Derived from the two exported constants, so a
+  // change to either moves this with it.
+  const tickFor = (startAt: Date): number =>
+    nowMs - REMINDER_LEAD_MS + Math.floor((fromDate(startAt) - nowMs) / REMINDER_WINDOW_MS) * REMINDER_WINDOW_MS;
+
+  const cohort = await listMissedReminders(prisma, { businessId: business.id, now, limit: 10_000 });
+  // THE MIDDLE OF THE DAY, by position and never off the PRNG — the same rule
+  // as every other fixture choice in this file. Mid-cohort is half a day out:
+  // far enough from `now` that the demo still has time to act on it, and far
+  // enough from the end that the watermark tick below is never the skipped one.
+  const skipped = cohort.length > 0 ? tickFor(cohort[Math.floor(cohort.length / 2)]!.startAt) : null;
+  const remindersMissed = cohort.filter((row) => tickFor(row.startAt) === skipped).length;
+
+  const ticks = new Set(cohort.map((row) => tickFor(row.startAt)));
+  ticks.add(nowMs - REMINDER_WINDOW_MS);
+  let remindersSent = 0;
+  for (const tick of [...ticks].sort((a, b) => a - b)) {
+    if (tick === skipped) continue;
+    remindersSent += (await sendDueReminders(prisma, toDate(instant(tick)))).enqueued;
+  }
+
   // A-108 — DISPATCH WHAT THIS SEED ENQUEUED.
   //
   // Every booking above writes a confirmation through the real path, and
@@ -758,6 +845,8 @@ export async function seedDensity(
     appointmentsCreated,
     clientsCreated: clients.length + lapsedClients,
     dispatched,
+    remindersSent,
+    remindersMissed,
     byProvider,
     springForwardCount,
     fallBackCount,
@@ -811,10 +900,14 @@ async function seedLapsedHistory(
     ['Kwame Adeyemi', '+15125550112', LAPSED_WEEKS + 14],
     ['Harriet Vance', '+15125550113', LAPSED_WEEKS + 21],
     ['Mateo Tabora', '+15125550114', LAPSED_WEEKS + 29],
-    // A-113 — the long one lives HERE, off the pool `fill` draws from: a row
-    // on a list has room for it, and a half-width chip beside an override does
-    // not.
-    ['Jordan Fairweather-Okonkwo', '+15125550115', LAPSED_WEEKS + 40],
+    // A-120 — the long name used to live HERE, kept off the day because "a
+    // half-width chip beside an override" had no room for it. Measured, it is
+    // cut on an ORDINARY chip in an ordinary column too (157 px in 144-145),
+    // so the reason never held: a long name is cut wherever it goes, and the
+    // chip says so deliberately (it truncates the surname, never the status).
+    // It is on the live pool now — `seedClients` — and this row is an
+    // ordinary-length one again.
+    ['Ines Brandt', '+15125550115', LAPSED_WEEKS + 40],
   ] as const;
 
   let created = 0;
@@ -900,7 +993,11 @@ async function seedClients(prisma: PrismaClient, businessId: string) {
   const names = [
     ['Alice Hall', '+15125550101'],
     ['Dev Iyer', '+15125550102'],
-    ['Sam Okafor', '+15125550103'],
+    // A-120 — THE LONG NAME, on a client who is actually on the day. Nothing
+    // in the product had ever rendered one: A-113 put it in the lapsed pool,
+    // which is a list of rows with room to spare, so every width decision the
+    // grid makes was only ever measured against names that fit.
+    ['Jordan Fairweather-Okonkwo', '+15125550103'],
     ['Rae Núñez', '+15125550104'],
     ['Nadia Rahman', '+15125550105'],
     ['Tom Byrne', '+15125550106'],

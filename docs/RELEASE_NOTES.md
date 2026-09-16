@@ -4339,3 +4339,55 @@ The test that matters is the one that runs the same entry both ways: a span
 that holds her first service but not her visit must be refused, and a span
 freed by a service she never asked for must be offered. Asserting only the
 second would have passed against the bug.
+
+---
+
+## A-120 — the half of the warning nobody could read
+
+A client who has missed three appointments cannot book herself online. The
+front desk can, and that is the whole point of the rule: she is sent to the
+phone rather than refused a time. The day grid carried the warning —
+
+> ⚑ 3 no-shows in the last 12 months. Cannot book online — the desk can.
+
+— in a chip 185 pixels wide, holding 386 pixels of text. What was actually on
+the screen, on every ordinary chip, every day, was:
+
+> ⚑ 3 no-shows in the last 12 mo…
+
+The second half is the only half anyone acts on, and it had never once been
+visible.
+
+**Nothing in the test suite could see it, and that is the interesting part.**
+The assertion that covered this line matched the whole sentence and passed —
+browsers report the full text of an element whether or not it is clipped, so a
+test that asks "is this sentence on the page?" cannot tell a legible line from
+a cut one. The accessibility audit was quiet for the same reason: the complete
+sentence is in the chip's accessible name, so a screen reader gets it all. Four
+walk-throughs of the demo read the screen and did not notice.
+
+Only a measurement sees it. Where this product now claims something is legible,
+it compares the width of the text against the width of the box it is in, and
+prints both numbers when it fails.
+
+- **The chip keeps the consequence and drops the evidence** — "Desk books only"
+  — and it is deliberately shorter than the room it has, so it cannot come back
+  as the same bug at a rarer input. The count is still on the client's record,
+  the search results, the booking panel, the appointment page, the printed
+  sheet and the accessible name.
+- **A name too long for a column is now on the demo book.** It had been kept
+  off it, on the theory that only the narrowest chips lacked room; measured,
+  nothing on the grid has room for it. A grid is allowed to shorten a surname —
+  it is not allowed to shorten the thing that says this client never turned up,
+  and that is what is now tested.
+- **The demo can finally show the alarm it built two features ago.** A screen
+  that lists clients the reminder job missed had never had a row on it, because
+  a freshly installed book is written all at once and looks, to that screen,
+  like a day of same-day bookings nobody could have reminded. The sample book
+  is now written in advance, the reminder job is run over the week that has
+  already happened, and one five-minute window is skipped on purpose — which is
+  precisely the failure a real salon hits after a deploy.
+
+The last one is a habit rather than a feature: when a screen is right and the
+sample data cannot reach it, fix the data. A screen taught to forgive an empty
+state is a screen that will forgive a real one.

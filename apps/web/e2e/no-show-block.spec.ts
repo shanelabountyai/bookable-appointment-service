@@ -87,8 +87,11 @@ async function seedMisses(client: { name: string; phone: string }, count: number
   }
 }
 
-/** An ordinary future appointment, so she appears on a day grid at all. */
-async function bookOn(day: string, clientId: string) {
+/** An ordinary future appointment, so she appears on a day grid at all.
+ *  A-120 — `isOverride` puts a SECOND one at the same instant, which is what
+ *  halves the column into A-099's lanes: the flag has to survive the narrowest
+ *  chip the product can draw, not only the ordinary one. */
+async function bookOn(day: string, clientId: string, isOverride = false) {
   const prisma = new PrismaClient();
   try {
     const business = await prisma.business.findFirstOrThrow();
@@ -110,6 +113,10 @@ async function bookOn(day: string, clientId: string) {
         blockedEnd: endAt,
         startDay: day,
         startWallTime: '10:00',
+        // D-8. The trigger does the rest: a zero-width blocked range so the
+        // constraint is satisfied without being weakened, and the true range
+        // in `overriddenFromRange` for the day view to draw the pair from.
+        ...(isOverride ? { isOverride: true, overrideReason: 'Squeezed in before the wedding.' } : {}),
         lines: {
           create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
         },
@@ -118,6 +125,23 @@ async function bookOn(day: string, clientId: string) {
   } finally {
     await prisma.$disconnect();
   }
+}
+
+/** The one column these fixtures book into. */
+async function danaId(): Promise<string> {
+  const prisma = new PrismaClient();
+  try {
+    return (await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } })).id;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** Does the text inside this element actually fit the room it has? A truncated
+ *  element is `visible` and reads whole to `getByText`, so this is the only
+ *  question that can tell a legible line from a cut one. */
+async function fits(locator: ReturnType<Page['getByText']>): Promise<{ text: number; room: number }> {
+  return locator.evaluate((el) => ({ text: el.scrollWidth, room: el.clientWidth }));
 }
 
 test.beforeEach(async () => {
@@ -177,19 +201,96 @@ test.describe('the flag on the staff surfaces (CLIENT-04)', () => {
     await expect(page).toHaveURL(new RegExp(`/staff/clients/${clientId}$`));
   });
 
-  /** The day grid is a client surface too — and the one where the desk decides
-   *  who to ring this morning. */
-  test('carries the flag on the day-grid chip', async ({ page }) => {
+  /**
+   * The day grid is a client surface too — and the one where the desk decides
+   * who to ring this morning. It is also the one with 180 pixels (A-120 /
+   * D-57).
+   *
+   * THE ASSERTION THIS REPLACES PASSED AGAINST THE BUG, and it is worth
+   * saying how: `toBeVisible` and `getByText` both read `textContent`, which a
+   * CSS truncation does not touch. So *"⚑ 3 no-shows in the last 12 months.
+   * Cannot book online — the desk can."* — 386 px of it — matched, passed, and
+   * went on matching for nine items while the chip actually read *"⚑ 3
+   * no-shows in the last 12 mo…"* and the only half the desk can act on was
+   * never once on the screen. Axe cannot see it either: the accessible name
+   * carries the sentence whole, which is what makes this class of defect
+   * invisible to every tool in the gate. Only a MEASUREMENT sees it.
+   */
+  test('carries the flag on the day-grid chip, in the width the chip actually has', async ({ page }) => {
     const clientId = await seedMisses(OFFENDER, 3);
     await bookOn(DAY, clientId);
     await signIn(page);
 
     await page.goto(`/staff/day?day=${DAY}`);
     const chip = page.getByRole('link', { name: /Ada Chen/ });
-    // In the chip's accessible NAME as well as on its face: the flag must
-    // reach a screen reader, not only an eye scanning for amber.
-    await expect(chip).toHaveAttribute('aria-label', /3 no-shows in the last 12 months/);
-    await expect(page.getByText(/⚑ 3 no-shows in the last 12 months/)).toBeVisible();
+    // The accessible NAME carries the WHOLE sentence — it has no width, and it
+    // is the one place a reader gets the evidence and the consequence together.
+    await expect(chip).toHaveAttribute(
+      'aria-label',
+      /3 no-shows in the last 12 months\. Cannot book online — the desk can\./,
+    );
+
+    // And on the FACE, the consequence, measured.
+    const flag = chip.getByText('⚑ Desk books only');
+    await expect(flag).toBeVisible();
+    const room = await fits(flag);
+    expect(room.text, `the flag is cut off: ${room.text} px of text in ${room.room} px`).toBeLessThanOrEqual(room.room);
+
+    // The stylist's own list is the same model at a readable width, and there
+    // the sentence is whole — the short form is a concession to the grid, not
+    // a new fact about her.
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+    await expect(
+      page.getByText('⚑ 3 no-shows in the last 12 months. Cannot book online — the desk can.'),
+    ).toBeVisible();
+  });
+
+  /**
+   * A-120 — AND ON THE BUSIEST CHIP THE PRODUCT CAN DRAW.
+   *
+   * A-099's lane chip carries everything an ordinary one does plus a second
+   * client's name in its accessible name, and it is the chip the desk reaches
+   * for when it has deliberately overridden the rules. Measuring the ordinary
+   * case alone is CLAUDE.md's "a check that only ever runs one way" applied to
+   * geometry.
+   *
+   * IT IS NOT NARROWER, and that is D-54 rather than luck: a double-booked
+   * column widens by as many tracks as its widest cluster has lanes, because
+   * at the 13rem minimum a half lane left ~46 px for a name. Measured here:
+   * 185 px in a lane against 184 px in an ordinary column, and the sentence
+   * this item replaced was 386 px in both. So the premise asserted below is
+   * that these two are genuinely side by side — if they ever stop being, this
+   * is an ordinary chip measured twice and says nothing.
+   */
+  test('keeps the flag whole on a lane chip, beside the client it was overridden for', async ({ page }) => {
+    const clientId = await seedMisses(OFFENDER, 3);
+    await bookOn(DAY, clientId);
+    // The same instant, deliberately over the top of her: two chips, one
+    // column, half the width each.
+    const other = await seedMisses(REGULAR, 0);
+    await bookOn(DAY, other, true);
+    await signIn(page);
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    // Found by the PAIRING, never by a name alone: a lane chip's accessible
+    // name ends "at the same time as <the other one>", so /Ada Chen/ on its
+    // own matches Mei's chip too (A-113's spec found the same thing).
+    const lane = page.getByRole('link', { name: /Ada Chen.*at the same time as Mei Chen/ });
+    const partner = page.getByRole('link', { name: /Mei Chen.*at the same time as Ada Chen/ });
+    await expect(lane).toBeVisible();
+    await expect(partner).toBeVisible();
+
+    // THE PREMISE, asserted rather than assumed.
+    const [a, b] = [(await lane.boundingBox())!, (await partner.boundingBox())!];
+    expect(Math.abs(a.y - b.y), 'the two are not drawn at the same height, so this is not a lane').toBeLessThan(2);
+    const apart = a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1;
+    expect(apart, `the two are drawn on top of each other: ${JSON.stringify({ a, b })}`).toBe(true);
+
+    const flag = lane.getByText('⚑ Desk books only');
+    const room = await fits(flag);
+    expect(room.text, `the flag is cut off in a lane: ${room.text} px of text in ${room.room} px`).toBeLessThanOrEqual(
+      room.room,
+    );
   });
 
   test('shows nothing at all for a client with a clean record', async ({ page }) => {

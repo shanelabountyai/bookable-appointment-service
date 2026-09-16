@@ -9,11 +9,14 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
-import { addDays, calendarDay, daysBetween, fromDate, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
+import { addDays, calendarDay, daysBetween, fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
 import { computeDaySlots } from '../scheduling';
 import { countUnfinished, listOpenedSlots, listUnconfirmedTomorrow, listUnfinished } from '../appointments';
 import { listLapsedClients } from '../reports';
 import { listWaitlistEntries, matchFreedSlot } from '../waitlist';
+import { lastReminderSweep, listMissedReminders } from '../notifications/missed-reminders';
+import { REMINDER_TEMPLATE, REMINDER_WINDOW_MS, reminderDedupeKey } from '../../core/notifications';
+import { REMINDER_ELIGIBLE_STATUSES } from '../../core/scheduling';
 import { DEMO_WEEK, FALL_BACK_DAY, SPRING_FORWARD_DAY, seedDensity } from './density-seed';
 import { seedSetup } from './setup-seed';
 
@@ -42,6 +45,11 @@ let shared: Awaited<ReturnType<typeof seedDensity>>;
  * Deliberately twelve weeks past `SEED_ANCHOR_DAY` — that gap IS the defect.
  */
 const SEED_NOW = toDate(instantFromIso('2026-09-02T15:30:00-05:00'));
+/** A-120 — the reminder lead, spelled once. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** A-120 — the name `seedClients` now puts on the day. Here rather than
+ *  inline so the assertion and the seed cannot drift by a hyphen. */
+const LONG_NAME = 'Jordan Fairweather-Okonkwo';
 /** A-110 — the seed's own day, which is what a waitlist entry expires against. */
 const seedToday = (timezone: string) => toLabel(fromDate(SEED_NOW), zoneId(timezone)).day;
 
@@ -126,6 +134,135 @@ describe('the density seed produces a realistic book', () => {
     });
     expect(slots.length).toBeGreaterThan(0);
   });
+
+  // A-120 — THESE READ `shared` AND THE LIVE DATABASE TOGETHER, so they
+  // belong in THIS describe: the determinism block below resets and
+  // re-seeds with a different `randomSeed`, and from that point the rows in
+  // the database are a different book from the one `shared` describes. Both
+  // of these passed against the wrong book first — one loosely, one not at
+  // all (719 rows against a 683-row result).
+  /**
+   * A-120 (D-57) — THE FIFTH DARK CORNER, and the one a screen could not have
+   * noticed for itself.
+   *
+   * A-108 built the never-reminded list and A-117 made it exact, and on a
+   * freshly seeded book it had never carried a row — not because the
+   * derivation was wrong but because the BOOK could not produce one. Measured
+   * on a fresh seed: 31 booked appointments starting inside the next 24 hours,
+   * ZERO created 24 hours before they start, `remindersLastRunAt` NULL. The
+   * screen's only sentence was *"The reminder job has never run"*.
+   *
+   * These assert the two halves separately, because either one alone empties
+   * the list again and the screen looks identical both ways.
+   */
+  describe('A-120 — the reminder job has a history on the demo book', () => {
+    it('books the future in advance, so predicate 3 is not what empties the list', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+      const future = await prisma.appointment.findMany({
+        where: { businessId: business.id, startAt: { gt: SEED_NOW } },
+        select: { id: true, startAt: true, createdAt: true },
+      });
+      expect(future.length).toBeGreaterThan(0);
+      // The predicate's own comparison, not "createdAt is in the past": an
+      // appointment made this morning for this afternoon was never eligible
+      // for a 24-hour reminder, and a book made entirely of those is a book
+      // the missed list is blind to however many rows it holds.
+      const sameDay = future.filter((row) => fromDate(row.createdAt) > fromDate(row.startAt) - DAY_MS);
+      expect(sameDay).toEqual([]);
+    });
+
+    it('sweeps every elapsed band but one, and says when it last ran', async () => {
+      const business = await prisma.business.findFirstOrThrow();
+
+      // THE WATERMARK, which was NULL on every install ever made. "Nothing was
+      // due" and "the job has not run since Tuesday" are the two answers that
+      // screen exists to tell apart, and a fresh book could only ever give the
+      // second one.
+      const sweptAt = await lastReminderSweep(prisma, business.id);
+      expect(sweptAt).toEqual(toDate(instant(fromDate(SEED_NOW) - REMINDER_WINDOW_MS)));
+
+      const missed = await listMissedReminders(prisma, { businessId: business.id, now: SEED_NOW, limit: 1000 });
+      expect(missed.length).toBe(shared.remindersMissed);
+      expect(missed.length).toBeGreaterThan(0);
+      // And the rest of the cohort WAS reminded — otherwise "the list has rows
+      // on it" is satisfied by a job that never ran, which is the state this
+      // whole fixture exists to replace.
+      expect(shared.remindersSent).toBeGreaterThan(missed.length);
+
+      // ONE BAND, not a scatter. The operator's failure is a skipped tick —
+      // everybody inside one five-minute window and nobody outside it — and a
+      // fixture that instead left a random third of the day unreminded would
+      // demonstrate a job that is broken rather than one that missed a beat.
+      const bands = new Set(
+        missed.map(
+          (row) =>
+            Math.floor((fromDate(row.startAt) - fromDate(SEED_NOW)) / REMINDER_WINDOW_MS),
+        ),
+      );
+      expect(bands.size).toBe(1);
+
+      // A REMINDER ROW FOR EVERYBODY ELSE due inside the lead window, keyed to
+      // the instant they are actually booked at (A-117). Asserted from the
+      // outbox rather than from the list, so "the list is empty" cannot be
+      // what makes this pass.
+      const cohort = await prisma.appointment.findMany({
+        where: {
+          businessId: business.id,
+          status: { in: [...REMINDER_ELIGIBLE_STATUSES] },
+          startAt: { gte: SEED_NOW, lt: toDate(instant(fromDate(SEED_NOW) + DAY_MS)) },
+        },
+        select: { id: true, startAt: true },
+      });
+      const missedIds = new Set(missed.map((row) => row.appointmentId));
+      const keys = new Set(
+        (
+          await prisma.notificationOutbox.findMany({
+            where: { businessId: business.id, template: REMINDER_TEMPLATE },
+            select: { dedupeKey: true },
+          })
+        ).map((row) => row.dedupeKey),
+      );
+      for (const row of cohort) {
+        const key = reminderDedupeKey(row.id, fromDate(row.startAt));
+        expect(keys.has(key), `${row.id} at ${row.startAt.toISOString()}`).toBe(!missedIds.has(row.id));
+      }
+    });
+  });
+
+  /**
+   * A-120 — the seed's own log, reconciled against the table it describes.
+   *
+   * It said 686 and the table held 691: `seedLapsedHistory` writes five
+   * completed visits and its count was only ever read as a CLIENT count. The
+   * identical defect, in the identical file, is why `seedNoShowHistory` above
+   * carries the comment it does — so this asserts the whole total rather than
+   * the five, and a sixth fixture that forgets to add itself fails here.
+   */
+  it('counts every appointment it wrote, including the lapsed history', async () => {
+    const business = await prisma.business.findFirstOrThrow();
+    expect(shared.appointmentsCreated).toBe(await prisma.appointment.count({ where: { businessId: business.id } }));
+  });
+
+  /**
+   * A-120 — A NAME LONG ENOUGH TO BE CUT, on a client who is on the day.
+   *
+   * A-113 put the one long name in the LAPSED pool, off the book, because "a
+   * half-width chip beside an override" had no room for it. Measured, it does
+   * not fit an ordinary chip in an ordinary column either (157 px in 144-145)
+   * — so the reason never held, and the effect was that every width decision
+   * the grid makes was only ever taken against names that fit. `day-grid.spec`
+   * is where it is measured; this is what puts it on the day to be measured.
+   */
+  it('puts a name too long for a chip on the live book', async () => {
+    const business = await prisma.business.findFirstOrThrow();
+    const client = await prisma.client.findFirstOrThrow({
+      where: { businessId: business.id, name: LONG_NAME },
+      select: { id: true },
+    });
+    expect(
+      await prisma.appointment.count({ where: { businessId: business.id, clientId: client.id } }),
+    ).toBeGreaterThan(0);
+  });
 });
 
 describe('the DST fixtures actually exist', () => {
@@ -186,6 +323,12 @@ describe('determinism and safety', () => {
         });
         return {
           created: result.appointmentsCreated,
+          // A-120 — the seeded reminder history too. Which band is skipped is
+          // picked by POSITION in the cohort, like every other fixture choice
+          // here; it is the demo's only never-reminded list, and a coin toss
+          // would make "does the screen have anything on it" a different
+          // answer every run.
+          reminders: `${result.remindersSent}/${result.remindersMissed}`,
           rows: rows.map((r) => `${r.startDay}|${r.startAt.toISOString()}|${r.provider.displayName}`),
         };
       };
@@ -194,6 +337,7 @@ describe('determinism and safety', () => {
       const second = await run();
 
       expect(second.created).toBe(first.created);
+      expect(second.reminders).toBe(first.reminders);
       expect(second.rows).toEqual(first.rows);
       expect(first.rows.length).toBeGreaterThan(20);
     },

@@ -4603,3 +4603,137 @@ match and attaches a warning to it.
   utilization week, A-108's reminder watermark). Both are cited ~50 times
   across code and PROGRESS, so neither was renumbered; the file now says which
   is which and that D-56 was the next free number.
+
+---
+
+## A-120 — three things the demo book could not show, and half a flag nobody could read
+
+**Commit `PENDING`.**
+
+Four defects, all of them in what the product SHOWS rather than in what it
+computes, and every one of them green in the gate.
+
+### 1. The never-reminded list was empty by construction
+
+A-108 built the missed-reminder cohort and A-117 made it exact. On a freshly
+seeded book it had never carried a row — not because the derivation is wrong
+but because the book cannot produce one:
+
+```
+booked appointments starting in the next 24h : 31
+...of those, created 24h before they start   :  0   <- predicate 3
+Business.remindersLastRunAt                  : NULL
+```
+
+`seedDensity` writes the whole book at seed time, so as far as the list is
+concerned every appointment in it is a same-day booking — which predicate 3
+exists to keep off the screen — and the job had never run. The only sentence
+`/staff/messages` could say was *"The reminder job has never run"*. A-113's
+lanes complaint, one feature over, for the third time.
+
+Both halves are the seed's, so both are fixed there, the way A-108 made the
+seed drain its own outbox rather than teaching the screen to forgive an empty
+one — **the screen was right and the book was wrong**:
+
+- **The future half of the moving book is backdated** to `startAt - 21 days`.
+  A salon's book three weeks out was not written this morning, and that is
+  predicate 3's whole input.
+- **The sweep is run over the elapsed ticks, with one band deliberately
+  skipped.** The skipped band is the operator's own failure from the phase 12
+  review — everybody inside one five-minute window and nobody outside it —
+  and it is what gives the demo an alarm to demonstrate.
+
+Two things about how it is run are deliberate. **Only the ticks that have
+something due**, plus the last one: a sweep over an empty band does exactly one
+thing, stamp the monotonic watermark, so a few ticks and 288 blind ones leave
+byte-identical rows, and the last tick is unconditional so the watermark reads
+*five minutes ago* rather than *whenever the final reminder happened to fall*.
+And **the cohort comes from `listMissedReminders` itself**, not from a second
+copy of its four predicates — before any sweep has run, "everyone due inside
+the lead window whom nobody has reminded" IS everyone the sweep is about to
+reach, so the reader the screen uses is the one that picks the band.
+
+### 2. The long name was kept off the day for a reason the measurement contradicts
+
+A-113 put `Jordan Fairweather-Okonkwo` in the LAPSED pool — off the book —
+because *"a half-width chip beside an override does not"* have room. Measured,
+it does not fit an ordinary chip in an ordinary column either: **157 px in
+144–145**. So the reason never held, and the effect was that every width
+decision the grid makes had only ever been taken against names that fit.
+
+The name is now on a live client (`Sam Okafor` renamed IN PLACE — same count,
+same order, same phones, A-113's rule, because `fill` picks off the PRNG and
+another LENGTH re-deals every client and moves A-024's frozen `1290/2100`), and
+the lapsed row is an ordinary-length name again.
+
+**Where the claim of legibility lives moved with it.** A-113's spec measured
+`scrollWidth <= clientWidth` on the NAME of a lane chip — and the name is the
+one thing on line one the chip gives away on purpose. That assertion passed
+only because every seeded name was short, and would have failed the day the
+fixture got realistic, for a product behaving correctly. It now measures the
+TIME, which line one declares `shrink-0` and which D-54 widened the column to
+protect. The whole name is asserted where it is actually whole: the accessible
+name, the stylist's list (measured), and the printed sheet (in words — paper
+has no geometry).
+
+### 3. The flag's second clause was never on the grid (D-57)
+
+`⚑ 3 no-shows in the last 12 months. Cannot book online — the desk can.` is
+**386 px** of text. The chip has **185** (184 in an ordinary column, 185 on a
+D-54 lane chip). So for nine items every ordinary chip read *"⚑ 3 no-shows in
+the last 12 mo…"* and the only half the desk can act on was never once on the
+screen.
+
+**Nothing in the gate could see it**, and that is the part worth keeping:
+`toBeVisible` and `getByText` read `textContent`, which a CSS truncation does
+not touch — so A-020's own assertion matched the full sentence and passed, and
+went on passing. Axe is quiet because the accessible name carries the sentence
+whole. Four demo walk-throughs read it as correct.
+
+D-57, at the owner's prompt: **the chip carries the consequence and drops the
+evidence** — `⚑ Desk books only` — and the evidence is one tap away. Both forms
+are built from one set of parts in `client-flag.tsx`, and `GridItem.missed`
+carries the PAIR rather than growing a second optional field, so a new renderer
+of the day model has to SAY which width it has. An optional `missedShort` lets
+the next narrow surface keep the default and cut the sentence silently, which
+is exactly how this shipped.
+
+### 4. The seed log said 686 and the table held 691
+
+`seedLapsedHistory` writes five completed visits and its return value was only
+ever read as a CLIENT count. The identical defect, in the identical file, is
+why `seedNoShowHistory` above it already carries the comment it does — so the
+new test asserts the WHOLE total against `prisma.appointment.count()` rather
+than the five, and a sixth fixture that forgets to add itself fails there.
+
+### What it left behind
+
+- **`flagOnAChip` is the chip's only wording, and `flagSentence` everyone
+  else's.** Both are built from one private `flagCounts`. A third wording in a
+  third file is the thing `client-flag.tsx` exists to prevent.
+- **`GridItem.missed` is `{ sentence, short }`.** Four renderers read it and
+  three of them want `sentence`; the chip is the only narrow surface the day
+  model has, and the pair is what makes a fourth one declare itself.
+- **A measurement is the only assertion that can see a truncation.** Three new
+  ones were added and one was moved. Where a test claims legibility it now
+  compares `scrollWidth` with `clientWidth` and prints both in the failure.
+- **Two premises are asserted rather than assumed** (A-096's rule): the
+  long-name test fails with *"the fixture name now FITS — it is no longer long
+  enough to test anything"* if the name ever stops being long, and the lane
+  test fails if the two chips stop being drawn side by side.
+- **A test that reads `shared` AND the live database belongs in
+  `density-seed.test.ts`'s FIRST describe.** The determinism block resets and
+  re-seeds with a different `randomSeed`, and from there the rows in the
+  database are a different book from the one `shared` describes. Both of the
+  new exact-count assertions passed against the wrong book first — one loosely,
+  one not at all (719 rows against a 683-row result).
+- **`remindersSent` and `remindersMissed` are printed by the seed**, for
+  A-095's reason a fourth time: `remindersMissed` going to zero is the
+  never-reminded screen going quietly empty again, and nothing else would say
+  so.
+- **The seeded reminder history costs nothing measurable.** The full
+  `density-seed.test.ts` file ran 76.7 s before and 71.9 s after.
+- **`Sam Okafor` no longer exists.** Earlier PROGRESS entries and checkpoint
+  reviews name him (A-111's *"Tom Byrne and Sam Okafor hold 171 of the 718
+  appointments"*); those are historical and were not rewritten. The seed still
+  has two non-female-coded names in the eight.

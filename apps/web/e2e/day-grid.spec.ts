@@ -783,6 +783,86 @@ test.describe('two clients in one hour (A-099, D-8)', () => {
 });
 
 /**
+ * A-120 — A NAME LONGER THAN THE COLUMN.
+ *
+ * `Jordan Fairweather-Okonkwo` is a real length of name and the seed now puts
+ * it on a live client (`seedClients`). A-113 had kept it in the LAPSED pool,
+ * off the book, because *"a half-width chip beside an override"* had no room
+ * for it — and the measurement contradicts the reason: at 157 px it does not
+ * fit an ordinary chip in an ordinary column either (144-145 px of room). A
+ * long name is cut wherever it goes on this grid, so the product's answer
+ * cannot be to keep long names off the day. It is the chip's stated
+ * truncation ORDER, and these assert it rather than assuming it.
+ */
+test.describe('a name longer than the column (A-120)', () => {
+  /** The one the seed puts on the day. Spelled here rather than imported so a
+   *  rename in `seedClients` shows up as a failing fixture rather than as a
+   *  silently shorter name that fits and proves nothing. */
+  const LONG_NAME = 'Jordan Fairweather-Okonkwo';
+
+  test('gives the surname away and keeps the status word', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T11:00:00-05:00',
+      status: 'no_show',
+      clientName: LONG_NAME,
+    });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const chip = page.getByRole('link', { name: new RegExp(LONG_NAME) });
+    await expect(chip).toBeVisible();
+
+    // THE PREMISE. If this name ever starts fitting, everything below is being
+    // asserted about a chip with room to spare and this test is measuring
+    // nothing — so it fails and says so rather than passing quietly (A-096).
+    const name = await chip.getByText(LONG_NAME, { exact: true }).evaluate((el) => ({
+      text: el.scrollWidth,
+      room: el.clientWidth,
+    }));
+    expect(
+      name.text,
+      `the fixture name now FITS (${name.text} px in ${name.room} px) — it is no longer long enough to test anything`,
+    ).toBeGreaterThan(name.room);
+
+    // AND THE THING THE CHIP PROMISES NEVER GIVES WAY. "She is a no-show"
+    // survives a narrow column better than the last four letters of a surname
+    // — that is the chip's own comment, and this is the only assertion that
+    // holds it to it. `toBeVisible` cannot: a clipped word is visible.
+    const word = await chip.getByText('No-show', { exact: true }).evaluate((el) => ({
+      text: el.scrollWidth,
+      room: el.clientWidth,
+    }));
+    expect(word.text, `the status word is cut off: ${word.text} px in ${word.room} px`).toBeLessThanOrEqual(word.room);
+
+    // And nothing is LOST — the accessible name has no width, and it is where
+    // the whole name is, cut chip or not.
+    await expect(chip).toHaveAttribute('aria-label', new RegExp(LONG_NAME));
+  });
+
+  test('says the whole name where the surface has room to say it', async ({ page }) => {
+    await seedAppointment({
+      start: '2026-06-09T10:00:00-05:00',
+      end: '2026-06-09T11:00:00-05:00',
+      clientName: LONG_NAME,
+    });
+    const provider = await danaId();
+
+    // The stylist's own list — the phone in her pocket, and a row rather than
+    // a column, so here the claim IS legibility and it is measured as such.
+    await page.goto(`/staff/day?day=${DAY}&provider=${provider}`);
+    const row = page.getByRole('link', { name: new RegExp(LONG_NAME) });
+    const fit = await row.evaluate((el) => ({ text: el.scrollWidth, room: el.clientWidth }));
+    expect(fit.text, `the name is cut on the stylist's list: ${fit.text} px in ${fit.room} px`).toBeLessThanOrEqual(
+      fit.room,
+    );
+
+    // And the paper, which has no geometry at all — so it is asserted in words.
+    await page.goto(`/staff/day?day=${DAY}&provider=${provider}&sheet=1`);
+    await expect(page.locator('tbody tr').filter({ hasText: LONG_NAME })).toHaveCount(1);
+  });
+});
+
+/**
  * A-113 — THE SAME PROMISE, ON THE BOOK A DEMO ACTUALLY OPENS.
  *
  * Everything above hand-builds its pair, which is how A-099 could be right and
@@ -838,16 +918,33 @@ test.describe('the seeded double-booking (A-113)', () => {
     const apart = a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1;
     expect(apart, `chips overlap: ${JSON.stringify({ a, b })}`).toBe(true);
 
-    // LEGIBLE, not merely present. The name is the part of line one that gives
-    // way in a narrow lane (the chip's own truncation order), so `toBeVisible`
-    // passes on "Ma…" — measure whether the text actually fits.
+    // LEGIBLE, not merely present — but A-120 moved WHICH element carries that
+    // claim, and the move is the point rather than a weakening.
+    //
+    // This measured the NAME, and the name is the one thing on line one that
+    // the chip gives away ON PURPOSE (its own comment says so: lose the tail of
+    // a surname, never the fact that this one never turned up). It passed only
+    // because every seeded name was short enough — and the seed now carries
+    // `Jordan Fairweather-Okonkwo`, 157 px, which fits no column this grid
+    // draws at any width. A name-length assertion here is a test that fails the
+    // day the fixture gets realistic, for a product that is behaving correctly.
+    //
+    // So what a lane promises is measured instead: the TIME, which line one
+    // declares `shrink-0` and which a lane must never eat — D-54 widened the
+    // column for exactly this reason, because at the 13rem minimum a half lane
+    // left ~46 px for a name. The whole name is asserted where it is actually
+    // whole: the accessible name here, and the sheet below.
     for (const [box, name] of [
       [already, pair.already],
       [squeezed, pair.squeezedIn],
     ] as const) {
-      const label = box.getByText(name, { exact: true });
-      await expect(label).toBeVisible();
-      expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), `${name} is cut off`).toBe(true);
+      await expect(box.getByText(name, { exact: true })).toBeVisible();
+      await expect(box.getByRole('link')).toHaveAttribute('aria-label', new RegExp(name));
+      const time = box.locator('span.numeric').first();
+      expect(
+        await time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+        `the time is cut off on ${name}'s lane chip`,
+      ).toBe(true);
     }
 
     // The paper has no geometry, so it says it in words — on BOTH rows, and the

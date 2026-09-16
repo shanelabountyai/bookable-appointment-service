@@ -123,7 +123,13 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
       {/* CLIENT-03's safety surface. Marked by the glyph, which survives
           greyscale, a colour-blind reader and a printed sheet. */}
       {item.pinnedNote ? <span className="block truncate font-medium">⚑ {item.pinnedNote}</span> : null}
-      {item.missed ? <span className="block truncate font-medium">⚑ {item.missed}</span> : null}
+      {/* A-120 / D-57. THE SHORT FORM, because this is the one surface the
+          flag is read at that has no room for the sentence: 386 px of it in
+          178-185 px, cut at "the last 12 mo…", losing the half the desk acts
+          on — with the whole sentence in the accessible name, so axe and
+          `getByRole` said it was fine for nine items. The chip keeps the
+          consequence and drops the evidence; the evidence is one tap away. */}
+      {item.missed ? <span className="block truncate font-medium">⚑ {item.missed.short}</span> : null}
       {/* A-070. VISUALLY DISTINCT from the pinned note above: ✎ and no amber,
           because this is about today rather than a safety line about her.
           Truncated here and whole in the accessible name. */}
