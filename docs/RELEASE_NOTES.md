@@ -4391,3 +4391,34 @@ prints both numbers when it fails.
 The last one is a habit rather than a feature: when a screen is right and the
 sample data cannot reach it, fix the data. A screen taught to forgive an empty
 state is a screen that will forgive a real one.
+
+---
+
+## The walk that looked instead of read
+
+*Demo checkpoint 11 and the Phase 13 close: a scoping pass. No product code
+changed.*
+
+Eleven phases of review have measured the staff day grid by what it says:
+accessibility rules in both colour schemes, the text a screen reader hears,
+and since Phase 12 whether each label fits its own box. This walk looked at a
+screenshot first, and found **text printed on top of text on 40% of the
+appointments on the book**: a "5 min free" label drawn across the time and
+the client's name.
+
+Two layout rules made it, each correct on its own. A band of free time is
+never drawn shorter than one line of text, and free time is drawn *above*
+appointments so time inside a long colour service stays bookable. A salon that
+books cuts on the hour has five free minutes before every client, so the two
+rules collide in the ordinary case. The same layering also buries a cancelled
+appointment completely under its own freed time, so the button that undoes a
+mis-tapped cancellation cannot be reached from the grid.
+
+**What is engineered here is the method, not the fix.** Every automated check
+in the pipeline asks a question of one element: is it visible, is it named,
+does its text fit. Two elements that each pass can occupy the same pixels, and
+no check reading one element at a time can see it. The next build asserts
+geometry between neighbours, in page coordinates, and prints both rectangles
+when it fails. The first version of the measurement compared a rectangle taken
+before scrolling with one taken after and reported zero, which is the kind of
+green that has to be caught by distrust rather than by tooling.

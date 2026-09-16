@@ -4737,3 +4737,48 @@ than the five, and a sixth fixture that forgets to add itself fails there.
   reviews name him (A-111's *"Tom Byrne and Sam Okafor hold 171 of the 718
   appointments"*); those are historical and were not rewritten. The seed still
   has two non-female-coded names in the eight.
+
+---
+
+## Demo checkpoint 11 and the Phase 13 close — a scoping pass, not a build
+
+**Commit:** _(recorded in the follow-up commit)_
+
+**What it produced.** `docs/reviews/22-demo-checkpoint-11.md` (the walk) and
+**two new backlog rows, A-121 and A-122**, as Phase 14. No product code
+changed. `grep ⬜` returned only the legend after A-120. The owner chose a
+checkpoint over an operator review for this round.
+
+**THE CRAWL WAS CLEAN ON EVERY DAY THE DEFECT WAS ON.** 86 route×scheme
+pairs: all 200, all axe-clean, 0 console errors, 0 pronouns. The walk took a
+screenshot of today before measuring anything, and the first column had
+*"5 min free"* printed across *"10:00 Jordan Fairweath…"*. A-016 floors every
+grid item at 18 px (12 minutes), and A-030 paints gaps `z-10` above
+appointments. A 5-minute gap, which is what a column of Cuts (45 + 10) booked
+on the hour leaves before every client, is drawn over the first line of the
+next chip. **99 of 245 chips on the future book, 40%.** Each rule was right on
+its own, and they were decided fourteen items apart.
+
+**The second half is the same `z-10` at full length.** A cancelled
+appointment's freed time is a gap drawn exactly over the struck-through chip,
+so the chip cannot be clicked at all (Playwright reports the gap link
+intercepting). A-112's undo lives on the page behind it. It needs a decision
+(D-58) because the three ways out build different screens.
+
+**Phase 13 walked clean.** A-114 re-walked through `/book` with four new
+spellings (`alice  HALL` / `512.555.0101` refused; `Rae Nunez` / `512 555 0104`
+reused; `+44…` correctly a new client). A-117's badge matches the missed list
+(5), A-118 says *"NOTHING HAS ACTUALLY BEEN SENT (733)"*, and A-120's chip reads
+*"⚑ Desk books only"*.
+
+**Left behind.**
+
+- **The measurement script lied once, in the reassuring direction.** It took
+  the gap rectangles before `scrollIntoView` and the chip rectangles after it,
+  and reported 0 overprinted chips on all eight days. Page coordinates
+  (`+ scrollY`) gave 99. A-121's test must take both rectangles in one frame.
+- **`bookable_cp11`** is still lying around (`bookable_cp10` was dropped). It
+  holds three test bookings from the walk (Rae Núñez twice, Marcy Dunn) and a
+  `+44` Rae Núñez.
+- The room strip clips `Priya · Root touch-up` (113 in 69) on short chips.
+  Recorded in the review, not scoped.
