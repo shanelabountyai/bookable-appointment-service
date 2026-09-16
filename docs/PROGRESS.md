@@ -4785,7 +4785,7 @@ reused; `+44…` correctly a new client). A-117's badge matches the missed list
 
 ## A-121 — a gap too short for its label is drawn at its own height, without one
 
-**Commit `pending`.**
+**Commit `ca82bee`.**
 
 **What it built.** `day-grid.tsx`'s `Item` floored every box at 18 px (twelve
 minutes), and gaps paint `z-10` above appointments (A-030), so the 5-minute gap
