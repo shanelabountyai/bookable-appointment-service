@@ -107,6 +107,40 @@ describe('withLanes (A-099)', () => {
     expect(out.find((i) => i.key === 'colour')!.concurrent).toBeUndefined();
   });
 
+  it('lanes a cancelled chip beside the gap its cancellation freed — both whole, neither covering the other (A-122, D-58)', () => {
+    const out = withLanes([
+      item({ key: 'before', top: 0, minutes: 60, status: 'completed' }),
+      item({ key: 'marcy', top: 180, minutes: 60, status: 'cancelled', title: 'Marcy Dunn' }),
+      item({ key: 'gap', kind: 'gap', top: 175, minutes: 65 }),
+    ]);
+    const lane = (key: string) => out.find((i) => i.key === key)!;
+    expect([lane('marcy').lanes, lane('gap').lanes]).toEqual([2, 2]);
+    expect(lane('marcy').lane).not.toBe(lane('gap').lane);
+    expect(lane('before').lanes).toBe(1);
+    // A cancelled visit and a stretch of free time are not two clients at once.
+    expect(out.map((i) => i.concurrent)).toEqual([undefined, undefined, undefined]);
+    expect(lane('gap').label).toBe('gap');
+  });
+
+  it('still draws a gap OVER a live appointment — only cancellations take the gap into a lane', () => {
+    for (const status of ['cancelled_late', 'no_show'] as const) {
+      const out = withLanes([
+        item({ key: 'a', top: 0, minutes: 60, status }),
+        item({ key: 'gap', kind: 'gap', top: 0, minutes: 60 }),
+      ]);
+      expect(out.find((i) => i.key === 'gap')!.lanes).toBe(status === 'no_show' ? undefined : 2);
+    }
+  });
+
+  it('does not say a live client is "at the same time as" the cancelled one whose slot she took', () => {
+    const out = withLanes([
+      item({ key: 'gone', top: 0, minutes: 60, status: 'cancelled', title: 'Marcy Dunn' }),
+      item({ key: 'new', top: 0, minutes: 60, status: 'booked', title: 'Ada Chen' }),
+    ]);
+    expect(out.map((i) => i.lanes)).toEqual([2, 2]);
+    expect(out.map((i) => i.concurrent)).toEqual([undefined, undefined]);
+  });
+
   it('names only who actually overlaps, not everyone in the cluster', () => {
     // a–b overlap, b–c overlap, a and c never share an instant.
     const out = withLanes([

@@ -657,6 +657,33 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
     expect(await statusOf(appointment.id)).toBe('booked');
   });
 
+  /**
+   * A-122 (D-58) — THE WAY BACK HAS TO BE REACHABLE FROM THE GRID, BY POINTER.
+   *
+   * The time her cancellation freed is a gap, and gaps paint above chips
+   * (A-030), so the gap link covered the struck-through chip exactly and a
+   * click on her name opened a booking panel for her own slot. `goto` would
+   * pass against that; only a real click can fail. Both halves are asserted —
+   * the freed time must stay bookable from the same column.
+   */
+  test('opens from her struck-through chip on the grid, beside the time it freed', async ({ page }) => {
+    const appointment = await bookOne();
+    await cancelIt(page, appointment.id);
+
+    await page.goto(`/staff/day?day=${DAY}`);
+    const column = page.getByRole('region', { name: /Dana/ });
+    const freed = column.getByRole('link', { name: /^Book 180 minutes free, 09:00–12:00/ });
+    await expect(freed).toBeVisible();
+
+    await column.getByRole('link', { name: /Ada Chen.*, cancelled$/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/staff/appointments/${appointment.id}`));
+    await expect(page.getByRole('button', { name: REINSTATE })).toBeVisible();
+
+    await page.goBack();
+    await freed.click();
+    await expect(page).toHaveURL(/\/staff\/book/);
+  });
+
   test('says so when the reason box is empty, rather than doing it quietly', async ({ page }) => {
     const appointment = await bookOne();
     await cancelIt(page, appointment.id);

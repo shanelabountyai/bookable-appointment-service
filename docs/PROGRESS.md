@@ -4821,3 +4821,34 @@ named in the diff), green with the fix.
   symptom was the rule in CLAUDE.md exactly: A-113's density seed timed out at
   4 min, the untouched A-016 render test took 18–25 s, and the test after each
   bounced to `/staff/login`. Waiting for the neighbour, not debugging, fixed it.
+
+## A-122 — a cancelled chip and the time it freed, side by side
+
+**Commit `PENDING`.**
+
+**What it built.** A cancelled appointment's freed time is a gap, and gaps paint
+`z-10` above chips (A-030), so the gap link covered the struck-through chip
+exactly and A-112's *"Put it back on the book"* could not be reached from the
+grid. `withLanes` (`lib/day/lanes.ts`) now also lanes any gap overlapping an
+appointment whose status is outside `ACTIVE_STATUSES`; the two share the column
+and D-54 widens it. `concurrent` is computed among live appointments only, so a
+resold slot no longer prints *"at the same time as"* the cancelled client.
+
+**What it decided.** D-58 (b), lanes, over painting the chip above the gap and
+over taking cancellations off the grid. The predicate reads `ACTIVE_STATUSES`
+rather than a list of cancellation statuses, so a released no-show (still
+active) keeps A-030's overlay.
+
+**The test.** Three unit cases in `lanes.test.ts` (cancelled chip + its gap
+laned; `no_show` still overlaid; no "at the same time as" across a
+cancellation). One e2e in `appointment-detail.spec.ts`: cancel, then CLICK the
+struck-through chip on the grid, land on the reinstate button, go back, click
+the freed gap into the booking panel. Verified red against the old `lanes.ts`
+(the gap link intercepted the click), green with the fix.
+
+**What it left behind.**
+
+- **A same-day cancellation widens its stylist's column all day** (D-54's
+  whole-day rule). Acceptable at one or two a day; revisit if a heavy
+  cancellation day makes the grid scroll sideways.
+- **Phase 14 is empty.** The backlog has no open item.

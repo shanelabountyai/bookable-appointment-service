@@ -4444,3 +4444,22 @@ on the hour has one before every appointment: 40% of the chips on the demo book.
 - **It refuses to pass vacuously.** If the fixture ever stops containing a gap
   shorter than twelve minutes, it fails saying so, instead of going quietly
   green.
+
+## A-122 — the cancellation you can click on again
+
+When a client cancels, her appointment stays on the day grid, struck through,
+and the time it freed becomes a clickable "book this" box. The free-time box
+was drawn on top of her appointment and covered it exactly, so when she rang
+back five minutes later the desk clicked her name and got a booking form for
+her own slot. The undo button existed; the grid just could not reach it.
+
+- **Both are now drawn side by side**, using the same lane layout the grid
+  already uses for two clients booked at once. The cancelled visit opens its
+  undo; the freed time opens the booking panel.
+- **Chosen over two simpler options**: putting the appointment on top would
+  have hidden the freed hour, the time the salon most wants to resell, and
+  removing cancellations from the grid would have hidden what was lost.
+- **The test clicks, it does not navigate.** Loading the appointment's URL
+  directly passes whether or not anything is covering the chip; only a real
+  pointer click can fail. It was run against the old code first and failed on
+  exactly that interception.

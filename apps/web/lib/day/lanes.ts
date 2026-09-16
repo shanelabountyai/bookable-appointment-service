@@ -24,7 +24,10 @@
  * are consecutive clients, not two people in one chair. Getting that wrong
  * halves the width of every back-to-back column in the salon.
  */
+import { ACTIVE_STATUSES } from '@bookable/core/scheduling';
 import type { GridItem } from './view-model';
+
+const ACTIVE = new Set<string>(ACTIVE_STATUSES);
 
 /** Anything the day surfaces draw as a band: minutes from the top of the grid,
  *  and how many minutes tall. The DRAWN extent, deliberately — the room strip
@@ -81,11 +84,16 @@ export function assignLanes<T extends Spanning>(spans: readonly T[]): (T & { lan
  * hour with. Returned in the caller's order — the view model sorts afterwards,
  * and that sort is what holds tab order and screen-reader order.
  *
- * ONLY APPOINTMENTS TAKE A LANE. A gap chip is deliberately drawn OVER an
- * appointment (A-030: a colour's developing hour is real bookable time, and
- * A-069's released no-show is the same shape) — giving it a lane would halve
- * the colour underneath it on an ordinary Tuesday and hide nothing. Breaks and
- * absences are bands behind the day, not people in the chair.
+ * APPOINTMENTS TAKE A LANE, AND SO DOES A GAP OVER A CANCELLED ONE. A gap chip
+ * is otherwise deliberately drawn OVER an appointment (A-030: a colour's
+ * developing hour is real bookable time, and A-069's released no-show is the
+ * same shape) — giving it a lane would halve the colour underneath it on an
+ * ordinary Tuesday and hide nothing. A cancelled chip is the exception (A-122,
+ * D-58): the gap its own cancellation freed covers it EXACTLY, and it has
+ * something to click for — A-112's undo. Both facts are true, so both are drawn
+ * whole. "Cancelled" is read as "does not occupy its time", from
+ * `ACTIVE_STATUSES`, never as a second hand-typed list. Breaks and absences are
+ * bands behind the day, not people in the chair.
  *
  * `concurrent` NAMES THE OTHER CLIENT, and it is computed here rather than
  * left to the renderers because two of the four have no geometry to say it
@@ -93,15 +101,21 @@ export function assignLanes<T extends Spanning>(spans: readonly T[]): (T & { lan
  * which is the shape of SEQUENCE. "10:00 Ada Chen" above "10:00 Ben Ito" on
  * paper reads as a printing error; "at the same time as Ada Chen" reads as
  * what the desk decided. It is real overlap, not cluster membership — A can
- * share a cluster with C without ever being in the room at the same time.
+ * share a cluster with C without ever being in the room at the same time. And
+ * only between clients who are both still COMING: a cancelled visit is not "at
+ * the same time as" the client who took her slot, and a gap is nobody.
  */
 export function withLanes(items: readonly GridItem[]): GridItem[] {
   const appointments = items.filter((item) => item.kind === 'appointment');
-  if (appointments.length < 2) return [...items];
+  const coming = appointments.filter((item) => !item.status || ACTIVE.has(item.status));
+  const vacated = appointments.filter((item) => !coming.includes(item));
+  const gaps = items.filter((item) => item.kind === 'gap' && vacated.some((v) => overlapsSpan(v, item)));
+  if (appointments.length + gaps.length < 2) return [...items];
 
   const laned = new Map<string, GridItem>();
-  for (const item of assignLanes(appointments)) {
-    const others = appointments.filter((other) => other.key !== item.key && overlapsSpan(other, item));
+  for (const item of assignLanes([...appointments, ...gaps])) {
+    const isComing = coming.some((c) => c.key === item.key);
+    const others = isComing ? coming.filter((other) => other.key !== item.key && overlapsSpan(other, item)) : [];
     laned.set(item.key, {
       ...item,
       ...(others.length
