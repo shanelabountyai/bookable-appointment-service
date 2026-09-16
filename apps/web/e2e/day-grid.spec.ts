@@ -957,3 +957,80 @@ test.describe('the seeded double-booking (A-113)', () => {
     await expect(row(pair.squeezedIn, pair.already)).toContainText(pair.reason);
   });
 });
+
+/**
+ * A-121 — A GAP SHORTER THAN ITS LABEL WAS PRINTED ACROSS THE CHIP BELOW IT.
+ *
+ * Every item was floored at 18px (12 minutes) and gaps paint above chips, so
+ * the 5-minute gap a Cut's 45 + 10 leaves before every hour overprinted the
+ * next client's time and name. Nothing else in the gate can see it: each text
+ * fits its own box, and the two boxes are in the same place.
+ *
+ * So the assertion is geometric and taken in ONE `evaluate`, one frame, all in
+ * viewport coordinates — checkpoint 11's own probe reported zero overlaps when
+ * it mixed rects from before and after a scroll.
+ */
+test.describe('a gap too short for its label (A-121)', () => {
+  test('is never drawn over the first line of the chip below it, and is still a link', async ({ page }) => {
+    // Cuts on the hour, each leaving 5 minutes before the next.
+    for (const [start, end, clientName] of [
+      ['09:00', '09:55', 'Ada Chen'],
+      ['10:00', '10:55', 'Bea Moreno'],
+      ['11:00', '11:45', 'Cal Okafor'],
+    ] as const) {
+      await seedAppointment({ start: `${DAY}T${start}:00-05:00`, end: `${DAY}T${end}:00-05:00`, clientName });
+    }
+    await page.goto(`/staff/day?day=${DAY}`);
+    const column = page.locator(`[data-day-axis="${await danaId()}"]`);
+    await expect(column.getByText('Cal Okafor')).toBeVisible();
+
+    const { shortGaps, collisions } = await column.evaluate((axis) => {
+      const rect = (r: DOMRect) => ({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
+      const items = [...axis.querySelectorAll(':scope > ol > li')];
+      const gaps = items.filter((li) => li.querySelector('a[aria-label^="Book "]'));
+      const chips = items.filter((li) => !gaps.includes(li) && li.querySelector('a'));
+      // A chip's first line: the first visible text node, measured as a Range.
+      const firstLine = (li: Element) => {
+        const walk = document.createTreeWalker(li, NodeFilter.SHOW_TEXT, {
+          acceptNode: (n) =>
+            n.textContent!.trim() && !n.parentElement!.closest('[aria-hidden="true"], .sr-only')
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_SKIP,
+        });
+        const node = walk.nextNode();
+        if (!node) return null;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return rect(range.getClientRects()[0]);
+      };
+      const hit = (a: ReturnType<typeof rect>, b: ReturnType<typeof rect>) =>
+        a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
+      const collisions = [];
+      for (const gap of gaps) {
+        // The li is `overflow-hidden`, so its box bounds everything it paints.
+        const box = rect(gap.getBoundingClientRect());
+        for (const chip of chips) {
+          const line = firstLine(chip);
+          if (line && hit(box, line)) {
+            collisions.push({ gap: gap.querySelector('a')!.getAttribute('aria-label'), box, chip: chip.textContent, line });
+          }
+        }
+      }
+      const shortGaps = gaps
+        .map((g) => g.querySelector('a')!.getAttribute('aria-label')!)
+        .filter((label) => Number(/Book (\d+) minutes/.exec(label)![1]) < 12);
+      return { shortGaps, collisions };
+    });
+
+    // The premise (A-096/A-120): without a sub-floor gap this proves nothing.
+    expect(shortGaps.length, 'the fixture has no gap under 12 minutes, so it tests nothing').toBeGreaterThan(0);
+    expect(collisions, JSON.stringify(collisions, null, 2)).toEqual([]);
+
+    // Drawn without its text, but not taken off the book: still a named link.
+    await expect(column.getByRole('link', { name: /^Book 5 minutes free, 09:55–10:00/ })).toHaveAttribute(
+      'href',
+      /\/staff\/book\?/,
+    );
+    await expectNoAxeViolations(page);
+  });
+});

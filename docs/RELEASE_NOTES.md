@@ -4422,3 +4422,25 @@ geometry between neighbours, in page coordinates, and prints both rectangles
 when it fails. The first version of the measurement compared a rectangle taken
 before scrolling with one taken after and reported zero, which is the kind of
 green that has to be caught by distrust rather than by tooling.
+
+## A-121 — free time that was printed over the next client
+
+On the day grid, every stretch of free time is a clickable box labelled with
+its length. A box needs a minimum height to hold a line of text, so short gaps
+were drawn taller than they really are — and because free time is drawn on top
+of appointments (so the developing time inside a colour stays bookable), a
+5-minute gap printed *"5 min free"* straight across the time and name of the
+client after it. A cut is 45 minutes plus 10 of turnaround, so a column of cuts
+on the hour has one before every appointment: 40% of the chips on the demo book.
+
+- **A gap too short to be labelled is now drawn at its true height**, as a
+  hatched strip with no text. It is still a link, still reachable by keyboard,
+  and still announced as *"Book 5 minutes free, 09:55–10:00, with Dana"*.
+- **The test measures neighbours, not elements.** Every other check reads one
+  element at a time, and each of these texts fit its own box perfectly — they
+  were just in the same place. The new check takes every gap's box and every
+  chip's first line in one frame and fails on any intersection, printing both.
+  It was run against the old code first and named both collisions.
+- **It refuses to pass vacuously.** If the fixture ever stops containing a gap
+  shorter than twelve minutes, it fails saying so, instead of going quietly
+  green.

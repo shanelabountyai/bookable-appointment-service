@@ -266,9 +266,10 @@ function Item({ item }: { item: GridItem }) {
   // full width. `laneStyle` emits nothing unless something else is drawn at the
   // same time, so an ordinary column is unchanged; when it does emit, it wins
   // over `CHIP_SHELL`'s `inset-x-1` because an inline style beats a class.
+  const drawn = item.minutes * PX_PER_MINUTE;
   const style = {
     top: item.top * PX_PER_MINUTE,
-    height: Math.max(item.minutes * PX_PER_MINUTE, 18),
+    height: Math.max(drawn, MIN_LABELLED_PX),
     ...laneStyle(item),
   };
 
@@ -276,6 +277,22 @@ function Item({ item }: { item: GridItem }) {
   // matrix on `/staff/design`. Everything else on the grid is a band of time
   // with a label on it and has no states to speak of.
   if (item.kind === 'appointment') return <AppointmentChip item={item} style={style} />;
+
+  // A-121 — A GAP IS NEVER DRAWN PAST ITS OWN END. The floor above made a
+  // 5-minute gap 18px tall, and because gaps paint `z-10` (A-030, below) its
+  // "5 min free" overprinted the time and name of whatever started when it
+  // ended — before every cut on the hour, 40% of the demo book's chips. A gap
+  // too short to hold its label is drawn at its true height, as a hatch with no
+  // text, and keeps the link and its accessible name, so it is still one Tab
+  // stop and still says "Book 5 minutes free, …". No padding and no border: in
+  // `border-box` both are a minimum height, and would push it back over the chip.
+  if (item.kind === 'gap' && item.href && drawn < MIN_LABELLED_PX) {
+    return (
+      <li className={`absolute inset-x-1 z-10 ${HATCH}`} style={{ ...style, height: drawn }}>
+        <Link href={item.href} className="block h-full" aria-label={item.label} />
+      </li>
+    );
+  }
 
   const body = (
     <>
@@ -304,6 +321,14 @@ function Item({ item }: { item: GridItem }) {
     </li>
   );
 }
+
+/** One line of caption plus `CHIP_SHELL`'s padding: 12 minutes at 1.5px. */
+const MIN_LABELLED_PX = 18;
+
+/** The sub-floor gap: the dashed edge's colour as diagonal lines, so it still
+ *  reads as "free, and a control" without the border it has no room for. */
+const HATCH =
+  'bg-[repeating-linear-gradient(135deg,var(--line-control)_0_1px,transparent_1px_5px)] hover:bg-ground-sunken';
 
 const DECORATION: Record<Exclude<GridItem['kind'], 'appointment'>, string> = {
   gap: 'border border-dashed border-line-control text-ink-muted hover:bg-ground-sunken',

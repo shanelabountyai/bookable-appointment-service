@@ -4782,3 +4782,42 @@ reused; `+44…` correctly a new client). A-117's badge matches the missed list
   `+44` Rae Núñez.
 - The room strip clips `Priya · Root touch-up` (113 in 69) on short chips.
   Recorded in the review, not scoped.
+
+## A-121 — a gap too short for its label is drawn at its own height, without one
+
+**Commit `pending`.**
+
+**What it built.** `day-grid.tsx`'s `Item` floored every box at 18 px (twelve
+minutes), and gaps paint `z-10` above appointments (A-030), so the 5-minute gap
+a Cut's 45 + 10 leaves before every hour was drawn 10.5 px into the next chip and
+*"5 min free"* overprinted its time and name — 99 of 245 chips on the demo book.
+A gap whose true height is under the floor now returns early: its real height,
+no text, no padding, no border, and a diagonal hatch in `--line-control` in
+place of the dashed edge. The `Link` and its `aria-label` are unchanged, so it
+is still one Tab stop named *"Book 5 minutes free, 09:55–10:00, with Dana"*
+and the global `:focus-visible` ring still draws on it.
+
+**What it decided.** The clamp, not "don't draw an unbookable gap" — that one
+changes what the desk is shown and would need a D-number; the clamp alone
+closes the row. Padding and border go too, not just the text: in `border-box`
+they are a minimum height (`py-1` + 2 px of border is 10 px), so a 7.5 px gap
+keeping them is still 2.5 px over the chip. Breaks, absences and appointments
+keep the floor — the row was about gaps, and it is the only kind painted
+above its neighbours.
+
+**The test** (`day-grid.spec.ts`, *a gap too short for its label*): three cuts
+on the hour for Dana; ONE `evaluate` takes every gap `li`'s box and every chip's
+first text line (a `Range`, skipping `aria-hidden`/`sr-only`) in the same frame
+and asserts no intersection, printing both rects. It fails if the fixture has no
+gap under 12 minutes. Verified red against the old component (both 5-minute gaps
+named in the diff), green with the fix.
+
+**What it left behind.**
+
+- **Sub-floor breaks, blocks and appointments still take the 18 px floor.** A
+  10-minute ad-hoc block before an appointment would overprint the same way,
+  in DOM order rather than by `z-10`. Not measured on the demo book.
+- **A clinic-project vitest run saturated the CPU mid-verification**, and the
+  symptom was the rule in CLAUDE.md exactly: A-113's density seed timed out at
+  4 min, the untouched A-016 render test took 18–25 s, and the test after each
+  bounced to `/staff/login`. Waiting for the neighbour, not debugging, fixed it.
