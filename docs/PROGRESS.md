@@ -4742,7 +4742,7 @@ than the five, and a sixth fixture that forgets to add itself fails there.
 
 ## Demo checkpoint 11 and the Phase 13 close — a scoping pass, not a build
 
-**Commit:** _(recorded in the follow-up commit)_
+**Commit:** `5f8c8d9`
 
 **What it produced.** `docs/reviews/22-demo-checkpoint-11.md` (the walk) and
 **two new backlog rows, A-121 and A-122**, as Phase 14. No product code
