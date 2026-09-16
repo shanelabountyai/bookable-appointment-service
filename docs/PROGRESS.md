@@ -4608,7 +4608,7 @@ match and attaches a warning to it.
 
 ## A-120 — three things the demo book could not show, and half a flag nobody could read
 
-**Commit `PENDING`.**
+**Commit `e78fc61`.**
 
 Four defects, all of them in what the product SHOWS rather than in what it
 computes, and every one of them green in the gate.
