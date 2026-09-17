@@ -4512,3 +4512,18 @@ the demo book, 78 of 92 flags were not on screen.
   hidden, or cut. The test first confirms the block is too short to hold
   everything, so it cannot pass by accident on a roomy appointment. It failed
   against the old layout before it passed against the new one.
+
+## Demo checkpoint 13: the fix, measured on the whole book
+
+The walk re-measured every appointment block on seven days of the demo book
+(227 blocks, matched one-to-one against the database) after A-123. **The
+phone-only flag is now visible on 117 of 117 flagged blocks, where the
+previous walk found it on 14 of 92.** The double-booking marker is on the
+only override. The rest of the product was crawled in light and dark: 54 page
+loads, no accessibility violations, and no console errors.
+
+**What is engineered here** is that the test does not grade its own
+homework. The list of blocks that *should* carry a marker came from what a
+screen reader hears, and the marker was measured in the drawn layout. A block
+that lost its marker entirely therefore shows up as a miss, instead of
+dropping out of both sides of the count.

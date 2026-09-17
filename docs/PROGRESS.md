@@ -4939,3 +4939,31 @@ that client is on the book.
 - **`MIN_LABELLED_PX = 18`'s comment in `day-grid.tsx` is wrong** ("one line
   plus padding" is 26 px). Harmless for gaps, which have no second line; not
   touched.
+
+## Demo checkpoint 13 and the Phase 15 close: a clean walk
+
+**Commit:** `pending`
+
+**What it produced.** `docs/reviews/24-demo-checkpoint-13.md`. No backlog rows
+were added and no product code changed.
+
+**Phase 15 holds.** 54 route×scheme pairs: all 200, all axe-clean, 0 console
+errors, 0 sideways scroll. The walk measured 227 grid chips, one per `href`,
+reconciled against the `Appointment` table. `⚑` is inside the chip on 117 of
+117 flagged chips, and `OVR` on 1 of 1. Tom Byrne's pinned note is on the demo
+book for the first time. Its words show on every chip of 45 minutes or more,
+which includes every colour service, and only `⚑` shows on a Treatment or
+Fringe trim (D-59's stated cost).
+
+**What it left behind.**
+
+- **Line one is 17 px when it carries a status word** (the 10 px word is
+  baseline-aligned), so on a chip at the 18 px floor its line box is 1 px past
+  the clip. It happens once on the book, on a released no-show Fringe trim.
+  The glyphs are whole. It becomes a defect only if the caption grows.
+- **Rule: take the expected set from a different source than the thing
+  measured.** Here, the accessible name for "should carry `⚑`" and the markup
+  for "does".
+- **A CPU-bound neighbour again, for the fourth checkpoint running**:
+  `alongside` vitest, with eight orphaned workers killed. The first seed
+  failed with `P2028`, the interactive transaction timeout.
