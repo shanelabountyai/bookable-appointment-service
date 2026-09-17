@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { GridItem } from '@/lib/day/view-model';
+import { PX_PER_MINUTE } from '@/lib/day/scale';
 import { StatusActions } from './status-actions';
 
 /**
@@ -55,6 +56,13 @@ import { StatusActions } from './status-actions';
 const ONE_LINE_AND_A_BUTTON = 30;
 const MINUTES_PER_LINE = 10;
 
+/** D-59 — WHOLE LINES ONLY. A column flexbox that WRAPS moves a line that does
+ *  not fit into a second column one chip-width to the right, where
+ *  `overflow-hidden` clips it whole; a plain block cuts it through the glyphs.
+ *  Every child is full width so the second column starts past the edge, and a
+ *  flex line always keeps its first item, so line one is never wrapped away. */
+const LINES = 'flex flex-col flex-wrap content-start overflow-hidden *:w-full *:shrink-0';
+
 /**
  * STATUS → the ground it sits on, the stripe down its edge, and THE WORD.
  *
@@ -86,7 +94,11 @@ const STATUS_STYLE = {
   },
 } as const satisfies Record<NonNullable<GridItem['status']>, { chip: string; stripe: string; word: string | null }>;
 
-export const CHIP_SHELL = 'absolute inset-x-1 overflow-hidden rounded-tight py-1 pl-2.5 pr-2 text-caption';
+export const CHIP_SHELL = 'absolute inset-x-1 overflow-hidden rounded-tight pl-2.5 pr-2 text-caption';
+
+/** D-59 — one caption line (16) plus `py-1` (8) plus the border (2). Below it
+ *  the padding alone would cut line one, so a chip that short drops it. */
+const ONE_PADDED_LINE_PX = 26;
 
 /** No `interactive` switch: the gallery's fixtures carry no `appointmentId`
  *  and no `available`, so no button can render against an invented row, and a
@@ -96,60 +108,66 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
   const status = item.status ?? 'booked';
   const look = STATUS_STYLE[status];
 
+  // D-59 — line one carries the MARKERS, `shrink-0` beside the status word, so
+  // they survive the shortest chip the grid can draw (a Fringe trim is one
+  // line). The name gives way first, exactly as it does for the status word.
+  const flagged = Boolean(item.pinnedNote || item.missed);
+
+  // D-59 — THE LINES BELOW, IN PRIORITY ORDER, NOT RENDER ORDER. The chip is
+  // `overflow-hidden` at a height the clock sets, so whatever comes last is
+  // what disappears; checkpoint 12 found that was the override and the flag.
+  const lines = [
+    // §5.4.11 — the single most important visual in the product. It means a
+    // human deliberately booked over the rules and typed a reason, and it has
+    // to stay rare: a border and a word, never a tint, so it reads the same on
+    // paper and cannot be mistaken for a status.
+    item.isOverride ? (
+      <span key="override">
+        <span className="inline-block rounded-tight border border-current px-1 text-[10px] leading-[14px] font-semibold uppercase tracking-wide">
+          Override
+        </span>
+      </span>
+    ) : null,
+    // CLIENT-03's safety surface. Marked by the glyph, which survives
+    // greyscale, a colour-blind reader and a printed sheet.
+    item.pinnedNote ? <span key="note" className="truncate font-medium">⚑ {item.pinnedNote}</span> : null,
+    // A-120 / D-57. THE SHORT FORM: the chip keeps the consequence and drops
+    // the evidence, which is whole in the accessible name and one tap away.
+    item.missed ? <span key="missed" className="truncate font-medium">⚑ {item.missed.short}</span> : null,
+    // APPT-03's projected start, BESIDE the booked time rather than instead of
+    // it: its own line, an arrow, and the word. No colour — see the header.
+    item.projected ? <span key="projected" className="truncate font-semibold">→ likely {item.projected}</span> : null,
+    item.detail ? <span key="detail" className="truncate">{item.detail}</span> : null,
+    // A-069. She never came, and the rest of her slot is back on the market —
+    // so the gap chip painting over this one is deliberate. Her chip stays at
+    // its BOOKED extent because "who was due at ten?" is what the desk wants.
+    item.released ? (
+      <span key="released" className="truncate text-[10px] uppercase tracking-wide">time back from {item.released}</span>
+    ) : null,
+    // A-070. ✎, visually distinct from the pinned note: about today, not her.
+    item.visitNote ? <span key="visit" className="truncate">✎ {item.visitNote}</span> : null,
+  ];
+
   const body = (
     <>
       {/* LINE ONE, and the truncation order is the design decision on it: the
-          status word is `shrink-0` and the name is what gives way. A column
-          narrow enough to lose text should lose the tail of a surname, never
-          the fact that this one never turned up. */}
+          markers and the status word are `shrink-0` and the name is what gives
+          way. A column narrow enough to lose text should lose the tail of a
+          surname, never the fact that this one never turned up. */}
       <span className="flex items-baseline gap-1">
         <span className="numeric shrink-0 font-medium">{item.startTime ?? item.time}</span>
         <span className="truncate font-medium">{item.title}</span>
-        {look.word ? (
-          <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide">{look.word}</span>
-        ) : null}
-      </span>
-
-      {item.detail ? <span className="block truncate">{item.detail}</span> : null}
-
-      {/* APPT-03's projected start, BESIDE the booked time rather than instead
-          of it. Three signals, because §4 calls this the one that puts the
-          paper book back on the counter: its own line, an arrow, and the word.
-          No colour of its own — see the header. */}
-      {item.projected ? (
-        <span className="block truncate font-semibold">→ likely {item.projected}</span>
-      ) : null}
-
-      {/* CLIENT-03's safety surface. Marked by the glyph, which survives
-          greyscale, a colour-blind reader and a printed sheet. */}
-      {item.pinnedNote ? <span className="block truncate font-medium">⚑ {item.pinnedNote}</span> : null}
-      {/* A-120 / D-57. THE SHORT FORM, because this is the one surface the
-          flag is read at that has no room for the sentence: 386 px of it in
-          178-185 px, cut at "the last 12 mo…", losing the half the desk acts
-          on — with the whole sentence in the accessible name, so axe and
-          `getByRole` said it was fine for nine items. The chip keeps the
-          consequence and drops the evidence; the evidence is one tap away. */}
-      {item.missed ? <span className="block truncate font-medium">⚑ {item.missed.short}</span> : null}
-      {/* A-070. VISUALLY DISTINCT from the pinned note above: ✎ and no amber,
-          because this is about today rather than a safety line about her.
-          Truncated here and whole in the accessible name. */}
-      {item.visitNote ? <span className="block truncate">✎ {item.visitNote}</span> : null}
-      {/* §5.4.11 — the single most important visual in the product. It means a
-          human deliberately booked over the rules and typed a reason, and it
-          has to stay rare: a border and a word, never a tint, so it reads the
-          same on paper and cannot be mistaken for a status. */}
-      {item.isOverride ? (
-        <span className="mt-0.5 inline-block rounded-tight border border-current px-1 text-[10px] font-semibold uppercase tracking-wide">
-          Override
+        <span className="ml-auto flex shrink-0 items-baseline gap-1">
+          {flagged ? <span className="font-semibold">⚑</span> : null}
+          {item.isOverride ? (
+            <span className="rounded-tight border border-current px-0.5 text-[10px] leading-3 font-semibold uppercase tracking-wide">
+              Ovr
+            </span>
+          ) : null}
+          {look.word ? <span className="text-[10px] font-semibold uppercase tracking-wide">{look.word}</span> : null}
         </span>
-      ) : null}
-      {/* A-069. She never came, and the rest of her slot is back on the market
-          — so the bookable gap chip painting over this one is deliberate, not
-          a double-booking. Her chip stays at its BOOKED extent because "who
-          was due at ten?" is what the desk is looking for. */}
-      {item.released ? (
-        <span className="block truncate text-[10px] uppercase tracking-wide">time back from {item.released}</span>
-      ) : null}
+      </span>
+      {lines}
     </>
   );
 
@@ -161,15 +179,7 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
    * fit, and a CLIPPED BUTTON is worse than an absent one — invisible to the
    * eye and still in the tab order.
    */
-  const linesInUse = [
-    item.detail,
-    item.projected,
-    item.pinnedNote,
-    item.missed,
-    item.visitNote,
-    item.isOverride,
-    item.released,
-  ].filter(Boolean).length;
+  const linesInUse = lines.filter(Boolean).length;
   const roomForAButton = item.minutes >= ONE_LINE_AND_A_BUTTON + linesInUse * MINUTES_PER_LINE;
 
   const controls =
@@ -184,7 +194,10 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
     ) : null;
 
   return (
-    <li className={`${CHIP_SHELL} border ${look.chip}`} style={style}>
+    <li
+      className={`${CHIP_SHELL} ${item.minutes * PX_PER_MINUTE < ONE_PADDED_LINE_PX ? '' : 'py-1'} border ${look.chip}`}
+      style={style}
+    >
       {/* The stripe carries the 3:1 graphical bar and the status word carries
           the meaning; neither is load-bearing alone. Decorative to the
           accessibility tree, because the word is already in the name. */}
@@ -193,11 +206,13 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
           in an anchor is invalid, and it is the accessibility footgun A-033
           named when it declined to put a second control on this chip. */}
       {item.href ? (
-        <Link href={item.href} className={`block ${controls ? '' : 'h-full'}`} aria-label={item.label}>
+        <Link href={item.href} className={`${LINES} ${controls ? '' : 'h-full'}`} aria-label={item.label}>
           {body}
         </Link>
       ) : (
-        <span aria-label={item.label}>{body}</span>
+        <span className={`${LINES} h-full`} aria-label={item.label}>
+          {body}
+        </span>
       )}
       {controls}
     </li>

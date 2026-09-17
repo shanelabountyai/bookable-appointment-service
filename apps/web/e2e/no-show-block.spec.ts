@@ -91,16 +91,20 @@ async function seedMisses(client: { name: string; phone: string }, count: number
  *  A-120 — `isOverride` puts a SECOND one at the same instant, which is what
  *  halves the column into A-099's lanes: the flag has to survive the narrowest
  *  chip the product can draw, not only the ordinary one. */
-async function bookOn(day: string, clientId: string, isOverride = false) {
+async function bookOn(
+  day: string,
+  clientId: string,
+  { isOverride = false, serviceName = 'Cut', at = '10:00' }: { isOverride?: boolean; serviceName?: string; at?: string } = {},
+) {
   const prisma = new PrismaClient();
   try {
     const business = await prisma.business.findFirstOrThrow();
     const provider = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
-    const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
-    const resolved = resolve(calendarDay(day), wallTime('10:00'), zoneId(ZONE));
-    if (resolved.kind !== 'unique') throw new Error(`10:00 is not unique on ${day}`);
+    const service = await prisma.service.findFirstOrThrow({ where: { name: serviceName } });
+    const resolved = resolve(calendarDay(day), wallTime(at), zoneId(ZONE));
+    if (resolved.kind !== 'unique') throw new Error(`${at} is not unique on ${day}`);
     const startAt = toDate(resolved.at);
-    const endAt = toDate(instant(resolved.at + 45 * 60_000));
+    const endAt = toDate(instant(resolved.at + service.durationMinutes * 60_000));
 
     return await prisma.appointment.create({
       data: {
@@ -112,13 +116,23 @@ async function bookOn(day: string, clientId: string, isOverride = false) {
         blockedStart: startAt,
         blockedEnd: endAt,
         startDay: day,
-        startWallTime: '10:00',
+        startWallTime: at,
+        // A-098: the trigger derives the envelope from these, and the chip is
+        // drawn at the envelope's height — which is what D-59 measures.
+        bufferBeforeMinutes: service.bufferBeforeMinutes,
+        bufferAfterMinutes: service.bufferAfterMinutes,
         // D-8. The trigger does the rest: a zero-width blocked range so the
         // constraint is satisfied without being weakened, and the true range
         // in `overriddenFromRange` for the day view to draw the pair from.
         ...(isOverride ? { isOverride: true, overrideReason: 'Squeezed in before the wedding.' } : {}),
         lines: {
-          create: { businessId: business.id, serviceId: service.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+          create: {
+            businessId: business.id,
+            serviceId: service.id,
+            ordinal: 0,
+            priceCents: service.priceCents,
+            durationMinutes: service.durationMinutes,
+          },
         },
       },
     });
@@ -142,6 +156,41 @@ async function danaId(): Promise<string> {
  *  question that can tell a legible line from a cut one. */
 async function fits(locator: ReturnType<Page['getByText']>): Promise<{ text: number; room: number }> {
   return locator.evaluate((el) => ({ text: el.scrollWidth, room: el.clientWidth }));
+}
+
+/** CLIENT-03's pinned note, straight onto her record. */
+async function pinNote(clientId: string, notes: string) {
+  const prisma = new PrismaClient();
+  try {
+    await prisma.client.update({ where: { id: clientId }, data: { notes } });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** D-59 — every line of a chip against the box that clips it: the tighter of
+ *  the `<li>`'s padding box and the link's own box, which clips too. WHOLE
+ *  inside it, GONE (wrapped into the clipped column to the right, or wholly
+ *  below), or CUT through. Plus line one's markers. `textContent`, not
+ *  `innerText`, which would apply `uppercase`. */
+async function chipLines(link: ReturnType<Page['getByRole']>) {
+  return link.evaluate((el) => {
+    const li = el.closest('li')!;
+    const box = li.getBoundingClientRect();
+    const own = el.getBoundingClientRect();
+    const bottom = Math.min(box.top + li.clientTop + li.clientHeight, own.bottom);
+    const right = Math.min(box.left + li.clientLeft + li.clientWidth, own.right);
+    const rows = [...el.children].map((child) => {
+      const r = child.getBoundingClientRect();
+      const state = r.left >= right || r.top >= bottom ? 'gone' : r.bottom <= bottom + 0.01 ? 'whole' : 'cut';
+      return { text: child.textContent!.trim(), top: r.top, bottom: r.bottom, state };
+    });
+    const markers = [...el.children[0]!.lastElementChild!.children].map((m) => {
+      const r = m.getBoundingClientRect();
+      return { text: m.textContent!.trim(), bottom: r.bottom, right: r.right };
+    });
+    return { bottom, right, rows, markers };
+  });
 }
 
 test.beforeEach(async () => {
@@ -268,7 +317,7 @@ test.describe('the flag on the staff surfaces (CLIENT-04)', () => {
     // The same instant, deliberately over the top of her: two chips, one
     // column, half the width each.
     const other = await seedMisses(REGULAR, 0);
-    await bookOn(DAY, other, true);
+    await bookOn(DAY, other, { isOverride: true });
     await signIn(page);
 
     await page.goto(`/staff/day?day=${DAY}`);
@@ -291,6 +340,63 @@ test.describe('the flag on the staff surfaces (CLIENT-04)', () => {
     expect(room.text, `the flag is cut off in a lane: ${room.text} px of text in ${room.room} px`).toBeLessThanOrEqual(
       room.room,
     );
+  });
+
+  /**
+   * A-123 / D-59 — AND ON THE SHORTEST CHIP, ON THE OTHER AXIS.
+   *
+   * The two tests above measure WIDTH. The chip is also `overflow-hidden` at a
+   * HEIGHT the clock sets, and a line that fits its width can sit wholly below
+   * the bottom edge: checkpoint 12 found the override marker at 513–531 px
+   * under a chip ending at 512, and the flag hidden on 78 of 92 flagged chips,
+   * with the accessible name whole and every check in the gate green.
+   *
+   * So: every line is WHOLE or GONE (never cut through the glyphs), the
+   * markers on line one are whole on a one-line Fringe trim, and a two-line
+   * Blow-dry spends its second line on the override, not the service.
+   */
+  test('keeps the override and the flag on the shortest chip, in whole lines', async ({ page }) => {
+    const clientId = await seedMisses(OFFENDER, 3);
+    await pinNote(clientId, 'Allergic to PPD — patch test before any colour.');
+    await bookOn(DAY, clientId, { isOverride: true, serviceName: 'Fringe trim', at: '10:00' });
+    await bookOn(DAY, clientId, { isOverride: true, serviceName: 'Blow-dry', at: '11:00' });
+    await signIn(page);
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    for (const [service, wholeBelowLineOne] of [
+      ['Fringe trim', []],
+      ['Blow-dry', ['Override']],
+    ] as const) {
+      // `.first()`: the room strip links the same appointment (checkpoint 12).
+      const chip = page.getByRole('link', { name: new RegExp(`Ada Chen, ${service}`) }).first();
+      await expect(chip).toBeVisible();
+      const lines = await chipLines(chip);
+      const report = JSON.stringify(lines);
+
+      // THE PREMISE: the chip cannot hold every line, or this measures nothing.
+      expect(
+        lines.rows.some((row) => row.state === 'gone'),
+        `the ${service} chip holds all its lines — it is no longer short enough to test anything: ${report}`,
+      ).toBe(true);
+      expect(
+        lines.rows.filter((row) => row.state === 'cut'),
+        `a line is cut through at the chip's bottom edge (${lines.bottom} px): ${report}`,
+      ).toEqual([]);
+
+      expect(lines.markers.map((marker) => marker.text)).toEqual(['⚑', 'Ovr']);
+      for (const marker of lines.markers) {
+        expect(marker.bottom, `${service}: "${marker.text}" ends below the chip at ${lines.bottom} px`).toBeLessThanOrEqual(
+          lines.bottom + 0.01,
+        );
+        expect(marker.right, `${service}: "${marker.text}" ends past the chip at ${lines.right} px`).toBeLessThanOrEqual(
+          lines.right + 0.01,
+        );
+      }
+      expect(
+        lines.rows.slice(1).filter((row) => row.state === 'whole').map((row) => row.text),
+        `${service}: ${report}`,
+      ).toEqual(wholeBelowLineOne);
+    }
   });
 
   test('shows nothing at all for a client with a clean record', async ({ page }) => {

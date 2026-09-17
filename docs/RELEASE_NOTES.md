@@ -4492,3 +4492,23 @@ and discarded a class of false positives (hidden form content that browsers
 still lay out) before trusting either new check. The next build decides which
 lines a short appointment block keeps, and tests it on the shortest service the
 salon sells.
+
+## A-123 — the marker that matters stays on the block
+
+An appointment block on the day grid is as tall as its time, and anything that
+did not fit was cut off at the bottom in a fixed order. That order put the
+front desk's most important signals last: the marker for a deliberate
+double-booking and the flag for a client who can only be booked by phone. On
+the demo book, 78 of 92 flags were not on screen.
+
+- **The markers now sit on the first line**, next to the status word, as a flag
+  glyph and a boxed `OVR`. The client's name shortens to make room. They show
+  even on a 10-minute fringe trim, which only has room for one line.
+- **The remaining lines are drawn in order of importance**, not in the order
+  they were added to the code, and a line that does not fit is left out whole.
+  It is never cut in half.
+- **The test measures position, not presence.** Every line of a block is
+  checked against the block's real clipping edge and classified as whole,
+  hidden, or cut. The test first confirms the block is too short to hold
+  everything, so it cannot pass by accident on a roomy appointment. It failed
+  against the old layout before it passed against the new one.

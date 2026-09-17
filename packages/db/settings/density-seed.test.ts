@@ -263,6 +263,23 @@ describe('the density seed produces a realistic book', () => {
       await prisma.appointment.count({ where: { businessId: business.id, clientId: client.id } }),
     ).toBeGreaterThan(0);
   });
+
+  /**
+   * A-123 — A PINNED NOTE, on a client who is on the book. `Client.notes` was
+   * null on every seeded client, so CLIENT-03's safety line had never been on
+   * the demo and checkpoint 12 could only infer where the chip put it.
+   */
+  it('pins a client note on exactly one client who is on the live book', async () => {
+    const business = await prisma.business.findFirstOrThrow();
+    const pinned = await prisma.client.findMany({
+      where: { businessId: business.id, notes: { not: null } },
+      select: { id: true },
+    });
+    expect(pinned).toHaveLength(1);
+    expect(
+      await prisma.appointment.count({ where: { businessId: business.id, clientId: pinned[0]!.id } }),
+    ).toBeGreaterThan(0);
+  });
 });
 
 describe('the DST fixtures actually exist', () => {

@@ -306,7 +306,7 @@ function Item({ item }: { item: GridItem }) {
     // time is real bookable provider time — so gaps paint above appointment
     // chips rather than under them. Without this the one gap the desk most
     // wants to click is the one hidden behind the colour.
-    <li className={`${CHIP_SHELL} ${item.kind === 'gap' ? 'z-10 ' : ''}${DECORATION[item.kind]}`} style={style}>
+    <li className={`${CHIP_SHELL} py-1 ${item.kind === 'gap' ? 'z-10 ' : ''}${DECORATION[item.kind]}`} style={style}>
       {/* A-017 gave gaps somewhere to go, so they are links now. Breaks and
           absences stay plain text: there is nothing to do with a lunch break,
           and a focusable element that does nothing when activated is worse

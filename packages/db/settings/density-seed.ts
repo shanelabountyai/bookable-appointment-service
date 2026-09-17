@@ -1006,6 +1006,13 @@ async function seedClients(prisma: PrismaClient, businessId: string) {
     ['Marcy Dunn', '+15125550107'],
     ['Leo Dunn', '+15125550107'],
   ] as const;
+  // A-123 — CLIENT-03's pinned note, on a client who is actually on the book.
+  // `Client.notes` was null on every seeded client, so the safety line had
+  // never been drawn on the demo and nobody could see where the chip put it.
+  // Added IN PLACE: same count, order and phones, so `fill` deals the same.
+  const pinned: Partial<Record<string, string>> = {
+    'Tom Byrne': 'Allergic to PPD — patch test before any colour.',
+  };
 
   const created = [];
   for (const [name, phone] of names) {
@@ -1013,7 +1020,13 @@ async function seedClients(prisma: PrismaClient, businessId: string) {
     created.push(
       existing ??
         (await prisma.client.create({
-          data: { businessId, name, phone, email: `${name.split(' ')[0]!.toLowerCase()}@example.test` },
+          data: {
+            businessId,
+            name,
+            phone,
+            email: `${name.split(' ')[0]!.toLowerCase()}@example.test`,
+            notes: pinned[name] ?? null,
+          },
         })),
     );
   }

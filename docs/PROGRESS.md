@@ -4893,3 +4893,49 @@ the height. A-123 needs D-59 (priority, markers on line one, or both).
 - Not scoped: the never-reminded list gives no sign when the reminder job has
   gone stale (it says only *"last ran"*, 16 hours ago here), and one client's
   two same-time appointments are listed as two calls.
+
+## A-123 — the override and the flag stay on the chip, in whole lines
+
+**Commit:** *(recorded in the follow-up commit)*
+
+**What it built.** `appointment-chip.tsx` no longer decides what a short chip
+shows by render order. Line one carries `⚑` (pinned note or no-show flag) and a
+bordered `OVR` as `shrink-0` markers beside the status word, and the name
+truncates around them. The lines below are drawn in priority order: override,
+pinned note, flag, running late, service and phone, released, visit note. The
+link is a wrapping column flexbox, so a line that does not fit moves into a
+second column past the chip's right edge and is clipped whole, instead of being
+cut through the glyphs. A chip under 26 px drops its vertical padding so line
+one fits. `CHIP_SHELL` lost `py-1`; the grid's gap/break chips add it back.
+`linesInUse` (A-035's button room) counts the same `lines` array now, not a
+second list. The density seed pins a note on Tom Byrne, in place, so CLIENT-03
+is finally on the demo book.
+
+**What it decided.** D-59 (c), both, over priority alone (does nothing for a
+one-line Fringe trim) and markers alone (line 2 still spent on the phone).
+
+**The test.** `no-show-block.spec.ts`, *"keeps the override and the flag on the
+shortest chip, in whole lines"*: a flagged client with a pinned note and two
+overrides, a Fringe trim (22.5 px) and a Blow-dry (52.5 px). For each chip, every
+line is classified against the tighter of the `<li>` padding box and the link's
+box as whole, gone or cut. It asserts the premise (at least one line is gone),
+no line is cut, both markers are inside the chip on both axes, and the whole
+lines below line one are exactly `[]` on the Fringe trim and `['Override']` on
+the Blow-dry. Verified red against HEAD's chip (the service line cut at 540–556
+in a chip ending at 541, override and flag gone, no markers), green after. The
+`bookOn` fixture now takes the service and time and copies the service's
+buffers (A-098). `density-seed.test.ts` asserts exactly one pinned client, and
+that client is on the book.
+
+**What it left behind.**
+
+- **A 25-minute Treatment shows line one only.** Line two needs 42 px and the
+  chip is 37.5. Before, it showed the top half of the service line.
+- **`⚑` on line one does not say which** (note or flag). The accessible name
+  and the detail page do. Revisit if the desk misreads one for the other.
+- **The first pass of the geometry helper measured against the `<li>`** and
+  called a wrapped line visible: the link sits 8 px inside the `<li>`'s right
+  padding and clips too. Measure against the tightest clipping box.
+- **`MIN_LABELLED_PX = 18`'s comment in `day-grid.tsx` is wrong** ("one line
+  plus padding" is 26 px). Harmless for gaps, which have no second line; not
+  touched.
