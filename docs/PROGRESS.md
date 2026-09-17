@@ -4855,7 +4855,7 @@ the freed gap into the booking panel. Verified red against the old `lanes.ts`
 
 ## Demo checkpoint 12 and the Phase 14 close: a scoping pass, not a build
 
-**Commit:** *(recorded in the follow-up commit)*
+**Commit:** `0b3947e`
 
 **What it produced.** `docs/reviews/23-demo-checkpoint-12.md` (the walk) and
 **one new backlog row, A-123**, as Phase 15. No product code changed.
