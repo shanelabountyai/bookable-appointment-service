@@ -4942,7 +4942,7 @@ that client is on the book.
 
 ## Demo checkpoint 13 and the Phase 15 close: a clean walk
 
-**Commit:** `pending`
+**Commit:** `3d2df64`
 
 **What it produced.** `docs/reviews/24-demo-checkpoint-13.md`. No backlog rows
 were added and no product code changed.
