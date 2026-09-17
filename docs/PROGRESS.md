@@ -4896,7 +4896,7 @@ the height. A-123 needs D-59 (priority, markers on line one, or both).
 
 ## A-123 — the override and the flag stay on the chip, in whole lines
 
-**Commit:** *(recorded in the follow-up commit)*
+**Commit:** `1cfe447`
 
 **What it built.** `appointment-chip.tsx` no longer decides what a short chip
 shows by render order. Line one carries `⚑` (pinned note or no-show flag) and a
