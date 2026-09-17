@@ -4463,3 +4463,32 @@ her own slot. The undo button existed; the grid just could not reach it.
   directly passes whether or not anything is covering the chip; only a real
   pointer click can fail. It was run against the old code first and failed on
   exactly that interception.
+
+## The line below the edge
+
+*Demo checkpoint 12 and the Phase 14 close: a scoping pass. No product code
+changed.*
+
+The last review found text printed over text on the staff day grid, and asked
+future walks to check the geometry *between* elements, not only each element
+on its own. This walk added two automated checks to the review sweep. One
+looks for text boxes that intersect. The other clicks the centre of every
+control and checks that the click lands on that control. Both came back clean
+across 80 pages, which confirms that the previous phase's two fixes hold.
+
+Looking at the screenshot first still found something the numbers did not.
+On an appointment block, the lines of text are cut off at the block's bottom
+edge in a fixed order, and **the lines cut first were the ones the front desk
+acts on**: the marker for a deliberate double-booking, and the flag that says a
+client can only be booked by phone. **On 78 of 92 flagged appointments, the
+flag was not on the screen.** Screen readers heard all of it, which is why no
+accessibility check objected.
+
+**What is engineered here is the measurement.** The previous fix checked
+whether text fits its box *horizontally*. This walk measured the other axis,
+reconciled the count of appointment blocks against the database (a first pass
+counted each appointment twice, once on the grid and once on the chair view),
+and discarded a class of false positives (hidden form content that browsers
+still lay out) before trusting either new check. The next build decides which
+lines a short appointment block keeps, and tests it on the shortest service the
+salon sells.

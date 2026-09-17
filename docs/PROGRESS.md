@@ -4852,3 +4852,44 @@ the freed gap into the booking panel. Verified red against the old `lanes.ts`
   whole-day rule). Acceptable at one or two a day; revisit if a heavy
   cancellation day makes the grid scroll sideways.
 - **Phase 14 is empty.** The backlog has no open item.
+
+## Demo checkpoint 12 and the Phase 14 close: a scoping pass, not a build
+
+**Commit:** *(recorded in the follow-up commit)*
+
+**What it produced.** `docs/reviews/23-demo-checkpoint-12.md` (the walk) and
+**one new backlog row, A-123**, as Phase 15. No product code changed.
+
+**Phase 14 holds.** 80 route×scheme pairs: all 200, all axe-clean, 0 console
+errors, 0 pronouns. Two checks are new: text-over-text collision in page
+coordinates, and a pointer hit-test at the centre of every control. Both are
+clean on every route. A-121: no gap label over any chip on seven grid days.
+A-122: a pointer click on Jordan Fairweather-Okonkwo's cancelled chip,
+laned beside Tess's `Book 30 minutes free`, opens the reinstate page.
+
+**THE CHIP CLIPS BY RENDER ORDER, AND THE ORDER PUTS THE DESK'S LINES LAST.**
+Today's screenshot had the only override on the book with no OVERRIDE marker,
+and Nadia Rahman's Treatments with no flag. `appointment-chip.tsx` is
+`overflow-hidden` at the height of its time and draws the service line before
+the flag, the pinned note and the override. A 25-minute chip holds two lines.
+Of 92 flagged chips, 65 have the flag wholly below the bottom edge, 13 have it
+cut through, and 14 show it whole. A-120 fixed the width; nothing measured
+the height. A-123 needs D-59 (priority, markers on line one, or both).
+
+**Left behind.**
+
+- **The first pass of the new checks was mostly false positives.** Content
+  inside a closed `<details>` has layout rectangles in Chromium, so every
+  closed *Push the column* form "collided" with the chips below it. Filter
+  with `checkVisibility()` before trusting either check.
+- **The first chip count was 446, double the book.** The room strip links the
+  same appointments. Deduplicating by `href` gave 224, and that matched the
+  table.
+- **The machine was at load 269.** Five vitest runs in `alongside` and
+  `storage business` (3.5 to 4.3 h) were killed with the owner's approval,
+  plus three 16-hour orphaned workers.
+- **`bookable_cp12` is left behind** (`bookable_cp11` was dropped). Nothing
+  was booked on it.
+- Not scoped: the never-reminded list gives no sign when the reminder job has
+  gone stale (it says only *"last ran"*, 16 hours ago here), and one client's
+  two same-time appointments are listed as two calls.
