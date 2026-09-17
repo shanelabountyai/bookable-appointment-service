@@ -4527,3 +4527,27 @@ homework. The list of blocks that *should* carry a marker came from what a
 screen reader hears, and the marker was measured in the drawn layout. A block
 that lost its marker entirely therefore shows up as a miss, instead of
 dropping out of both sides of the count.
+
+## The operator review that books what it offers
+
+At the close of a phase, the product is reviewed by someone playing a
+22-year salon operator rather than an engineer, and the rule is that a finding
+is not a finding until it has been run. This pass proved three, each by
+driving the real code against a freshly seeded database, and the most
+valuable one is a defect no test in the suite could have caught.
+
+**When a client cancels a three-and-a-half-hour colour, the software knows
+"215 minutes opened up" — and then the desk sells a blow-dry into the front of
+it.** From that moment the number is wrong, and every screen built on it is
+wrong in a different direction: the list of sellable time drops the
+appointment entirely, hiding the three hours still free, while the "who is
+waiting for this slot?" panel keeps offering a client a start time the
+database will refuse. Both screens were right at the instant of the
+cancellation and neither asked again.
+
+**What is engineered here** is the shape of the rule, not the fix. A span
+derived once and then trusted is a snapshot wearing a live label — and the
+fixture that would catch it is never the obvious one. On a fixture where
+nothing happens between the cancellation and the question, both screens pass.
+The failing fixture is the one where the desk did the sensible thing in
+between.

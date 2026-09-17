@@ -4967,3 +4967,64 @@ Fringe trim (D-59's stated cost).
 - **A CPU-bound neighbour again, for the fourth checkpoint running**:
   `alongside` vitest, with eight orphaned workers killed. The first seed
   failed with `P2028`, the interactive transaction timeout.
+
+## Operator review at the Phase 15 close: the freed-time loop
+
+**Commit:** _(recorded in the follow-up commit)_
+
+**What it produced.** `docs/reviews/25-operator-review-phase-15-close.md`, and
+Phase 16 in the backlog: **A-124 (M, needs D-60)**, **A-125 (S, needs D-61)**,
+**A-126 (S)**. No product code changed. Every finding was proved by running
+code against `bookable_test` as `db:reset:test` produces it; probe scripts
+lived in a scratch directory and the database was reset afterwards.
+
+**What it decided.** Nothing — both new D-numbers are the owner's call at the
+start of their item, and the review states a recommendation for each.
+
+**The three findings.**
+
+- **A-124 — the freed-time screens measure the appointment that left, not the
+  time that is free.** A cancelled 215-minute balayage with a blow-dry sold
+  into its first 35 minutes vanishes from `/staff/opened` (`opened.ts:266` is
+  all-or-nothing "still empty") while 13:35–17:00 is free and a 185-minute
+  visit books there. The appointment page's "Who wants this slot?" still names
+  that client, and its Book link is refused `SlotTaken` — offered-then-refused,
+  on the screen used to make phone calls. A 55-minute cancellation on an empty
+  morning matches nobody while the same client books at its start.
+- **A-125 — booking someone off the waitlist does not take them off it.** No
+  booking path reads or writes `WaitlistEntry`. A client booked from the panel
+  stays `active`, stays on the standing queue, and is matched again on the next
+  two freed spans.
+- **A-126 — a stylist's own view says "not working today" over clients booked
+  on their day off.** `provider-day.tsx:28-30` returns on `column.closed`
+  before it reads the appointments. The printed sheet fixed this in A-093 and
+  the phone view was never moved.
+
+**Re-run and holding:** A-116 (a mis-tapped cancel now goes back on the book
+into a different chair) and A-114 (six spellings of one phone number and name
+all find one client).
+
+**The process note — the mirror of Phase 12's.** Phase 12's rule was about rows
+that keep their id through a change. This one is about values copied off a row
+at the moment of an event: **a derived span that stops asking the book at the
+moment it is derived is a snapshot with a live-looking label.** `freedMinutes`
+is correct at the instant of the cancellation and not one booking later.
+Neither mistake shows on the fixture everybody writes, where nothing happens
+between the cancellation and the question — **the failing fixture is always one
+where the desk did the sensible thing in between.** And its companion, about
+screens that split one act into two buttons: if the second button records that
+the first act happened, the first act should record it.
+
+**What it left behind.** The match list is oldest-first, which since D-56 puts
+a waiting single Cut above a later cut-and-colour on a 215-minute span — not
+scoped, and the next question only if A-124 lands and big spans still sell in
+small pieces. Four hand-typed `['cancelled', 'cancelled_late']` lists remain in
+db code (`clients.ts:426`, `providers.ts:139`, `services.ts:241`,
+`walk-in.ts:284`) plus two `CANCELLED` sets (`day-view.ts:431`,
+`view-model.ts:558`) — all correct today, all "a status enum is never one edit"
+waiting to happen; fold them into whichever item next touches one of those
+files. A-122/D-54's column widening should be measured on a day with three
+cancellations before anyone scopes it.
+
+**The run itself** was interrupted once by an Opus session limit, after the
+review file was written and while a further probe was being set up.
