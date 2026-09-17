@@ -4970,7 +4970,7 @@ Fringe trim (D-59's stated cost).
 
 ## Operator review at the Phase 15 close: the freed-time loop
 
-**Commit:** _(recorded in the follow-up commit)_
+**Commit:** `c933ba9`
 
 **What it produced.** `docs/reviews/25-operator-review-phase-15-close.md`, and
 Phase 16 in the backlog: **A-124 (M, needs D-60)**, **A-125 (S, needs D-61)**,
