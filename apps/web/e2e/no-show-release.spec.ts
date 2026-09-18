@@ -21,7 +21,7 @@ import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 import { fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
-import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
+import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, test } from './fixtures';
 
 const MIN = 60_000;
 
@@ -63,6 +63,14 @@ async function noShowRunningNow(): Promise<{ minutes: number; startedAt: string 
     const startAt = toDate(instant(nowMinute - 10 * MIN));
     const endAt = toDate(instant(nowMinute + 35 * MIN));
     const label = toLabel(fromDate(startAt), zoneId(business.timezone));
+    // A-124 — the released span starts NOW, so the day it is sold on is today
+    // at whatever time this happens to run. Open it all day with no lunch, or
+    // the freed list is empty whenever the suite runs through a break.
+    await openAllDay(prisma, {
+      businessId: business.id,
+      providerId: dana.id,
+      day: toLabel(nowMinute as ReturnType<typeof fromDate>, zoneId(business.timezone)).day,
+    });
 
     await prisma.appointment.create({
       data: {

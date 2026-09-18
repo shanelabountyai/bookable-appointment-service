@@ -32,6 +32,37 @@ import { seedStaffUser } from '@bookable/db/auth';
 import { resetDatabase } from '@bookable/db/testing';
 
 export const STAFF_EMAIL = 'owner@shear-genius.test';
+
+/**
+ * A-124 — OPEN ALL DAY, WITH NO BREAK, on one calendar day: for the specs that
+ * have to use the REAL clock (a server action stamps `new Date()`) and so
+ * cannot choose what time of day their fixture lands on.
+ *
+ * D-60 made the freed-time screens measure what is still FREE, and free time
+ * is time inside a working window and outside a break. Two specs building a
+ * no-show "twenty minutes ago" then passed at 11:00 and failed at 12:06 — in
+ * CI, inside the seed's 12:00 lunch — and would have failed every Sunday and
+ * Monday, which the seed closes. The fixture's premise was the time of day,
+ * and nothing asserted it.
+ *
+ * BOTH LEVELS, because `resolveAvailableWindows` intersects the business
+ * pattern with the provider's and returns closed if either is empty (the
+ * reason `running-late.spec.ts` wrote this same block inline first). An
+ * override's windows carry no breaks, so the lunch goes with it.
+ */
+export async function openAllDay(
+  prisma: PrismaClient,
+  args: { businessId: string; providerId: string; day: string },
+): Promise<void> {
+  for (const providerId of [null, args.providerId]) {
+    const override = await prisma.dateOverride.create({
+      data: { businessId: args.businessId, providerId, day: args.day, isClosed: false },
+    });
+    await prisma.dateOverrideWindow.create({
+      data: { businessId: args.businessId, dateOverrideId: override.id, open: '00:00', close: '23:59' },
+    });
+  }
+}
 export const STAFF_PASSWORD = 'e2e-staff-password';
 
 /**

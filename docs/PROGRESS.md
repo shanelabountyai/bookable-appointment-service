@@ -5093,6 +5093,19 @@ gone the other way:
   question is the defect. `AnyProviderTime` grew `endAt` so the containment
   test is exact on that arm too.
 
+**CI caught what the laptop could not, and it was the time of day.** The first
+push was red on two specs that build a no-show "twenty minutes ago" on the REAL
+clock (the release action stamps `new Date()` server-side, so they cannot use a
+frozen one). CI ran at 12:06 Chicago, inside the seed's 12:00 lunch; the local
+sweep ran at 11:00. D-60 correctly says lunch is not sellable, so the released
+span had no run and left the list — the behaviour right, the FIXTURE's premise
+wrong, and wrong every Sunday and Monday too (the seed closes both). Reproduced
+at 12:15 by reverting the fix, fixed with `openAllDay` in `e2e/fixtures.ts` (the
+block `running-late.spec.ts` already wrote inline for the same reason), and
+green at 12:16. **A spec that reads the real clock has the time of day as a
+hidden fixture, and it only fails when the clock lands somewhere interesting**
+— the same fixture rule as the break in the unit tests above, one level out.
+
 **What it left behind.** `/staff/opened` now needs the provider's HOURS, so a
 freed span on a day or at an hour nobody works is no longer listed — correct
 (it cannot be sold without an override) and a real behaviour change for a

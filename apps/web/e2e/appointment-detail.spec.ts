@@ -12,7 +12,7 @@ import { seedSetup } from '@bookable/db/settings';
 import { bookAppointment } from '@bookable/db/booking';
 import { staffActor } from '@bookable/core/auth';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
-import { STAFF_EMAIL, STAFF_PASSWORD, expect, test } from './fixtures';
+import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, test } from './fixtures';
 
 let DAY: string;
 let ZONE: string;
@@ -950,6 +950,14 @@ test.describe("a no-show's time, given back (A-069)", () => {
       // Floored to the minute: `appointment_instants_whole_minutes` refuses a
       // stray second, and `new Date()` always has one.
       const startAt = toDate(instant(Math.floor(fromDate(new Date()) / 60_000 - 20) * 60_000));
+      // A-124 — the release stamps the real clock, so what it frees is today
+      // at whatever time the suite runs. Open the day with no lunch, or the
+      // freed list is correctly empty whenever this runs through a break.
+      await openAllDay(prisma, {
+        businessId: business.id,
+        providerId: dana.id,
+        day: toLabel(fromDate(new Date()), zoneId(ZONE)).day,
+      });
       const appointment = await prisma.appointment.create({
         data: {
           businessId: business.id,
