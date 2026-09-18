@@ -2,7 +2,7 @@
  * A-023 — waitlist entries and fit-aware matching (WAIT-01, WAIT-02).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { calendarDay, wallTime } from '../../core/time';
+import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import {
@@ -72,7 +72,75 @@ beforeEach(async () => {
   }
 
   clientId = (await prisma.client.create({ data: { businessId, name: 'Ada Chen', phone: '5125550101' } })).id;
+
+  // A-124/D-60 — THE MATCHER ASKS THE ENGINE NOW, SO THE FIXTURE NEEDS A BOOK.
+  //
+  // Until this item every test here was arithmetic: a number of freed minutes
+  // against a composed footprint, with no hours, no rows and nothing to
+  // disagree with. That is exactly the substitution the item removes — the
+  // matcher was predicting the chooser's answer without asking the chooser —
+  // so the fixture now has working hours and the freed span in each test is
+  // carved out of a real day.
+  //
+  // Both patterns are written because `resolveAvailableWindows` INTERSECTS
+  // them: a provider with no weekly rows of her own is closed, whatever the
+  // business says.
+  for (const providerId of [null, danaId, priyaId, tessId]) {
+    for (let weekday = 0; weekday < 7; weekday++) {
+      await prisma.weeklyWindow.create({
+        data: { businessId, providerId, weekday, open: OPEN, close: CLOSE },
+      });
+    }
+  }
 });
+
+const at = (iso: string) => toDate(instantFromIso(iso));
+
+/** The salon's hours in this fixture. Chicago, so a summer instant is -05:00. */
+const OPEN = '09:00';
+const CLOSE = '19:00';
+const CDT = '-05:00';
+
+/** A Thursday, well before every Saturday these tests free time on, so the
+ *  lead time and the horizon are never what decides an answer. Frozen — a test
+ *  that reads the clock is wrong even when it passes. */
+const NOW = at(`2026-08-19T09:00:00${CDT}`);
+
+/**
+ * Leaves exactly ONE free run in a provider's day, and returns the freed range
+ * that sits inside it.
+ *
+ * Ad-hoc blocks rather than appointments: the run is what the engine and
+ * `freeRunsFor` see once everything else is subtracted, and a block is the
+ * cheapest honest way to say "the rest of that day is taken". Where a test
+ * needs a real appointment sold INSIDE the freed range — which is the case
+ * this whole item is about — it books one, because only a row can be partially
+ * resold.
+ */
+async function onlyFreeFrom(
+  providerId: string,
+  args: { day: string; from: string; minutes: number },
+): Promise<{ from: Date; to: Date }> {
+  const from = at(`${args.day}T${args.from}:00${CDT}`);
+  const to = toDate(instant(fromDate(from) + args.minutes * 60_000));
+  const dayOpen = at(`${args.day}T${OPEN}:00${CDT}`);
+  const dayClose = at(`${args.day}T${CLOSE}:00${CDT}`);
+  if (fromDate(from) > fromDate(dayOpen)) {
+    await prisma.adHocBlock.create({ data: { businessId, providerId, startAt: dayOpen, endAt: from, reason: 'busy' } });
+  }
+  if (fromDate(to) < fromDate(dayClose)) {
+    await prisma.adHocBlock.create({ data: { businessId, providerId, startAt: to, endAt: dayClose, reason: 'busy' } });
+  }
+  return { from, to };
+}
+
+/** A freed range named on an otherwise untouched day: nothing is blocked, so
+ *  the RUN around it is the whole working day. This is the shape the neighbour
+ *  fixture needs and the shape every pre-A-124 test accidentally assumed. */
+function freedRange(args: { day: string; from: string; minutes: number }): { from: Date; to: Date } {
+  const from = at(`${args.day}T${args.from}:00${CDT}`);
+  return { from, to: toDate(instant(fromDate(from) + args.minutes * 60_000)) };
+}
 
 describe('createWaitlistEntry', () => {
   it('rejects an inverted range', async () => {
@@ -262,9 +330,8 @@ describe('listWaitlistEntries', () => {
     const freedOn = (day: string) => ({
       businessId,
       providerId: danaId,
-            day: calendarDay(day),
-      time: wallTime('09:00'),
-      freedMinutes: 60,
+      ...freedRange({ day, from: '09:00', minutes: 60 }),
+      now: NOW,
     });
 
     async function waiting() {
@@ -314,7 +381,7 @@ describe('listWaitlistEntries', () => {
         const listed = (await listWaitlistEntries(prisma, { businessId, today: day })).some(
           (row) => row.id === entry.id,
         );
-        const matched = (await matchFreedSlot(prisma, freedOn(day))).some((row) => row.id === entry.id);
+        const matched = (await matchFreedSlot(prisma, freedOn(day))).entries.some((row) => row.id === entry.id);
         // The desk works ONE day at a time: whoever is on the queue that day
         // is exactly whoever an hour freeing that day could be offered to.
         expect(matched, `the two halves disagree about ${day}`).toBe(listed);
@@ -333,68 +400,75 @@ describe('listWaitlistEntries', () => {
   });
 });
 
+/**
+ * A-124 / D-60 — WHAT A FREED SPAN MATCHES, NOW THAT IT ASKS THE BOOK.
+ *
+ * Every test in here used to be arithmetic — a number of freed minutes against
+ * a composed footprint — and that is precisely the substitution the item
+ * removes. The fixture has hours and rows; the freed span is a range in a real
+ * Saturday; and what decides an answer is `computeSlotsIn`, the same function
+ * the write path runs.
+ *
+ * SATURDAY 2026-08-22, open 09:00–19:00. The footprints, composed per D-23 and
+ * per SVC-02's overrides, because every expectation below is read off them:
+ *
+ *   Cut            body 45,  buffers 10/5   -> footprint 60
+ *   Colour (Priya) body 90,  buffers 5/15   -> footprint 110
+ *   Colour (Dana)  body 75,  buffers 5/15   -> footprint 95   (her override)
+ *   Cut+Colour (Priya) body 135, 10/15      -> footprint 160
+ *   Cut+Colour (Dana)  body 120, 10/15      -> footprint 145
+ */
 describe('matchFreedSlot', () => {
-  const saturdayMorning = { day: calendarDay('2026-08-22'), time: wallTime('09:00') }; // a Saturday
+  const SATURDAY = '2026-08-22';
 
-  it('matches an "any provider" entry whose service fits, with Dana\'s own duration', async () => {
-    const entry = await createWaitlistEntry(prisma, {
+  const waitingFor = (serviceIds: string[], over: Partial<{ providerIds: string[]; dayParts: string[] }> = {}) =>
+    createWaitlistEntry(prisma, {
       businessId,
       clientId,
-      serviceIds: [colourId],
-      providerIds: [],
+      serviceIds,
+      providerIds: over.providerIds ?? [],
       fromDay: '2026-08-01',
       toDay: '2026-09-01',
-      dayParts: [],
+      dayParts: over.dayParts ?? [],
     });
 
-    // Dana's override: 75 + 5 + 15 = 95 minutes footprint.
-    const matches = await matchFreedSlot(prisma, {
-      businessId,
-      providerId: danaId,
-      ...saturdayMorning,
-      freedMinutes: 95,
-    });
-    expect(matches.map((m) => m.id)).toEqual([entry.id]);
+  const match = (providerId: string, freed: { from: Date; to: Date }) =>
+    matchFreedSlot(prisma, { businessId, providerId, ...freed, now: NOW });
+
+  it("offers the whole run, at an instant the ENGINE picked — with Dana's own duration", async () => {
+    const entry = await waitingFor([colourId]);
+    const freed = await onlyFreeFrom(danaId, { day: SATURDAY, from: '09:00', minutes: 95 });
+
+    const { entries, span } = await match(danaId, freed);
+    expect(entries.map((m) => m.id)).toEqual([entry.id]);
+    // Her footprint at Dana's chair, not the catalogue's (SVC-02).
+    expect(entries[0]?.footprintMinutes).toBe(95);
+    // THE INSTANT IS THE ENGINE'S. The Book link carries this, so the offer
+    // and the write are asking one question; it used to carry the freed
+    // range's own start for everybody.
+    expect(entries[0]?.startAt).toEqual(at(`${SATURDAY}T09:00:00${CDT}`));
+    expect(span?.remainder.minutes).toBe(95);
   });
 
-  it('does not fit when the freed window is shorter than the footprint', async () => {
-    await createWaitlistEntry(prisma, {
-      businessId,
-      clientId,
-      serviceIds: [colourId],
-      providerIds: [],
-      fromDay: '2026-08-01',
-      toDay: '2026-09-01',
-      dayParts: [],
-    });
-
-    const matches = await matchFreedSlot(prisma, {
-      businessId,
-      providerId: danaId,
-      ...saturdayMorning,
-      freedMinutes: 94,
-    });
-    expect(matches).toEqual([]);
+  it('THE LEADING BUFFER SITS OUTSIDE THE RUN AT A WINDOW EDGE, and inside it anywhere else', async () => {
+    await waitingFor([colourId]);
+    // 90 minutes from OPEN: her body (75) plus the buffer AFTER her (15) is
+    // exactly the run, and the 5 minutes before her fall outside it — there is
+    // nobody ahead of her at nine o'clock to tidy up after. The engine allows
+    // that (its window predicate is on the body), so the matcher must too: a
+    // reader stricter than the write refuses work the salon needs.
+    expect((await match(danaId, await onlyFreeFrom(danaId, { day: SATURDAY, from: '09:00', minutes: 90 }))).entries)
+      .toHaveLength(1);
+    await prisma.adHocBlock.deleteMany({ where: { businessId } });
+    // One minute less and her tail runs into whoever is next: refused.
+    expect((await match(danaId, await onlyFreeFrom(danaId, { day: SATURDAY, from: '09:00', minutes: 89 }))).entries)
+      .toEqual([]);
   });
 
   it('excludes an entry that named other providers', async () => {
-    await createWaitlistEntry(prisma, {
-      businessId,
-      clientId,
-      serviceIds: [colourId],
-      providerIds: [priyaId],
-      fromDay: '2026-08-01',
-      toDay: '2026-09-01',
-      dayParts: [],
-    });
-
-    const matches = await matchFreedSlot(prisma, {
-      businessId,
-      providerId: danaId,
-      ...saturdayMorning,
-      freedMinutes: 95,
-    });
-    expect(matches).toEqual([]);
+    await waitingFor([colourId], { providerIds: [priyaId] });
+    const freed = await onlyFreeFrom(danaId, { day: SATURDAY, from: '09:00', minutes: 300 });
+    expect((await match(danaId, freed)).entries).toEqual([]);
   });
 
   it('excludes an entry outside its date range', async () => {
@@ -407,60 +481,139 @@ describe('matchFreedSlot', () => {
       toDay: '2026-09-30',
       dayParts: [],
     });
-
-    const matches = await matchFreedSlot(prisma, {
-      businessId,
-      providerId: danaId,
-      ...saturdayMorning,
-      freedMinutes: 95,
-    });
-    expect(matches).toEqual([]);
+    const freed = await onlyFreeFrom(danaId, { day: SATURDAY, from: '09:00', minutes: 300 });
+    expect((await match(danaId, freed)).entries).toEqual([]);
   });
 
-  it('day-parts are a conjunction — Saturday morning misses a Saturday afternoon freed slot', async () => {
-    await createWaitlistEntry(prisma, {
-      businessId,
-      clientId,
-      serviceIds: [colourId],
-      providerIds: [],
-      fromDay: '2026-08-01',
-      toDay: '2026-09-01',
-      dayParts: ['saturday', 'morning'],
-    });
+  it('DAY-PARTS ARE JUDGED ON THE START SHE WOULD GET, not on whatever freed the span', async () => {
+    await waitingFor([colourId], { dayParts: ['saturday', 'morning'] });
+    // The freed range starts at two o'clock and the free run is the whole
+    // afternoon: there is no morning start anywhere in it.
+    const afternoon = await onlyFreeFrom(danaId, { day: SATURDAY, from: '14:00', minutes: 300 });
+    expect((await match(danaId, afternoon)).entries).toEqual([]);
 
-    const matches = await matchFreedSlot(prisma, {
-      businessId,
-      providerId: danaId,
-            day: calendarDay('2026-08-22'),
-      time: wallTime('14:00'),
-      freedMinutes: 95,
-    });
-    expect(matches).toEqual([]);
+    // The same entry, a span that STRADDLES noon. The old matcher asked
+    // `tagsFor(day, freed.time)` once, about the freed start, and would have
+    // refused this whole run for the same reason. She is offered a morning
+    // start inside it.
+    await prisma.adHocBlock.deleteMany({ where: { businessId } });
+    const straddling = await onlyFreeFrom(danaId, { day: SATURDAY, from: '11:00', minutes: 240 });
+    const { entries } = await match(danaId, straddling);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.startAt.getTime()).toBeLessThan(at(`${SATURDAY}T12:00:00${CDT}`).getTime());
   });
 
   it('D-56 — a span freed by a service she never asked for still matches, because she fits it', async () => {
-    const entry = await createWaitlistEntry(prisma, {
-      businessId,
-      clientId,
-      serviceIds: [cutId],
-      providerIds: [],
-      fromDay: '2026-08-01',
-      toDay: '2026-09-01',
-      dayParts: [],
+    const entry = await waitingFor([cutId]);
+    // A COLOUR came free. Nothing on this call names a service at all.
+    const freed = await onlyFreeFrom(danaId, { day: SATURDAY, from: '09:00', minutes: 95 });
+    const { entries } = await match(danaId, freed);
+    expect(entries.map((m) => m.id)).toEqual([entry.id]);
+    expect(entries[0]?.footprintMinutes).toBe(60);
+  });
+
+  /**
+   * THE THREE WRONG ANSWERS THE OPERATOR MEASURED AT THE PHASE 15 CLOSE, each
+   * one a case where a minutes comparison and the book disagree. Every one of
+   * them passed the whole suite before this item, because no fixture in it had
+   * a day with anything else in it.
+   */
+  describe('the freed span is the RUN, not the appointment that left (D-60)', () => {
+    it('A PARTIAL SALE KEEPS THE ROW: a client who fits the remainder and not the original start', async () => {
+      const entry = await waitingFor([cutId, colourId], { providerIds: [danaId] });
+      // A 215-minute balayage cancelled at 13:00, with a 35-minute blow-dry
+      // sold into its FRONT. 13:35–16:35 is three hours of Dana's Saturday.
+      const freed = await onlyFreeFrom(danaId, { day: SATURDAY, from: '13:00', minutes: 215 });
+      await prisma.adHocBlock.create({
+        data: {
+          businessId,
+          providerId: danaId,
+          startAt: freed.from,
+          endAt: toDate(instant(fromDate(freed.from) + 35 * 60_000)),
+          reason: 'sold into the front of it',
+        },
+      });
+
+      const { entries, span } = await match(danaId, freed);
+      // The remainder is what the desk reads, and it starts where the blow-dry
+      // ends — not where the balayage did.
+      expect(span?.remainder.start).toEqual(at(`${SATURDAY}T13:35:00${CDT}`));
+      expect(span?.remainder.minutes).toBe(180);
+      expect(entries.map((m) => m.id)).toEqual([entry.id]);
+      // AND THE INSTANT IS INSIDE THE REMAINDER. The old link carried 13:00,
+      // which is the one instant in this range the write refuses.
+      expect(entries[0]!.startAt.getTime()).toBeGreaterThanOrEqual(at(`${SATURDAY}T13:35:00${CDT}`).getTime());
     });
 
-    // A COLOUR came free. Before D-56 this filtered `serviceId` in SQL and
-    // returned nobody: a waiting cut was invisible to every span the salon
-    // did not free by cutting somebody's hair. Her footprint at Dana is
-    // 10 + 45 + 5 = 60, and there are 95 minutes going spare.
-    const matches = await matchFreedSlot(prisma, {
-      businessId,
-      providerId: danaId,
-      ...saturdayMorning,
-      freedMinutes: 95,
+    it('A SHORT FREED RANGE BESIDE AN EMPTY STRETCH: 55 minutes back is three hours to sell', async () => {
+      const entry = await waitingFor([cutId, colourId], { providerIds: [priyaId] });
+      // Priya's Saturday is otherwise empty; a 55-minute cut at nine was
+      // cancelled. Her visit is 160 minutes, and 160 > 55 — the old matcher
+      // said nobody fits while the write accepted her at its start.
+      const freed = freedRange({ day: SATURDAY, from: '09:00', minutes: 55 });
+      const { entries, span } = await match(priyaId, freed);
+      // The listing is still right to call it 55 minutes: the rest was already
+      // open. The RUN is the whole day, and that is what she was matched into.
+      expect(span?.remainder.minutes).toBe(55);
+      expect(span?.run.minutes).toBe(600);
+      expect(entries.map((m) => m.id)).toEqual([entry.id]);
+      expect(entries[0]?.footprintMinutes).toBe(160);
     });
-    expect(matches.map((m) => m.id)).toEqual([entry.id]);
-    expect(matches[0]?.footprintMinutes).toBe(60);
+
+    it('FITS BY MINUTES, NO START ON THE GRID: the arithmetic says yes and the engine says no', async () => {
+      await waitingFor([colourId], { providerIds: [danaId] });
+      // Exactly her 95-minute footprint, free — and starting at five past ten.
+      // The grid anchors at window open in 15-minute steps, so the only start
+      // that would fit is 10:10 and the engine never offers it. A minutes
+      // comparison cannot see this at all.
+      const freed = await onlyFreeFrom(danaId, { day: SATURDAY, from: '10:05', minutes: 95 });
+      const { entries, span } = await match(danaId, freed);
+      expect(span?.remainder.minutes).toBe(95);
+      expect(entries).toEqual([]);
+    });
+
+    it("A DAY THAT HAS PASSED OFFERS NOBODY — and says so rather than returning an empty list", async () => {
+      await waitingFor([cutId]);
+      // `matchFreedSlot`'s date filters have always used the freed day rather
+      // than today, so the entry itself is live for this range. What makes it
+      // unofferable is that the time is gone.
+      const freed = freedRange({ day: '2026-08-15', from: '09:00', minutes: 300 });
+      const answer = await matchFreedSlot(prisma, { businessId, providerId: danaId, ...freed, now: NOW });
+      // `span === null` is the fact both doors word. An empty `entries` with a
+      // live span means "nobody fits"; this means "there is nothing to fit".
+      expect(answer.span).toBeNull();
+      expect(answer.entries).toEqual([]);
+    });
+
+    it('A RANGE THAT STRADDLES LUNCH REPORTS THE SIDE HOLDING MOST OF IT — not the longest run in the day', async () => {
+      // Found by the e2e sweep, not by this file: the seed gives Dana a
+      // 12:00–13:00 break, and a tail freed 10:55–13:05 touches TWO runs. The
+      // first version chose by RUN length, so it picked the whole afternoon —
+      // which overlaps the freed range by five minutes — and the row fell under
+      // A-109's floor and vanished. No fixture here had a break in it.
+      const window = await prisma.weeklyWindow.findFirstOrThrow({
+        where: { businessId, providerId: danaId, weekday: 6 },
+      });
+      await prisma.windowBreak.create({ data: { businessId, weeklyWindowId: window.id, open: '12:00', close: '13:00' } });
+
+      const freed = freedRange({ day: SATURDAY, from: '10:55', minutes: 130 });
+      const { span } = await match(danaId, freed);
+      // BOTH edges (A-093's rule): an assertion on the start alone passes
+      // against the wrong run's clipped sliver, since neither run starts later
+      // than 13:00.
+      expect(span?.remainder.start).toEqual(at(`${SATURDAY}T10:55:00${CDT}`));
+      expect(span?.remainder.end).toEqual(at(`${SATURDAY}T12:00:00${CDT}`));
+      expect(span?.run.start).toEqual(at(`${SATURDAY}T09:00:00${CDT}`));
+    });
+
+    it('A FULLY RESOLD RANGE IS GONE, not merely empty', async () => {
+      await waitingFor([cutId]);
+      const freed = freedRange({ day: SATURDAY, from: '13:00', minutes: 60 });
+      await prisma.adHocBlock.create({
+        data: { businessId, providerId: danaId, startAt: freed.from, endAt: freed.to, reason: 'resold' },
+      });
+      expect((await match(danaId, freed)).span).toBeNull();
+    });
   });
 });
 
@@ -473,14 +626,11 @@ describe('matchFreedSlot', () => {
  * directions, so the fixture has to run both ways against the same entry —
  * asserting only the second would pass against the bug that was there.
  *
- * Priya has no overrides, so her Cut+Colour is D-23's composition of the
- * catalogue: the FIRST line's `bufferBefore` (cut, 10) + 45 + 90 + the LAST
- * line's `bufferAfter` (colour, 15) = 160. Buffers do NOT stack between the
- * lines — the 5 and the 10 in the middle are the client sitting in the chair,
- * not the chair being tidied between clients.
+ * A-124 re-cut these against a real book. The lengths are unchanged; what
+ * decides them is the engine rather than a subtraction.
  */
 describe('matchFreedSlot — a whole visit (D-56)', () => {
-  const saturdayMorning = { day: calendarDay('2026-08-22'), time: wallTime('09:00') };
+  const SATURDAY = '2026-08-22';
   const CUT_THEN_COLOUR_AT_PRIYA = 160;
 
   const cutThenColour = () =>
@@ -494,34 +644,30 @@ describe('matchFreedSlot — a whole visit (D-56)', () => {
       dayParts: [],
     });
 
-  const at = (freedMinutes: number, providerId = priyaId) =>
-    matchFreedSlot(prisma, { businessId, providerId, ...saturdayMorning, freedMinutes });
+  /** A run of exactly `minutes`, hemmed in on BOTH sides — so the visit's
+   *  whole envelope has to fit, which is the ordinary mid-afternoon case. */
+  const inARunOf = async (minutes: number, providerId = priyaId) => {
+    await prisma.adHocBlock.deleteMany({ where: { businessId } });
+    const freed = await onlyFreeFrom(providerId, { day: SATURDAY, from: '11:00', minutes });
+    return (await matchFreedSlot(prisma, { businessId, providerId, ...freed, now: NOW })).entries;
+  };
 
-  it('THE FALSE MATCH: a span holding her first service but not her visit is refused', async () => {
+  it('THE FALSE MATCH: a run holding her first service but not her visit is refused', async () => {
     const entry = await cutThenColour();
     // 100 minutes: comfortably longer than her cut's 60-minute footprint,
-    // nowhere near the 160 her appointment needs. The old matcher measured
-    // the stored `Cut` and put her name against exactly this.
-    expect(await at(100)).toEqual([]);
+    // nowhere near the 160 her appointment needs. The old matcher measured the
+    // stored `Cut` and put her name against exactly this.
+    expect(await inARunOf(100)).toEqual([]);
     // …and it is the LENGTH refusing her, not the entry being broken.
-    expect((await at(CUT_THEN_COLOUR_AT_PRIYA)).map((m) => m.id)).toEqual([entry.id]);
+    expect((await inARunOf(CUT_THEN_COLOUR_AT_PRIYA + 15)).map((m) => m.id)).toEqual([entry.id]);
   });
 
-  it('THE MISSED MATCH: a long span freed by a service that is not hers is offered', async () => {
+  it('THE MISSED MATCH: a long run freed by a service that is not hers is offered', async () => {
     const entry = await cutThenColour();
-    // Nothing on this call names a service at all any more — the structural
-    // half of D-56. A 190-minute hole in Priya's Saturday holds her whole
-    // visit, and what vacated it is not a question the matcher can ask.
-    const matches = await at(190);
+    const matches = await inARunOf(190);
     expect(matches.map((m) => m.id)).toEqual([entry.id]);
     expect(matches[0]?.serviceNames).toEqual(['Cut', 'Colour']);
     expect(matches[0]?.footprintMinutes).toBe(CUT_THEN_COLOUR_AT_PRIYA);
-  });
-
-  it('EXACTLY the footprint fits, and one minute under does not', async () => {
-    await cutThenColour();
-    expect((await at(CUT_THEN_COLOUR_AT_PRIYA)).length).toBe(1);
-    expect(await at(CUT_THEN_COLOUR_AT_PRIYA - 1)).toEqual([]);
   });
 
   it('ORDER IS THE FOOTPRINT: colour-then-cut is a different length from cut-then-colour', async () => {
@@ -538,8 +684,12 @@ describe('matchFreedSlot — a whole visit (D-56)', () => {
       toDay: '2026-09-01',
       dayParts: [],
     });
-    expect((await at(145)).map((m) => m.footprintMinutes)).toEqual([145]);
-    expect(await at(144)).toEqual([]);
+    // A run hemmed in on both sides has to hold the whole envelope AND start
+    // on the grid, so the two orders separate at a wider gap than the bare
+    // difference between 145 and 160: colour-then-cut takes the 11:15
+    // candidate here and cut-then-colour does not.
+    expect((await inARunOf(160)).map((m) => m.footprintMinutes)).toEqual([145]);
+    expect(await inARunOf(150)).toEqual([]);
   });
 
   it("composes at THIS provider's own durations, not the catalogue's", async () => {
@@ -555,10 +705,10 @@ describe('matchFreedSlot — a whole visit (D-56)', () => {
       dayParts: [],
     });
     // Dana colours in 75 rather than 90 (SVC-02): 10 + 45 + 75 + 15 = 145.
-    expect((await at(145, danaId)).map((m) => m.footprintMinutes)).toEqual([145]);
-    expect(await at(144, danaId)).toEqual([]);
-    // Priya's chair, the same entry, fifteen minutes longer.
-    expect(await at(145)).toEqual([]);
+    expect((await inARunOf(150, danaId)).map((m) => m.footprintMinutes)).toEqual([145]);
+    // Priya's chair, the same entry, fifteen minutes longer — the same run
+    // does not hold her.
+    expect(await inARunOf(150, priyaId)).toEqual([]);
   });
 
   it('A LINE SHE CANNOT DO IS A REFUSAL, NOT A ZERO — the junior is never offered the visit', async () => {
@@ -571,13 +721,13 @@ describe('matchFreedSlot — a whole visit (D-56)', () => {
       toDay: '2026-09-01',
       dayParts: [],
     });
-    // Tess cuts and does not colour. A whole day of her time is still not a
-    // span this visit fits, and the failure to rule out is the one that SKIPS
-    // the unqualified line and offers her the 60-minute cut instead — which
-    // fits, and is a booking the write would then refuse.
-    expect(await at(600, tessId)).toEqual([]);
-    // The same span, a cut-only entry, the same junior: she IS offered that,
-    // so the refusal above is about the colour and not about Tess.
+    // Tess cuts and does not colour. A whole afternoon of her time is still
+    // not a run this visit fits, and the failure to rule out is the one that
+    // SKIPS the unqualified line and offers her the 60-minute cut instead —
+    // which fits, and is a booking the write would then refuse.
+    expect(await inARunOf(400, tessId)).toEqual([]);
+    // The same run, a cut-only entry, the same junior: she IS offered that, so
+    // the refusal above is about the colour and not about Tess.
     await createWaitlistEntry(prisma, {
       businessId,
       clientId,
@@ -587,6 +737,6 @@ describe('matchFreedSlot — a whole visit (D-56)', () => {
       toDay: '2026-09-01',
       dayParts: [],
     });
-    expect((await at(600, tessId)).map((m) => m.footprintMinutes)).toEqual([60]);
+    expect((await inARunOf(400, tessId)).map((m) => m.footprintMinutes)).toEqual([60]);
   });
 });

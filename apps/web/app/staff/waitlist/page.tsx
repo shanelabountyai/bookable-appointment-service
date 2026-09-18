@@ -4,7 +4,7 @@ import { listProviders, listServices } from '@bookable/db/settings';
 import { listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
 import { openWeekdays } from '@bookable/db/availability';
 import { findClient, listCallMarks } from '@bookable/db/clients';
-import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { dayPartWords } from '@bookable/core/waitlist';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
@@ -70,7 +70,20 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   const prefillClient = prefill.clientId ? await findClient(prisma, staff.businessId, prefill.clientId) : null;
 
   const freed = freedSlotFrom(params, business.timezone, providers);
-  const matches = freed ? await matchFreedSlot(prisma, { ...freed.query, businessId: staff.businessId }) : null;
+  // A-124/D-60. The matcher derives the run itself from this range — the
+  // minutes in the URL are what the link SAID, and by the time somebody reads
+  // this screen a blow-dry may have gone into the front of it.
+  const matched = freed
+    ? await matchFreedSlot(prisma, {
+        businessId: staff.businessId,
+        providerId: freed.providerId,
+        from: freed.from,
+        to: freed.to,
+        now: new Date(),
+      })
+    : null;
+  const matches = matched?.entries ?? null;
+  const span = matched?.span ?? null;
   // A-072. Who has already been rung about THIS span — one read for the whole
   // list, keyed on A-067's derived row key so a span freed twice is two rounds
   // of calls rather than one that remembers the wrong answers.
@@ -98,15 +111,39 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
               released no-show's span — which decays all afternoon (A-109) —
               the name was of a service that no longer fitted the minutes
               beside it. What is for sale is a length of Priya's Saturday. */}
+          {/* A-124/D-60 — THE SPAN AS IT IS NOW, not as the link described it.
+              The heading used to read the minutes straight off the URL, so a
+              range with a blow-dry already sold into its front announced its
+              original length and then listed people for it. What the desk
+              reads now is the remainder, and — when the free time around it is
+              longer — the run that is actually on offer, because that is what
+              the names below were matched against. */}
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {minutesWords(freed.minutes)} with {freed.providerName}
+            {span ? minutesWords(span.remainder.minutes) : minutesWords(freed.minutes)} with {freed.providerName}
             {/* A-098. The span is real and sellable; the stylist is not
                 available to sell it. Saying so here is what stops the desk
                 promising Tess to whoever answers the phone. */}
             {freed.providerActive ? '' : ' (off the roster — this goes to somebody else)'},{' '}
-            {readableInstant(toDate(instantFromIso(freed.at)), business.timezone)}.
+            {readableInstant(span ? span.remainder.start : toDate(instantFromIso(freed.at)), business.timezone)}.
+            {span && span.run.minutes > span.remainder.minutes ? (
+              <>
+                {' '}
+                Free either side of it —{' '}
+                <span className="font-medium">
+                  {readableInstant(span.run.start, business.timezone)}, {minutesWords(span.run.minutes)}
+                </span>
+                , which is what these fit into.
+              </>
+            ) : null}
           </p>
-          {matches && matches.length === 0 ? (
+          {span === null ? (
+            /* D-60. Gone, not empty: resold, or the time has passed, or the
+               stylist is not working that day any more. The old screen listed
+               names here and its Book links opened a refusal. */
+            <p className="text-sm text-ink-muted">
+              That time has gone — it has been booked, or it is past. Nothing to offer anybody.
+            </p>
+          ) : matches && matches.length === 0 ? (
             <p className="text-sm text-ink-muted">Nobody on the waitlist fits this one.</p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -147,7 +184,15 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                          hands the desk a form that disagrees with the row it
                          was clicked from. `services` and `client` are the
                          parameters A-040's rebook already uses. */
-                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(freed.at)}&day=${freed.query.day}&client=${entry.clientId}${entry.serviceIds.map((id) => `&services=${id}`).join('')}`}
+                      /* A-124/D-60 — THE ENGINE'S OWN INSTANT, PER ROW. This
+                         carried `freed.at` — the start of the range that was
+                         freed — for everybody, which is the instant the write
+                         refuses the moment anything is sold into the front of
+                         it, and which is not where a 185-minute visit starts
+                         inside a four-hour run anyway. `entry.startAt` is a
+                         start `computeSlotsIn` offered for THIS visit, so the
+                         offer and the write are answering the same question. */
+                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(entry.startAt.toISOString())}&day=${dayOf(entry.startAt, business.timezone)}&client=${entry.clientId}${entry.serviceIds.map((id) => `&services=${id}`).join('')}`}
                       className="rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium dark:border-zinc-600"
                     >
                       Book
@@ -246,6 +291,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   );
 }
 
+/** The salon's own calendar day for an instant — never the server's, and
+ *  never `toISOString().slice(0, 10)` (banned repo-wide). */
+function dayOf(at: Date, timezone: string): string {
+  return toLabel(fromDate(at), zoneId(timezone)).day;
+}
+
 /** D-56 — the span's length as the desk would say it. Two hours and ten
  *  minutes of a Saturday is the thing being sold, and "130 min" is a unit of
  *  measurement rather than an offer. */
@@ -279,9 +330,12 @@ function freedSlotFrom(
   const provider = providers.find((p) => p.id === providerId);
   if (!provider) return null;
 
-  let label;
+  let start;
   try {
-    label = toLabel(instantFromIso(at), zoneId(timezone));
+    start = toDate(instantFromIso(at));
+    // Parsed in the salon's zone as well, so a timezone the business row no
+    // longer has fails here rather than three reads later.
+    toLabel(instantFromIso(at), zoneId(timezone));
   } catch {
     return null;
   }
@@ -293,9 +347,14 @@ function freedSlotFrom(
     providerActive: provider.active,
     minutes,
     at,
+    /** A-124/D-60 — the freed range as INSTANTS, which is all the matcher
+     *  takes now. `day`/`time` are gone from `FreedSlot`: a wall-clock pair
+     *  names two instants on fall-back day (D-4), and the matcher needs a
+     *  range it can go and re-measure against the book. */
+    from: start,
+    to: toDate(instant(fromDate(start) + minutes * 60_000)),
     key,
     appointmentId,
-    query: { providerId, day: label.day, time: label.time, freedMinutes: minutes },
   };
 }
 

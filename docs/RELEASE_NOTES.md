@@ -4551,3 +4551,35 @@ fixture that would catch it is never the obvious one. On a fixture where
 nothing happens between the cancellation and the question, both screens pass.
 The failing fixture is the one where the desk did the sensible thing in
 between.
+
+## A-124 — selling the hour, not the cancellation
+
+A client cancels a three-and-a-half-hour colour. The desk does the right thing
+and sells a forty-five minute cut into the front of it. The screen whose only
+job is selling freed time then **drops the whole row**, because "is this still
+empty?" was a yes/no question and one booking made it a no — while the day grid
+two tabs over drew the remaining two hours correctly, and the booking path
+happily sold them to anyone who asked. On the operator's book that is a
+$180-class appointment lost in order to earn a $45 one, most Saturdays.
+
+The same substitution ran the other way too. A fifty-five minute cancellation
+on an otherwise empty morning is three hours of sellable time; the waitlist
+compared 185 minutes against 55 and said nobody fits, while the write accepted
+that client at its start.
+
+**What is engineered here** is a rule this codebase has now paid for six times:
+*a read model that predicts a chooser's answer must ask the chooser's
+question.* The fix is not a wider subtraction — it is deleting the subtraction.
+The matcher now runs the same slot engine the write path runs, which brings the
+booking grid, the lead time, breaks, closing time, each stylist's own service
+durations and the physical chair along with it. A span can fit by minutes and
+still have no start the salon would ever offer; only the engine knows that.
+
+Two details are the interesting part. The offer is bounded by the **body** of
+the visit rather than its buffered envelope, because the first appointment of
+the day has nobody ahead of it to tidy up after — a stricter test would have
+refused every nine o'clock. And the two screens are now allowed to **disagree
+on purpose**: "what just opened up" reports what came back, "who wants this
+slot" sells the free run around it, and the assertion binding them together was
+replaced by one that rings down the match list and books every name it is
+given, requiring the database to accept each one.

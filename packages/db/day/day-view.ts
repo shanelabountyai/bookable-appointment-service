@@ -20,9 +20,10 @@
  *     from `ACTIVE_STATUSES`, so `completed` and `no_show` still hold their
  *     time (D-7) and only cancellations free it.
  */
-import { ACTIVE_STATUSES, type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
+import { ACTIVE_STATUSES, type Span, resolveWindow, wallTime } from '../../core/scheduling';
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
+import { freeRunsFrom } from './free-runs';
 import { type DayRoom, loadRoom } from './room';
 import { type LateCallRow, type RunningLate, findRunningLate, lateCallList } from './running-late';
 import { findBusyAppointments } from '../scheduling';
@@ -372,16 +373,6 @@ async function loadColumn(
       };
     });
 
-  // A gap is what is left of the working hours once breaks, absences and the
-  // busy set are taken out. Breaks are subtracted too: lunch is not bookable
-  // time, and a grid that offered it would send the front desk to interrupt a
-  // stylist eating.
-  const taken: Span[] = [
-    ...breakSpans,
-    ...absences.map((a) => ({ start: fromDate(a.start), end: fromDate(a.end) })),
-    ...busy.map((b) => ({ start: fromDate(b.start), end: fromDate(b.end) })),
-  ];
-
   return {
     providerId: args.provider.id,
     providerName: args.provider.displayName,
@@ -406,12 +397,13 @@ async function loadColumn(
     // offered-then-refused shape this repo has now caught four times, and one
     // empty array shuts it at the source: the grid, the sheet and anything
     // else reading `gaps` all follow, because none of them invents its own.
+    //
+    // A-124/D-60 — AND THE DERIVATION ITSELF MOVED TO `free-runs.ts`, because
+    // `/staff/opened` and the waitlist matcher needed the same fact and were
+    // each subtracting their own version of it. The grid and the freed-time
+    // screens now draw and sell the identical run.
     gaps: args.provider.active
-      ? subtractSpans(windowSpans, taken).map((span) => ({
-          start: toDate(span.start),
-          end: toDate(span.end),
-          minutes: (span.end - span.start) / MIN,
-        }))
+      ? freeRunsFrom({ windows: windowSpans, breaks: breakSpans, absences, busy })
       : [],
   };
 }

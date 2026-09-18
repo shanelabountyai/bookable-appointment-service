@@ -562,7 +562,6 @@ describe('determinism and safety', () => {
      */
     it('puts a name against a slot that actually opened up', async () => {
       const business = await prisma.business.findFirstOrThrow();
-      const zone = zoneId(business.timezone);
       expect(shared.waitlistEntries).toBeGreaterThan(0);
 
       const entries = await listWaitlistEntries(prisma, { businessId: business.id, today: seedToday(business.timezone) });
@@ -574,15 +573,18 @@ describe('determinism and safety', () => {
       const opened = await listOpenedSlots(prisma, { businessId: business.id, now: SEED_NOW });
       const matched = new Map<string, string[]>();
       for (const slot of opened) {
-        const label = toLabel(fromDate(slot.startAt), zone);
+        // A-124/D-60 — the row's own RANGE, which is now what is still free of
+        // what was freed. The matcher derives the run around it for itself.
         const who = await matchFreedSlot(prisma, {
           businessId: business.id,
           providerId: slot.providerId,
-          day: label.day,
-          time: label.time,
-          freedMinutes: slot.freedMinutes,
+          from: slot.blockedStart,
+          to: slot.blockedEnd,
+          now: SEED_NOW,
         });
-        if (who.length > 0) matched.set(slot.key, who.map((entry) => entry.clientName ?? '(no name)'));
+        if (who.entries.length > 0) {
+          matched.set(slot.key, who.entries.map((entry) => entry.clientName ?? '(no name)'));
+        }
       }
       expect([...matched.values()].flat().length, 'a freed slot with nobody against it is the empty state again').toBeGreaterThan(0);
     });

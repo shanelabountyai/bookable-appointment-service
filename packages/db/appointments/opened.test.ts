@@ -59,6 +59,21 @@ beforeEach(async () => {
   });
 
   clientId = (await prisma.client.create({ data: { businessId, name: 'Ada Chen', phone: '5125550101' } })).id;
+
+  // A-124/D-60 — HOURS, because the list now measures what is still FREE
+  // rather than what the cancelled row was, and free time is time inside a
+  // working window. A span nobody works is not a phone call: the desk cannot
+  // sell seven in the morning without booking an override, which is a
+  // different errand. Written for every weekday so that no fixture below has
+  // to care which day of the week its date lands on, and both patterns
+  // because `resolveAvailableWindows` intersects them.
+  for (const provider of [null, providerId]) {
+    for (let weekday = 0; weekday < 7; weekday++) {
+      await prisma.weeklyWindow.create({
+        data: { businessId, providerId: provider, weekday, open: '08:00', close: '20:00' },
+      });
+    }
+  }
 });
 
 /**

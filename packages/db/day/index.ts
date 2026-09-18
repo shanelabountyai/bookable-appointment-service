@@ -6,6 +6,7 @@ export {
   type DayView,
   loadDayView,
 } from './day-view';
+export { type FreeRun, freeRunsFor, freeRunsFrom, freedSpanNow } from './free-runs';
 export { type DayHold, type DayResource, type DayRoom, loadRoom } from './room';
 export {
   type PushCandidate,

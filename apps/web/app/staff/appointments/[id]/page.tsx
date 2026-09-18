@@ -4,6 +4,7 @@ import { prisma } from '@bookable/db';
 import { loadAppointmentDetail, releasableAt } from '@bookable/db/appointments';
 import { listSeriesOccurrences } from '@bookable/db/booking';
 import { reliabilityFor } from '@bookable/db/clients';
+import { freedSpanNow } from '@bookable/db/day';
 import {
   type AppointmentStatus,
   SLOT_FREEING_STATUSES,
@@ -58,6 +59,20 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   const day = toLabel(fromDate(detail.startAt), zone).day;
   const status = detail.status as AppointmentStatus;
   const gapMinutes = detail.gapMinutes;
+
+  // A-124/D-60 — what is STILL free of what this cancellation gave back. Null
+  // once it is past or resold, and the door below says so in words instead of
+  // offering somebody an instant the write refuses.
+  const freedSpan = (SLOT_FREEING_STATUSES as readonly string[]).includes(status)
+    ? await freedSpanNow(prisma, {
+        businessId: staff.businessId,
+        providerId: detail.providerId,
+        timezone: business.timezone,
+        blockedStart: detail.blockedStart,
+        blockedEnd: detail.blockedEnd,
+        now: new Date(),
+      })
+    : null;
 
   // The buttons come from the §7 table, filtered to what the FRONT DESK may do
   // right now — asked of the same function the write path asks, so a button
@@ -287,23 +302,39 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
       </dl>
 
       {/* WAIT-02's "who wants this slot?" — only once cancelling actually
-          freed the time (D-7: no_show/completed still occupy it). */}
+          freed the time (D-7: no_show/completed still occupy it).
+
+          A-124/D-60 — AND ONLY WHILE THERE IS STILL SOMETHING THERE. This door
+          checked neither "still future" nor "still empty", and handed the
+          matcher `blockedEnd - blockedStart` of the cancelled row, so a
+          cancellation from last week, and one whose time had already been
+          resold, both opened a panel that named a client and offered a Book
+          link the database refused — on the screen the desk makes phone calls
+          from. `freedSpanNow` is the same derivation `/staff/opened` applies,
+          so the two doors can no longer disagree about what is for sale. */}
       {(SLOT_FREEING_STATUSES as readonly string[]).includes(status) ? (
-        <Link
-          href={freedSlotHref({
-            providerId: detail.providerId,
-            startAt: detail.startAt,
-            freedMinutes: freedMinutes(detail),
-            // A-072. The same key `/staff/opened` derives for a cancellation,
-            // so the two doors into the matcher carry ONE identity and the
-            // marks made through either are the same marks.
-            key: `cancelled:${detail.id}`,
-            appointmentId: detail.id,
-          })}
-          className="text-sm font-medium underline underline-offset-4"
-        >
-          Who wants this slot?
-        </Link>
+        freedSpan ? (
+          <Link
+            href={freedSlotHref({
+              providerId: detail.providerId,
+              startAt: freedSpan.remainder.start,
+              freedMinutes: freedSpan.remainder.minutes,
+              // A-072. The same key `/staff/opened` derives for a cancellation,
+              // so the two doors into the matcher carry ONE identity and the
+              // marks made through either are the same marks.
+              key: `cancelled:${detail.id}`,
+              appointmentId: detail.id,
+            })}
+            className="text-sm font-medium underline underline-offset-4"
+          >
+            Who wants this slot? — {freedSpan.remainder.minutes} min free from{' '}
+            {readableInstant(freedSpan.remainder.start, business.timezone)}
+          </Link>
+        ) : (
+          <p className="text-sm text-ink-muted">
+            This time has gone — it is past, or somebody else has it now. Nothing to offer the waitlist.
+          </p>
+        )
       ) : null}
 
       {/* A-055. ABOVE the move panel on purpose: "she wants her roots doing
@@ -413,12 +444,6 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
       </section>
     </main>
   );
-}
-
-/** Body ± buffers (D-16) — what the exclusion constraint actually let go of,
- *  in whole minutes. Epoch-ms arithmetic (`fromDate`), never wall-clock. */
-function freedMinutes(detail: { blockedStart: Date; blockedEnd: Date }): number {
-  return Math.round((fromDate(detail.blockedEnd) - fromDate(detail.blockedStart)) / 60_000);
 }
 
 /** "3rd". A series is read out loud at a desk, and "occurrence 2" is not how

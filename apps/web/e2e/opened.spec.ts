@@ -152,6 +152,84 @@ async function shortenedColour(options: { day: string; time: string }): Promise<
   }
 }
 
+/**
+ * A-124. A long visit with Dana, cancelled — the balayage-shaped hole the
+ * operator measured. Body 165 with a 20-minute after-buffer, so it held
+ * 10:00–13:05 and gave 185 minutes back.
+ */
+async function cancelledLongVisit(options: { day: string; time: string }): Promise<void> {
+  const prisma = new PrismaClient();
+  try {
+    const business = await prisma.business.findFirstOrThrow();
+    const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+    const colour = await prisma.service.findFirstOrThrow({ where: { name: 'Colour' } });
+    const client = await prisma.client.create({
+      data: { businessId: business.id, name: 'Marcy Dunn', phone: '5125550177' },
+    });
+    const startAt = at(options.day, options.time);
+    await prisma.appointment.create({
+      data: {
+        businessId: business.id,
+        providerId: dana.id,
+        clientId: client.id,
+        status: 'cancelled',
+        startAt,
+        endAt: toDate(instant(fromDate(startAt) + 165 * 60_000)),
+        // A-098's rule: the buffers are set and the TRIGGER derives the
+        // envelope. Writing `blockedEnd` by hand produces a row the product
+        // cannot make.
+        bufferBeforeMinutes: 0,
+        bufferAfterMinutes: 20,
+        blockedStart: startAt,
+        blockedEnd: toDate(instant(fromDate(startAt) + 165 * 60_000)),
+        startDay: options.day,
+        startWallTime: options.time,
+        lines: {
+          create: { businessId: business.id, serviceId: colour.id, ordinal: 0, priceCents: 14000, durationMinutes: 165 },
+        },
+      },
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** A-124. The blow-dry the desk sold into the front of it — a live booking,
+ *  because only a real row makes the remainder shorter than the range. */
+async function soldInto(options: { day: string; time: string }): Promise<void> {
+  const prisma = new PrismaClient();
+  try {
+    const business = await prisma.business.findFirstOrThrow();
+    const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+    const cut = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+    const client = await prisma.client.create({
+      data: { businessId: business.id, name: 'Wendy Soon', phone: '5125550166' },
+    });
+    const startAt = at(options.day, options.time);
+    await prisma.appointment.create({
+      data: {
+        businessId: business.id,
+        providerId: dana.id,
+        clientId: client.id,
+        status: 'booked',
+        startAt,
+        endAt: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+        bufferBeforeMinutes: 0,
+        bufferAfterMinutes: 10,
+        blockedStart: startAt,
+        blockedEnd: toDate(instant(fromDate(startAt) + 45 * 60_000)),
+        startDay: options.day,
+        startWallTime: options.time,
+        lines: {
+          create: { businessId: business.id, serviceId: cut.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+        },
+      },
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   const prisma = new PrismaClient();
   try {
@@ -221,9 +299,14 @@ test.describe("what's opened up (A-043)", () => {
     await page.getByRole('link', { name: 'Opened up 1' }).click();
 
     await expect(page).toHaveURL(/\/staff\/opened$/);
-    // 10:55 to 13:05 — what she let go of, buffer and all, not the 120
+    // A-124/D-60 — 10:55 to 12:00, not to 13:05. She let go of 130 minutes
+    // on paper, but Dana's lunch is 12:00–13:00 (the seed's mid-window break)
+    // and lunch is not for sale; what came back that anybody can BUY is the
+    // 65 minutes before it. The old 130 counted the break. The other half of
+    // the note that follows:
+    // what she let go of, buffer and all, not the 120
     // minutes of body the colour was worth.
-    await expect(page.getByText(/10:55 · 130 min/)).toBeVisible();
+    await expect(page.getByText(/10:55 · 65 min/)).toBeVisible();
     // WHAT freed it, because the phone call is a different call: you do not
     // offer Mrs Hall another time, she is still coming.
     await expect(page.getByText('Mrs Hall dropped the Colour')).toBeVisible();
@@ -234,7 +317,38 @@ test.describe("what's opened up (A-043)", () => {
     // service was the matcher's filter. Two hours and ten minutes of a
     // Saturday is the thing being sold; who fits it is the fit's business.
     await page.getByRole('link', { name: 'Who wants this slot?' }).click();
-    await expect(page.getByText(/2 hr 10 min free with Dana/)).toBeVisible();
+    await expect(page.getByText(/1 hr 5 min free with Dana/)).toBeVisible();
+  });
+
+  /**
+   * A-124 / D-60 — THE PARTIAL SALE, which is the move the desk makes RIGHT
+   * and which took the rest of the afternoon off this screen.
+   *
+   * Cancel a long visit; sell a short one into the FRONT of what it gave back.
+   * Before D-60 the row vanished entirely — `busy.length === 0` is
+   * all-or-nothing, and one booking inside the range made "still empty" false
+   * for the whole of it — while the day grid two tabs over drew the remaining
+   * gap correctly and the write happily booked into it. On the operator's own
+   * book that is a $180-class appointment lost to earn a $45 one, most
+   * Saturdays.
+   */
+  test('keeps a partly sold row, and reports what is LEFT of it', async ({ page }) => {
+    // 10:00, 165 minutes of body plus a 20-minute after-buffer: she held
+    // 10:00–13:05, and cancelling gave all 185 minutes back.
+    await cancelledLongVisit({ day: DAY, time: '10:00' });
+    // …then a 45-minute Cut is sold into 10:00–10:55 (45 + the 10-minute
+    // after-buffer). 10:55–12:00 is still Dana's to sell: the cancelled
+    // colour ran across her 12:00 lunch, and lunch is not sellable time.
+    await soldInto({ day: DAY, time: '10:00' });
+
+    await page.goto('/staff/opened');
+    // THE ROW IS STILL HERE, and it names the remainder rather than the
+    // 185 minutes the cancelled row measures.
+    await expect(page.getByText(/10:55 · 65 min/)).toBeVisible();
+    await expect(page.getByText(/10:00 · 185 min/)).toHaveCount(0);
+
+    await page.getByRole('link', { name: 'Who wants this slot?' }).click();
+    await expect(page.getByText(/1 hr 5 min free with Dana/)).toBeVisible();
   });
 
   test('has no accessibility violations', async ({ page }) => {

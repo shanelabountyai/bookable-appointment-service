@@ -58,8 +58,7 @@ import { SLOT_FREEING_STATUSES } from '../../core/scheduling';
 import { fitsFreedSpan, serviceFootprintMinutes } from '../../core/settings';
 import { InvalidTimeValue, fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { findAbsences } from '../availability/availability';
-import { findBusyAppointments } from '../scheduling/busy-set';
+import { freedSpanNow } from '../day/free-runs';
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
@@ -100,10 +99,24 @@ export interface OpenedSlot {
   providerId: string;
   providerName: string;
   /** The freed span's start — what the desk reads, and what the ordering is
-   *  on. For a cancellation that is the body start, as it always was. */
+   *  on. A-124/D-60: this is where the time is free FROM, which is the body
+   *  start only until something is sold into the front of it. */
   startAt: Date;
-  /** Buffer-inclusive, because that is the range the exclusion constraint let
-   *  go of and the range `matchFreedSlot` measures a service against. */
+  /**
+   * A-124/D-60 — WHAT IS STILL FREE OF WHAT WAS FREED, not what the
+   * cancelled appointment measured.
+   *
+   * Buffer-inclusive, because that is the range the exclusion constraint let
+   * go of. Clipped on both sides on every read: at `now`, and at whatever has
+   * since been booked inside it. A row whose remainder has gone is not on the
+   * list at all.
+   *
+   * It is the REMAINDER and not the whole contiguous free run around it,
+   * because "55 minutes opened up" is the true sentence about a 55-minute
+   * cancellation on an empty morning — the rest was already open and the day
+   * grid is the screen for that. The matcher on the other side of the link
+   * derives the run from this range and sells all of it.
+   */
   blockedStart: Date;
   blockedEnd: Date;
   freedMinutes: number;
@@ -225,11 +238,15 @@ export async function listOpenedSlots(
 ): Promise<OpenedSlot[]> {
   const since = toDate(instant(fromDate(args.now) - (args.lookbackDays ?? FREED_LOOKBACK_DAYS) * DAY_MS));
 
-  const [shortestFootprint, cancelled, vacated] = await Promise.all([
+  const [business, shortestFootprint, cancelled, vacated] = await Promise.all([
+    // The salon's own zone — what the freed range's calendar day is resolved
+    // in, never the server's (D-3).
+    db.business.findUniqueOrThrow({ where: { id: args.businessId }, select: { timezone: true } }),
     shortestSellableFootprintMinutes(db, args.businessId),
     cancelledCandidates(db, args, since),
     vacatedCandidates(db, args, since),
   ]);
+  const timezone = business.timezone;
 
   // BOUND 4 — long enough to sell (A-109), applied BEFORE the round trips
   // below: a span nothing fits is not worth asking the database whether it is
@@ -238,37 +255,68 @@ export async function listOpenedSlots(
     .concat(vacated)
     .filter((row) => fitsFreedSpan(shortestFootprint, row.freedMinutes));
 
-  // BOUND 3 — still empty. One pair of reads per candidate rather than one
-  // query for the lot: `findBusyAppointments` is the only reader that gets
-  // D-16's `overriddenFromRange` and D-29's per-block ranges right, and
-  // re-implementing that predicate here to save a round trip is exactly the
-  // second copy CLAUDE.md keeps out. Bounded by the two bounds above — a
-  // salon's fortnight of freed time, not a table scan.
+  // BOUND 3 — STILL EMPTY, AND A-124/D-60 MADE IT A MEASUREMENT RATHER THAN A
+  // YES/NO.
   //
-  // It is also the ONLY thing that retires a row, which is what keeps all four
-  // sources derived: re-lengthen the visit, move it back, hand it back to
-  // Dana, or simply sell the gap, and the span stops being empty. No path
-  // anywhere has to remember to clear anything.
+  // It used to be `busy.length === 0 && absences.length === 0`, which is
+  // all-or-nothing: before anything is sold inside a freed range, "still
+  // empty" and "still has sellable time" mean the same thing, and after one
+  // booking they do not. Selling a 35-minute blow-dry into the front of a
+  // cancelled 215-minute balayage is the right first move and it took the
+  // remaining three and a half hours OFF the screen whose only job is selling
+  // them — while the day grid, fourteen files away, drew that gap correctly
+  // all along. `freedSpanNow` is now the one derivation both of them use.
+  //
+  // It is still the ONLY thing that retires a row, which is what keeps all
+  // five sources derived: re-lengthen the visit, move it back, hand it back to
+  // Dana, or simply sell the gap, and the remainder shrinks to nothing on the
+  // next read. No path anywhere has to remember to clear anything.
+  //
+  // ponytail: one `freedSpanNow` per candidate, run concurrently, each a
+  // handful of indexed reads. Bounded by the two bounds above — a salon's
+  // fortnight of freed time, not a table scan. If that ever bites, the fix is
+  // to group the candidates by (provider, day) and derive each day's runs
+  // once; every row already carries both.
   const open = await Promise.all(
     sellable.map(async (row) => {
-      const window = { providerId: row.providerId, windowStart: row.blockedStart, windowEnd: row.blockedEnd };
-      const [busy, absences] = await Promise.all([
-        // A cancelled row is not in its own busy set: its blocks carry its own
-        // status and ACTIVE_STATUSES excludes it. A SHORTENED one very much
-        // is — which is why its span starts at the new `blockedEnd` and not a
-        // minute earlier.
-        findBusyAppointments(db, window),
-        // Time off over the freed slot means it did not open up — Dana is off,
-        // and that appointment is the conflicts screen's problem, not a thing
-        // to sell to the waitlist.
-        findAbsences(db, window),
-      ]);
-      return busy.length === 0 && absences.length === 0 ? row : null;
+      // A cancelled row is not in its own busy set: its blocks carry its own
+      // status and ACTIVE_STATUSES excludes it. A SHORTENED one very much is —
+      // which is why its span starts at the new `blockedEnd` and not a minute
+      // earlier. Time off over the freed slot means it did not open up: Dana
+      // is off, and that appointment is the conflicts screen's problem.
+      const span = await freedSpanNow(db, {
+        businessId: args.businessId,
+        providerId: row.providerId,
+        timezone,
+        blockedStart: row.blockedStart,
+        blockedEnd: row.blockedEnd,
+        now: args.now,
+      });
+      if (span === null) return null;
+      // THE ROW REPORTS THE REMAINDER, NOT THE RUN. The listing is right to
+      // call a 55-minute cancellation on an empty morning "55 minutes opened
+      // up" — the rest was already open, and the grid is the screen for that.
+      // The MATCHER is the half that must sell the whole run, and it derives
+      // it from this range on the other side of the link (D-60).
+      //
+      // The key is untouched, so A-072's call marks survive a partial sale:
+      // it is still the same span, shorter.
+      return {
+        ...row,
+        startAt: span.remainder.start,
+        blockedStart: span.remainder.start,
+        blockedEnd: span.remainder.end,
+        freedMinutes: span.remainder.minutes,
+      };
     }),
   );
 
   return open
     .flatMap((row) => (row === null ? [] : [row]))
+    // BOUND 4 again, on the REMAINDER this time: a span that fitted the
+    // shortest thing the salon sells before a blow-dry went into it may not
+    // fit anything now, and an unsellable sliver is not a phone call.
+    .filter((row) => fitsFreedSpan(shortestFootprint, row.freedMinutes))
     .sort((a, b) => fromDate(a.startAt) - fromDate(b.startAt) || a.key.localeCompare(b.key));
 }
 

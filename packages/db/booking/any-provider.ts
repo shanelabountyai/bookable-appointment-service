@@ -38,6 +38,20 @@ export interface AnyProviderTime {
    *  free at 2" as slack it can offer around; one is a time it should sell
    *  now. Costs nothing — the merge already knows. */
   freeCount: number;
+  /**
+   * A-124 — WHEN THE CLIENT WOULD ACTUALLY LEAVE, at the provider named above.
+   *
+   * The row used to carry a start and nothing else, which is enough to book
+   * from and not enough to ask "does this sit inside that hour?". The chosen
+   * provider's own length is the one that matters: SVC-02's override makes the
+   * junior's cut a different span from the senior's, so the end must come off
+   * HER slot rather than be recomputed from the catalogue.
+   *
+   * The BODY's end, not the envelope's: the buffer either side is the chair
+   * being tidied, and the engine lets it sit outside the working window (see
+   * `slot-engine.ts` — the window predicate is on the body).
+   */
+  endAt: Date;
 }
 
 /**
@@ -102,28 +116,36 @@ export async function anyProviderTimes(
         audience: args.audience ?? 'public',
         holderKey: args.holderKey ?? null,
       });
-      return { provider, starts: slots.map((slot) => slot.start) };
+      return { provider, slots };
     }),
   );
 
-  const byInstant = new Map<number, QualifiedProvider[]>();
-  for (const { provider, starts } of perProvider) {
-    for (const start of starts) {
-      const free = byInstant.get(start) ?? [];
-      free.push(provider);
-      byInstant.set(start, free);
+  // A-124 — the SLOT is kept beside the provider, not just its start: the
+  // chosen stylist's own blocked range is what the row has to report, and
+  // after the merge there is no way back from an instant to whose slot it was.
+  const byInstant = new Map<number, { provider: QualifiedProvider; end: number }[]>();
+  for (const { provider, slots } of perProvider) {
+    for (const slot of slots) {
+      const free = byInstant.get(slot.start) ?? [];
+      free.push({ provider, end: slot.end });
+      byInstant.set(slot.start, free);
     }
   }
 
   return [...byInstant.entries()]
     .sort(([a], [b]) => a - b)
     .map(([start, free]) => {
-      const chosen = leastBooked(free, load);
+      const chosen = leastBooked(
+        free.map((f) => f.provider),
+        load,
+      );
+      const its = free.find((f) => f.provider.id === chosen.id)!;
       return {
         at: toDate(start as ReturnType<typeof fromDate>),
         providerId: chosen.id,
         providerName: chosen.displayName,
         freeCount: free.length,
+        endAt: toDate(its.end as ReturnType<typeof fromDate>),
       };
     });
 }

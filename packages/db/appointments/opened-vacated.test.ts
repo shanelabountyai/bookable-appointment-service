@@ -19,7 +19,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { staffActor } from '../../core/auth';
-import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '../../core/time';
+import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
@@ -578,40 +578,103 @@ describe("a no-show's time given back (A-069)", () => {
     });
 
     /**
-     * THE AGREEMENT ASSERTION (CLAUDE.md's recurring defect, and NEXT.md's
-     * instruction). The screen OFFERS and `matchFreedSlot` ACCEPTS, and until
-     * A-109 only the second one measured the span. Asserting they are EQUAL —
-     * not merely that each is individually sensible — is the only thing that
-     * catches the two drifting apart again, and it has to run across a fixture
-     * where the answer actually CHANGES, which is why it walks the decay.
+     * THE AGREEMENT ASSERTION (CLAUDE.md's recurring defect, and the review's
+     * own instruction) — AND A-124 CHANGED WHAT IT IS AN ASSERTION ABOUT.
+     *
+     * It used to pair `/staff/opened` against `matchFreedSlot` at the A-109
+     * floor, because until D-60 both halves were the SAME subtraction:
+     * `fitsFreedSpan(x, blockedEnd - blockedStart)`. They are not any more,
+     * and deliberately so. The LIST asks "is what came back worth a phone
+     * call?" and answers about the REMAINDER (A-109's floor — a two-minute
+     * sliver is not news, and the day grid is the screen for an empty
+     * column). The MATCHER asks "who can take this time?" and answers about
+     * the RUN, which is usually bigger. Fourteen minutes back on an otherwise
+     * open Tuesday is correctly not on the list and correctly full of people
+     * who fit; pairing those two booleans now asserts something false.
+     *
+     * So the pairing that still has to hold is the one that was always the
+     * point of it: THE OFFER AND THE WRITE ANSWER THE SAME QUESTION. Every
+     * client the matcher names is booked at the instant its Book link carries,
+     * inside a transaction that is rolled back, and the write must not refuse.
+     * That is the offered-then-refused class this repo has now caught five
+     * times, and it is the only assertion that can see it — a matcher and a
+     * booking path can each be individually sensible and still disagree.
      */
-    it('offers a span exactly when the matcher would accept somebody for it', async () => {
+    it('every matched client can actually be booked at the instant her link carries', async () => {
       await releasedNoShow();
-      await createWaitlistEntry(prisma, {
-        businessId,
-        clientId,
-        serviceIds: [fringeId],
-        providerIds: [danaId],
-        fromDay: '2026-06-09',
-        toDay: '2026-06-09',
-        dayParts: [],
-      });
-      const floor = await shortestSellableFootprintMinutes(prisma, businessId);
+      for (const name of ['Bea', 'Cal', 'Dee']) {
+        const waiting = await prisma.client.create({ data: { businessId, name, phone: '5125550199' } });
+        await createWaitlistEntry(prisma, {
+          businessId,
+          clientId: waiting.id,
+          serviceIds: [fringeId],
+          providerIds: [danaId],
+          fromDay: '2026-06-09',
+          toDay: '2026-06-09',
+          dayParts: [],
+        });
+      }
 
-      // 50 minutes left, then the floor, then a minute under it, then two.
-      for (const left of [50, floor + 1, floor, floor - 1, 2]) {
-        const now = whenLeft(left);
-        const offered = await listOpenedSlots(prisma, { businessId, now });
-        const label = toLabel(fromDate(now), zoneId('America/Chicago'));
-        const accepted = await matchFreedSlot(prisma, {
+      const now = whenLeft(30);
+      const booked: string[] = [];
+      // RING DOWN THE LIST FOR REAL. `bookAppointment` opens its own
+      // transaction, so there is no rolling one back around it — and a
+      // committed booking is the honest fixture anyway: the desk rings the
+      // next name against the book as it now is. The matcher is re-asked after
+      // every write, and each offer it makes has to survive the write.
+      for (let guard = 0; guard < 6; guard++) {
+        const { span, entries } = await matchFreedSlot(prisma, {
           businessId,
           providerId: danaId,
-          day: label.day,
-          time: label.time,
-          freedMinutes: left,
+          from: now,
+          to: SPAN_END,
+          now,
         });
+        if (span === null || entries.length === 0) break;
+        const entry = entries[0]!;
+        // NO REFUSAL. `SlotTaken` (23P01) or `SlotNotOffered` here is the
+        // offered-then-refused defect, and it is what the old matcher produced
+        // on every partly sold range.
+        await bookAppointment(prisma, {
+          businessId,
+          providerId: danaId,
+          serviceIds: entry.serviceIds,
+          clientId: entry.clientId,
+          startAt: entry.startAt,
+          now,
+          actor: STAFF,
+          audience: 'staff',
+        } as Parameters<typeof bookAppointment>[1]);
+        booked.push(entry.clientName ?? '(no name)');
+      }
 
-        expect({ left, offered: offered.length > 0 }).toEqual({ left, offered: accepted.length > 0 });
+      // The fixture is worth nothing if the loop never ran: three waiting
+      // clients and a span that holds them (CLAUDE.md — assert the premise).
+      expect(booked.length, 'nobody was offered, so nothing was proved').toBeGreaterThan(0);
+      // First come, first offered — and each one really got a chair.
+      expect(await prisma.appointment.count({ where: { businessId, status: 'booked' } })).toBe(booked.length);
+    });
+
+    /**
+     * The direction that DOES still hold both ways round, and it is the half
+     * that matters: a row on the list is always a row whose span is live. A
+     * listed slot whose matcher says "there is nothing there" would be the
+     * appointment-page door's old bug arriving through the other door.
+     */
+    it('every slot the list offers still has a live span when the matcher looks', async () => {
+      await releasedNoShow();
+      for (const left of [50, 30, 16, 15]) {
+        const now = whenLeft(left);
+        for (const slot of await listOpenedSlots(prisma, { businessId, now })) {
+          const { span } = await matchFreedSlot(prisma, {
+            businessId,
+            providerId: slot.providerId,
+            from: slot.blockedStart,
+            to: slot.blockedEnd,
+            now,
+          });
+          expect(span, `listed ${left} minutes and the matcher found nothing there`).not.toBeNull();
+        }
       }
     });
   });

@@ -5028,3 +5028,81 @@ cancellations before anyone scopes it.
 
 **The run itself** was interrupted once by an Opus session limit, after the
 review file was written and while a further probe was being set up.
+
+## A-124 — the freed span is the time that is free, not the appointment that left
+
+**What it built.** D-60(a), taken at the decision prompt: **a freed span is the
+contiguous free run of that provider overlapping the freed range, recomputed
+from the busy set on every read.** Three screens had been measuring
+`blockedEnd − blockedStart` of a row that had already been cancelled, and
+comparing that number against a composed footprint without ever asking the
+book.
+
+`packages/db/day/free-runs.ts` is the one derivation: working windows minus
+breaks, absences and the busy set. It is the subtraction `day-view.ts` was
+already making for its `gaps`, lifted out and shared — so the waitlist now
+sells exactly the run the grid draws, which was the operator's own argument
+for (a). `freedSpanNow` returns two facts from one read: the **run** (what the
+matcher sells) and the **remainder** (the freed range clipped at `now` and at
+whatever has since been sold into it, which is what `/staff/opened` and the
+appointment page SAY).
+
+`matchFreedSlot` no longer compares minutes. It takes the range as instants,
+derives the run itself, and asks `computeSlotsIn` per candidate — with her
+`clientId` as `holderKey`, because the panel has had it in its hand the whole
+time (A-082's rule, the caller that HAS the answer). A candidate matches when
+the engine offers a start for her whole visit whose BODY lies inside the run,
+and the row carries that instant, so the Book link and the write are answering
+one question. Day-parts are judged on the start she would get, not on whatever
+freed the span.
+
+**What it decided.** Three things beyond D-60's text, each of which could have
+gone the other way:
+
+- **The BODY is what has to lie inside the run, not the envelope.** The
+  engine's window predicate is on the body (`slot-engine.ts`), so a visit
+  starting at window open legitimately has its `bufferBefore` outside the
+  window — there is nobody ahead of her to tidy up after. An envelope test
+  would have refused the first appointment of every day, which is the
+  reader-stricter-than-the-write shape this item exists to remove. The cheap
+  pre-filter moved to the body length for the same reason; `fitsFreedSpan` on
+  the footprint is not a sound necessary condition at a window edge.
+- **A-109's floor stays on the REMAINDER.** So `/staff/opened` and the matcher
+  now answer deliberately different questions — "is what came back worth a
+  phone call?" versus "who can take this time?" — and fourteen minutes back on
+  an open Tuesday is correctly off the list and correctly full of people who
+  fit. The old assertion pairing those two booleans was true only while both
+  were the same subtraction; it was retired for the one the review asked for,
+  which rings down the match list for real and requires every offer to survive
+  `bookAppointment`.
+- **When a freed range touches two runs, the remainder comes from the one
+  holding the MOST of it**, ties to the longer run. The first version chose the
+  longest RUN, and the e2e sweep caught it on the seed's own lunch break: a tail
+  freed 10:55–13:05 picked the whole afternoon, which overlaps it by five
+  minutes, so the row fell under A-109's floor and vanished — the defect this
+  item exists to remove, reached by a different road. **No unit fixture had a
+  break in it**, which is the fixture rule again: the answer only differs where
+  the day is interesting. There is a unit test with one now. The same fixture
+  showed the OLD number was wrong too: `/staff/opened` reported 130 minutes for
+  that tail, and 60 of them were Dana's lunch. It now says 65.
+- **An off-roster provider's arm asks the same engine, merged over the
+  roster** (`anyProviderTimes`), rather than falling back to a minutes
+  comparison. A-097's rule: a fallback that quietly reverts to the default
+  question is the defect. `AnyProviderTime` grew `endAt` so the containment
+  test is exact on that arm too.
+
+**What it left behind.** `/staff/opened` now needs the provider's HOURS, so a
+freed span on a day or at an hour nobody works is no longer listed — correct
+(it cannot be sold without an override) and a real behaviour change for a
+cancelled out-of-hours override, which is not covered by a fixture. One engine
+pass per surviving candidate, marked `ponytail:` with the grouping fix if it
+ever bites. The match list is still oldest-first (D-56's open question,
+unchanged). And the freed-slot row on `/staff/opened` names the remainder
+without naming the wider run beside it — the waitlist panel does, the row does
+not; worth a line if the desk ever reads "14 min" and stops clicking. And a
+booking sold into the MIDDLE of a freed range leaves two runs; `freedSpanNow`
+takes the one holding more of the range, so the smaller side is invisible to
+this screen. That is
+one row per freed range by construction (the key is A-072's, and splitting it
+would split the call marks with it), so the honest fix is a second row with its
+own key rather than a wider span — not scoped, and it needs the operator.
