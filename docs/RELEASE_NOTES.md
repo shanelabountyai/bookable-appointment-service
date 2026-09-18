@@ -4583,3 +4583,20 @@ on purpose**: "what just opened up" reports what came back, "who wants this
 slot" sells the free run around it, and the assertion binding them together was
 replaced by one that rings down the match list and books every name it is
 given, requiring the database to accept each one.
+
+## A-125 — the waitlist knows who it already booked
+
+When the desk booked a waiting client from the waitlist's own match list, her
+waitlist entry stayed open. The next cancellation listed her again, and
+somebody rang a client who was already booked. Clients stop trusting a salon's
+confirmation texts after calls like that.
+
+**What is engineered here** is where the fix goes. Clearing the waitlist entry
+is part of the same database transaction that writes the booking. If the
+booking loses a race for the slot, the entry stays open. The two can never
+disagree. The obvious shortcut was to hide anyone who already has an
+appointment, and it was rejected on purpose. "I'm booked on the 24th, but ring
+me if anything comes up sooner" is one of the commonest waitlist requests, and
+that rule would delete exactly that client. So the list names the booking
+instead ("already booked Tuesday at 14:00 with Dana") and lets the person on
+the phone decide.

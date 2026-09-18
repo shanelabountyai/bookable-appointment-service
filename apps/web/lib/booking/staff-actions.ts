@@ -268,6 +268,8 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
   // named is not the same refusal as losing the race for a stylist the client
   // asked for by name, and must not get the same answer.
   const fromAnyone = formData.get('fromAnyone') === '1';
+  // A-125/D-61. Set only when the panel was opened from a waitlist match row.
+  const waitlistEntryId = String(formData.get('waitlistEntryId') ?? '') || null;
 
   if (serviceIds.length === 0) return { ok: false, message: 'Choose at least one service.' };
 
@@ -320,9 +322,11 @@ export async function bookAsStaff(_previous: StaffBookingState, formData: FormDa
       audience: 'staff',
       isOverride,
       overrideReason: isOverride ? overrideReason : null,
+      waitlistEntryId,
     });
 
     revalidatePath('/staff/day');
+    if (waitlistEntryId) revalidatePath('/staff/waitlist');
     return {
       ok: true,
       bookedId: appointment.id,

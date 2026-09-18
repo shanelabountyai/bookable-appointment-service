@@ -3,13 +3,17 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { fromDate, instant, instantFromIso, toDate } from '../../core/time';
+import { staffActor } from '../../core/auth';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
+import { bookAppointment } from '../booking/book';
+import { SlotTaken } from '../booking/errors';
 import {
   WaitlistEntryRejected,
   createWaitlistEntry,
   listWaitlistEntries,
   matchFreedSlot,
+  nextBookedFor,
   setWaitlistEntryStatus,
 } from './waitlist';
 
@@ -738,5 +742,103 @@ describe('matchFreedSlot — a whole visit (D-56)', () => {
       dayParts: [],
     });
     expect((await inARunOf(400, tessId)).map((m) => m.footprintMinutes)).toEqual([60]);
+  });
+});
+
+describe('closing an entry, and naming what she already holds (A-125, D-61)', () => {
+  const STAFF = staffActor('staff-1');
+
+  const waitingForCut = () =>
+    createWaitlistEntry(prisma, {
+      businessId,
+      clientId,
+      serviceIds: [cutId],
+      providerIds: [],
+      fromDay: '2026-08-01',
+      toDay: '2026-09-30',
+      dayParts: [],
+    });
+
+  const book = (
+    args: { providerId: string; startAt: Date; clientId?: string | null; waitlistEntryId?: string | null },
+  ) =>
+    bookAppointment(prisma, {
+      businessId,
+      providerId: args.providerId,
+      serviceIds: [cutId],
+      clientId: args.clientId === undefined ? clientId : args.clientId,
+      startAt: args.startAt,
+      now: NOW,
+      actor: STAFF,
+      audience: 'staff',
+      waitlistEntryId: args.waitlistEntryId ?? null,
+    });
+
+  const statusOf = async (id: string) =>
+    (await prisma.waitlistEntry.findUniqueOrThrow({ where: { id }, select: { status: true } })).status;
+
+  const matchedOn = async (providerId: string, freed: { from: Date; to: Date }) =>
+    (await matchFreedSlot(prisma, { businessId, providerId, ...freed, now: NOW })).entries.map((m) => m.id);
+
+  it('BOOKED FROM THE PANEL: the entry is fulfilled, and absent from the next span', async () => {
+    const entry = await waitingForCut();
+    const nextSpan = freedRange({ day: '2026-08-29', from: '10:00', minutes: 60 });
+    // The premise: before the booking she IS a match for next week's span.
+    expect(await matchedOn(priyaId, nextSpan)).toEqual([entry.id]);
+
+    await book({ providerId: danaId, startAt: at(`2026-08-22T10:00:00${CDT}`), waitlistEntryId: entry.id });
+
+    expect(await statusOf(entry.id)).toBe('fulfilled');
+    expect(await matchedOn(priyaId, nextSpan)).toEqual([]);
+  });
+
+  it('A REFUSED BOOKING LEAVES HER WAITING: SlotTaken rolls the close back with it', async () => {
+    const entry = await waitingForCut();
+    const other = await prisma.client.create({ data: { businessId, name: 'Bea Ortiz', phone: '5125550102' } });
+    const startAt = at(`2026-08-22T10:00:00${CDT}`);
+    await book({ providerId: danaId, startAt, clientId: other.id });
+
+    await expect(book({ providerId: danaId, startAt, waitlistEntryId: entry.id })).rejects.toBeInstanceOf(SlotTaken);
+    expect(await statusOf(entry.id)).toBe('active');
+  });
+
+  it('closes only an ACTIVE entry of the client actually booked', async () => {
+    const entry = await waitingForCut();
+    const other = await prisma.client.create({ data: { businessId, name: 'Bea Ortiz', phone: '5125550102' } });
+
+    // The desk swapped the client on the panel: Bea is booked, Ada still waits.
+    await book({
+      providerId: danaId,
+      startAt: at(`2026-08-22T10:00:00${CDT}`),
+      clientId: other.id,
+      waitlistEntryId: entry.id,
+    });
+    expect(await statusOf(entry.id)).toBe('active');
+
+    // Already closed is not an error, and is not reopened or rewritten.
+    await setWaitlistEntryStatus(prisma, { businessId, entryId: entry.id, status: 'cancelled' });
+    await book({ providerId: danaId, startAt: at(`2026-08-22T12:00:00${CDT}`), waitlistEntryId: entry.id });
+    expect(await statusOf(entry.id)).toBe('cancelled');
+  });
+
+  it('"BOOKED ON THE 29TH, SOONER IF YOU CAN": she still matches, and the row can name the booking', async () => {
+    const entry = await waitingForCut();
+    const cancelled = await book({ providerId: priyaId, startAt: at(`2026-08-24T10:00:00${CDT}`) });
+    await prisma.appointment.update({ where: { id: cancelled.id }, data: { status: 'cancelled' } });
+    const later = await book({ providerId: priyaId, startAt: at(`2026-08-29T11:00:00${CDT}`) });
+    const latest = await book({ providerId: danaId, startAt: at(`2026-09-05T11:00:00${CDT}`) });
+
+    // Never a filter: a sooner span still offers her.
+    const sooner = freedRange({ day: '2026-08-22', from: '10:00', minutes: 60 });
+    expect(await matchedOn(danaId, sooner)).toEqual([entry.id]);
+
+    // The EARLIEST live one — not the cancelled one before it, and not the
+    // last row (a last-wins Map would name 5 Sep).
+    const named = await nextBookedFor(prisma, { businessId, clientIds: [clientId], now: NOW });
+    expect(named.get(clientId)).toEqual({ startAt: later.startAt, providerName: 'Priya' });
+
+    // Once that one is past, the next one is named.
+    const afterIt = await nextBookedFor(prisma, { businessId, clientIds: [clientId], now: later.endAt });
+    expect(afterIt.get(clientId)).toEqual({ startAt: latest.startAt, providerName: 'Dana' });
   });
 });

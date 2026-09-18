@@ -9,7 +9,7 @@
 import { DAY_PART_TAGS, matchesDayParts, tagsFor } from '../../core/waitlist';
 import { fromDate, toDate, toLabel, zoneId } from '../../core/time';
 import { effectiveDurationMinutes, effectivePriceCents, fitsFreedSpan, serviceFootprintMinutes } from '../../core/settings';
-import { composeVisit } from '../../core/scheduling';
+import { ACTIVE_STATUSES, composeVisit } from '../../core/scheduling';
 import { anyProviderTimes } from '../booking/any-provider';
 import { type FreeRun, freedSpanNow } from '../day/free-runs';
 import { computeDaySlots } from '../scheduling';
@@ -198,7 +198,7 @@ export async function createWaitlistEntry(db: Db, input: CreateWaitlistEntryInpu
 
 /** The whole lifecycle in one setter — `active → fulfilled | expired |
  *  cancelled` — because there is exactly one reader of the status column
- *  today and a status-transition table for a four-value enum with one
+ *  today (plus A-125's close-on-book, which only ever writes `fulfilled`) and a status-transition table for a four-value enum with one
  *  reader is the abstraction CLAUDE.md's status-module rule exists to avoid
  *  building before it earns its keep. */
 export async function setWaitlistEntryStatus(
@@ -209,6 +209,46 @@ export async function setWaitlistEntryStatus(
     where: { id: args.entryId, businessId: args.businessId },
     data: { status: args.status },
   });
+}
+
+/**
+ * A-125/D-61 — WHAT EACH WAITING CLIENT ALREADY HAS IN THE BOOK, so the row
+ * the desk rings from can say "already booked Thu 24 Sep at 10:00 with Dana".
+ *
+ * A NAME, NEVER A FILTER. "I'm booked on the 24th, but put me down if anything
+ * comes up sooner" is one of the commonest waitlist requests, and hiding
+ * anyone holding an appointment deletes that client from the list she asked
+ * to be on. The Book link closes the entry it was clicked from (`bookAppointment`'s
+ * `waitlistEntryId`); every other path — she rang back, booked online, was
+ * booked from the grid — is covered by saying so here.
+ *
+ * Her EARLIEST live appointment after `now`. Rows come back ascending and the
+ * map keeps the FIRST per client: a plain `new Map(rows.map(...))` is
+ * last-wins and would name her furthest booking (A-093).
+ */
+export async function nextBookedFor(
+  db: Db,
+  args: { businessId: string; clientIds: string[]; now: Date },
+): Promise<Map<string, { startAt: Date; providerName: string }>> {
+  const rows = args.clientIds.length
+    ? await db.appointment.findMany({
+        where: {
+          businessId: args.businessId,
+          clientId: { in: args.clientIds },
+          status: { in: [...ACTIVE_STATUSES] },
+          startAt: { gt: args.now },
+        },
+        select: { clientId: true, startAt: true, provider: { select: { displayName: true } } },
+        orderBy: { startAt: 'asc' },
+      })
+    : [];
+  const next = new Map<string, { startAt: Date; providerName: string }>();
+  for (const row of rows) {
+    if (row.clientId && !next.has(row.clientId)) {
+      next.set(row.clientId, { startAt: row.startAt, providerName: row.provider.displayName });
+    }
+  }
+  return next;
 }
 
 export interface FreedSlot {

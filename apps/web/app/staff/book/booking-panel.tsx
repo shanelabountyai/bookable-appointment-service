@@ -58,6 +58,7 @@ export function BookingPanel({
   initialServiceIds = [],
   initialClient = null,
   initialSlots = [],
+  waitlistEntryId = null,
 }: {
   day: string;
   services: Service[];
@@ -75,6 +76,10 @@ export function BookingPanel({
   /** Offered times for the prefilled combination, computed server-side so a
    *  rebook renders with its list already there. */
   initialSlots?: GridTime[];
+  /** A-125/D-61 — the waitlist entry this booking closes, from the match
+   *  row's Book link. The write ignores it unless it is still active and
+   *  belongs to the client actually booked. */
+  waitlistEntryId?: string | null;
 }) {
   const [state, formAction, booking] = useActionState(bookAsStaff, initial);
 
@@ -434,6 +439,7 @@ export function BookingPanel({
           name — and the server cannot tell the two apart without this. */}
       <input type="hidden" name="fromAnyone" value={anyone ? '1' : ''} />
       <input type="hidden" name="clientId" value={client?.id ?? ''} />
+      <input type="hidden" name="waitlistEntryId" value={waitlistEntryId ?? ''} />
       {chosen.map((id) => (
         <input key={id} type="hidden" name="serviceIds" value={id} />
       ))}

@@ -82,6 +82,17 @@ export interface BookAppointmentInput {
   seriesId?: string | null;
   seriesOrdinal?: number | null;
   /**
+   * A-125/D-61. The waitlist entry this booking was made FROM — the panel's
+   * Book link carries it. Closed `fulfilled` inside this transaction, so a
+   * refused booking (SlotTaken, anything) leaves her waiting and a successful
+   * one cannot leave her on the list for the desk to ring tomorrow.
+   *
+   * Only an `active` entry of THIS client is touched: one already closed or
+   * lapsed is not an error, and a desk that swapped the client on the panel
+   * must not close somebody else's entry.
+   */
+  waitlistEntryId?: string | null;
+  /**
    * TEST SEAM. Skips D-24's advisory lock so the EXCLUSION CONSTRAINT's own
    * defence — and the 23P01 -> SlotTaken mapping below — can be exercised.
    *
@@ -244,7 +255,19 @@ export async function bookAppointment(
           throw new SlotNotOffered(reasons, [...result.slots]);
         }
 
-        return writeAppointment(tx, input, offered, audience, isOverride, reliability);
+        const booked = await writeAppointment(tx, input, offered, audience, isOverride, reliability);
+        if (input.waitlistEntryId && input.clientId) {
+          await tx.waitlistEntry.updateMany({
+            where: {
+              id: input.waitlistEntryId,
+              businessId: input.businessId,
+              clientId: input.clientId,
+              status: 'active',
+            },
+            data: { status: 'fulfilled' },
+          });
+        }
+        return booked;
       },
       // Above Prisma's 5s default: a booking waits behind the advisory lock
       // for anyone already booking that provider-day, and that queue time

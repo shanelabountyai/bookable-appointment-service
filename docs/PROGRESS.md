@@ -5121,3 +5121,34 @@ this screen. That is
 one row per freed range by construction (the key is A-072's, and splitting it
 would split the call marks with it), so the honest fix is a second row with its
 own key rather than a wider span — not scoped, and it needs the operator.
+
+## A-125 — booking her off the waitlist takes her off it
+
+Commit `<sha>`.
+
+**What it built.** D-61(a), taken at the decision prompt. The match row's Book
+link carries `waitlistEntry=<id>` through `/staff/book` into a hidden field, and
+`bookAsStaff` hands it to `bookAppointment` as `waitlistEntryId`. The write sets
+that entry `fulfilled` after `writeAppointment` and inside the same transaction,
+so a `SlotTaken` rolls the close back with the booking. `nextBookedFor`
+(`packages/db/waitlist`) returns each waiting client's earliest live appointment
+after `now`, from `ACTIVE_STATUSES`, and both lists on `/staff/waitlist` print it
+as "Already booked … with …". It is a label and never a filter.
+
+**What it decided.** Two guards on the close, both in the `updateMany` predicate
+and neither an error: the entry must still be `active`, and it must belong to
+the client actually booked. The desk can swap the client on the panel after
+clicking Book, and a stale link must not close the wrong person's entry.
+`nextBookedFor` keeps the FIRST row per client from an ascending read. A plain
+`new Map(rows.map(...))` keeps the last row, so it would name her furthest
+booking (the A-093 class). The unit test has three appointments, one of them
+cancelled, and asserts the earliest live one is named, then the next one once
+`now` passes it.
+
+**What it left behind.** The review's "stamped with the appointment it became"
+is not built, because no reader needs it and it would need a column. A standing
+series booked from the link does not close the entry. `clientAlreadyBookedAround`
+still warns on overlap only; the waitlist rows now name a booking on another day,
+but the booking panel does not. The panel still does not preselect the `at` the
+link carries, so the desk clicks the time again (this predates A-125; the new
+e2e test clicks 09:00).

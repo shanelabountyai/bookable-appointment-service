@@ -50,6 +50,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
   const requestedServiceIds =
     typeof params.services === 'string' ? [params.services] : Array.isArray(params.services) ? params.services : [];
   const requestedClientId = typeof params.client === 'string' ? params.client : null;
+  const waitlistEntryId = typeof params.waitlistEntry === 'string' ? params.waitlistEntry : null;
 
   const [providerRow, services] = await Promise.all([
     // NOT filtered by `active` — A-104. `active` answers exactly one question
@@ -168,6 +169,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           initialServiceIds={prefillServiceIds}
           initialClient={prefillClient}
           initialSlots={initialSlots}
+          waitlistEntryId={waitlistEntryId}
         />
       )}
     </main>

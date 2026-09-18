@@ -155,6 +155,80 @@ test.describe('the waitlist, staff half (A-023)', () => {
   });
 
   /**
+   * A-125/D-61 — BOOKING FROM THE MATCH ROW CLOSES THE ENTRY IT CAME FROM.
+   *
+   * Before this the Book link went to the panel and never came back, so a
+   * client booked off the list stayed on it and was rung about the next span.
+   * And the other half: a client who already holds a LATER appointment is
+   * still listed (she asked for sooner), with that appointment named on her
+   * row rather than hidden.
+   */
+  test('booking from a match row takes her off the list; a client booked later is named, not hidden', async ({ page }) => {
+    const prisma = new PrismaClient();
+    let danaId: string;
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const cut = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      danaId = dana.id;
+      for (const name of ['Beth Waits', 'Gil Sooner']) {
+        const client = await prisma.client.create({ data: { businessId: business.id, name, phone: name === 'Beth Waits' ? '5125550199' : '5125550198' } });
+        await prisma.waitlistEntry.create({
+          data: { businessId: business.id, clientId: client.id, serviceIds: [cut.id], providerIds: [], fromDay: DAY, toDay: DAY, dayParts: [] },
+        });
+        if (name === 'Gil Sooner') {
+          // A week later, 14:00 with Dana — outside the span being sold.
+          const later = addDays(calendarDay(DAY), 7);
+          const resolution = resolve(later, wallTime('14:00'), zoneId(ZONE));
+          if (resolution.kind !== 'unique') throw new Error('not unique');
+          const startAt = toDate(resolution.at);
+          const endAt = toDate(instant(fromDate(startAt) + 45 * 60_000));
+          await prisma.appointment.create({
+            data: {
+              businessId: business.id,
+              providerId: dana.id,
+              clientId: client.id,
+              startAt,
+              endAt,
+              // Cut's own buffers; the trigger derives the blocked range.
+              bufferBeforeMinutes: 0,
+              bufferAfterMinutes: 10,
+              blockedStart: startAt,
+              blockedEnd: endAt,
+              startDay: later,
+              startWallTime: '14:00',
+              lines: {
+                create: { businessId: business.id, serviceId: cut.id, ordinal: 0, priceCents: 5500, durationMinutes: 45 },
+              },
+            },
+          });
+        }
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // An hour of Dana's Tuesday, named the way the appointment page's link names it.
+    await page.goto(`/staff/waitlist?providerId=${danaId}&at=${encodeURIComponent(at('10:00').toISOString())}&minutes=60`);
+    const bethRow = page.getByRole('listitem').filter({ hasText: 'Beth Waits' }).first();
+    const gilRow = page.getByRole('listitem').filter({ hasText: 'Gil Sooner' }).first();
+    await expect(gilRow.getByText(/^Already booked .* at 14:00 with Dana$/)).toBeVisible();
+    await expect(bethRow.getByText(/^Already booked/)).toHaveCount(0);
+
+    await bethRow.getByRole('link', { name: 'Book', exact: true }).click();
+    await expect(page).toHaveURL(/\/staff\/book\?.*waitlistEntry=/);
+    // The engine's start for her in the 09:00–12:00 run (D-60).
+    await page.getByRole('button', { name: '09:00', exact: true }).click();
+    await page.getByRole('button', { name: 'Book', exact: true }).click();
+    await expect(page.getByText('Booked.')).toBeVisible();
+
+    await page.goto('/staff/waitlist');
+    await expect(page.getByText(/^Waiting \(1\)/)).toBeVisible();
+    await expect(page.getByText('Beth Waits')).toHaveCount(0);
+    await expect(page.getByText(/^Already booked .* at 14:00 with Dana$/)).toBeVisible();
+  });
+
+  /**
    * A-072 — RINGING ROUND A FREED SLOT, WITH A MEMORY (WAIT-02, D-37(b)).
    *
    * The desk rings Mrs Patel, who says "let me check with work". A walk-in

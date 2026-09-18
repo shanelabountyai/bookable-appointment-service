@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { listProviders, listServices } from '@bookable/db/settings';
-import { listWaitlistEntries, matchFreedSlot } from '@bookable/db/waitlist';
+import { listWaitlistEntries, matchFreedSlot, nextBookedFor } from '@bookable/db/waitlist';
 import { openWeekdays } from '@bookable/db/availability';
 import { findClient, listCallMarks } from '@bookable/db/clients';
 import { fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
@@ -69,6 +69,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   const prefill = readPrefill(params);
   const prefillClient = prefill.clientId ? await findClient(prisma, staff.businessId, prefill.clientId) : null;
 
+  const now = new Date();
   const freed = freedSlotFrom(params, business.timezone, providers);
   // A-124/D-60. The matcher derives the run itself from this range — the
   // minutes in the URL are what the link SAID, and by the time somebody reads
@@ -79,7 +80,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
         providerId: freed.providerId,
         from: freed.from,
         to: freed.to,
-        now: new Date(),
+        now,
       })
     : null;
   const matches = matched?.entries ?? null;
@@ -91,6 +92,21 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
   const marks = subject
     ? (await listCallMarks(prisma, { businessId: staff.businessId, subjects: [subject] })).get(subject) ?? []
     : [];
+  // A-125/D-61. What each waiting client already holds, named on her row and
+  // never used to hide her — see `nextBookedFor`.
+  const booked = await nextBookedFor(prisma, {
+    businessId: staff.businessId,
+    clientIds: [...new Set([...entries, ...(matches ?? [])].map((entry) => entry.clientId))],
+    now,
+  });
+  const bookedLine = (clientId: string) => {
+    const next = booked.get(clientId);
+    return next ? (
+      <span className="mt-0.5 block text-xs font-medium text-amber-800 dark:text-amber-300">
+        Already booked {readableInstant(next.startAt, business.timezone)} with {next.providerName}
+      </span>
+    ) : null;
+  };
   const offerFor = (clientId: string | null) =>
     clientId ? marks.find((mark) => mark.clientId === clientId) : undefined;
 
@@ -169,6 +185,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                     <span className="mt-0.5 block text-xs text-ink-muted">
                       {entry.serviceNames.join(' then ')} · {entry.footprintMinutes} min
                     </span>
+                    {bookedLine(entry.clientId)}
                   </span>
                   <span className="flex items-center gap-2">
                     <Link
@@ -191,8 +208,12 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                          it, and which is not where a 185-minute visit starts
                          inside a four-hour run anyway. `entry.startAt` is a
                          start `computeSlotsIn` offered for THIS visit, so the
-                         offer and the write are answering the same question. */
-                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(entry.startAt.toISOString())}&day=${dayOf(entry.startAt, business.timezone)}&client=${entry.clientId}${entry.serviceIds.map((id) => `&services=${id}`).join('')}`}
+                         offer and the write are answering the same question.
+
+                         A-125/D-61 — AND THE ENTRY, so the booking write closes
+                         it in its own transaction and she is not rung again
+                         tomorrow about a slot she already has. */
+                      href={`/staff/book?provider=${freed.providerActive ? freed.providerId : 'any'}&at=${encodeURIComponent(entry.startAt.toISOString())}&day=${dayOf(entry.startAt, business.timezone)}&client=${entry.clientId}&waitlistEntry=${entry.id}${entry.serviceIds.map((id) => `&services=${id}`).join('')}`}
                       className="rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium dark:border-zinc-600"
                     >
                       Book
@@ -276,6 +297,7 @@ export default async function WaitlistPage({ searchParams }: PageProps<'/staff/w
                       {' · '}
                       {dayPartWords(entry.dayParts)}
                     </p>
+                    {bookedLine(entry.clientId)}
                   </div>
                   <div className="flex gap-2">
                     <EntryStatusButton entryId={entry.id} status="fulfilled" label="Fulfilled" />

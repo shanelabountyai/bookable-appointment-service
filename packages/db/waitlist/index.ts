@@ -7,5 +7,6 @@ export {
   createWaitlistEntry,
   listWaitlistEntries,
   matchFreedSlot,
+  nextBookedFor,
   setWaitlistEntryStatus,
 } from './waitlist';
