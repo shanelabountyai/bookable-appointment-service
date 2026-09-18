@@ -1,6 +1,6 @@
 # Next
 
-## A-125 is done (pending CI confirmation — check `gh run list --limit 1`). Next: A-126.
+## A-125 is done (CI green, run 35377419293). Next: A-126.
 
 `docs/prds/06-backlog.md` row 128, ⬜:
 
