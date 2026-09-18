@@ -5124,7 +5124,7 @@ own key rather than a wider span — not scoped, and it needs the operator.
 
 ## A-125 — booking her off the waitlist takes her off it
 
-Commit `<sha>`.
+Commit `1c4fe40`.
 
 **What it built.** D-61(a), taken at the decision prompt. The match row's Book
 link carries `waitlistEntry=<id>` through `/staff/book` into a hidden field, and
