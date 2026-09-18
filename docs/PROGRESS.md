@@ -5031,7 +5031,7 @@ review file was written and while a further probe was being set up.
 
 ## A-124 — the freed span is the time that is free, not the appointment that left
 
-Commit `ba6fe90`.
+Commits `ba6fe90`, and `2dfea16` for the e2e clock fix.
 
 **What it built.** D-60(a), taken at the decision prompt: **a freed span is the
 contiguous free run of that provider overlapping the freed range, recomputed
