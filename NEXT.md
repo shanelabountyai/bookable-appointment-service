@@ -1,20 +1,11 @@
 # Next
 
-## A-126 is done (CI green, run 35459401603). The backlog has no ⬜ rows left.
+## Phase 17 is scoped: A-127, A-128, A-129 (all S, no decisions needed)
 
-Phase 16 (A-124–A-126) is closed. Next is the phase-close review: run the
-`salon-operator` agent over what Phase 16 built. Its findings become new
-backlog rows (and decisions in 07-decisions.md where one is needed) before any
-build. Re-recommend the model at the start (Opus: this is review work).
-
-## What A-126 left that the next item should know
-
-- `hasDayToRunLate` (`apps/web/lib/day/run-late.ts`) is the ONE gate for
-  `ColumnControls`, used by both the grid and the stylist's list. It is not in
-  `view-model.ts`, because `day-grid.tsx` is `'use client'` and the view model
-  is `server-only`.
-- `ProviderDay` says "not working" only for a closed day with NO appointments.
-- There is still no e2e fixture for a cancelled out-of-hours override (from A-124).
+Source: `docs/reviews/26-operator-review-phase-16-close.md`. Start with
+**A-127** (the no-show release trigger throws 23514 on a segmented service; the
+fix is a new migration). Re-recommend the model at the start. Opus fits
+because this is a DB trigger and occupancy work.
 
 ## Environment notes (carried forward, still true)
 
@@ -25,3 +16,4 @@ build. Re-recommend the model at the start (Opus: this is review work).
 - `npm run test:e2e -- -g X` breaks (npm eats `-g`); pass a spec file instead.
 - No prettier config — don't `prettier --write`.
 - zsh globs `?`: quote routes. Docs-only pushes skip CI.
+- The review's probe scripts (`p1.mts`–`p6.mts`) were in a session scratchpad that is gone. The transcripts in the review are the record.

@@ -5177,3 +5177,36 @@ an absence item, and "these clients" over no clients would be false.
 of the controls (it needs work after `now`) is not asserted on the phone view.
 Only "Behind by" is. Out-of-hours overrides still have no fixture for a
 CANCELLED override (carried from A-124).
+
+## Operator review at the Phase 16 close: cutting a range at an instant
+
+**Commit:** _(recorded below)_
+
+**What it produced.** `docs/reviews/26-operator-review-phase-16-close.md`, and
+Phase 17 in the backlog: **A-127 (S)**, **A-128 (S)**, **A-129 (S)**. None
+needs a decision. No product code changed. Every finding was proved by running
+code against `bookable_test` as `db:reset:test` produces it. The probe scripts
+lived in the session scratchpad, and the database was reset afterwards.
+
+**Re-run.** A-124 (partial sale, neighbour, past cancellation), A-125 (a
+refused booking leaves the entry open, an accepted one fulfils it) and A-126
+(closed day with kept bookings) all hold against the built code.
+
+**The three findings.**
+
+- **A-127: releasing a no-show on a segmented service throws 23514.** The
+  release trigger truncates blocks before it deletes the ones past the cut, so
+  a block that starts after `releasedAt` breaks `appointment_block_well_formed`.
+  A Cut releases. A Colour or Balayage cannot be released until its last worked
+  block has begun. This predates Phase 16 (A-069) and is the most expensive of
+  the three.
+- **A-128: the freed-time loop still stops the clock at the start.** The
+  cancellation source bounds on `startAt > now`, so a late cancel drops off
+  `/staff/opened` at its start while the same event recorded as a released
+  no-show stays listed. Separately, `freedSpanNow` picks its run before it
+  clips at `now`.
+- **A-129: A-126's "closed with clients" predicate counts cancelled clients.**
+
+**What it left behind.** D-60(3) (one row per freed range) stays as it is, on
+the operator's call. The Phase 15 §5 leftovers are still open: match order,
+column widening, and hand-typed cancelled lists.
