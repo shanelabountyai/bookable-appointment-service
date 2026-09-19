@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { laneStyle } from '@/lib/day/lanes';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
+import { hasDayToRunLate } from '@/lib/day/run-late';
 import { AppointmentChip, CHIP_SHELL } from './appointment-chip';
 import { ColumnControls } from './column-controls';
 
@@ -133,10 +134,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
    * OFFER time — `Book with` above and `gaps` in `day-view.ts` stay shut, and
    * they are what the write refuses.
    */
-  const controls =
-    column.items.some((item) => item.kind === 'appointment') ||
-    column.runningLateMinutes !== null ||
-    !(column.closed || column.offRoster);
+  const controls = hasDayToRunLate(column);
 
   // D-54 (A-113) — A DOUBLE-BOOKED DAY WIDENS ITS COLUMN, by as many tracks as
   // its widest cluster has lanes. At the 13rem minimum a half lane left ~46px

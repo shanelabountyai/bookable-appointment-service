@@ -416,3 +416,37 @@ test.describe('the day sheet as a document (A-093)', () => {
     await expectNoAxeViolations(page);
   });
 });
+
+/**
+ * A-126 — THE PHONE VIEW, THE SHEET'S SIBLING NOBODY MOVED. It checked
+ * `closed` before its list, so the stylist's own screen said "not working
+ * today" over a client booked onto her day off — the one scenario where she
+ * does not turn up. An EMPTY closed date passes against that bug, so the
+ * fixture is a closed date WITH a client on it.
+ */
+test.describe("a stylist's own day (A-126)", () => {
+  test('lists the clients booked onto a day off, and says the day is outside her hours', async ({ page }) => {
+    await seedAppointment({ name: 'Bea Bride', isOverride: true, overrideReason: 'Dana will come in for the bride' });
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      await prisma.dateOverride.create({
+        data: { businessId: business.id, providerId: await danaId(), day: DAY, isClosed: true, reason: 'holiday' },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // The premise: the grid really does call this column closed.
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expect(page.getByRole('region', { name: /^Dana, not working today/ })).toBeVisible();
+
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+    await expect(page.getByRole('link', { name: /Bea Bride/ })).toBeVisible();
+    await expect(page.getByText('Off today — these clients are booked outside Dana’s hours.')).toBeVisible();
+    await expect(page.getByText('Dana is not working today.')).toHaveCount(0);
+    // The ride-along: she can say she is late from her own screen. (Not the
+    // push — that needs work still AHEAD of now, and DAY is a fixed past date.)
+    await expect(page.getByLabel('Behind by')).toBeVisible();
+  });
+});

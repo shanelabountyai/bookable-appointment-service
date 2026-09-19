@@ -5152,3 +5152,28 @@ still warns on overlap only; the waitlist rows now name a booking on another day
 but the booking panel does not. The panel still does not preselect the `at` the
 link carries, so the desk clicks the time again (this predates A-125; the new
 e2e test clicks 09:00).
+
+## A-126 — a stylist's own day lists clients booked on her day off
+
+Commit `TBD`.
+
+**What it built.** `ProviderDay` no longer returns "not working today" just
+because the column is `closed`. It says that only when the closed column holds
+no appointment. A closed day with clients renders the list under one line:
+"Off today — these clients are booked outside Dana's hours." This is the order
+`day-sheet.tsx` has used since A-093. Ride-along: the phone view now renders
+`ColumnControls`, so a stylist can set "behind by" and push her column from her
+own screen.
+
+**What it decided.** The grid's A-107 gate for the controls moved into
+`hasDayToRunLate` (`lib/day/run-late.ts`), and both views call it, so two copies
+of that question cannot drift apart. It sits in its own file, not in
+`view-model.ts`, because `day-grid.tsx` is `'use client'` and the view model is
+`server-only`. The first build failed on exactly that. The "not working" line
+checks for APPOINTMENTS and not for items, because a closed day can still carry
+an absence item, and "these clients" over no clients would be false.
+
+**What it left behind.** The e2e fixture is a fixed past date, so the push half
+of the controls (it needs work after `now`) is not asserted on the phone view.
+Only "Behind by" is. Out-of-hours overrides still have no fixture for a
+CANCELLED override (carried from A-124).

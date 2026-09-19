@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import type { GridColumn } from '@/lib/day/view-model';
+import { hasDayToRunLate } from '@/lib/day/run-late';
+import { ColumnControls } from './column-controls';
 import { ReleaseButton } from '@/components/release-button';
 import { QuickNote } from './quick-note';
 import { StatusActions } from './status-actions';
@@ -24,8 +26,15 @@ import { StatusActions } from './status-actions';
  * timer already keeps it fresh. The status buttons (A-035) are the one island
  * of client code, and they own only their own form.
  */
-export function ProviderDay({ column }: { column: GridColumn }) {
-  if (column.closed) {
+export function ProviderDay({ column, day }: { column: GridColumn; day: string }) {
+  /*
+   * A-126 — CLIENTS FIRST, `closed` ONLY FOR A DAY WITH NONE: the sheet's order
+   * (`day-sheet.tsx`, A-093). A day with no hours still gets clients — an
+   * out-of-hours override, or AVAIL-05's keep-flagged choice — and checking
+   * `closed` first meant the one screen the stylist reads told her she was
+   * off over the bride she had agreed to come in for.
+   */
+  if (column.closed && !column.items.some((item) => item.kind === 'appointment')) {
     return <p className="text-zinc-600 dark:text-zinc-400">{column.providerName} is not working today.</p>;
   }
 
@@ -34,6 +43,26 @@ export function ProviderDay({ column }: { column: GridColumn }) {
   }
 
   return (
+    <div className="flex flex-col gap-3">
+      {column.closed ? (
+        <p className="font-medium text-amber-900 dark:text-amber-200">
+          Off today — these clients are booked outside {column.providerName}&rsquo;s hours.
+        </p>
+      ) : null}
+
+      {/* A-126 ride-along: the grid's only-ever caller of this was the desk's
+          screen, so a stylist running late could not say so from her own. */}
+      {hasDayToRunLate(column) ? (
+        <ColumnControls
+          providerId={column.providerId}
+          providerName={column.providerName}
+          day={day}
+          runningLateMinutes={column.runningLateMinutes}
+          calls={column.calls}
+          pushFrom={column.pushFrom}
+        />
+      ) : null}
+
     <ol className="flex flex-col gap-2">
       {column.items.map((item) => (
         <li
@@ -133,6 +162,7 @@ export function ProviderDay({ column }: { column: GridColumn }) {
         </li>
       ))}
     </ol>
+    </div>
   );
 }
 

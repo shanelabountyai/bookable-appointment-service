@@ -4600,3 +4600,19 @@ me if anything comes up sooner" is one of the commonest waitlist requests, and
 that rule would delete exactly that client. So the list names the booking
 instead ("already booked Tuesday at 14:00 with Dana") and lets the person on
 the phone decide.
+
+## A-126 — the stylist's phone shows the client she came in for
+
+If a stylist agreed to come in on her day off for one client, like a bride on a
+Saturday, her own phone view said "not working today" and did not show the
+appointment. The desk's grid and the printed sheet both showed it. The phone was
+the only screen that hid it, and it is the screen she reads. That is how a
+stylist fails to turn up and a client is lost.
+
+**What is engineered here** is that the fix follows the rule the printed sheet
+already used: list the clients first, and say "not working" only when there are
+none. The stylist's own screen now also has the "running late" controls that
+only the desk used to have. Both screens get the rule for when those controls
+show from one shared function, so the two views cannot drift apart.
+The test for this books a client on a closed day. A test with an empty closed day
+would pass against the bug.

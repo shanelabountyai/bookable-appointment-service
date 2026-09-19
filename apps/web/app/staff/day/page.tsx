@@ -190,7 +190,7 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
           {model.columns.length === 0 ? (
             <p className="text-zinc-600 dark:text-zinc-400">No providers yet. Add one in Providers.</p>
           ) : column ? (
-            <ProviderDay column={column} />
+            <ProviderDay column={column} day={model.day} />
           ) : (
             <DayGrid model={model} />
           )}
