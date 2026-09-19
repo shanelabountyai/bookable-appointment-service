@@ -5155,7 +5155,7 @@ e2e test clicks 09:00).
 
 ## A-126 — a stylist's own day lists clients booked on her day off
 
-Commit `TBD`.
+Commit `3bfc9be`.
 
 **What it built.** `ProviderDay` no longer returns "not working today" just
 because the column is `closed`. It says that only when the closed column holds
