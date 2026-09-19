@@ -5180,7 +5180,7 @@ CANCELLED override (carried from A-124).
 
 ## Operator review at the Phase 16 close: cutting a range at an instant
 
-**Commit:** _(recorded below)_
+**Commit:** `685f904`
 
 **What it produced.** `docs/reviews/26-operator-review-phase-16-close.md`, and
 Phase 17 in the backlog: **A-127 (S)**, **A-128 (S)**, **A-129 (S)**. None
