@@ -31,6 +31,8 @@ import {
   unreleaseNoShowTime,
 } from './release-time';
 import { TransitionRefused, transitionAppointment } from './transition';
+import { listOpenedSlots } from './opened';
+import { createWaitlistEntry, matchFreedSlot } from '../waitlist';
 
 const prisma = new PrismaClient();
 const STAFF = staffActor('staff-1');
@@ -904,5 +906,162 @@ describe('A-102 — the no-shows nobody has given back', () => {
     // minutes of buffer left are not a walk-in's slot. No lookback constant
     // retires this row — the appointment does.
     expect(await list(at('2026-06-09T11:30:00-05:00'))).toEqual([]);
+  });
+});
+
+/**
+ * A-127 — A SEGMENTED NO-SHOW, RELEASED BEFORE ITS LAST WORKED PART BEGAN.
+ *
+ * Every fixture above is a solid Colour: ONE block, which the old
+ * UPDATE-then-DELETE could never invert. A colour with a processing gap has a
+ * block starting after the cut, the UPDATE wrote it backwards, and
+ * `appointment_block_well_formed` threw 23514 — so the desk could not give
+ * back the most valuable dead time of the day. A release after the last part
+ * has begun passes against the bug too, so (c) is the only safe-looking case.
+ *
+ * THREE worked parts, so a release can land in the first part, a gap, and a
+ * MIDDLE part with a whole part still after it. Body 10:00–11:30:
+ *   work 30 · gap 20 · work 20 · gap 10 · work 10, buffers 10 before / 20 after
+ *   blocks 09:50–10:30, 10:50–11:10, 11:20–11:50.
+ * Both edges of every block are asserted (A-093).
+ */
+describe('a segmented no-show, released mid-visit (A-127)', () => {
+  const t = (hhmm: string) => at(`2026-06-09T${hhmm}:00-05:00`);
+
+  beforeEach(async () => {
+    await prisma.serviceSegment.createMany({
+      data: [30, 20, 20, 10, 10].map((durationMinutes, ordinal) => ({
+        businessId,
+        serviceId: colourId,
+        ordinal,
+        durationMinutes,
+        isGap: ordinal % 2 === 1,
+      })),
+    });
+  });
+
+  const blocksOf = async (appointmentId: string) =>
+    (
+      await prisma.appointmentBlock.findMany({ where: { appointmentId }, orderBy: { ordinal: 'asc' } })
+    ).map((b) => [b.blockedStart, b.blockedEnd]);
+
+  const WHOLE = [
+    [t('09:50'), t('10:30')],
+    [t('10:50'), t('11:10')],
+    [t('11:20'), t('11:50')],
+  ];
+
+  it('is the fixture it claims to be — three worked blocks before anything is released', async () => {
+    const appointment = await noShow();
+    expect((await rowOf(appointment.id)).segmentPattern).toEqual([30, 20, 20, 10, 10]);
+    expect(await blocksOf(appointment.id)).toEqual(WHOLE);
+  });
+
+  it.each([
+    ['inside the first worked part', '10:20', [[t('09:50'), t('10:20')]]],
+    ['inside a processing gap', '10:40', [[t('09:50'), t('10:30')]]],
+    ['inside a middle worked part, with a part still after it', '11:00', [[t('09:50'), t('10:30')], [t('10:50'), t('11:00')]]],
+    ['inside the last worked part', '11:25', [[t('09:50'), t('10:30')], [t('10:50'), t('11:10')], [t('11:20'), t('11:25')]]],
+    ['exactly where a worked part begins', '10:50', [[t('09:50'), t('10:30')]]],
+  ])('releases %s, keeping exactly the worked time before it', async (_label, hhmm, kept) => {
+    const appointment = await noShow();
+    const released = await release(appointment.id, t(hhmm));
+
+    expect(released.releasedAt).toEqual(t(hhmm));
+    expect((await rowOf(appointment.id)).blockedEnd).toEqual(t(hhmm));
+    expect(await blocksOf(appointment.id)).toEqual(kept);
+  });
+
+  it.each(['10:20', '10:40', '11:00', '11:25'])(
+    'puts every block back when she walks in after a release at %s',
+    async (hhmm) => {
+      const appointment = await noShow();
+      await release(appointment.id, t(hhmm));
+      await unreleaseNoShowTime(prisma, { businessId, appointmentId: appointment.id, actor: STAFF });
+      expect(await blocksOf(appointment.id)).toEqual(WHOLE);
+      expect((await rowOf(appointment.id)).blockedEnd).toEqual(t('11:50'));
+    },
+  );
+
+  it('reaches /staff/opened, and a waiting client is offered it and booked into it', async () => {
+    const appointment = await noShow();
+    const RELEASED = t('10:40');
+    await release(appointment.id, RELEASED);
+
+    const slots = await listOpenedSlots(prisma, { businessId, now: RELEASED });
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ appointmentId: appointment.id, freedBy: { kind: 'released' } });
+    expect(slots[0]!.startAt).toEqual(RELEASED);
+    // 10:40 to the old envelope end, 11:50 — the tail of a visit that had
+    // two more worked parts, all of it back.
+    expect(slots[0]!.freedMinutes).toBe(70);
+
+    const waiting = await prisma.client.create({ data: { businessId, name: 'Bea', phone: '5125550199' } });
+    await createWaitlistEntry(prisma, {
+      businessId,
+      clientId: waiting.id,
+      serviceIds: [cutId],
+      providerIds: [danaId],
+      fromDay: '2026-06-09',
+      toDay: '2026-06-09',
+      dayParts: [],
+    });
+    const { span, entries } = await matchFreedSlot(prisma, {
+      businessId,
+      providerId: danaId,
+      from: slots[0]!.blockedStart,
+      to: slots[0]!.blockedEnd,
+      now: RELEASED,
+    });
+    expect(span, 'the matcher found nothing left of the freed time').not.toBeNull();
+    expect(entries.map((e) => e.clientId)).toEqual([waiting.id]);
+
+    // Offered, then NOT refused — a slot the room will not sell is the
+    // offered-then-refused class, and it lands over the old second part.
+    const booked = await bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: entries[0]!.serviceIds,
+      clientId: waiting.id,
+      startAt: entries[0]!.startAt,
+      now: RELEASED,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+    expect((await rowOf(booked.id)).isOverride).toBe(false);
+  });
+
+  /** A-069's rule: a change to occupancy needs a room in the fixture, and ONE
+   *  chair is the only size that can fail. The hold is one row over the whole
+   *  visit (gaps included — she stays in the chair while it develops), so it
+   *  is cut at the release like a solid service. */
+  describe('in a one-chair room', () => {
+    beforeEach(async () => {
+      const type = await prisma.resourceType.create({ data: { businessId, name: 'Chair' } });
+      await prisma.resource.create({ data: { businessId, resourceTypeId: type.id, name: 'Chair 1' } });
+      await prisma.service.updateMany({ where: { businessId }, data: { requiredResourceTypeId: type.id } });
+    });
+
+    it('cuts the chair at a release inside a gap, and sells the rest of it to another stylist', async () => {
+      const appointment = await noShow();
+      await release(appointment.id, t('10:40'));
+
+      const hold = await prisma.appointmentResourceHold.findFirstOrThrow({ where: { appointmentId: appointment.id } });
+      expect([hold.bodyStart, hold.bodyEnd]).toEqual([TEN_AM, t('10:40')]);
+      expect([hold.blockedStart, hold.blockedEnd]).toEqual([t('09:50'), t('10:40')]);
+
+      // Priya, not Dana: only the ROOM can refuse this, so only the room is tested.
+      const walkIn = await bookAppointment(prisma, {
+        businessId,
+        providerId: priyaId,
+        serviceIds: [cutId],
+        clientId: null,
+        startAt: t('10:45'),
+        now: t('10:40'),
+        actor: STAFF,
+        audience: 'staff',
+      } as Parameters<typeof bookAppointment>[1]);
+      expect((await rowOf(walkIn.id)).isOverride).toBe(false);
+    });
   });
 });

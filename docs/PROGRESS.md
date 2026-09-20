@@ -5210,3 +5210,33 @@ refused booking leaves the entry open, an accepted one fulfils it) and A-126
 **What it left behind.** D-60(3) (one row per freed range) stays as it is, on
 the operator's call. The Phase 15 §5 leftovers are still open: match order,
 column widening, and hand-typed cancelled lists.
+
+## A-127 — releasing a no-show on a segmented service crashed
+
+Commit `SHA_PENDING`.
+
+**What it built.** A new migration, `20260919120000_release_segmented_blocks`,
+redefines `appointment_write_blocks` with the release cut's two statements in
+the right order. It deletes every block that starts at or after `releasedAt`
+first, then truncates the one that straddles it. The old order truncated first,
+so any block starting after the cut was written backwards and
+`appointment_block_well_formed` threw 23514. The applied A-069 migration is
+unchanged.
+
+**What it decided.** No backfill. A release that hit the CHECK rolled back
+whole, so no book holds a half-cut row. The chair hold (A-074) was checked, not
+changed. It is one row over the whole visit, gaps included, so it has no
+per-part ranges to invert. A one-chair fixture now proves it is cut at a release
+inside a gap and that the rest of the visit sells to another stylist. 23514 is
+not mapped to a friendly message; the crash is fixed at its source.
+
+**What it tested.** A three-worked-part Colour (30 work, 20 gap, 20 work, 10
+gap, 10 work, with unequal buffers). It is released in the first part, in a gap,
+in a middle part that has a part after it, in the last part, and exactly at a
+part's start. Both edges of every kept block are asserted. Nine of the eleven new
+tests threw 23514 before the migration. The two that passed were releases inside
+the last part, as the item predicted. Un-releasing restores all three blocks.
+The freed span reaches `/staff/opened` as 70 minutes, the matcher offers the
+waiting Cut client, and `bookAppointment` accepts her with no override.
+
+**What it left behind.** Nothing new. A-128 and A-129 are next.

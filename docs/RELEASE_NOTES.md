@@ -4616,3 +4616,22 @@ only the desk used to have. Both screens get the rule for when those controls
 show from one shared function, so the two views cannot drift apart.
 The test for this books a client on a closed day. A test with an empty closed day
 would pass against the bug.
+
+## A-127 — a no-show on a colour can now be given back
+
+When a client does not turn up, the desk can put the rest of her time back on
+sale. For a cut that worked. For a colour or a balayage, where the stylist's
+time is split around processing gaps, the button crashed. Those are the longest
+and most valuable appointments in the day, and their time stayed blocked.
+
+**What is engineered here** is a fix in the database itself. The database
+stores a long service as separate blocks of working time. The rule that trims
+those blocks at the release shortened each block before it removed the blocks
+that start after the release, so a later block was briefly left ending before
+it began. The database's own sanity check then refused it. The fix removes
+those blocks first, in a new migration; migrations already applied are never
+edited. The tests release the same colour at five different points: during
+work, during processing, and exactly as a block begins. They check both ends of
+every block that is kept, and that a waiting client is offered the freed time
+and can book it. A test with a single-block cut passes against the bug, which is
+why none of the earlier tests caught it.
