@@ -5213,7 +5213,7 @@ column widening, and hand-typed cancelled lists.
 
 ## A-127 — releasing a no-show on a segmented service crashed
 
-Commit `SHA_PENDING`.
+Commit `9a4f068`.
 
 **What it built.** A new migration, `20260919120000_release_segmented_blocks`,
 redefines `appointment_write_blocks` with the release cut's two statements in
