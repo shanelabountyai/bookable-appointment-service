@@ -4734,3 +4734,21 @@ rewrites the number deliberately does not touch it. The projection is computed
 once per column so the chip and the call list cannot disagree. The tests do
 what the earlier ones could not: they run the same column at five different
 clocks and assert that nobody's projection moves.
+
+## A-133 — pushing part of a delay no longer tells clients they are on time
+
+When a stylist is forty minutes behind, the desk can push the rest of her day
+back by some of it, twenty minutes, say. The push takes those minutes off the
+recorded delay, which is right for the clients it moved. But it never moves the
+client already in the chair, so the projection had her finishing twenty minutes
+early. Every pushed client then read "on time, ring them back" while the chair
+was still forty behind. And the default push size is fifteen, so this was the
+common case, not a corner.
+
+**What is engineered here** is one counter, written in the same database
+transaction as the push: the minutes that pushes have taken off the claim. The
+client in the chair is projected at the claim plus that count, and everyone the
+push moved is projected from their new start. Clearing the delay deletes the
+record, and the count goes with it, so no clean-up job is needed. The tests
+were checked against the old behaviour: with the fix reverted, every projection
+test fails.

@@ -800,6 +800,8 @@ export async function pushColumn(
         day: args.day,
         minutes: preview.runningLateAfter,
         now: null,
+        // D-63(2). The chair was not moved, so it is still behind by these too.
+        pushedOff: preview.runningLateMinutes - preview.runningLateAfter,
         actor: args.actor,
       });
     }

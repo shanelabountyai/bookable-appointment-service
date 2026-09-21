@@ -46,6 +46,9 @@ export interface RunningLate {
   actorRef: string | null;
   /** D-63(1). When the desk made the claim; a push does not move it. */
   claimedAt: Date;
+  /** D-63(2). The minutes pushes have taken off `minutes` — the head, whom no
+   *  push moves, is still that much further behind. */
+  pushedOffMinutes: number;
   updatedAt: Date;
   /** A-059. Who the desk has already got to about THIS delta. */
   told: ToldMark[];
@@ -70,6 +73,11 @@ export async function setRunningLate(
      *  a push (D-43) passes null, because rewriting the number is not a new
      *  claim about the chair. Required, so no caller can forget to say which. */
     now: Date | null;
+    /** D-63(2). A push passes the minutes it took off, added to
+     *  `pushedOffMinutes`. A desk re-claim leaves that count standing: D-63
+     *  resets it only when the delta is CLEARED, and a re-claim says how far
+     *  behind the column is now, not that the pushes were undone. */
+    pushedOff?: number;
   },
 ): Promise<RunningLate | null> {
   if (!Number.isInteger(args.minutes)) {
@@ -98,6 +106,7 @@ export async function setRunningLate(
       setByActor: args.actor.type,
       actorRef: args.actor.ref,
       ...(args.now ? { claimedAt: args.now } : {}),
+      ...(args.pushedOff ? { pushedOffMinutes: { increment: args.pushedOff } } : {}),
     },
     include: { told: true },
   });
@@ -184,6 +193,7 @@ function toRunningLate(row: {
   setByActor: string;
   actorRef: string | null;
   claimedAt: Date;
+  pushedOffMinutes: number;
   updatedAt: Date;
   told?: ToldMark[];
 }): RunningLate {
@@ -195,6 +205,7 @@ function toRunningLate(row: {
     setByActor: row.setByActor,
     actorRef: row.actorRef,
     claimedAt: row.claimedAt,
+    pushedOffMinutes: row.pushedOffMinutes,
     updatedAt: row.updatedAt,
     told: (row.told ?? []).map((t) => ({
       appointmentId: t.appointmentId,
@@ -256,6 +267,13 @@ export const CALL_AHEAD_MINUTES = 180;
  *  - otherwise D-62 as built: the first member still occupying time carries
  *    the whole delta. A claim made with an empty chair lands whole.
  *
+ * D-63(2) (A-133) — A PARTIAL PUSH. D-43 takes the pushed minutes off the
+ * delta, and the push never moves the client in the chair, so the head read
+ * at the reduced delta counted every pushed minute twice: +20 of a +40 and the
+ * pushed clients all read "on time — ring back" while the chair was still 40
+ * late. The head carries delta + pushed-off; everybody else, pushed from
+ * their new starts, stays capped at the reduced delta.
+ *
  * Returns minutes late per appointment id, 0 included. Nothing absent from
  * the map is late.
  */
@@ -269,7 +287,7 @@ export function projectedDelays(args: {
     occupiesEnd: Date;
     endedAt: Date | null;
   }[];
-  late: Pick<RunningLate, 'minutes' | 'claimedAt'> | null;
+  late: Pick<RunningLate, 'minutes' | 'claimedAt' | 'pushedOffMinutes'> | null;
   now: Date;
 }): Map<string, number> {
   const delays = new Map<string, number>();
@@ -303,7 +321,9 @@ export function projectedDelays(args: {
   for (const a of chain) {
     const start = fromDate(a.occupiesStart);
     const late =
-      a === head || busyUntil === -Infinity
+      a === head
+        ? minutes + args.late.pushedOffMinutes
+        : busyUntil === -Infinity
         ? minutes
         : Math.min(minutes, Math.max(0, Math.ceil((busyUntil - start) / MIN)));
     delays.set(a.id, late);

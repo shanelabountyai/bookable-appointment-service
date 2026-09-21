@@ -5493,3 +5493,33 @@ the DB fixtures run through `loadDayView`, the same loader the page uses. A
 forgotten `checked_in` earlier client with the real one never tapped in would
 head the chain; that needs two lapses of desk discipline at once. A-133 (the
 pushed-off minutes) is next.
+
+## A-133 — a partial push leaves the chair as late as it was
+
+Commit `<pending>`.
+
+**What it decided.** Nothing new — D-63(2)(a), taken at A-132's prompt. One
+reading made explicit in code: a desk RE-claim keeps `pushedOffMinutes`
+standing. D-63 resets it only when the delta is cleared, and a re-claim says how
+far behind the column is now, not that the pushes were undone.
+
+**What it built.** `ProviderRunningLate.pushedOffMinutes` (migration
+`20260921130000_running_late_pushed_off`, `NOT NULL DEFAULT 0`). The push's
+existing `setRunningLate` call inside its transaction now passes `pushedOff:
+before − after`, applied as an `increment`, so two +10 pushes record 20. A push
+to zero deletes the row, and the count with it. `projectedDelays` projects the
+in-chair head at `minutes + pushedOffMinutes`; everybody else is still capped
+at the reduced `minutes`. Only the head: with nobody in the chair the first
+member was pushed and D-43's reduced delta is true of her.
+
+**What it tested.** Five DB fixtures through `loadDayView`: +20 of 45 with
+holes (both pushed clients 10 late and on the ring-round, not "on time"); the
+default +15 of 40 back to back (25/25, not 10/10); two +10 pushes summing to 20
+and surviving a re-claim; a full push projecting nothing; clear-then-claim
+starting the count at 0. With the head arm reverted, the three projection
+fixtures fail and the two guards pass.
+
+**What it left behind.** The engine interval (D-22's `running-late` busy span)
+still reads the reduced delta, as the backlog scoped. The column badge shows the
+reduced delta too, which is D-43's intent. A-134 (a client booked into a
+colour's processing gap) is next.

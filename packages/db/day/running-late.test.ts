@@ -1013,3 +1013,84 @@ describe('D-63 — the cascade keeps its head until the chair is empty', () => {
     expect(await delaysAt('14:05')).toEqual({ '14:00': 40, '15:00': 40, '16:00': 40 });
   });
 });
+
+/**
+ * A-133 / D-63(2) — A PARTIAL PUSH LEAVES THE CHAIR AS LATE AS IT WAS.
+ *
+ * D-43 takes the pushed minutes off the delta and the push never moves the
+ * client in the chair. Every push fixture above is a full push or pre-dates
+ * the cascade, and both pass against the head carrying the REDUCED delta.
+ */
+describe('D-63(2) — the head carries the minutes a push took off', () => {
+  const t = (hhmmLocal: string) => at(`${DAY}T${hhmmLocal}:00-05:00`);
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR, now: t('13:30') });
+  const push = (minutes: number) =>
+    pushColumn(prisma, { businessId, providerId: danaId, day: DAY, fromAt: t('14:00'), minutes, actor: ACTOR, reason: 'Dana is behind' });
+  const viewAt = async (now: string) =>
+    (await loadDayView(prisma, { businessId, day: DAY, now: t(now) })).columns.find((c) => c.providerId === danaId)!;
+  /** Every booked appointment's own delay, by its (post-push) start. */
+  const delaysAt = async (now: string) =>
+    Object.fromEntries(
+      (await viewAt(now)).appointments.filter((a) => a.status === 'booked').map((a) => [hhmm(a.startAt), a.lateMinutes]),
+    );
+  /** 13:00 in the chair, then the given hour-long cuts. */
+  const column = async (...starts: string[]) => {
+    const chair = await book(`${DAY}T13:00:00-05:00`);
+    for (const s of starts) await book(`${DAY}T${s}:00-05:00`);
+    await prisma.appointment.update({ where: { id: chair.id }, data: { status: 'in_progress' } });
+  };
+
+  it('+20 of 45 with holes: the chair is still out at 14:45, so both pushed clients are 10 late', async () => {
+    await column('14:15', '15:15');
+    await setLate(45);
+    await push(20);
+
+    const [row] = await findRunningLate(prisma, { businessId, day: DAY });
+    expect([row!.minutes, row!.pushedOffMinutes]).toEqual([25, 20]);
+    // Chair out at 14:45. Carrying 25 it would be out at 14:25 and both read 0.
+    expect(await delaysAt('13:31')).toEqual({ '14:35': 10, '15:35': 10 });
+    expect((await viewAt('13:31')).lateCalls.map((c) => [hhmm(c.scheduled), hhmm(c.projected), c.lateMinutes, c.onTime])).toEqual([
+      ['14:35', '14:45', 10, false],
+      ['15:35', '15:45', 10, false],
+    ]);
+  });
+
+  it('the default +15 of 40, back to back: pushed clients are late by the whole reduced delta', async () => {
+    await column('14:00', '15:00');
+    await setLate(40);
+    await push(15);
+    // Chair out at 14:40: the 14:15 starts 25 late and carries it on.
+    expect(await delaysAt('13:31')).toEqual({ '14:15': 25, '15:15': 25 });
+  });
+
+  it('two pushes add up, and a desk re-claim keeps the count', async () => {
+    await column('14:00', '15:00');
+    await setLate(40);
+    await push(10);
+    await push(10);
+    expect((await findRunningLate(prisma, { businessId, day: DAY }))[0]!.pushedOffMinutes).toBe(20);
+    expect(await delaysAt('13:31')).toEqual({ '14:20': 20, '15:20': 20 });
+
+    await setLate(30);
+    expect((await findRunningLate(prisma, { businessId, day: DAY }))[0]!.pushedOffMinutes).toBe(20);
+  });
+
+  it('a full push clears the claim and projects nothing', async () => {
+    await column('14:00', '15:00');
+    await setLate(40);
+    await push(40);
+    expect(await findRunningLate(prisma, { businessId, day: DAY })).toEqual([]);
+    expect(await delaysAt('13:31')).toEqual({ '14:40': 0, '15:40': 0 });
+    expect((await viewAt('13:31')).lateCalls).toEqual([]);
+  });
+
+  it('clearing and re-claiming starts the count again', async () => {
+    await column('14:00', '15:00');
+    await setLate(40);
+    await push(20);
+    await clearRunningLate(prisma, { providerId: danaId, day: DAY });
+    await setLate(10);
+    expect((await findRunningLate(prisma, { businessId, day: DAY }))[0]!.pushedOffMinutes).toBe(0);
+  });
+});

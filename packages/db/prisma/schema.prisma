@@ -1139,6 +1139,11 @@ model ProviderRunningLate {
   /// checkout before it is not (a claim made with an empty chair lands whole).
   claimedAt DateTime @db.Timestamptz(3)
 
+  /// D-63(2). The minutes pushes have taken off `minutes` (D-43). The push
+  /// never moves the client in the chair, so she is projected at
+  /// `minutes + pushedOffMinutes`. Kept across a desk re-claim; gone with the row.
+  pushedOffMinutes Int @default(0)
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
