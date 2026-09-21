@@ -193,6 +193,7 @@ export const RUNNING_FORTY_LATE = model({
           phone: '5125550104',
           scheduled: '12:00',
           projected: '12:40',
+          lateMinutes: 40,
           href: '/staff/design',
         },
         {
@@ -201,6 +202,7 @@ export const RUNNING_FORTY_LATE = model({
           phone: '5125550106',
           scheduled: '14:00',
           projected: '14:40',
+          lateMinutes: 40,
           href: '/staff/design',
           told: 'Told at 11:12 by Sam',
         },

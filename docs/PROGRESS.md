@@ -5348,3 +5348,38 @@ against the built code.
 **What it left behind.** D-60(3) and D-22 stand as the operator left them. The
 Phase 15 §5 leftovers (match order, column widening) are still open, to fold
 into whichever item next touches those files.
+
+## A-130 — a cancellation in a running-late column absorbs the delay
+
+Commit: pending.
+
+**What it decided.** D-62 (a): cascade the projection, leave the stored delta
+and the engine interval alone. Taken at the decision prompt, over (b) reducing
+the delta and (c) a hint line.
+
+**What it built.** `projectedDelays` in `running-late.ts`, the one derivation of
+"how late is THIS client": the chain is every `PUSHABLE_STATUSES` appointment
+still occupying time at `now`, in envelope order; the first carries the delta,
+each later one starts at `max(booked start, latest projected envelope end)`,
+capped at the delta. Cancelled and released time is not in the chain, so it is
+a hole. `lateCallList` and the chip (`view-model.ts`, projection and accessible
+name) both read it — the flat `startAt + delta` is gone from both. An on-time
+client drops off the ring-round and loses "likely"; a rung client whose own
+delay moved 15+ minutes is stale, and at zero reads "Now on time — ring back."
+"Told them" posts the row's own delay; `markToldAbout` clamps it to
+`[0, delta]`.
+
+**What it tested.** Five DB-level fixtures (the backlog measurement: 14:00
+cancels, 15:00/16:00 on time and flagged to ring back; an unrung on-time client
+off the list; a hole shorter than the delay — both later clients late by the
+remainder; a hole after the next client — she stays fully late; the told mark
+records her delay and clamps). All five fail against the old code. One e2e: a
+cancellation after the chair swallows +40 whole and +90 in part, asserting both
+later chips. A-090's three-status e2e had a three-hour gap after its in-chair
+client, so under D-62 nobody was late; re-seeded back to back.
+
+**What it left behind.** Told marks written before this item recorded the
+column's delta, so on a partly absorbed column one may read stale once. The
+chain starts at the first appointment still occupying time, so a delta set
+while the chair is empty lands whole on the next client — the claim, as made.
+A-131 is next.

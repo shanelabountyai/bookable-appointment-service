@@ -12,7 +12,7 @@ import 'server-only';
  * Minutes rather than pixels, so the grid's scale is a CSS decision and this
  * file has no opinion about it.
  */
-import type { DayColumn, DayRoom, DayView } from '@bookable/db/day';
+import { type DayColumn, type DayRoom, type DayView, projectedDelays } from '@bookable/db/day';
 import { releasableAt } from '@bookable/db/appointments';
 import { type AppointmentStatus, availableTransitions, isAwaitingStart } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
@@ -160,8 +160,12 @@ export interface CallRow {
   /** The time on her confirmation. Unchanged by the delta (D-22), and shown
    *  because it is the time she is currently planning her morning around. */
   scheduled: string;
-  /** Scheduled + the delta: when she is really likely to be seen. */
+  /** Scheduled + HER delay (D-62): when she is really likely to be seen. */
   projected: string;
+  /** D-62. Her delay in minutes — what a "Told them" tap records. */
+  lateMinutes: number;
+  /** D-62. Rung about a delay that is gone: ring her back to say so. */
+  onTime?: true;
   href: string;
   /** CLIENT-03's pinned note and CLIENT-04's flag, the same two the chip
    *  carries — the desk decides how to open the call from these. */
@@ -356,6 +360,11 @@ function toColumn(
   cutoffMinutes: number,
   staffNames: ReadonlyMap<string, string>,
 ): GridColumn {
+  // D-62. Each chip's OWN delay — a cancellation ahead of her absorbs some or
+  // all of the column's — from the same derivation the ring-round uses.
+  const delays = projectedDelays({ appointments: column.appointments, minutes: column.runningLateMinutes ?? 0, now });
+  const lateBy = (a: { id: string; status: string }) =>
+    isAwaitingStart(a.status as AppointmentStatus) ? (delays.get(a.id) ?? 0) : 0;
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
       key: `break-${i}`,
@@ -447,9 +456,7 @@ function toColumn(
         // showed 14:00 and no projection at all. `in_progress` is still out —
         // she is in the chair, and a projected START on her is not late, it
         // is wrong — and so is everything terminal.
-        ...(column.runningLateMinutes && isAwaitingStart(appointment.status as AppointmentStatus)
-          ? { projected: f.shift(appointment.startAt, column.runningLateMinutes) }
-          : {}),
+        ...(lateBy(appointment) > 0 ? { projected: f.shift(appointment.startAt, lateBy(appointment)) } : {}),
         // A-027 exists now, so a chip goes to the APPOINTMENT rather than to
         // the client record. The front desk's next question is "what happened
         // to this one?", and the client is one link further on from there —
@@ -474,8 +481,8 @@ function toColumn(
           // than adding a fourth bare clock reading to a sentence that
           // already holds three. "Booked for 14:00, likely to start 14:40" is
           // unambiguous read aloud; "14:00-15:00 … 14:40" is not.
-          column.runningLateMinutes && isAwaitingStart(appointment.status as AppointmentStatus)
-            ? `booked for ${f.clock(appointment.startAt)}, likely to start ${f.shift(appointment.startAt, column.runningLateMinutes)}`
+          lateBy(appointment) > 0
+            ? `booked for ${f.clock(appointment.startAt)}, likely to start ${f.shift(appointment.startAt, lateBy(appointment))}`
             : '',
         ]
           .filter(Boolean)
@@ -498,6 +505,8 @@ function toColumn(
         phone: call.clientPhone,
         scheduled: f.clock(call.scheduled),
         projected: f.clock(call.projected),
+        lateMinutes: call.lateMinutes,
+        ...(call.onTime ? { onTime: true as const } : {}),
         href: `/staff/appointments/${call.appointmentId}`,
         ...(call.note ? { note: call.note } : {}),
         ...(call.clientId && missedByClient.get(call.clientId)

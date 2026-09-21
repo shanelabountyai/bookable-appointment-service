@@ -86,7 +86,14 @@ export async function toggleToldAbout(_previous: DayActionState, formData: FormD
     return { ok: true, message: 'Not told yet.' };
   }
 
-  const mark = await markToldAbout(prisma, { ...args, actor: staffActor(staff.id) });
+  // D-62. HER delay as the row showed it — the number the call was about.
+  // Clamped server-side to [0, the delta].
+  const minutes = Number(formData.get('minutes'));
+  const mark = await markToldAbout(prisma, {
+    ...args,
+    actor: staffActor(staff.id),
+    ...(Number.isInteger(minutes) ? { minutes } : {}),
+  });
   revalidatePath('/staff/day');
   // Null means the delta went away between the page render and the tap —
   // somebody else marked the column back on time, and the list this row is on

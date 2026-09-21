@@ -301,6 +301,7 @@ function RingRound({
               <input type="hidden" name="day" value={day} />
               <input type="hidden" name="appointmentId" value={call.appointmentId} />
               <input type="hidden" name="told" value={call.told ? '1' : '0'} />
+              <input type="hidden" name="minutes" value={call.lateMinutes} />
               <button
                 type="submit"
                 disabled={saving}
@@ -323,7 +324,9 @@ function RingRound({
                 whether that is worth a second call. */}
             {call.stale ? (
               <span className="w-full font-medium text-amber-900 dark:text-amber-200">
-                ⚑ Told about a different delay — worth ringing again.
+                {call.onTime
+                  ? '⚑ Now on time — ring back.'
+                  : '⚑ Told about a different delay — worth ringing again.'}
               </span>
             ) : null}
             {call.note ? <span className="w-full font-medium text-amber-900 dark:text-amber-200">⚑ {call.note}</span> : null}

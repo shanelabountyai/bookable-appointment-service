@@ -25,6 +25,7 @@ export {
   findRunningLate,
   lateCallList,
   markToldAbout,
+  projectedDelays,
   runningLateInterval,
   setRunningLate,
   unmarkToldAbout,

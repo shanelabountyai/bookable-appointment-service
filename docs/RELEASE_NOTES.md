@@ -4675,3 +4675,22 @@ still hold their time that the booking constraint and the printed day sheet use
 cancelled appointments are still shown; they just no longer count. The test
 that matters is the one the earlier work lacked: a day off where the only
 client has cancelled, which fails against the old code.
+
+## A-130 — a cancellation in a late column gives the later clients their time back
+
+When a stylist runs forty minutes behind, the desk rings the clients still on
+their way. If the next client then cancelled, the screen kept telling everyone
+after her to come forty minutes late — into an hour that was now empty — and
+never flagged the clients already rung that they could come on time after all.
+
+**What is engineered here** is a projection that knows the column has holes in
+it. Each client's likely start is the later of her booked time and the moment
+the person before her is projected to leave, so a cancellation absorbs as much
+of the delay as it is long: all of it, part of it, or none if the gap falls
+after her. One derivation feeds the appointment chip, its screen-reader
+sentence and the call list, so they cannot disagree. The stylist's lateness
+stays a claim with a person's name on it — nothing rewrites it — and a client
+told about a delay that has since disappeared is marked "now on time — ring
+back". The tests are the ones the earlier work could not write: every previous
+fixture was back to back, and a back-to-back column cannot tell the two
+projections apart.

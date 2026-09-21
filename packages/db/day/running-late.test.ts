@@ -798,3 +798,92 @@ describe('D-43 — a push and the delta it was called to work off', () => {
     expect(partial.runningLateAfter).toBe(40);
   });
 });
+
+/**
+ * A-130 / D-62 — EACH CLIENT'S OWN DELAY, NOT THE COLUMN'S.
+ *
+ * Every fixture above is back to back, and a back-to-back column cannot tell
+ * a flat projection from a cascade. These put a HOLE in the column.
+ */
+describe('D-62 — a cancellation in a late column absorbs the delay', () => {
+  const NOW = '2026-06-09T13:31:00-05:00';
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR });
+  const mark = (appointmentId: string, minutes?: number) =>
+    markToldAbout(prisma, { businessId, providerId: danaId, day: DAY, appointmentId, actor: ACTOR, ...(minutes === undefined ? {} : { minutes }) });
+  const callsAt = async () => {
+    const view = await loadDayView(prisma, { businessId, day: DAY, now: at(NOW) });
+    return view.columns.find((c) => c.providerId === danaId)!.lateCalls;
+  };
+  const setStatus = (id: string, status: 'in_progress' | 'cancelled') =>
+    prisma.appointment.update({ where: { id }, data: { status } });
+
+  /** 13:00 in the chair, then 14:00, 15:00, 16:00 — hour-long cuts. */
+  const column = async () => {
+    const chair = await book('2026-06-09T13:00:00-05:00');
+    const two = await book('2026-06-09T14:00:00-05:00');
+    const three = await book('2026-06-09T15:00:00-05:00');
+    const four = await book('2026-06-09T16:00:00-05:00');
+    await setStatus(chair.id, 'in_progress');
+    return { two, three, four };
+  };
+
+  it('the backlog measurement: the 14:00 cancels, the 15:00 and 16:00 are on time and ring back', async () => {
+    const { two, three, four } = await column();
+    await setLate(40);
+    await mark(three.id);
+    await mark(four.id);
+    await setStatus(two.id, 'cancelled');
+
+    const calls = await callsAt();
+    // Out of the chair at 14:40; the 15:00 is seen on time, and so is the 16:00.
+    expect(calls.map((c) => [hhmm(c.scheduled), hhmm(c.projected), c.lateMinutes, c.onTime, c.stale])).toEqual([
+      ['15:00', '15:00', 0, true, true],
+      ['16:00', '16:00', 0, true, true],
+    ]);
+  });
+
+  it('an on-time client nobody rang is not on the ring-round at all', async () => {
+    const { two } = await column();
+    await setLate(40);
+    await setStatus(two.id, 'cancelled');
+    expect(await callsAt()).toEqual([]);
+  });
+
+  it('a hole shorter than the delay absorbs PART of it — the next two are late by the rest', async () => {
+    const { two } = await column();
+    await setLate(90);
+    await setStatus(two.id, 'cancelled');
+
+    // Chair out at 15:30: the 15:00 is 30 late, not 90, and pushes the 16:00 by the same.
+    const calls = await callsAt();
+    expect(calls.map((c) => [hhmm(c.scheduled), hhmm(c.projected), c.lateMinutes])).toEqual([
+      ['15:00', '15:30', 30],
+      ['16:00', '16:30', 30],
+    ]);
+  });
+
+  it('a hole AFTER the next client leaves her fully late, and absorbs only behind it', async () => {
+    const { two, three } = await column();
+    await setLate(40);
+    await setStatus(three.id, 'cancelled');
+
+    const calls = await callsAt();
+    expect(calls.map((c) => [hhmm(c.scheduled), hhmm(c.projected), c.lateMinutes])).toEqual([
+      ['14:00', '14:40', 40],
+    ]);
+    expect(calls[0]!.appointmentId).toBe(two.id);
+  });
+
+  it('records HER delay when she is rung, so a partly-absorbed call is not stale on arrival', async () => {
+    const { two, three } = await column();
+    await setLate(90);
+    await setStatus(two.id, 'cancelled');
+
+    // The row read 30; the desk said 30.
+    expect((await mark(three.id, 30))?.minutesToldAbout).toBe(30);
+    expect((await callsAt())[0]!.stale).toBe(false);
+    // Clamped to the claim: a form cannot record a bigger delay than anybody set.
+    expect((await mark(three.id, 500))?.minutesToldAbout).toBe(90);
+  });
+});

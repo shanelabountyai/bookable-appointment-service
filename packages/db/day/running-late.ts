@@ -18,7 +18,7 @@
  * somebody makes, with their name on it.
  */
 import type { Actor } from '../../core/auth';
-import { type BusyInterval, STILL_ON_THEIR_WAY_STATUSES } from '../../core/scheduling';
+import { type AppointmentStatus, type BusyInterval, STILL_ON_THEIR_WAY_STATUSES, isPushable } from '../../core/scheduling';
 import { type Instant, fromDate, instant, toDate } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -199,6 +199,54 @@ function toRunningLate(row: {
  */
 export const CALL_AHEAD_MINUTES = 180;
 
+/**
+ * D-62 (A-130) — HOW LATE EACH CLIENT IS, NOT HOW LATE THE COLUMN IS.
+ *
+ * The delta is one claim about the column; the projection used to be that
+ * claim added flat to every start. So when the 14:00 cancelled in a column
+ * forty behind, the 15:00 and 16:00 were still "likely 15:40/16:40" and still
+ * on the ring-round, although the 13:00 in the chair is out by 14:40 and the
+ * 15:00 will be seen on time.
+ *
+ * A CASCADE: the first live appointment still occupying time carries the
+ * whole delta; every later one starts at the later of its booked start and the
+ * latest projected END before it (envelopes, so buffers are kept). Cancelled
+ * and released time is not in the chain, so it is a hole the delay drains
+ * into. CAPPED at the delta — an override stacked on a neighbour must not read
+ * as later than the claim anybody made.
+ *
+ * The chain is `isPushable`: whose time the delay can actually move. The
+ * stored delta and the engine's interval (D-22, D-43) are untouched — this is
+ * a READ of the claim, never a rewrite of it.
+ *
+ * Returns minutes late per appointment id, 0 included. Nothing absent from
+ * the map is late.
+ */
+export function projectedDelays(args: {
+  appointments: readonly { id: string; status: string; occupiesStart: Date; occupiesEnd: Date }[];
+  minutes: number;
+  now: Date;
+}): Map<string, number> {
+  const delays = new Map<string, number>();
+  if (args.minutes <= 0) return delays;
+
+  const chain = args.appointments
+    .filter((a) => isPushable(a.status as AppointmentStatus) && a.occupiesEnd.getTime() > args.now.getTime())
+    .sort((a, b) => a.occupiesStart.getTime() - b.occupiesStart.getTime());
+
+  let busyUntil = -Infinity;
+  for (const a of chain) {
+    const start = fromDate(a.occupiesStart);
+    const late =
+      busyUntil === -Infinity
+        ? args.minutes
+        : Math.min(args.minutes, Math.max(0, Math.ceil((busyUntil - start) / MIN)));
+    delays.set(a.id, late);
+    busyUntil = Math.max(busyUntil, fromDate(a.occupiesEnd) + late * MIN);
+  }
+  return delays;
+}
+
 /** One row of "who has to be rung", already decided. */
 export interface LateCallRow {
   appointmentId: string;
@@ -215,6 +263,12 @@ export interface LateCallRow {
    *  PHYSICAL axis so a projection across a DST transition lands where the
    *  clock will really be. */
   projected: Date;
+  /** D-62. HER delay, which is the delta only when nothing ahead of her
+   *  absorbed any of it. What a "Told them" tap records. */
+  lateMinutes: number;
+  /** D-62. She was rung about a delay and there no longer is one — the call
+   *  to make now is "come at your booked time". */
+  onTime: boolean;
   /** CLIENT-03's pinned note, carried through from the chip. */
   note: string | null;
   told: ToldMark | null;
@@ -257,6 +311,8 @@ export function lateCallList(args: {
   appointments: readonly {
     id: string;
     startAt: Date;
+    occupiesStart: Date;
+    occupiesEnd: Date;
     status: string;
     clientId: string | null;
     clientName: string | null;
@@ -273,6 +329,7 @@ export function lateCallList(args: {
   const now = fromDate(args.now);
   const horizon = now + (args.horizonMinutes ?? CALL_AHEAD_MINUTES) * MIN;
   const toldBy = new Map(args.told.map((t) => [t.appointmentId, t]));
+  const delays = projectedDelays(args);
 
   return args.appointments
     .filter((a) => (STILL_ON_THEIR_WAY_STATUSES as readonly string[]).includes(a.status))
@@ -280,6 +337,8 @@ export function lateCallList(args: {
     .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
     .map((a) => {
       const told = toldBy.get(a.id) ?? null;
+      const late = delays.get(a.id) ?? 0;
+      const stale = told !== null && Math.abs(late - told.minutesToldAbout) >= STALE_AFTER_MINUTES;
       return {
         appointmentId: a.id,
         clientId: a.clientId,
@@ -287,12 +346,17 @@ export function lateCallList(args: {
         clientPhone: a.clientPhone,
         status: a.status,
         scheduled: a.startAt,
-        projected: toDate(instant(fromDate(a.startAt) + args.minutes * MIN)),
+        projected: toDate(instant(fromDate(a.startAt) + late * MIN)),
+        lateMinutes: late,
+        onTime: late === 0,
         note: a.clientNotes,
         told,
-        stale: told !== null && Math.abs(args.minutes - told.minutesToldAbout) >= STALE_AFTER_MINUTES,
+        stale,
       };
-    });
+    })
+    // D-62. On time and nobody told her otherwise (or told her a delay too
+    // small to be worth undoing): there is no call to make.
+    .filter((row) => row.lateMinutes > 0 || row.stale);
 }
 
 /**
@@ -308,12 +372,26 @@ export function lateCallList(args: {
  */
 export async function markToldAbout(
   db: Db,
-  args: { businessId: string; providerId: string; day: string; appointmentId: string; actor: Actor },
+  args: {
+    businessId: string;
+    providerId: string;
+    day: string;
+    appointmentId: string;
+    actor: Actor;
+    /** D-62. HER delay as the desk read it off the row. Clamped to
+     *  [0, the delta]; absent means the delta, which is her delay whenever
+     *  nothing ahead of her has absorbed any of it. */
+    minutes?: number;
+  },
 ): Promise<ToldMark | null> {
   const late = await db.providerRunningLate.findUnique({
     where: { providerId_day: { providerId: args.providerId, day: args.day } },
   });
   if (!late || late.businessId !== args.businessId) return null;
+  const told =
+    args.minutes !== undefined && Number.isInteger(args.minutes)
+      ? Math.min(late.minutes, Math.max(0, args.minutes))
+      : late.minutes;
 
   const row = await db.runningLateTold.upsert({
     where: { runningLateId_appointmentId: { runningLateId: late.id, appointmentId: args.appointmentId } },
@@ -321,15 +399,15 @@ export async function markToldAbout(
       businessId: args.businessId,
       runningLateId: late.id,
       appointmentId: args.appointmentId,
-      // The delta AS IT IS NOW, so the row records what she was actually told
+      // HER delay AS IT IS NOW, so the row records what she was actually told
       // rather than whatever the number becomes later.
-      minutesToldAbout: late.minutes,
+      minutesToldAbout: told,
       toldByActor: args.actor.type,
       actorRef: args.actor.ref,
     },
     // Ringing her a second time RE-STAMPS it: the useful fact is the most
     // recent call and the number it was about, not the first one.
-    update: { minutesToldAbout: late.minutes, toldByActor: args.actor.type, actorRef: args.actor.ref },
+    update: { minutesToldAbout: told, toldByActor: args.actor.type, actorRef: args.actor.ref },
   });
 
   return {

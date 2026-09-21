@@ -170,12 +170,15 @@ test.describe('running late (A-018)', () => {
    * subject: `confirmed` and `checked_in` are still to come and both project;
    * `in_progress` is in the chair, and a projected START on her is not late, it
    * is wrong.
+   *
+   * BACK TO BACK since D-62: the chair's overrun only reaches the next client
+   * when nothing lies between them to absorb it.
    */
   test('projects onto everyone who has not started, and stops at the chair', async ({ page }) => {
     await seedAppointments([
-      { time: '10:00', status: 'in_progress' },
+      { time: '13:15', status: 'in_progress' },
       { time: '14:00', status: 'confirmed' },
-      { time: '15:00', status: 'checked_in' },
+      { time: '14:45', status: 'checked_in' },
     ]);
     await page.goto(`/staff/day?day=${DAY}`);
 
@@ -184,9 +187,9 @@ test.describe('running late (A-018)', () => {
     await dana.getByRole('button', { name: 'Set' }).click();
 
     await expect(page.getByText('→ likely 14:40')).toBeVisible();
-    await expect(page.getByText('→ likely 15:40')).toBeVisible();
-    // She is in the chair. Nothing is projected onto her, at 10:40 or at all.
-    await expect(page.getByText('→ likely 10:40')).toHaveCount(0);
+    await expect(page.getByText('→ likely 15:25')).toBeVisible();
+    // She is in the chair. Nothing is projected onto her, at 13:55 or at all.
+    await expect(page.getByText('→ likely 13:55')).toHaveCount(0);
     await expect(dana.getByText('→ likely')).toHaveCount(2);
 
     // THE TWO TIMES IN THE ACCESSIBLE NAME (§4). Not two bare clock readings in
@@ -201,6 +204,42 @@ test.describe('running late (A-018)', () => {
     await expect(dana.getByText('Here', { exact: true })).toBeVisible();
     await expect(dana.getByText('In chair', { exact: true })).toBeVisible();
   });
+});
+
+/**
+ * A-130 / D-62 — A CANCELLATION IN A LATE COLUMN ABSORBS THE DELAY.
+ *
+ * The projection used to be the delta added flat to every start, so a hole
+ * after the chair changed nothing on the screen. Two numbers on one column:
+ * +40 is swallowed whole by the 45 minutes the cancellation left; +90 is not,
+ * and the next two clients are late by what is left over — asserted on BOTH
+ * of them, because a flat projection gets the first edge right by luck.
+ */
+test('a cancellation after the chair absorbs the delay, all of it or part', async ({ page }) => {
+  await seedAppointments([
+    { time: '10:00', status: 'in_progress' },
+    { time: '10:45', status: 'cancelled' },
+    '11:30',
+    '12:15',
+  ]);
+  await page.goto(`/staff/day?day=${DAY}`);
+  const dana = page.getByRole('region', { name: /Dana/ });
+
+  await dana.getByLabel('Behind by').fill('40');
+  await dana.getByRole('button', { name: 'Set' }).click();
+  await expect(dana.getByText('+40 min')).toBeVisible();
+  // Out of the chair at 11:25, before the 11:30 is due. Nobody is late.
+  await expect(dana.getByText(/→ likely/)).toHaveCount(0);
+
+  // A set delta replaces the box with "Back on time"; clear, then claim more.
+  await dana.getByRole('button', { name: 'Back on time' }).click();
+  await dana.getByLabel('Behind by').fill('90');
+  await dana.getByRole('button', { name: 'Set' }).click();
+  await expect(dana.getByText('+90 min')).toBeVisible();
+  // Out at 12:15: the 11:30 is 45 late, not 90, and so is the 12:15 behind her.
+  await expect(dana.getByText('→ likely 12:15')).toBeVisible();
+  await expect(dana.getByText('→ likely 13:00')).toBeVisible();
+  await expect(dana.getByText(/→ likely/)).toHaveCount(2);
 });
 
 test.describe('pushing the column (A-018)', () => {
