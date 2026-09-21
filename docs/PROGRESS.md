@@ -5318,7 +5318,7 @@ is next.
 
 ## Operator review at the Phase 17 close: a number carried across a range with holes in it
 
-**Commit:** recorded in the follow-up commit.
+**Commit:** `a784945`
 
 **What it produced.** `docs/reviews/27-operator-review-phase-17-close.md`, and
 Phase 18 in the backlog: **A-130 (M, decide first — D-62)** and **A-131 (S)**.

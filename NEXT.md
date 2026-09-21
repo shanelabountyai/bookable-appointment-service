@@ -1,13 +1,14 @@
 # Next
 
-## Operator review at the Phase 17 close
+## A-130 — a cancellation in a running-late column absorbs the delay (DECIDE D-62 FIRST)
 
-A-127, A-128, A-129 are done and CI-green (A-129: run 35610347906) — Phase 17 is closed. Run the `salon-operator`
-agent over what Phase 17 built (see the A-127..A-129 entries in
-`docs/PROGRESS.md`), record the review in `docs/PROGRESS.md` like the Phase 16
-close's, and scope Phase 18 into `docs/prds/06-backlog.md`.
+Phase 18 is scoped (operator review at the Phase 17 close, `a784945`,
+`docs/reviews/27-operator-review-phase-17-close.md`). Start with A-130 (row 132
+in `docs/prds/06-backlog.md`): put D-62 to the user as a choice (operator
+recommends (a) cascade the projection), record it in `07-decisions.md`, then
+build. A-131 (S) follows.
 
-Re-recommend the model at the start (Opus — review/architecture work).
+Re-recommend the model at the start (Opus — correctness-critical projection logic plus a decision).
 
 ## Environment notes (carried forward, still true)
 
