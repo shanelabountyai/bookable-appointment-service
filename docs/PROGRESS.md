@@ -5386,7 +5386,7 @@ A-131 is next.
 
 ## A-131 — the segmented release sentence counts only time that is free
 
-Commit `SHA_PENDING`.
+Commit `db53bc8`.
 
 **What it decided.** Nothing new: the sentence follows D-60(3), which already
 says `/staff/opened` lists one row per freed range.
