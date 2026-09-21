@@ -44,6 +44,8 @@ export interface RunningLate {
   minutes: number;
   setByActor: string;
   actorRef: string | null;
+  /** D-63(1). When the desk made the claim; a push does not move it. */
+  claimedAt: Date;
   updatedAt: Date;
   /** A-059. Who the desk has already got to about THIS delta. */
   told: ToldMark[];
@@ -58,7 +60,17 @@ export interface RunningLate {
  */
 export async function setRunningLate(
   db: Db,
-  args: { businessId: string; providerId: string; day: string; minutes: number; actor: Actor },
+  args: {
+    businessId: string;
+    providerId: string;
+    day: string;
+    minutes: number;
+    actor: Actor;
+    /** D-63(1). A desk claim passes its instant and is stamped `claimedAt`;
+     *  a push (D-43) passes null, because rewriting the number is not a new
+     *  claim about the chair. Required, so no caller can forget to say which. */
+    now: Date | null;
+  },
 ): Promise<RunningLate | null> {
   if (!Number.isInteger(args.minutes)) {
     throw new RangeError(`Running-late minutes must be a whole number, got: ${args.minutes}`);
@@ -77,8 +89,16 @@ export async function setRunningLate(
       minutes: args.minutes,
       setByActor: args.actor.type,
       actorRef: args.actor.ref,
+      // A push only ever REDUCES an existing row, so it never creates one; the
+      // fallback is for completeness, not a path anything takes.
+      claimedAt: args.now ?? new Date(),
     },
-    update: { minutes: args.minutes, setByActor: args.actor.type, actorRef: args.actor.ref },
+    update: {
+      minutes: args.minutes,
+      setByActor: args.actor.type,
+      actorRef: args.actor.ref,
+      ...(args.now ? { claimedAt: args.now } : {}),
+    },
     include: { told: true },
   });
 
@@ -163,6 +183,7 @@ function toRunningLate(row: {
   minutes: number;
   setByActor: string;
   actorRef: string | null;
+  claimedAt: Date;
   updatedAt: Date;
   told?: ToldMark[];
 }): RunningLate {
@@ -173,6 +194,7 @@ function toRunningLate(row: {
     minutes: row.minutes,
     setByActor: row.setByActor,
     actorRef: row.actorRef,
+    claimedAt: row.claimedAt,
     updatedAt: row.updatedAt,
     told: (row.told ?? []).map((t) => ({
       appointmentId: t.appointmentId,
@@ -219,28 +241,71 @@ export const CALL_AHEAD_MINUTES = 180;
  * stored delta and the engine's interval (D-22, D-43) are untouched — this is
  * a READ of the claim, never a rewrite of it.
  *
+ * D-63(1) (A-132) — WHO HEADS IT. D-62 dropped a member when her BOOKED
+ * envelope ended, so at 13:56 the client still in the chair left the chain and
+ * the 15:00 inherited the whole +40 back — and a no-show, which is always
+ * marked after the chair's booked end, could never be a hole at all. So:
+ *  - the client IN THE CHAIR (`in_progress`, or `checked_in` past her start —
+ *    D-22: "start" is the tap that goes when the desk is three deep) is the
+ *    head whatever her booked end, projected to end at booked end + delta.
+ *    The latest-starting one, so an `in_progress` somebody forgot at 11:00
+ *    cannot seed the afternoon;
+ *  - nobody in the chair, and she was checked out at or after the claim: the
+ *    chain starts at the checkout (plus her after-buffer) and nobody after her
+ *    inherits the delta — the stylist is free from that moment;
+ *  - otherwise D-62 as built: the first member still occupying time carries
+ *    the whole delta. A claim made with an empty chair lands whole.
+ *
  * Returns minutes late per appointment id, 0 included. Nothing absent from
  * the map is late.
  */
 export function projectedDelays(args: {
-  appointments: readonly { id: string; status: string; occupiesStart: Date; occupiesEnd: Date }[];
-  minutes: number;
+  appointments: readonly {
+    id: string;
+    status: string;
+    startAt: Date;
+    endAt: Date;
+    occupiesStart: Date;
+    occupiesEnd: Date;
+    endedAt: Date | null;
+  }[];
+  late: Pick<RunningLate, 'minutes' | 'claimedAt'> | null;
   now: Date;
 }): Map<string, number> {
   const delays = new Map<string, number>();
-  if (args.minutes <= 0) return delays;
+  const minutes = args.late?.minutes ?? 0;
+  if (!args.late || minutes <= 0) return delays;
+  const now = args.now.getTime();
+
+  const head = args.appointments
+    .filter((a) => a.status === 'in_progress' || (a.status === 'checked_in' && a.startAt.getTime() <= now))
+    .sort((a, b) => b.startAt.getTime() - a.startAt.getTime())[0];
+
+  const checkout = head
+    ? undefined
+    : args.appointments
+        .filter(
+          (a) =>
+            a.status === 'completed' &&
+            a.endedAt !== null &&
+            a.endedAt.getTime() >= args.late!.claimedAt.getTime() &&
+            a.endedAt.getTime() <= now,
+        )
+        .sort((a, b) => b.endedAt!.getTime() - a.endedAt!.getTime())[0];
 
   const chain = args.appointments
-    .filter((a) => isPushable(a.status as AppointmentStatus) && a.occupiesEnd.getTime() > args.now.getTime())
+    .filter((a) => a === head || (isPushable(a.status as AppointmentStatus) && a.occupiesEnd.getTime() > now))
     .sort((a, b) => a.occupiesStart.getTime() - b.occupiesStart.getTime());
 
-  let busyUntil = -Infinity;
+  let busyUntil = checkout
+    ? fromDate(checkout.endedAt!) + Math.max(0, checkout.occupiesEnd.getTime() - checkout.endAt.getTime())
+    : -Infinity;
   for (const a of chain) {
     const start = fromDate(a.occupiesStart);
     const late =
-      busyUntil === -Infinity
-        ? args.minutes
-        : Math.min(args.minutes, Math.max(0, Math.ceil((busyUntil - start) / MIN)));
+      a === head || busyUntil === -Infinity
+        ? minutes
+        : Math.min(minutes, Math.max(0, Math.ceil((busyUntil - start) / MIN)));
     delays.set(a.id, late);
     busyUntil = Math.max(busyUntil, fromDate(a.occupiesEnd) + late * MIN);
   }
@@ -318,18 +383,16 @@ export function lateCallList(args: {
     clientName: string | null;
     clientPhone: string | null;
     clientNotes: string | null;
+    /** D-62/D-63. `projectedDelays`, computed once by the column. */
+    lateMinutes: number;
   }[];
-  minutes: number;
   now: Date;
   told: readonly ToldMark[];
   horizonMinutes?: number;
 }): LateCallRow[] {
-  if (args.minutes <= 0) return [];
-
   const now = fromDate(args.now);
   const horizon = now + (args.horizonMinutes ?? CALL_AHEAD_MINUTES) * MIN;
   const toldBy = new Map(args.told.map((t) => [t.appointmentId, t]));
-  const delays = projectedDelays(args);
 
   return args.appointments
     .filter((a) => (STILL_ON_THEIR_WAY_STATUSES as readonly string[]).includes(a.status))
@@ -337,7 +400,7 @@ export function lateCallList(args: {
     .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
     .map((a) => {
       const told = toldBy.get(a.id) ?? null;
-      const late = delays.get(a.id) ?? 0;
+      const late = a.lateMinutes;
       const stale = told !== null && Math.abs(late - told.minutesToldAbout) >= STALE_AFTER_MINUTES;
       return {
         appointmentId: a.id,

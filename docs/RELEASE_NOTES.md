@@ -4713,3 +4713,24 @@ freed-time list will show, using that list's own rule, including its "too
 short to sell" floor. The tests use a colour with a booking inside its
 processing time. That is the only kind of fixture that can tell the two
 answers apart, because a plain haircut gives the same number either way.
+
+## A-132 — a late stylist's delay stays put while her client is still in the chair
+
+The running-late projection had a clock-shaped hole in it. It dropped the
+client in the chair the minute her BOOKED time ended, so at 13:56 — with the
+stylist still forty minutes behind and the client still in the chair — every
+client the desk had just rung to say "come on time" flipped back to "forty
+minutes late", and flipped again when she was checked out. A no-show, which is
+always marked after the time the chair was booked to be free, could never
+absorb the delay at all.
+
+**What is engineered here** is a projection anchored to what is physically
+happening rather than to the book. The client in the chair heads the chain
+until she is checked out, however long past her booked time that is; once she
+is out, the stylist is free from the recorded checkout moment. A new "when was
+this claim made" timestamp tells a checkout that is newer information than the
+desk's claim from a claim made to an already-empty chair — and a push that
+rewrites the number deliberately does not touch it. The projection is computed
+once per column so the chip and the call list cannot disagree. The tests do
+what the earlier ones could not: they run the same column at five different
+clocks and assert that nobody's projection moves.

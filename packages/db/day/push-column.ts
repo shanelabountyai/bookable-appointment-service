@@ -799,6 +799,7 @@ export async function pushColumn(
         providerId: args.providerId,
         day: args.day,
         minutes: preview.runningLateAfter,
+        now: null,
         actor: args.actor,
       });
     }

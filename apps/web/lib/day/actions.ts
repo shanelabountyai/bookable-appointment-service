@@ -44,7 +44,7 @@ export async function setColumnRunningLate(_previous: DayActionState, formData: 
     return { ok: false, message: 'Enter how many minutes behind, between 0 and 480.' };
   }
 
-  await setRunningLate(prisma, { businessId: staff.businessId, providerId, day, minutes, actor: staffActor(staff.id) });
+  await setRunningLate(prisma, { businessId: staff.businessId, providerId, day, minutes, actor: staffActor(staff.id), now: new Date() });
   revalidatePath('/staff/day');
   return { ok: true, message: minutes === 0 ? 'Back on time.' : `Running ${minutes} minutes behind.` };
 }

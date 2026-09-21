@@ -1133,6 +1133,12 @@ model ProviderRunningLate {
   setByActor Actor
   actorRef   String?
 
+  /// D-63(1). When the desk last MADE the claim — stamped by `setRunningLate`
+  /// and never by a push, so it is not `updatedAt`. A checkout at or after it
+  /// is newer news about the chair than the claim and seeds the cascade; a
+  /// checkout before it is not (a claim made with an empty chair lands whole).
+  claimedAt DateTime @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 

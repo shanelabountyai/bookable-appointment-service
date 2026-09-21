@@ -25,7 +25,7 @@ import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDat
 import { findAbsences, resolveDayWindows } from '../availability';
 import { freeRunsFrom } from './free-runs';
 import { type DayRoom, loadRoom } from './room';
-import { type LateCallRow, type RunningLate, findRunningLate, lateCallList } from './running-late';
+import { type LateCallRow, type RunningLate, findRunningLate, lateCallList, projectedDelays } from './running-late';
 import { findBusyAppointments } from '../scheduling';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
@@ -53,6 +53,13 @@ export interface DayAppointment {
    *  looking for), so without this the freed gap painting over it would read
    *  as a double-booking rather than as the thing somebody deliberately did. */
   releasedAt: Date | null;
+  /** A-076. When she was checked out, if anyone saw it happen. D-63(1) starts
+   *  a running-late cascade here once the chair is empty. */
+  endedAt: Date | null;
+  /** D-62/D-63. Her own projected delay under the column's running-late
+   *  claim — `projectedDelays`, computed once here so the chip and the
+   *  ring-round cannot disagree. 0 when the column is on time. */
+  lateMinutes: number;
   overrideReason: string | null;
   serviceNames: string[];
   /** BOOK-04: a walk-in with no record is a real appointment, so every one of
@@ -275,6 +282,7 @@ async function loadColumn(
         status: true,
         isOverride: true,
         releasedAt: true,
+        endedAt: true,
         overrideReason: true,
         notes: true,
         client: { select: { id: true, name: true, phone: true, notes: true } },
@@ -349,7 +357,7 @@ async function loadColumn(
         : { start: block.start, end: block.end },
     );
   }
-  const appointments: DayAppointment[] = rows
+  const loaded = rows
     .filter((row) => belongsHere(row.startAt, row.endAt))
     .filter((row) => occupied.has(row.id) || !isActive(row.status))
     .map((row) => {
@@ -363,6 +371,7 @@ async function loadColumn(
         status: row.status,
         isOverride: row.isOverride,
         releasedAt: row.releasedAt,
+        endedAt: row.endedAt,
         overrideReason: row.overrideReason,
         serviceNames: row.lines.map((l) => l.service.name),
         clientId: row.client?.id ?? null,
@@ -372,6 +381,8 @@ async function loadColumn(
         notes: row.notes,
       };
     });
+  const delays = projectedDelays({ appointments: loaded, late: args.late, now: args.now });
+  const appointments: DayAppointment[] = loaded.map((a) => ({ ...a, lateMinutes: delays.get(a.id) ?? 0 }));
 
   return {
     providerId: args.provider.id,
@@ -381,7 +392,7 @@ async function loadColumn(
     // second query, and the same busy set the grid draws, so the ring-list and
     // the column can never disagree about who is coming.
     lateCalls: args.late
-      ? lateCallList({ appointments, minutes: args.late.minutes, now: args.now, told: args.late.told })
+      ? lateCallList({ appointments, now: args.now, told: args.late.told })
       : [],
     closed: resolved.closed,
     windows: windowSpans.map(toDateSpan),

@@ -5453,3 +5453,43 @@ under the floor) both hold at the instant their fixtures freeze.
 
 **What it left behind.** D-22, D-43, D-60(3) and D-62 stand. The Phase 15 §5
 leftovers (match order, column widening) are still open.
+
+## A-132 — the running-late cascade keeps its head until the chair is empty
+
+Commit `PENDING`.
+
+**What it decided.** D-63, both parts at once at the decision prompt: (1)(a) the
+head is the client in the chair; (2)(a) the delta row records the minutes
+pushes took off it. (2) is A-133's to build.
+
+**What it built.** `projectedDelays` now picks its head from the CHAIR, not the
+book: the latest-starting `in_progress` client (or `checked_in` past her start)
+stays in the chain whatever her booked end, carrying the whole delta. With
+nobody in the chair, the latest checkout (`endedAt` + her after-buffer) at or
+after the claim seeds the chain and nobody after it inherits the delta.
+Otherwise D-62 as built. A new `claimedAt` column on `ProviderRunningLate`
+(migration `20260921120000_running_late_claimed_at`, backfilled from
+`updatedAt`) is what separates "checked out after the claim" from "claim made
+with an empty chair"; `setRunningLate` takes a required `now: Date | null` —
+the desk passes its instant, the push passes null, so a push never re-stamps
+the claim. The projection is now computed ONCE per column in `day-view.ts` and
+carried as `DayAppointment.lateMinutes`; the chip and the ring-round both read
+it, and `view-model.ts` no longer calls `projectedDelays` itself.
+
+**What it tested.** Ten DB-level fixtures evaluated at clocks D-62's never
+reached: the backlog column at 13:31, 14:05, 14:30 and after a real checkout at
+14:36/14:50 with nobody moving; the ring-round empty past the booked end; a
+`checked_in` head; a no-show hole marked after her start, released and not; an
+early checkout after the claim; a late checkout leaving exactly the overrun;
+and four guards for what D-62 already did right (no hole → fully late, a claim
+with an empty chair lands whole, a forgotten un-started 11:00 and a forgotten
+`in_progress` 11:00 do not seed). With the head rule reverted, the six new-
+behaviour fixtures fail and the four guards pass; with the head chosen as the
+EARLIEST in-chair client, the forgotten-`in_progress` guard fails.
+
+**What it left behind.** No e2e: the server reads the real clock and the e2e
+books a future day, so no browser run can reach "past the chair's booked end" —
+the DB fixtures run through `loadDayView`, the same loader the page uses. A
+forgotten `checked_in` earlier client with the real one never tapped in would
+head the chain; that needs two lapses of desk discipline at once. A-133 (the
+pushed-off minutes) is next.

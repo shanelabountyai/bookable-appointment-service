@@ -12,7 +12,7 @@ import 'server-only';
  * Minutes rather than pixels, so the grid's scale is a CSS decision and this
  * file has no opinion about it.
  */
-import { type DayColumn, type DayRoom, type DayView, projectedDelays } from '@bookable/db/day';
+import { type DayColumn, type DayRoom, type DayView } from '@bookable/db/day';
 import { releasableAt } from '@bookable/db/appointments';
 import { type AppointmentStatus, availableTransitions, isAwaitingStart } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
@@ -361,10 +361,10 @@ function toColumn(
   staffNames: ReadonlyMap<string, string>,
 ): GridColumn {
   // D-62. Each chip's OWN delay — a cancellation ahead of her absorbs some or
-  // all of the column's — from the same derivation the ring-round uses.
-  const delays = projectedDelays({ appointments: column.appointments, minutes: column.runningLateMinutes ?? 0, now });
-  const lateBy = (a: { id: string; status: string }) =>
-    isAwaitingStart(a.status as AppointmentStatus) ? (delays.get(a.id) ?? 0) : 0;
+  // all of the column's — computed once by the column, which the ring-round
+  // reads too.
+  const lateBy = (a: { lateMinutes: number; status: string }) =>
+    isAwaitingStart(a.status as AppointmentStatus) ? a.lateMinutes : 0;
   const items: GridItem[] = [
     ...column.breaks.map((brk, i) => ({
       key: `break-${i}`,
