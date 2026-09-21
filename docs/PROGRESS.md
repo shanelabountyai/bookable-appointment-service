@@ -5351,7 +5351,7 @@ into whichever item next touches those files.
 
 ## A-130 — a cancellation in a running-late column absorbs the delay
 
-Commit: pending.
+Commit `df36063`.
 
 **What it decided.** D-62 (a): cascade the projection, leave the stored delta
 and the engine interval alone. Taken at the decision prompt, over (b) reducing
