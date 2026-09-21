@@ -2,7 +2,7 @@
 
 ## Operator review at the Phase 17 close
 
-A-127, A-128, A-129 are done — Phase 17 is closed. Run the `salon-operator`
+A-127, A-128, A-129 are done and CI-green (A-129: run 35610347906) — Phase 17 is closed. Run the `salon-operator`
 agent over what Phase 17 built (see the A-127..A-129 entries in
 `docs/PROGRESS.md`), record the review in `docs/PROGRESS.md` like the Phase 16
 close's, and scope Phase 18 into `docs/prds/06-backlog.md`.
