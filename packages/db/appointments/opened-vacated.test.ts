@@ -679,3 +679,174 @@ describe("a no-show's time given back (A-069)", () => {
     });
   });
 });
+
+/**
+ * A-128 — THE CLOCK MOVING THROUGH THE AFTERNOON IS THE SAME EVENT AS A SALE,
+ * AND TWO READERS HAD STOPPED IT AT THE CANCELLED APPOINTMENT'S START.
+ *
+ * D-60(3) clips the remainder at `now`, and everything downstream of that
+ * clip was right. Two things AROUND it were not, and they fail at different
+ * instants of one afternoon, which is why one fixture read at one `now` — and
+ * every A-124 fixture is one, all of them read before their span begins —
+ * could not see either:
+ *
+ *  1. `cancelledCandidates` bounded on `startAt > now`: the list dropped the
+ *     row the moment its original start went by, while the appointment page's
+ *     door was still (correctly) selling the live remainder of it. The SAME
+ *     span arriving through the released-no-show arm stayed listed, because
+ *     that arm asks about the END.
+ *  2. `freedSpanNow` chose the run holding most of the freed range BEFORE
+ *     clipping at `now`, so once the bigger side of a middle sale had passed
+ *     it picked a run that no longer existed, clipped it to nothing and
+ *     returned `null` — "this time has gone", on time that was demonstrably
+ *     still sellable.
+ *
+ * THE FIXTURE. Dana works 09:00–18:00 on Tuesday. Ada's cut + colour from
+ * 13:00 holds 12:55–15:50 (body 13:00–15:30, the cut's 5 before and the
+ * colour's 20 after) and is cancelled on Monday. A fringe trim is then sold
+ * into 15:00–15:15 — LATE in the range on purpose, so the two sides are
+ * unequal AND the bigger one is the EARLIER one. That is the only arrangement
+ * in which (2) can fire: with the bigger side later, the pre-clip choice and
+ * the post-clip choice agree all afternoon and the bug is invisible.
+ *
+ * Only the READ's `now` moves. The book is built once, at `NOW`, so nothing
+ * in the walk can be an artefact of when a write happened.
+ */
+describe('a cancellation read through the afternoon (A-128)', () => {
+  const CANCELLED_START = at('2026-06-09T13:00:00-05:00');
+  /** The freed range: buffer-inclusive, which is what the constraint let go. */
+  const FREED_FROM = at('2026-06-09T12:55:00-05:00');
+  const FREED_TO = at('2026-06-09T15:50:00-05:00');
+  /** The sale in its middle, and the two runs it leaves. */
+  const SOLD_FROM = at('2026-06-09T15:00:00-05:00');
+  const SOLD_TO = at('2026-06-09T15:15:00-05:00');
+
+  /** Cancel the long visit, then sell a fringe trim late inside what it left. */
+  async function cancelledWithALateSale() {
+    const appointment = await book({ serviceIds: [cutId, colourId], startAt: CANCELLED_START });
+    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', now: NOW, actor: STAFF });
+
+    const buyer = await prisma.client.create({ data: { businessId, name: 'Nell', phone: '5125550177' } });
+    await book({ serviceIds: [fringeId], clientId: buyer.id, startAt: SOLD_FROM });
+
+    // ASSERT THE PREMISE (CLAUDE.md, A-096). Every claim the walk below makes
+    // rests on this shape, and each of these has a way of quietly stopping
+    // being true: a catalogue edit moves the buffers, so the freed range moves;
+    // and if the sale ever lands at or after the midpoint the EARLIER side
+    // stops being the bigger one and the whole file goes green against bug (2).
+    const row = await prisma.appointment.findUniqueOrThrow({
+      where: { id: appointment.id },
+      select: { blockedStart: true, blockedEnd: true },
+    });
+    expect(row.blockedStart, 'the freed range has moved — the walk below is no longer about it').toEqual(FREED_FROM);
+    expect(row.blockedEnd).toEqual(FREED_TO);
+    const before = fromDate(SOLD_FROM) - fromDate(FREED_FROM);
+    const after = fromDate(FREED_TO) - fromDate(SOLD_TO);
+    expect(before, 'the sale no longer splits the range unequally').not.toBe(after);
+    expect(before, 'the EARLIER side is no longer the bigger one — bug (2) cannot fire').toBeGreaterThan(after);
+    return appointment;
+  }
+
+  /** What every surface has to agree about, at one instant. */
+  const readEverything = async (appointmentId: string, now: Date) => {
+    const listed = (await listOpenedSlots(prisma, { businessId, now })).filter(
+      (slot) => slot.appointmentId === appointmentId,
+    );
+    // The appointment page's door hands the matcher the CANCELLED ROW's own
+    // range, exactly as `page.tsx` does — never the list's already-clipped one,
+    // because a door that could only be reached through the list would prove
+    // nothing about the door.
+    const { span, entries } = await matchFreedSlot(prisma, {
+      businessId,
+      providerId: danaId,
+      from: FREED_FROM,
+      to: FREED_TO,
+      now,
+    });
+    return { listed, span, entries };
+  };
+
+  it('agrees with the door at every instant of the afternoon, and both follow the sale', async () => {
+    const appointment = await cancelledWithALateSale();
+
+    const expected = [
+      // Before it would have started: the whole front of the range, up to the
+      // sale. This is the only instant the OLD code got right, and it is the
+      // instant every A-124 fixture reads at.
+      { now: at('2026-06-09T12:00:00-05:00'), from: FREED_FROM, to: SOLD_FROM },
+      // Past the original start. Bug (1): the list dropped the row here while
+      // the door went on selling these ninety minutes.
+      { now: at('2026-06-09T13:30:00-05:00'), from: at('2026-06-09T13:30:00-05:00'), to: SOLD_FROM },
+      // Past the bigger side. Bug (2): the door said "this time has gone" and
+      // the matcher offered nobody, with 15:15–15:50 free and sellable.
+      { now: at('2026-06-09T15:05:00-05:00'), from: SOLD_TO, to: FREED_TO },
+      // Past all of it. Still gone — the fix must not widen the bound, only
+      // move it from the start to the end.
+      { now: at('2026-06-09T16:00:00-05:00'), from: null, to: null },
+    ];
+
+    for (const step of expected) {
+      const label = step.now.toISOString();
+      const { listed, span } = await readEverything(appointment.id, step.now);
+
+      if (step.from === null) {
+        expect(listed, `${label}: still listed after the whole range had passed`).toHaveLength(0);
+        expect(span, `${label}: the door still offered a range that had wholly passed`).toBeNull();
+        continue;
+      }
+
+      // THE LIST.
+      expect(listed, `${label}: not listed, but ${step.from.toISOString()} is still free`).toHaveLength(1);
+      expect(listed[0]!.blockedStart, `${label}: the list's remainder starts in the wrong place`).toEqual(step.from);
+      expect(listed[0]!.blockedEnd, `${label}: the list's remainder ends in the wrong place`).toEqual(step.to);
+
+      // THE DOOR — the same two instants, derived independently from the
+      // cancelled row. The old code disagreed with the list at 13:30 (the list
+      // was wrong) and with itself at 15:05 (the door was wrong).
+      expect(span, `${label}: the door found nothing where the list found time`).not.toBeNull();
+      expect(span!.remainder.start, `${label}: the door and the list disagree about the start`).toEqual(step.from);
+      expect(span!.remainder.end, `${label}: the door and the list disagree about the end`).toEqual(step.to);
+    }
+  });
+
+  /**
+   * AND THE OFFER SURVIVES THE WRITE. The 15:05 instant is the one bug (2)
+   * killed outright, and "nobody was offered" is indistinguishable from "the
+   * salon is empty" unless somebody is actually booked — so this rings the
+   * matcher's first name against the real book and the write must not refuse.
+   */
+  it('still books somebody into the far side once the near side has gone', async () => {
+    const appointment = await cancelledWithALateSale();
+    const now = at('2026-06-09T15:05:00-05:00');
+
+    const waiting = await prisma.client.create({ data: { businessId, name: 'Bea', phone: '5125550188' } });
+    await createWaitlistEntry(prisma, {
+      businessId,
+      clientId: waiting.id,
+      serviceIds: [fringeId],
+      providerIds: [danaId],
+      fromDay: '2026-06-09',
+      toDay: '2026-06-09',
+      dayParts: [],
+    });
+
+    const { span, entries } = await readEverything(appointment.id, now);
+    expect(span!.run.start, 'the run offered is still the dead morning one').toEqual(SOLD_TO);
+    expect(entries.length, 'nobody was offered, so nothing is proved').toBeGreaterThan(0);
+
+    const entry = entries[0]!;
+    expect(fromDate(entry.startAt), 'offered a start before now').toBeGreaterThanOrEqual(fromDate(now));
+    // NO REFUSAL. `SlotTaken` (23P01) here is the offered-then-refused class.
+    const made = await bookAppointment(prisma, {
+      businessId,
+      providerId: danaId,
+      serviceIds: entry.serviceIds,
+      clientId: entry.clientId,
+      startAt: entry.startAt,
+      now,
+      actor: STAFF,
+      audience: 'staff',
+    } as Parameters<typeof bookAppointment>[1]);
+    expect(made.status).toBe('booked');
+  });
+});

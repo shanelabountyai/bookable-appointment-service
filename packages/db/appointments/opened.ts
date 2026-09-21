@@ -333,8 +333,23 @@ async function cancelledCandidates(
       // `no_show` are terminal and still OCCUPY their time (D-7), so neither
       // freed anything.
       status: { in: [...SLOT_FREEING_STATUSES] },
-      // BOUND 1 — still future. Yesterday's cancellation cannot be sold.
-      startAt: { gt: args.now },
+      // BOUND 1 — NOT ENTIRELY PAST, the same bound `vacatedCandidates` below
+      // applies to its spans, and for the same reason.
+      //
+      // It was `startAt > now`, which reads as "still future" and is the
+      // clock-stops-at-the-start assumption D-60(3) removed from every other
+      // reader in this file. A 13:15 root touch-up cancelled at 13:20 left the
+      // screen at 13:15 while a hundred minutes of it were still live and the
+      // appointment page's door was still selling them — and the SAME event
+      // recorded as a released no-show stayed listed, because that arm asks
+      // about the END. Two arms of one screen, one operational question,
+      // fourteen lines apart, and both return `Candidate[]`.
+      //
+      // The range is what is for sale, so the range's end is the bound.
+      // `freedSpanNow` clips the remainder at `now` on the way out (and BOUND 4
+      // is re-applied to THAT), so a row whose live part is too short to sell
+      // still drops — this bound only has to stop asking about yesterday.
+      blockedEnd: { gt: args.now },
       // BOUND 2 — recent. There is no `cancelledAt` column, and `updatedAt` on
       // a row in a terminal status is the cancellation in every path that
       // writes one. Its known ceiling: a later note or acknowledgment edit
@@ -461,14 +476,17 @@ async function vacatedCandidates(
     if (fromDate(span.end) <= fromDate(span.start)) return [];
     // BOUND 1 — NOT ENTIRELY PAST. A tail that ended at noon cannot be sold at
     // two; a tail that ends at three can still be sold at two, for an hour.
+    // A-069 releases a no-show's dead time AT the moment the desk gives up, so
+    // its span always starts in the past and a start-bound drops every one of
+    // them; and Mrs Hall dropping her colour at two o'clock leaves an hour that
+    // is still worth a phone call at half past.
     //
-    // The cancellation source next door bounds on the START (`startAt > now`)
-    // and is right to: a cancellation whose slot has begun is not news. These
-    // spans are different in kind. A-069 releases a no-show's dead time AT the
-    // moment the desk gives up, so its span always starts in the past and a
-    // start-bound would have dropped every one of them; and Mrs Hall dropping
-    // her colour at two o'clock leaves an hour that is still worth a phone
-    // call at half past.
+    // This comment used to go on to say the cancellation source next door was
+    // RIGHT to bound on the start, "because a cancellation whose slot has begun
+    // is not news". It is the same span in the same book and it was not right
+    // (A-128) — a claim about a sibling reader, written from this side, which
+    // is the shape CLAUDE.md's A-100 note warns about. Both arms bound on the
+    // end now.
     if (fromDate(span.end) <= fromDate(args.now)) return [];
     // …so what is OFFERED is what is left of it. Recomputed on every read,
     // like everything else here.

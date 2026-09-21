@@ -163,7 +163,10 @@ export async function freeRunsFor(
  * The remainder is clipped at `now` — a span half gone is still worth a phone
  * call for what is left of it (A-067's bound 1), and a span wholly gone is
  * not. The RUN is not clipped: the engine is given `now` and applies the lead
- * time itself, and clipping here would be a second opinion about it.
+ * time itself, and clipping here would be a second opinion about it. But the
+ * run is CHOSEN against the clipped range (A-128), because a choice made
+ * against the whole range can land on a part of it the afternoon has already
+ * eaten.
  */
 export async function freedSpanNow(
   db: Db,
@@ -189,8 +192,21 @@ export async function freedSpanNow(
     day,
   });
 
-  const freedStart = fromDate(args.blockedStart);
+  // A-128 — THE RANGE THE RUNS ARE MEASURED AGAINST IS THE LIVE PART OF IT,
+  // NOT THE WHOLE OF IT. The afternoon moves the freed range's start forward
+  // exactly as a sale moves it, and the choice below has to see that or it
+  // picks a run that stopped existing at lunchtime. With a Cut sold at 15:00
+  // into a cancelled 13:05–16:40 balayage, at 15:05 the pre-clip range still
+  // weighed the 13:05–15:00 morning stub at 115 minutes against the live
+  // 15:55–17:00 run's 45, picked the stub, clipped it to nothing and returned
+  // `null` — so the door said "this time has gone" and the matcher offered
+  // nobody, while the same instants were sellable enough that a Cut booked at
+  // 16:00. `null` has to mean the range is gone, never that its earliest part
+  // is. (Clipping the RUN is still not done: the engine is given `now` and
+  // applies the lead time itself.)
+  const freedStart = Math.max(fromDate(args.blockedStart), fromDate(args.now));
   const freedEnd = fromDate(args.blockedEnd);
+  if (freedEnd <= freedStart) return null;
 
   // THE RUN HOLDING THE MOST OF WHAT WAS FREED — not the longest run, and not
   // the first. A freed range can straddle a break or have a booking sold into
@@ -212,7 +228,7 @@ export async function freedSpanNow(
   }
   if (run === null) return null;
 
-  const start = Math.max(fromDate(run.start), freedStart, fromDate(args.now));
+  const start = Math.max(fromDate(run.start), freedStart);
   const end = Math.min(fromDate(run.end), freedEnd);
   if (end <= start) return null;
 

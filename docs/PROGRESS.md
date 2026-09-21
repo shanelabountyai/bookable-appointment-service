@@ -5240,3 +5240,51 @@ The freed span reaches `/staff/opened` as 70 minutes, the matcher offers the
 waiting Cut client, and `bookAppointment` accepts her with no override.
 
 **What it left behind.** Nothing new. A-128 and A-129 are next.
+
+## A-128 — the freed-time loop stopped the clock at the cancelled start
+
+Commit `PENDING`.
+
+**What it built.** Two edits, in two files, against one assumption: that a
+freed range is only ever read before it begins. `cancelledCandidates` bounded on
+`startAt > now` and now bounds on `blockedEnd > now` — "not entirely past", the
+same bound `vacatedCandidates` fourteen lines below it has applied since A-067.
+And `freedSpanNow` now measures each candidate run's overlap against
+`[max(freedStart, now), freedEnd)` rather than against the whole freed range,
+so the run it picks is one that still exists at the instant being asked about.
+The remainder clip at `now` (D-60(3)) was already right and is unchanged; so is
+the rule that the RUN is not clipped, because the engine is given `now` and
+applies the lead time itself.
+
+**What it decided.** The recency bound (`updatedAt >= since`) is untouched, and
+no minutes predicate came back — both were explicitly out of scope, and A-109's
+floor is still applied to the REMAINDER after the clip, which is what drops a
+five-minute sliver. The pre-filter at the top of `listOpenedSlots` still runs on
+the unclipped `freedMinutes`: `fitsFreedSpan` is monotonic, so the unclipped
+value is the lenient direction and the post-clip filter catches what it lets
+through. The comment in `vacatedCandidates` that asserted the cancellation arm
+was *right* to bound on the start is deleted rather than reworded — it was a
+claim about a sibling reader written from the other side, the shape A-100's note
+in CLAUDE.md warns about, and it was false for nine items.
+
+**What it tested.** One afternoon, one book, four instants. Ada's cut + colour
+from 13:00 holds 12:55–15:50 and is cancelled on Monday; a fringe trim is then
+sold into 15:00–15:15 — late in the range on purpose, so the two sides are
+unequal AND the bigger one is the earlier one, which is the only arrangement in
+which the run-picker bug can fire. Only the read's `now` moves: 12:00 (before
+the start — the instant every A-124 fixture reads at, and the only one the old
+code got right), 13:30 (past the start, where the list dropped the row while the
+door went on selling the same ninety minutes), 15:05 (past the bigger side,
+where the door said "this time has gone" over 15:15–15:50) and 16:00 (past all
+of it — still gone, which is what proves the bound moved rather than widened).
+The list and the door are asserted to agree on BOTH edges at every instant, the
+door is handed the cancelled row's own range rather than the list's already
+clipped one, and a waiting client is booked for real at 15:05 through
+`bookAppointment` with no refusal. The fixture asserts its own premise: the
+freed range's edges, that the sale splits it unequally, and that the earlier
+side is the bigger one — if a catalogue edit ever moves the buffers the file
+fails loudly instead of going green against the bug. Both tests were run against
+the reverted code and both fail there.
+
+**What it left behind.** D-60(3)'s one-row-per-freed-range rule is still as the
+operator left it. A-129 is next.

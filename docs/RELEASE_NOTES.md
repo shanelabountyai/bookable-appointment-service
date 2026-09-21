@@ -4635,3 +4635,26 @@ work, during processing, and exactly as a block begins. They check both ends of
 every block that is kept, and that a waiting client is offered the freed time
 and can book it. A test with a single-block cut passes against the bug, which is
 why none of the earlier tests caught it.
+
+## A-128 — freed time stays on sale for as long as it is free
+
+When a client cancels, the salon gets a list of the time that just opened up,
+and a button on the cancelled appointment that finds a waiting client for it.
+Two things made that time vanish from the screen partway through the day while
+it was still genuinely free. A late cancellation dropped off the list the moment
+its original start time went by, although most of the appointment was still
+ahead. And when a short booking was sold into the middle of a long cancelled
+colour, the button started saying "this time has gone" as soon as the first
+part had passed, while the later part sat empty and a client could still book it.
+
+**What is engineered here** is a single change of question in two places. Both
+readers were asking about the time as it was when it was cancelled, and both
+now ask about the part of it that is still ahead. The first reader now uses the
+same rule as its neighbour on the same screen, which had always got this right
+for other kinds of freed time. The tests are what make this worth writing down:
+they keep one day's appointment book fixed and move the clock through the
+afternoon — before the cancelled start, after it, after the first part of the
+split has passed, and after all of it — and check at each moment that the list
+and the button report exactly the same start and end, and that a waiting client
+is actually booked into what the button offers. Every earlier test read the book
+before the cancelled time began, which is the one moment both bugs are invisible.
