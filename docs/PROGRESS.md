@@ -5423,7 +5423,7 @@ What's opened up". Phase 18 is closed, so the operator review is next.
 
 ## Operator review at the Phase 18 close: the cascade's head is chosen by the book, not the chair
 
-**Commit:** recorded in the follow-up commit.
+**Commit:** `717102e`
 
 **What it produced.** `docs/reviews/28-operator-review-phase-18-close.md`, and
 Phase 19 in the backlog: **A-132 (M, decide first — D-63(1))**, **A-133 (S,

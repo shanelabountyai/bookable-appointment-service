@@ -1,12 +1,14 @@
 # Next
 
-## Operator review at the Phase 18 close
+## A-132 — decide D-63 first, then build
 
-A-130 and A-131 have both shipped, and CI is green (`db53bc8`). Phase 18 is done.
-Run the `salon-operator` agent over the phase, the same way the Phase 17 close
-did (commit `a784945`). It scopes the next phase in the backlog.
+The operator review at the Phase 18 close (`717102e`,
+`docs/reviews/28-operator-review-phase-18-close.md`) scoped Phase 19: A-132 (M),
+A-133 (S), A-134 (S). A-132's row says DECIDE FIRST: take D-63(1) and D-63(2)
+together (the operator recommends (a) for both), record them in
+`docs/prds/07-decisions.md`, then build A-132.
 
-Model: Opus (this is review work).
+Model: Opus (correctness-critical projection logic).
 
 ## Environment notes (carried forward, still true)
 
