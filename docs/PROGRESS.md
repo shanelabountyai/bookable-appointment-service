@@ -5291,6 +5291,8 @@ operator left it. A-129 is next.
 
 ## A-129 — a stylist's closed-day screen counted cancelled clients
 
+Commit `356231c`.
+
 **What it built.** `hasLiveAppointment(column)` in `lib/day/run-late.ts`: an
 appointment item whose status `occupiesTime` — the same status-module reader the
 printed sheet's `sheetItems` already filters on, so no hand-typed cancelled list.
