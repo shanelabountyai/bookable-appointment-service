@@ -5243,7 +5243,7 @@ waiting Cut client, and `bookAppointment` accepts her with no override.
 
 ## A-128 — the freed-time loop stopped the clock at the cancelled start
 
-Commit `PENDING`.
+Commit `e9a2314`.
 
 **What it built.** Two edits, in two files, against one assumption: that a
 freed range is only ever read before it begins. `cancelledCandidates` bounded on
