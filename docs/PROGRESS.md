@@ -5496,7 +5496,7 @@ pushed-off minutes) is next.
 
 ## A-133 — a partial push leaves the chair as late as it was
 
-Commit `<pending>`.
+Commit `f2cd832`.
 
 **What it decided.** Nothing new — D-63(2)(a), taken at A-132's prompt. One
 reading made explicit in code: a desk RE-claim keeps `pushedOffMinutes`
