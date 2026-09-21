@@ -5456,7 +5456,7 @@ leftovers (match order, column widening) are still open.
 
 ## A-132 — the running-late cascade keeps its head until the chair is empty
 
-Commit `PENDING`.
+Commit `1989d35`.
 
 **What it decided.** D-63, both parts at once at the decision prompt: (1)(a) the
 head is the client in the chair; (2)(a) the delta row records the minutes
