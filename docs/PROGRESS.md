@@ -5420,3 +5420,36 @@ booking) now offers nothing to release. That is true, because the time was
 never sellable, but it is a behaviour change. The settled line reads the book
 at render time, so once the listed piece is sold it says "None of it is on
 What's opened up". Phase 18 is closed, so the operator review is next.
+
+## Operator review at the Phase 18 close: the cascade's head is chosen by the book, not the chair
+
+**Commit:** recorded in the follow-up commit.
+
+**What it produced.** `docs/reviews/28-operator-review-phase-18-close.md`, and
+Phase 19 in the backlog: **A-132 (M, decide first — D-63(1))**, **A-133 (S,
+D-63(2))** and **A-134 (S)**. No product code changed. Every finding was proved
+by running code against `bookable_test` as `db:reset:test` produces it; the
+probe scripts lived in the session scratchpad, and the database was reset
+afterwards.
+
+**Re-run.** A-130 (cancellation absorbs all or part of the delay, ring-back
+flags, two holes, raised delta, Cut after a colour) and A-131 (five segmented
+releases: panel, write, settled line and `/staff/opened` agree; "None of it is"
+under the floor) both hold at the instant their fixtures freeze.
+
+**The three findings.**
+
+- **A-132: the absorption expires at the chair's booked end.** The chain filters
+  on the booked `occupiesEnd > now`, so at 13:56 with the client still in the
+  chair the on-time clients flip back to +40 and "ring again"; a no-show hole
+  never absorbs at all. Needs D-63(1); the operator recommends the head being
+  whoever is in the chair, until checkout.
+- **A-133: a partial push counts each pushed minute twice.** D-43 reduces the
+  delta, the push never moves the chair, and under D-62 the chair carries the
+  reduced delta into the gap the push opened — every pushed client reads "on
+  time — ring back" while the chair is still late. Needs D-63(2).
+- **A-134: a client in a colour's processing gap inherits the colour's whole
+  delay**, because the chain reads envelopes, not worked blocks.
+
+**What it left behind.** D-22, D-43, D-60(3) and D-62 stand. The Phase 15 §5
+leftovers (match order, column widening) are still open.
