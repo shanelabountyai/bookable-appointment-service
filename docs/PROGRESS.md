@@ -5315,3 +5315,36 @@ direction. A-126's all-live fixture passes against the bug.
 
 **What it left behind.** Nothing new. Phase 17 is closed; the operator review
 is next.
+
+## Operator review at the Phase 17 close: a number carried across a range with holes in it
+
+**Commit:** recorded in the follow-up commit.
+
+**What it produced.** `docs/reviews/27-operator-review-phase-17-close.md`, and
+Phase 18 in the backlog: **A-130 (M, decide first — D-62)** and **A-131 (S)**.
+No product code changed. Every finding was proved by running code against
+`bookable_test` as `db:reset:test` produces it; the probe scripts lived in the
+session scratchpad, and the database was reset afterwards.
+
+**Re-run.** A-127 (seven segmented releases — first block, gaps, middle and
+last block — none threw, edges and chair hold right, un-release restores),
+A-128 (list, door and matcher agree from 10:00 to 16:45) and A-129 (closed day
+with only cancelled bookings reads "not working today", no controls) all hold
+against the built code.
+
+**The two findings.**
+
+- **A-130: a cancellation in a running-late column does not absorb the delay.**
+  The projection is `startAt + delta`, flat, and staleness compares deltas, so
+  the ring-round keeps clients "forty minutes late" behind an hour of free time
+  and never flags them to ring back. Needs D-62; the operator recommends a
+  cascading projection that leaves the stored delta and the engine interval
+  alone.
+- **A-131: the release sentence counts the envelope, not the free time.** On a
+  segmented service with a booking sold into its processing time, "120 min back"
+  over 105 min free, and "It is on What's opened up" when the piece starting now
+  is not on the list (D-60(3) correctly lists one row).
+
+**What it left behind.** D-60(3) and D-22 stand as the operator left them. The
+Phase 15 §5 leftovers (match order, column widening) are still open, to fold
+into whichever item next touches those files.
