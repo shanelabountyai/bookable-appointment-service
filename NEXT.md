@@ -1,12 +1,18 @@
 # Next
 
-## A-132 — decide D-63 first, then build
+## A-133 — pushed-off minutes (D-63(2), already decided)
 
-The operator review at the Phase 18 close (`717102e`,
-`docs/reviews/28-operator-review-phase-18-close.md`) scoped Phase 19: A-132 (M),
-A-133 (S), A-134 (S). A-132's row says DECIDE FIRST: take D-63(1) and D-63(2)
-together (the operator recommends (a) for both), record them in
-`docs/prds/07-decisions.md`, then build A-132.
+D-63 is recorded in `docs/prds/07-decisions.md` — both parts, (a) and (a). Do
+not re-ask. A-132 built (1): `projectedDelays` (`packages/db/day/running-late.ts`)
+now has a `head` (the client in the chair) carrying `minutes`. A-133 adds a
+`pushedOffMinutes` column to `ProviderRunningLate`, incremented in the push's
+transaction (`push-column.ts`, the `setRunningLate(tx, {… now: null})` call —
+the delta after = before − pushed), gone with the row on clear. Then the head's
+`late` becomes `minutes + pushedOffMinutes` (only the head; pushed members stay
+capped at the reduced `minutes`). Fixtures in the backlog row: +20 of 40 with
+the chair in progress → Bea 15, Cat 10; the default +15; a full push projects
+nothing. Check: does a desk re-claim reset `pushedOffMinutes`? D-63 says "reset
+when the delta is cleared" only — leave it on re-set, and say so in a comment.
 
 Model: Opus (correctness-critical projection logic).
 
@@ -15,7 +21,7 @@ Model: Opus (correctness-critical projection logic).
 - `bookable_cisim`, `bookable_drift_shadow`, `bookable_shadow` are the non-core DBs; leave them.
 - Check `sysctl -n vm.loadavg` and orphan vitest before trusting a slow/killed run.
 - `pkill -9 -f "$PWD.*playwright"` before every sweep. Run from REPO ROOT.
-- **`--list` says 340.** Unit total 1728 (1727 + 1 skipped). Unit ~3.5 min; e2e ~5 min; CI ~10 min.
+- **`--list` says 340.** Unit total 1738 (1737 + 1 skipped). Unit ~3.5 min; e2e ~5 min; CI ~10 min.
 - **A vitest `Killed`/137 with no JetsamEvent file may be the countertop
   session**: its gate runs an UNSCOPED `pkill -9 -f 'node \(vitest'`, which
   kills this repo's unit run (A-129 lost one that way). Wait for its gate to end.
