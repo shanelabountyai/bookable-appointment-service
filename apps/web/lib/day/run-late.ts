@@ -1,4 +1,18 @@
+import { occupiesTime } from '@bookable/core/scheduling';
 import type { GridColumn } from './view-model';
+
+/**
+ * A-129 — a LIVE client, not a chip. Cancelled appointments stay on the day as
+ * greyed items (the desk needs "she cancelled"), so `kind === 'appointment'`
+ * read a closed date the desk had since emptied as a closed date WITH clients.
+ * Derived from the status module — the sheet's own filter (`sheetItems`) asks
+ * the same `occupiesTime` — never a hand-typed cancelled list.
+ */
+export function hasLiveAppointment(column: GridColumn): boolean {
+  return column.items.some(
+    (item) => item.kind === 'appointment' && item.status !== undefined && occupiesTime(item.status),
+  );
+}
 
 /**
  * A-107 — whether this column has a day to be LATE on: her clients, or a delta
@@ -12,9 +26,5 @@ import type { GridColumn } from './view-model';
  * `server-only` view model cannot follow.
  */
 export function hasDayToRunLate(column: GridColumn): boolean {
-  return (
-    column.items.some((item) => item.kind === 'appointment') ||
-    column.runningLateMinutes !== null ||
-    !(column.closed || column.offRoster)
-  );
+  return hasLiveAppointment(column) || column.runningLateMinutes !== null || !(column.closed || column.offRoster);
 }

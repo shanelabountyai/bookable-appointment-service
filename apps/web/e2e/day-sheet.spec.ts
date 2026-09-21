@@ -449,4 +449,60 @@ test.describe("a stylist's own day (A-126)", () => {
     // push — that needs work still AHEAD of now, and DAY is a fixed past date.)
     await expect(page.getByLabel('Behind by')).toBeVisible();
   });
+
+  /*
+   * A-129 — a CANCELLED chip is not a client she comes in for. A-126's fixture
+   * is all-live, so it passed against `kind === 'appointment'`; these two are
+   * the dates that tell a live client from a greyed one.
+   */
+  async function closeDanasDay() {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      await prisma.dateOverride.create({
+        data: { businessId: business.id, providerId: await danaId(), day: DAY, isClosed: true, reason: 'holiday' },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  test('a day off whose only client cancelled is a day off — the chip stays, the controls go', async ({ page }) => {
+    await seedAppointment({ name: 'Cara Cancelled', status: 'cancelled' });
+    await closeDanasDay();
+
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+    await expect(page.getByText('Dana is not working today.')).toBeVisible();
+    await expect(page.getByText(/booked outside Dana/)).toHaveCount(0);
+    await expect(page.getByLabel('Behind by')).toHaveCount(0);
+    // Not hidden — "she cancelled" is what the desk needs.
+    await expect(page.getByText('Cara Cancelled')).toBeVisible();
+
+    // The grid asks the same predicate.
+    await page.goto(`/staff/day?day=${DAY}`);
+    const dana = page.getByRole('region', { name: /^Dana, not working today/ });
+    await expect(dana).toBeVisible();
+    await expect(dana.getByLabel('Behind by')).toHaveCount(0);
+    // The premise: the other stylists are working, so the control exists.
+    await expect(page.getByLabel('Behind by').first()).toBeVisible();
+  });
+
+  test('a day off with one cancelled and one live client is about the live one', async ({ page }) => {
+    await seedAppointment({ name: 'Cara Cancelled', status: 'cancelled' });
+    await seedAppointment({
+      name: 'Bea Bride',
+      isOverride: true,
+      start: '2026-06-09T11:00:00-05:00',
+      end: '2026-06-09T11:45:00-05:00',
+      wallTime: '11:00',
+    });
+    await closeDanasDay();
+
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+    await expect(page.getByText('Off today — these clients are booked outside Dana’s hours.')).toBeVisible();
+    await expect(page.getByText('Dana is not working today.')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Bea Bride/ })).toBeVisible();
+    await expect(page.getByText('Cara Cancelled')).toBeVisible();
+    await expect(page.getByLabel('Behind by')).toBeVisible();
+  });
 });

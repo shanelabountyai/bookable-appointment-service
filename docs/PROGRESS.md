@@ -5288,3 +5288,28 @@ the reverted code and both fail there.
 
 **What it left behind.** D-60(3)'s one-row-per-freed-range rule is still as the
 operator left it. A-129 is next.
+
+## A-129 — a stylist's closed-day screen counted cancelled clients
+
+**What it built.** `hasLiveAppointment(column)` in `lib/day/run-late.ts`: an
+appointment item whose status `occupiesTime` — the same status-module reader the
+printed sheet's `sheetItems` already filters on, so no hand-typed cancelled list.
+`hasDayToRunLate` (grid and phone list) and `ProviderDay`'s closed-day heading
+both call it. A closed date whose only bookings the desk has cancelled now reads
+"Dana is not working today." with no running-late controls, on both views.
+
+**What it decided.** The cancelled chip is NOT hidden: on a closed day with only
+cancelled bookings the list still renders, under "not working today" instead of
+"Off today — these clients are booked outside Dana's hours". Before, a closed
+day returned early and dropped every item; now only an EMPTY closed day returns
+the bare sentence.
+
+**What it tested.** Two e2e fixtures in `day-sheet.spec.ts`: a closed date with
+one cancelled and zero live (not working, no "Behind by" on the phone view or
+the grid, cancelled name still visible) — run against the reverted code and it
+fails there; and a closed date with one cancelled and one live (the
+outside-hours heading, both names, controls present), which guards the other
+direction. A-126's all-live fixture passes against the bug.
+
+**What it left behind.** Nothing new. Phase 17 is closed; the operator review
+is next.

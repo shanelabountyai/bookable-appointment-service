@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { GridColumn } from '@/lib/day/view-model';
-import { hasDayToRunLate } from '@/lib/day/run-late';
+import { hasDayToRunLate, hasLiveAppointment } from '@/lib/day/run-late';
 import { ColumnControls } from './column-controls';
 import { ReleaseButton } from '@/components/release-button';
 import { QuickNote } from './quick-note';
@@ -33,21 +33,26 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
    * out-of-hours override, or AVAIL-05's keep-flagged choice — and checking
    * `closed` first meant the one screen the stylist reads told her she was
    * off over the bride she had agreed to come in for.
+   *
+   * A-129 — a LIVE client: a cancelled chip is still listed (the desk needs
+   * "she cancelled"), but it is nobody she has to come in for.
    */
-  if (column.closed && !column.items.some((item) => item.kind === 'appointment')) {
-    return <p className="text-zinc-600 dark:text-zinc-400">{column.providerName} is not working today.</p>;
-  }
+  const notWorking = <p className="text-zinc-600 dark:text-zinc-400">{column.providerName} is not working today.</p>;
 
   if (column.items.length === 0) {
-    return <p className="text-zinc-600 dark:text-zinc-400">Nothing in the book yet.</p>;
+    return column.closed ? notWorking : <p className="text-zinc-600 dark:text-zinc-400">Nothing in the book yet.</p>;
   }
 
   return (
     <div className="flex flex-col gap-3">
       {column.closed ? (
-        <p className="font-medium text-amber-900 dark:text-amber-200">
-          Off today — these clients are booked outside {column.providerName}&rsquo;s hours.
-        </p>
+        hasLiveAppointment(column) ? (
+          <p className="font-medium text-amber-900 dark:text-amber-200">
+            Off today — these clients are booked outside {column.providerName}&rsquo;s hours.
+          </p>
+        ) : (
+          notWorking
+        )
       ) : null}
 
       {/* A-126 ride-along: the grid's only-ever caller of this was the desk's

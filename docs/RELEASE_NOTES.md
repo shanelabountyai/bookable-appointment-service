@@ -4658,3 +4658,20 @@ split has passed, and after all of it — and check at each moment that the list
 and the button report exactly the same start and end, and that a waiting client
 is actually booked into what the button offers. Every earlier test read the book
 before the cancelled time began, which is the one moment both bugs are invisible.
+
+## A-129 — a stylist's day off stays a day off once her clients cancel
+
+When a stylist has clients booked on a day she is normally off, her own screen
+says so and gives her the "running late" controls. It also said so after the
+desk had cancelled every one of those clients: the cancelled appointments stay
+on the screen, greyed, and the check counted them as people she was coming in
+for.
+
+**What is engineered here** is one question asked in one place. "Does she have
+anyone coming?" is now a single shared check that both the desk's grid and the
+stylist's phone view call, and it reads the same rule about which statuses
+still hold their time that the booking constraint and the printed day sheet use
+— so a new appointment status cannot make the two screens disagree. The
+cancelled appointments are still shown; they just no longer count. The test
+that matters is the one the earlier work lacked: a day off where the only
+client has cancelled, which fails against the old code.
