@@ -29,7 +29,10 @@
  * released span on it (A-067's fourth source).
  */
 import type { Actor } from '../../core/auth';
-import { fromDate, instant, toDate } from '../../core/time';
+import { fitsFreedSpan } from '../../core/settings';
+import { fromDate, instant, toDate, toLabel, zoneId } from '../../core/time';
+import { type FreeRun, freeRunsFor, pickFreedSpan } from '../day/free-runs';
+import { shortestSellableFootprintMinutes } from './opened';
 import { SlotTaken } from '../booking/errors';
 import { isSlotTakenError } from '../errors';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -103,6 +106,70 @@ const REFUSAL_WORDS: Record<Exclude<Releasable, { releasable: true }>['why'], st
   'nothing-left': 'That time is already over — there is nothing left to give back.',
 };
 
+/**
+ * A-131 — WHAT A RELEASE ACTUALLY GIVES BACK, AND WHICH PART OF IT IS LISTED.
+ *
+ * It was `fromBlockedEnd - releasedAt`, which is right for a Cut and wrong for
+ * a segmented service: a Colour released at 13:35 with a fringe trim sold into
+ * its 14:00–14:40 processing gap read "120 min back" when 105 were free, and
+ * said the time "is on What's opened up" when only the 14:30–15:35 piece was
+ * (D-60(3) lists one row per freed range — the run holding the most of it).
+ * `envelope - instant` counts time the stylist had already sold, because the
+ * gap was never the no-show's to give.
+ *
+ * So the answer is the book's: the provider's free runs WITHOUT this
+ * appointment, clipped to `[from, to)`. That is the same whether it is asked
+ * before the press (the panel, the still-blocked list) or after it (the
+ * action's sentence), because excluding the appointment and cutting it at
+ * `from` free the same time. `listed` is `/staff/opened`'s own choice —
+ * `pickFreedSpan` and A-109's floor — not a copy of it.
+ */
+export interface ReleasePieces {
+  pieces: FreeRun[];
+  minutes: number;
+  /** The piece `/staff/opened` lists, or `null` when nothing is long enough. */
+  listed: FreeRun | null;
+}
+
+export async function releasePieces(
+  db: Prisma.TransactionClient | PrismaClient,
+  args: {
+    businessId: string;
+    providerId: string;
+    appointmentId: string;
+    timezone: string;
+    from: Date;
+    to: Date;
+    now: Date;
+  },
+): Promise<ReleasePieces> {
+  const from = fromDate(args.from);
+  const to = fromDate(args.to);
+  const [runs, shortest] = await Promise.all([
+    freeRunsFor(db, {
+      businessId: args.businessId,
+      providerId: args.providerId,
+      timezone: args.timezone,
+      // The day `listOpenedSlots` resolves a released range on: its start's.
+      day: toLabel(from, zoneId(args.timezone)).day,
+      excludeAppointmentId: args.appointmentId,
+    }),
+    shortestSellableFootprintMinutes(db, args.businessId),
+  ]);
+
+  const pieces = runs.flatMap((run) => {
+    const start = Math.max(fromDate(run.start), from);
+    const end = Math.min(fromDate(run.end), to);
+    return end > start ? [{ start: toDate(instant(start)), end: toDate(instant(end)), minutes: (end - start) / 60_000 }] : [];
+  });
+  const span = pickFreedSpan(runs, { blockedStart: args.from, blockedEnd: args.to, now: args.now });
+  return {
+    pieces,
+    minutes: pieces.reduce((sum, piece) => sum + piece.minutes, 0),
+    listed: span && fitsFreedSpan(shortest, span.remainder.minutes) ? span.remainder : null,
+  };
+}
+
 export interface ReleaseNoShowTimeInput {
   businessId: string;
   appointmentId: string;
@@ -135,7 +202,7 @@ export interface ReleasedTime {
 export async function releaseNoShowTime(
   prisma: PrismaClient,
   input: ReleaseNoShowTimeInput,
-): Promise<ReleasedTime> {
+): Promise<ReleasedTime & ReleasePieces> {
   try {
     return await prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findFirst({
@@ -143,6 +210,8 @@ export async function releaseNoShowTime(
         select: {
           id: true,
           businessId: true,
+          providerId: true,
+          business: { select: { timezone: true } },
           status: true,
           startAt: true,
           endAt: true,
@@ -158,7 +227,6 @@ export async function releaseNoShowTime(
       const verdict = releasableAt(appointment, input.releasedAt);
       if (!verdict.releasable) throw new NotReleasable(appointment.status, REFUSAL_WORDS[verdict.why]);
       const releasedAt = verdict.at;
-      const at = fromDate(releasedAt);
 
       const fromBlockedEnd = appointment.blockedEnd;
 
@@ -201,7 +269,17 @@ export async function releaseNoShowTime(
         appointmentId: appointment.id,
         releasedAt,
         fromBlockedEnd,
-        minutes: Math.round((fromDate(fromBlockedEnd) - at) / 60_000),
+        // A-131 — read after the UPDATE, inside this transaction, so it is the
+        // book this release just made rather than a prediction of it.
+        ...(await releasePieces(tx, {
+          businessId: appointment.businessId,
+          providerId: appointment.providerId,
+          appointmentId: appointment.id,
+          timezone: appointment.business.timezone,
+          from: releasedAt,
+          to: fromBlockedEnd,
+          now: releasedAt,
+        })),
       };
     });
   } catch (error) {
@@ -380,20 +458,35 @@ export async function listUnreleasedNoShows(
     },
   });
 
-  return rows.flatMap((row) => {
-    // THE CHOOSER'S OWN PREDICATE, not an approximation of it: this list is an
-    // OFFER, and an offer the write path refuses is the defect A-102 exists to
-    // close rather than to repeat one screen along.
-    const verdict = releasableAt(row, args.now);
-    if (!verdict.releasable) return [];
-    const minutes = Math.round((fromDate(row.blockedEnd) - fromDate(verdict.at)) / 60_000);
-    // D-8's zero-width override held no range and has nothing to give back —
-    // dropped here by arithmetic rather than by an `isOverride` filter,
-    // because what disqualifies a row is having no minutes, whatever made it
-    // that way.
-    if (minutes <= 0) return [];
-    return [
-      {
+  if (rows.length === 0) return [];
+  const { timezone } = await db.business.findUniqueOrThrow({ where: { id: args.businessId }, select: { timezone: true } });
+
+  // ponytail: one `releasePieces` per row. Bounded by construction (above):
+  // today's unreleased no-shows, a handful at most.
+  const offers = await Promise.all(
+    rows.map(async (row) => {
+      // THE CHOOSER'S OWN PREDICATE, not an approximation of it: this list is
+      // an OFFER, and an offer the write path refuses is the defect A-102
+      // exists to close rather than to repeat one screen along.
+      const verdict = releasableAt(row, args.now);
+      if (!verdict.releasable) return null;
+      // A-131 — the write's own measurement, not `blockedEnd - now`, which
+      // counts a segmented service's processing gap that is already sold.
+      const { minutes } = await releasePieces(db, {
+        businessId: args.businessId,
+        providerId: row.providerId,
+        appointmentId: row.id,
+        timezone,
+        from: verdict.at,
+        to: row.blockedEnd,
+        now: verdict.at,
+      });
+      // D-8's zero-width override held no range and has nothing to give back —
+      // dropped here by arithmetic rather than by an `isOverride` filter,
+      // because what disqualifies a row is having no minutes, whatever made it
+      // that way.
+      if (minutes <= 0) return null;
+      return {
         appointmentId: row.id,
         providerId: row.providerId,
         providerName: row.provider.displayName,
@@ -403,7 +496,8 @@ export async function listUnreleasedNoShows(
         clientName: row.client?.name ?? null,
         clientPhone: row.client?.phone ?? null,
         serviceNames: row.lines.map((l) => l.service.name),
-      },
-    ];
-  });
+      };
+    }),
+  );
+  return offers.flatMap((offer) => (offer === null ? [] : [offer]));
 }

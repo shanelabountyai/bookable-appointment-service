@@ -100,7 +100,15 @@ export function freeRunsFrom(args: {
  */
 export async function freeRunsFor(
   db: Db,
-  args: { businessId: string; providerId: string; day: string; timezone: string },
+  args: {
+    businessId: string;
+    providerId: string;
+    day: string;
+    timezone: string;
+    /** A-131: the runs as they would be WITHOUT this appointment — how a
+     *  release is described before it is pressed. */
+    excludeAppointmentId?: string | null;
+  },
 ): Promise<FreeRun[]> {
   const zone = zoneId(args.timezone);
   const day = calendarDay(args.day);
@@ -114,7 +122,12 @@ export async function freeRunsFor(
       day: args.day,
       weekday: weekdayOf(day),
     }),
-    findBusyAppointments(db, { providerId: args.providerId, windowStart: from, windowEnd: to }),
+    findBusyAppointments(db, {
+      providerId: args.providerId,
+      windowStart: from,
+      windowEnd: to,
+      excludeAppointmentId: args.excludeAppointmentId ?? null,
+    }),
     findAbsences(db, { providerId: args.providerId, windowStart: from, windowEnd: to }),
   ]);
 
@@ -192,6 +205,19 @@ export async function freedSpanNow(
     day,
   });
 
+  return pickFreedSpan(runs, args);
+}
+
+/**
+ * The pure half of `freedSpanNow`: given a provider's runs, which one holds
+ * the freed range and what is left of the range in it. Split out for A-131 so
+ * the release sentence names the piece `/staff/opened` will list by asking
+ * the list's own question, not a copy of it.
+ */
+export function pickFreedSpan(
+  runs: readonly FreeRun[],
+  args: { blockedStart: Date; blockedEnd: Date; now: Date },
+): { run: FreeRun; remainder: FreeRun } | null {
   // A-128 — THE RANGE THE RUNS ARE MEASURED AGAINST IS THE LIVE PART OF IT,
   // NOT THE WHOLE OF IT. The afternoon moves the freed range's start forward
   // exactly as a sale moves it, and the choice below has to see that or it

@@ -43,10 +43,12 @@ export {
   NotReleasable,
   type Releasable,
   type ReleaseNoShowTimeInput,
+  type ReleasePieces,
   type ReleasedTime,
   type UnreleasedNoShow,
   listUnreleasedNoShows,
   releasableAt,
+  releasePieces,
   releaseNoShowTime,
   unreleaseNoShowTime,
 } from './release-time';

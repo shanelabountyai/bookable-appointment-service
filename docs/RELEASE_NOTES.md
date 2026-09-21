@@ -4694,3 +4694,22 @@ told about a delay that has since disappeared is marked "now on time — ring
 back". The tests are the ones the earlier work could not write: every previous
 fixture was back to back, and a back-to-back column cannot tell the two
 projections apart.
+
+## A-131 — giving back a no-show's time says what actually came back
+
+When a client does not turn up, the desk can put the rest of her slot back on
+sale. For a colour, which has processing time in the middle where the stylist
+can fit someone else, the screen added up time the stylist had already sold.
+It said "120 min back" when 105 were free, and it said the time was on the
+freed-time list when only one piece of it was.
+
+**What is engineered here** is one question asked of the real book: which
+stretches of this stylist's day are free once this appointment is gone,
+within the part being given back. The answer is the same before the button is
+pressed and after it. The same measurement feeds the button, the confirmation,
+the note left on the appointment and the "still blocked" list, so the four can
+no longer disagree. The sentence names each free piece and says which one the
+freed-time list will show, using that list's own rule, including its "too
+short to sell" floor. The tests use a colour with a booking inside its
+processing time. That is the only kind of fixture that can tell the two
+answers apart, because a plain haircut gives the same number either way.

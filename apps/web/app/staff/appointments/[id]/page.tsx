@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
-import { loadAppointmentDetail, releasableAt } from '@bookable/db/appointments';
+import { loadAppointmentDetail, releasableAt, releasePieces } from '@bookable/db/appointments';
 import { listSeriesOccurrences } from '@bookable/db/booking';
 import { reliabilityFor } from '@bookable/db/clients';
 import { freedSpanNow } from '@bookable/db/day';
@@ -14,9 +14,10 @@ import {
   canReschedule,
   staffCancellationStatus,
 } from '@bookable/core/scheduling';
-import { fromDate, toLabel, zoneId } from '@bookable/core/time';
+import { fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
+import { releaseWords } from '@/lib/appointments/release-words';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
 import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
 import { flagSentence } from '@/components/client-flag';
@@ -399,7 +400,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         status={status}
         available={moves}
         cancelAs={cancelAs}
-        release={releaseOffer(detail, business.timezone)}
+        release={await releaseOffer(staff.businessId, detail, business.timezone)}
       />
 
       <VisitNote appointmentId={detail.id} notes={detail.notes ?? ''} />
@@ -489,14 +490,38 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  * a caller holding `blockedEnd` can answer them — see the comment on
  * `releasableAt` for why the two questions stay separate.
  */
-function releaseOffer(
-  detail: { status: string; releasedAt: Date | null; startAt: Date; endAt: Date; blockedEnd: Date },
+async function releaseOffer(
+  businessId: string,
+  detail: {
+    id: string;
+    providerId: string;
+    status: string;
+    releasedAt: Date | null;
+    startAt: Date;
+    endAt: Date;
+    blockedEnd: Date;
+    bufferAfterMinutes: number;
+  },
   zone: string,
-): { minutes: number } | { releasedLabel: string } | null {
+): Promise<{ minutes: number; words: string } | { releasedLabel: string; words: string } | null> {
   if (detail.status !== 'no_show') return null;
-  if (detail.releasedAt) return { releasedLabel: readableInstant(detail.releasedAt, zone) };
-  const verdict = releasableAt(detail, new Date());
+  const now = new Date();
+  // A-131 — THE MINUTES ARE THE BOOK'S, not `blockedEnd - at`: a segmented
+  // service's processing gap may already be sold, and that time was never
+  // hers to give. The same derivation the write uses, asked before the press.
+  const pieces = (from: Date, to: Date) =>
+    releasePieces(prisma, { businessId, providerId: detail.providerId, appointmentId: detail.id, timezone: zone, from, to, now });
+  if (detail.releasedAt) {
+    // The cut has overwritten `blockedEnd`; where it used to end is the body's
+    // end plus its after-buffer, as `unreleaseNoShowTime` restores it.
+    const wasEnding = toDate(instant(fromDate(detail.endAt) + detail.bufferAfterMinutes * 60_000));
+    return {
+      releasedLabel: readableInstant(detail.releasedAt, zone),
+      words: releaseWords(await pieces(detail.releasedAt, wasEnding), zone, 'after'),
+    };
+  }
+  const verdict = releasableAt(detail, now);
   if (!verdict.releasable) return null;
-  const minutes = Math.round((fromDate(detail.blockedEnd) - fromDate(verdict.at)) / 60_000);
-  return minutes > 0 ? { minutes } : null;
+  const release = await pieces(verdict.at, detail.blockedEnd);
+  return release.minutes > 0 ? { minutes: release.minutes, words: releaseWords(release, zone, 'before') } : null;
 }

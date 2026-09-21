@@ -48,7 +48,7 @@ export function StatusControls({
   available: AppointmentStatus[];
   /** A-069 / D-44. `null` when there is nothing to give back — every status
    *  but `no_show`, and a no-show whose time is over or already released. */
-  release: { minutes: number } | { releasedLabel: string } | null;
+  release: { minutes: number; words: string } | { releasedLabel: string; words: string } | null;
   /** What the server WILL write if the one Cancel button is pressed, or null
    *  when no cancellation is on the table at all. Advisory: the write path
    *  derives it again from the same arithmetic and never trusts this. */
@@ -182,7 +182,7 @@ function ReleasePanel({
   release,
 }: {
   appointmentId: string;
-  release: { minutes: number } | { releasedLabel: string } | null;
+  release: { minutes: number; words: string } | { releasedLabel: string; words: string } | null;
 }) {
   const [state, action, pending] = useActionState(releaseTime, initial);
 
@@ -197,9 +197,9 @@ function ReleasePanel({
     return (
       <div className="flex flex-col gap-2">
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          The remaining time went back on the market at {release.releasedLabel}. It is on{' '}
+          The remaining time went back on the market at {release.releasedLabel}. {release.words}{' '}
           <Link href="/staff/opened" className="underline underline-offset-4">
-            What&apos;s opened up
+            See What&apos;s opened up
           </Link>
           .
         </p>
@@ -221,7 +221,7 @@ function ReleasePanel({
             and this sentence renders about whoever the appointment names. */}
         <span className="font-medium">Nobody came, and {release.minutes} minutes of this slot are still blocked.</span>{' '}
         Give them back and the walk-in at the door can have them — with no override, because the time really is
-        free.
+        free. {release.words}
       </p>
       {/* NOT "Why (optional)": A-068's client correction is on this same page
           with a reason box of its own, and two identically-labelled fields are

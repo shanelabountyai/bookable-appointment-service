@@ -26,6 +26,7 @@ import { pushColumn, previewPush } from '../day/push-column';
 import {
   NotReleasable,
   listUnreleasedNoShows,
+  releasePieces,
   releasableAt,
   releaseNoShowTime,
   unreleaseNoShowTime,
@@ -1064,4 +1065,97 @@ describe('a segmented no-show, released mid-visit (A-127)', () => {
       expect((await rowOf(walkIn.id)).isOverride).toBe(false);
     });
   });
+
+  /**
+   * A-131 — WHAT THE RELEASE SAYS IT GAVE BACK, when part of her processing
+   * time was already sold. A fringe trim (10 + 5 after) in her 10:30–10:50
+   * gap. Released at 10:20 the book has 10:20–10:30 and 10:45–11:50 free —
+   * 75 minutes, not `11:50 − 10:20` = 90 — and `/staff/opened` lists only the
+   * second piece (D-60(3)). A Cut fixture passes against the bug.
+   */
+  describe('with a booking sold into her processing time (A-131)', () => {
+    let trimId: string;
+    beforeEach(async () => {
+      trimId = (
+        await prisma.service.create({
+          data: {
+            businessId,
+            name: 'Fringe trim',
+            durationMinutes: 10,
+            priceCents: 1500,
+            bufferBeforeMinutes: 0,
+            bufferAfterMinutes: 5,
+          },
+        })
+      ).id;
+      await prisma.serviceProvider.create({ data: { businessId, serviceId: trimId, providerId: danaId } });
+    });
+
+    const PIECES = [
+      [t('10:20'), t('10:30')],
+      [t('10:45'), t('11:50')],
+    ];
+
+    async function noShowWithTrim() {
+      const appointment = await noShow();
+      const trim = await bookAppointment(prisma, {
+        businessId,
+        providerId: danaId,
+        serviceIds: [trimId],
+        clientId: null,
+        startAt: t('10:30'),
+        now: NOW,
+        actor: STAFF,
+        audience: 'staff',
+      } as Parameters<typeof bookAppointment>[1]);
+      // The premise: the trim really is in her gap, not an override over her.
+      expect((await rowOf(trim.id)).isOverride, 'the trim did not fit her processing gap').toBe(false);
+      return appointment;
+    }
+
+    it('counts only the free pieces, names both edges of each, and lists the one /staff/opened lists', async () => {
+      const appointment = await noShowWithTrim();
+
+      // BEFORE the press: the still-blocked list offers the same number the
+      // write will report.
+      const offered = await listUnreleasedNoShows(prisma, { businessId, now: t('10:20') });
+      expect(offered.map((o) => o.minutes)).toEqual([75]);
+
+      const released = await release(appointment.id, t('10:20'));
+      expect(edges(released.pieces)).toEqual(PIECES);
+      expect(released.minutes).toBe(75);
+      expect(released.listed && [released.listed.start, released.listed.end]).toEqual(PIECES[1]);
+
+      // …and it is the row the list actually shows, both edges (A-093).
+      const slots = await listOpenedSlots(prisma, { businessId, now: t('10:20') });
+      expect(slots.map((s) => [s.blockedStart, s.blockedEnd])).toEqual([PIECES[1]]);
+    });
+
+    it('says the same before the press as after it', async () => {
+      const appointment = await noShowWithTrim();
+      const before = await releasePieces(prisma, {
+        businessId,
+        providerId: danaId,
+        appointmentId: appointment.id,
+        timezone: 'America/Chicago',
+        from: t('10:20'),
+        to: t('11:50'),
+        now: t('10:20'),
+      });
+      const after = await release(appointment.id, t('10:20'));
+      expect(edges(before.pieces)).toEqual(edges(after.pieces));
+      expect(before.listed).toEqual(after.listed);
+    });
+  });
+
+  it('lists nothing when what comes back is under the shortest thing the salon sells (A-109)', async () => {
+    // Floor = the Cut's 60-minute footprint. 11:00–11:50 is 50.
+    const appointment = await noShow();
+    const released = await release(appointment.id, t('11:00'));
+    expect(edges(released.pieces)).toEqual([[t('11:00'), t('11:50')]]);
+    expect(released.listed).toBeNull();
+    expect(await listOpenedSlots(prisma, { businessId, now: t('11:00') })).toEqual([]);
+  });
+
+  const edges = (pieces: { start: Date; end: Date }[]) => pieces.map((p) => [p.start, p.end]);
 });

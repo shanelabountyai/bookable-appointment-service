@@ -24,6 +24,7 @@ import { NoResourceFree, SlotTaken } from '@bookable/db/booking';
 import type { AppointmentStatus } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
+import { releaseWords } from '@/lib/appointments/release-words';
 
 export interface DetailState {
   ok?: boolean;
@@ -141,7 +142,12 @@ export async function releaseTime(_previous: DetailState, formData: FormData): P
     // the walk-in door both read it.
     revalidatePath('/staff/opened');
 
-    return { ok: true, message: `${released.minutes} min back on the market. It is on What's opened up.` };
+    const { timezone } = await prisma.business.findUniqueOrThrow({
+      where: { id: staff.businessId },
+      select: { timezone: true },
+    });
+    // A-131 — the pieces the book now has, not `fromBlockedEnd - releasedAt`.
+    return { ok: true, message: releaseWords(released, timezone, 'after') };
   } catch (error) {
     if (error instanceof NotReleasable) return { ok: false, message: error.message };
     // Only reachable through the correction path, but the vocabulary is shared

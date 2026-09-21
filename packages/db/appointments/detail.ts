@@ -103,6 +103,8 @@ export interface AppointmentDetail {
    *  her time back. `blockedEnd` is already the cut when this is set, so the
    *  two together say "she was due until 11:30; we sold from 10:20". */
   releasedAt: Date | null;
+  /** A-131: `endAt` + this is where a released no-show's range used to end. */
+  bufferAfterMinutes: number;
   clientId: string | null;
   clientName: string | null;
   clientPhone: string | null;
@@ -146,6 +148,7 @@ export async function loadAppointmentDetail(
       blockedStart: true,
       blockedEnd: true,
       releasedAt: true,
+      bufferAfterMinutes: true,
       segmentPattern: true,
       isOverride: true,
       overrideReason: true,
@@ -217,6 +220,7 @@ export async function loadAppointmentDetail(
     blockedStart: appointment.blockedStart,
     blockedEnd: appointment.blockedEnd,
     releasedAt: appointment.releasedAt,
+    bufferAfterMinutes: appointment.bufferAfterMinutes,
     isOverride: appointment.isOverride,
     overrideReason: appointment.overrideReason,
     notes: appointment.notes,

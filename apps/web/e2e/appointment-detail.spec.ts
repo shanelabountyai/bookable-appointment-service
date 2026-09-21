@@ -995,6 +995,8 @@ test.describe("a no-show's time, given back (A-069)", () => {
 
     // Offered where the desk already is, not a screen away.
     await expect(page.getByText(/minutes of this slot are still blocked/)).toBeVisible();
+    // A-131 — the panel names the pieces before the press, from the book.
+    await expect(page.getByText(/Giving it back frees \d\d:\d\d–\d\d:\d\d\./)).toBeVisible();
     // Its own label, because A-068's client correction has a reason box on
     // this same page — two fields called "Why" are ambiguous to a screen
     // reader long before they are ambiguous to a locator.
@@ -1005,6 +1007,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
     // the transient message is replaced before it can be read. Asserting what
     // the page says once it has stopped moving is the honest version.
     await expect(page.getByText(/went back on the market at/)).toBeVisible();
+    await expect(page.getByText(/min back on the market: \d\d:\d\d–\d\d:\d\d\./)).toBeVisible();
     await page.reload();
     // The log says WHAT was done and by whom — nothing about her status moved.
     await expect(page.getByText(/The remaining time was put back on the market by Front desk/)).toBeVisible();

@@ -5383,3 +5383,40 @@ column's delta, so on a partly absorbed column one may read stale once. The
 chain starts at the first appointment still occupying time, so a delta set
 while the chair is empty lands whole on the next client — the claim, as made.
 A-131 is next.
+
+## A-131 — the segmented release sentence counts only time that is free
+
+Commit `SHA_PENDING`.
+
+**What it decided.** Nothing new: the sentence follows D-60(3), which already
+says `/staff/opened` lists one row per freed range.
+
+**What it built.** `releasePieces` in `release-time.ts`: what a release gives
+back is `freeRunsFor` for that provider without the appointment (new
+`excludeAppointmentId`, passed through to `findBusyAppointments`), clipped to
+`[from, to)`. `listed` is `/staff/opened`'s own choice: `pickFreedSpan`, the
+pure half split out of `freedSpanNow`, then A-109's floor. Excluding the
+appointment and cutting it at `from` free the same time, so the answer is the
+same before and after the press. It has four readers, each of which used to
+compute `envelope − instant` itself: the write (read inside the transaction,
+after the UPDATE), the detail panel before the press, the settled line after
+it (the old end is `endAt + bufferAfterMinutes`, as `unreleaseNoShowTime`
+restores it), and `listUnreleasedNoShows`. The fourth was not named in the
+row, but it holds the same fact under a different name. `releaseWords`
+(web) names every piece, says which one is on What's opened up, and says
+"None of it is" when nothing is listed.
+
+**What it tested.** Segmented Colour with a fringe trim sold into its 10:30
+gap, released at 10:20: pieces 10:20–10:30 and 10:45–11:50 (both edges),
+75 min rather than 90, listed = the second piece and equal to
+`listOpenedSlots`' row, and the still-blocked list offers 75 before the press.
+Before the press and after it give the same answer. A release under the floor
+(50 min < Cut's 60) lists nothing and the opened list is empty. Words tests
+for both pieces, the unlisted case and the single-piece case. The e2e release
+test now asserts the pieces line on the panel and in the settled state.
+
+**What it left behind.** A no-show outside working hours (an override
+booking) now offers nothing to release. That is true, because the time was
+never sellable, but it is a behaviour change. The settled line reads the book
+at render time, so once the listed piece is sold it says "None of it is on
+What's opened up". Phase 18 is closed, so the operator review is next.
