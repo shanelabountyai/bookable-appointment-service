@@ -5557,7 +5557,7 @@ backlog has no ⬜ rows left.
 
 ## Operator review at the Phase 19 close: the claim follows the next client into the chair
 
-**Commit:** _pending_
+**Commit:** `cd0646d`
 
 **What it produced.** `docs/reviews/29-operator-review-phase-19-close.md`, and
 Phase 20 in the backlog: **A-135 (M, decide first — D-64)**. No product code
