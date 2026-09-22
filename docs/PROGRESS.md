@@ -5526,7 +5526,7 @@ colour's processing gap) is next.
 
 ## A-134 — a client in a colour's processing gap waits on the application only
 
-Commit `pending`.
+Commit `947e459`.
 
 **What it decided.** Nothing new — D-62 as the backlog row scoped it. One
 reading made explicit: a member waits on every chained block BOOKED to start at
