@@ -1,27 +1,26 @@
 # Next
 
-## A-134 — a client booked into a colour's processing gap
+## The backlog is empty — Phase 19 close, then project closure
 
-Backlog row 136. `projectedDelays` (`packages/db/day/running-late.ts`) chains
-ENVELOPES, so a segmented colour is one solid block and a client booked into
-its processing gap inherits the colour's whole delay. Fix within D-62: a client
-whose start falls inside a processing gap of the appointment before her is late
-by `max(0, that block's projected end − her start)`, capped at the delta. Take
-the blocks from the busy read `day-view.ts` already loads (one row per worked
-block, keyed by appointment id — do NOT join it back with a plain `Map`, see
-A-093). Fixtures: segmented head + client in its gap at a delta smaller than
-the gap (not on the ring-round) and larger (the remainder); a client after the
-whole colour unchanged. A-133 (done) makes the head carry `minutes +
-pushedOffMinutes`, so use the head's own `late` for its blocks, not `minutes`.
+A-134 (`947e459`) was the last ⬜ row. Two things are owed, in order:
 
-Model: Opus (correctness-critical projection logic).
+1. **Phase 19 close.** Every earlier phase closed with a demo checkpoint
+   (`docs/reviews/2x-demo-checkpoint-N.md`, a production build over a fresh
+   `bookable_cpN`) or an operator review (`salon-operator` agent). Walk it; if
+   it scopes new rows, the backlog is not done.
+2. **Closure deliverables** (global CLAUDE.md, *Definition of done*), none of
+   which exist yet: `docs/DEMO.md` (every command run once), the
+   *Bookable in Brief* exec-brief artifact, and the LinkedIn drafts in the Lab
+   Intelligence Ledger. Record every artifact URL in `docs/RELEASE_NOTES.md`.
+
+Model: Opus for the checkpoint/review; Sonnet is fine for the DEMO.md write-up.
 
 ## Environment notes (carried forward, still true)
 
 - `bookable_cisim`, `bookable_drift_shadow`, `bookable_shadow` are the non-core DBs; leave them.
 - Check `sysctl -n vm.loadavg` and orphan vitest before trusting a slow/killed run.
 - `pkill -9 -f "$PWD.*playwright"` before every sweep. Run from REPO ROOT.
-- **`--list` says 340.** Unit total 1743 (1742 + 1 skipped). Unit ~3.5 min; e2e ~5 min; CI ~10 min.
+- **`--list` says 340.** Unit total 1746 (1745 + 1 skipped). Unit ~3.5 min; e2e ~5 min; CI ~25 min (A-134: 24–43 min lately).
 - **A vitest `Killed`/137 with no JetsamEvent file may be the countertop
   session**: its gate runs an UNSCOPED `pkill -9 -f 'node \(vitest'`, which
   kills this repo's unit run (A-129 lost one that way). Wait for its gate to end.
