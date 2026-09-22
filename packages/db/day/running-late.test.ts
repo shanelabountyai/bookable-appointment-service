@@ -1094,3 +1094,72 @@ describe('D-63(2) — the head carries the minutes a push took off', () => {
     expect((await findRunningLate(prisma, { businessId, day: DAY }))[0]!.pushedOffMinutes).toBe(0);
   });
 });
+
+/**
+ * A-134 — A CLIENT IN A COLOUR'S PROCESSING GAP WAITS ON THE APPLICATION ONLY.
+ *
+ * The backlog measurement: Colour 13:15 in the chair (worked 13:05–14:00 and
+ * 14:40–15:35), a trim at 14:15 in its gap, a Cut at 15:45. The chain was
+ * envelopes, so the colour was one solid block and the trim inherited its
+ * whole delay. Every non-segmented fixture above passes against that bug.
+ */
+describe('A-134 — the cascade chains worked blocks, not envelopes', () => {
+  const t = (hhmmLocal: string) => at(`${DAY}T${hhmmLocal}:00-05:00`);
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR, now: t('13:30') });
+  const viewAt = async () =>
+    (await loadDayView(prisma, { businessId, day: DAY, now: t('13:31') })).columns.find((c) => c.providerId === danaId)!;
+  const delays = async () =>
+    Object.fromEntries(
+      (await viewAt()).appointments.filter((a) => a.status === 'booked').map((a) => [hhmm(a.startAt), a.lateMinutes]),
+    );
+
+  let colourId: string;
+  beforeEach(async () => {
+    const service = async (name: string, durationMinutes: number, buffers: [number, number]) => {
+      const s = await prisma.service.create({
+        data: { businessId, name, durationMinutes, bufferBeforeMinutes: buffers[0], bufferAfterMinutes: buffers[1], priceCents: 9000 },
+      });
+      await prisma.serviceProvider.create({ data: { businessId, serviceId: s.id, providerId: danaId } });
+      return s.id;
+    };
+    colourId = await service('Colour', 130, [10, 10]);
+    await prisma.serviceSegment.createMany({
+      data: [45, 40, 45].map((durationMinutes, ordinal) => ({ businessId, serviceId: colourId, ordinal, durationMinutes, isGap: ordinal === 1 })),
+    });
+    const trimId = await service('Fringe trim', 20, [0, 0]);
+
+    const colour = await book(`${DAY}T13:15:00-05:00`, { serviceIds: [colourId] });
+    await prisma.appointment.update({ where: { id: colour.id }, data: { status: 'in_progress' } });
+    await book(`${DAY}T14:15:00-05:00`, { serviceIds: [trimId] });
+    await book(`${DAY}T15:45:00-05:00`);
+  });
+
+  it('is the fixture it claims to be — the trim sits in the colour’s processing gap', async () => {
+    const colour = (await viewAt()).appointments.find((a) => hhmm(a.startAt) === '13:15')!;
+    const blocks = await prisma.appointmentBlock.findMany({ where: { appointmentId: colour.id }, orderBy: { ordinal: 'asc' } });
+    expect(blocks.map((b) => [hhmm(b.blockedStart), hhmm(b.blockedEnd)])).toEqual([
+      ['13:05', '14:00'],
+      ['14:40', '15:35'],
+    ]);
+  });
+
+  it('a delta smaller than what is left of the application: the trim is on time and nobody rings her', async () => {
+    await setLate(15);
+    // Application out at 14:15; the rinse at 15:50 still holds up the Cut.
+    expect(await delays()).toEqual({ '14:15': 0, '15:45': 5 });
+    expect((await viewAt()).lateCalls.map((c) => [hhmm(c.scheduled), hhmm(c.projected), c.lateMinutes])).toEqual([
+      ['15:45', '15:50', 5],
+    ]);
+  });
+
+  it('a delta larger than that: the trim is late by the remainder only', async () => {
+    await setLate(40);
+    // Application out at 14:40, not the colour's +40 onto 14:55.
+    expect(await delays()).toEqual({ '14:15': 25, '15:45': 30 });
+    expect((await viewAt()).lateCalls.map((c) => [hhmm(c.scheduled), hhmm(c.projected), c.lateMinutes])).toEqual([
+      ['14:15', '14:40', 25],
+      ['15:45', '16:15', 30],
+    ]);
+  });
+});

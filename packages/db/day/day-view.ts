@@ -347,14 +347,18 @@ async function loadColumn(
   // fixture in the suite had, and which is the salon's most valuable service.
   // Found by the printed sheet, where the two are sorted rather than
   // positioned: a 09:30 override printed ABOVE the 09:00 colour it overlaps.
-  const occupied = new Map<string, { start: Date; end: Date }>();
+  const occupied = new Map<string, { start: Date; end: Date; blocks: { start: Date; end: Date }[] }>();
   for (const block of busy) {
     const seen = occupied.get(block.id);
     occupied.set(
       block.id,
       seen
-        ? { start: seen.start < block.start ? seen.start : block.start, end: seen.end > block.end ? seen.end : block.end }
-        : { start: block.start, end: block.end },
+        ? {
+            start: seen.start < block.start ? seen.start : block.start,
+            end: seen.end > block.end ? seen.end : block.end,
+            blocks: [...seen.blocks, { start: block.start, end: block.end }],
+          }
+        : { start: block.start, end: block.end, blocks: [{ start: block.start, end: block.end }] },
     );
   }
   const loaded = rows
@@ -381,7 +385,13 @@ async function loadColumn(
         notes: row.notes,
       };
     });
-  const delays = projectedDelays({ appointments: loaded, late: args.late, now: args.now });
+  // A-134. The cascade needs the blocks, not just the envelope: a client
+  // booked into a colour's processing gap waits on the application only.
+  const delays = projectedDelays({
+    appointments: loaded.map((a) => ({ ...a, blocks: occupied.get(a.id)?.blocks })),
+    late: args.late,
+    now: args.now,
+  });
   const appointments: DayAppointment[] = loaded.map((a) => ({ ...a, lateMinutes: delays.get(a.id) ?? 0 }));
 
   return {

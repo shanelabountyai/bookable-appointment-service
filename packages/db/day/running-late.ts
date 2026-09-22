@@ -274,6 +274,14 @@ export const CALL_AHEAD_MINUTES = 180;
  * late. The head carries delta + pushed-off; everybody else, pushed from
  * their new starts, stays capped at the reduced delta.
  *
+ * A-134 — BLOCKS, NOT ENVELOPES. A segmented colour is two worked blocks with
+ * its processing time between them (D-29), and the desk books a trim into
+ * that gap. Chained as one envelope, the trim inherited the colour's whole
+ * delay and went on the ring-round while the application ended in time to
+ * see her. So a member waits only on the blocks booked to start by her start,
+ * each projected at its own appointment's delay (the head's blocks at the
+ * head's) — capped at the delta as before.
+ *
  * Returns minutes late per appointment id, 0 included. Nothing absent from
  * the map is late.
  */
@@ -286,6 +294,9 @@ export function projectedDelays(args: {
     occupiesStart: Date;
     occupiesEnd: Date;
     endedAt: Date | null;
+    /** A-134. The worked blocks (D-29), when there is more than one. Absent
+     *  means one block, `occupiesStart`–`occupiesEnd`. */
+    blocks?: readonly { start: Date; end: Date }[] | undefined;
   }[];
   late: Pick<RunningLate, 'minutes' | 'claimedAt' | 'pushedOffMinutes'> | null;
   now: Date;
@@ -315,11 +326,16 @@ export function projectedDelays(args: {
     .filter((a) => a === head || (isPushable(a.status as AppointmentStatus) && a.occupiesEnd.getTime() > now))
     .sort((a, b) => a.occupiesStart.getTime() - b.occupiesStart.getTime());
 
-  let busyUntil = checkout
+  const freeFrom = checkout
     ? fromDate(checkout.endedAt!) + Math.max(0, checkout.occupiesEnd.getTime() - checkout.endAt.getTime())
     : -Infinity;
+  // Each block already chained: its BOOKED start and its PROJECTED end.
+  const projected: { start: number; end: number }[] = [];
   for (const a of chain) {
     const start = fromDate(a.occupiesStart);
+    // A-134. Only blocks booked to start by hers can hold her up: a client in
+    // a colour's processing gap waits for the application, not the rinse.
+    const busyUntil = projected.reduce((acc, b) => (b.start <= start ? Math.max(acc, b.end) : acc), freeFrom);
     const late =
       a === head
         ? minutes + args.late.pushedOffMinutes
@@ -327,7 +343,9 @@ export function projectedDelays(args: {
         ? minutes
         : Math.min(minutes, Math.max(0, Math.ceil((busyUntil - start) / MIN)));
     delays.set(a.id, late);
-    busyUntil = Math.max(busyUntil, fromDate(a.occupiesEnd) + late * MIN);
+    for (const b of a.blocks ?? [{ start: a.occupiesStart, end: a.occupiesEnd }]) {
+      projected.push({ start: fromDate(b.start), end: fromDate(b.end) + late * MIN });
+    }
   }
   return delays;
 }

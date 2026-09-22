@@ -4752,3 +4752,18 @@ push moved is projected from their new start. Clearing the delay deletes the
 record, and the count goes with it, so no clean-up job is needed. The tests
 were checked against the old behaviour: with the fix reverted, every projection
 test fails.
+
+## A-134 — a client booked while a colour develops is no longer told the colour's delay
+
+A colour is two stretches of work with processing time between them, and the
+desk books short services into that gap. When the stylist was running late, the
+projection treated the colour as one solid block, so the trim booked into its
+gap inherited the colour's whole delay. She went on the ring-round although the
+application would be done in time to see her.
+
+**What is engineered here** is the cascade reading the same per-block record
+the booking engine already uses, instead of one envelope per appointment. A
+client waits only on the work booked to start by her own start, each block
+shifted by its own appointment's delay. No new query: the day view already
+loaded the blocks. The tests reproduce the backlog's measurement exactly, and
+fail against the old code.

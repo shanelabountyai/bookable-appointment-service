@@ -5523,3 +5523,34 @@ fixtures fail and the two guards pass.
 still reads the reduced delta, as the backlog scoped. The column badge shows the
 reduced delta too, which is D-43's intent. A-134 (a client booked into a
 colour's processing gap) is next.
+
+## A-134 — a client in a colour's processing gap waits on the application only
+
+Commit `pending`.
+
+**What it decided.** Nothing new — D-62 as the backlog row scoped it. One
+reading made explicit: a member waits on every chained block BOOKED to start at
+or before her own start, so a client in a gap waits on the application and not
+the rinse, while a client after the whole colour waits on both, exactly as
+before.
+
+**What it built.** `projectedDelays` chains worked blocks instead of envelopes.
+Each appointment takes an optional `blocks` list (absent = one block, the
+envelope, so every existing caller and fixture is unchanged); each block is
+projected at its own appointment's delay, so the head's blocks carry A-133's
+`minutes + pushedOffMinutes`. `day-view.ts` already folded the busy read's
+one-row-per-block result per appointment id (A-093); the fold now also keeps
+the blocks, and the cascade gets them from there. No new query.
+
+**What it tested.** Three DB fixtures through `loadDayView`, on the backlog's
+measurement (Colour 13:15 in the chair, worked 13:05–14:00 and 14:40–15:35; a
+20-minute trim at 14:15; a Cut at 15:45): the fixture's blocks, both edges;
++15 puts the trim at 0 and off the ring-round, the Cut at 5; +40 puts the trim
+at 25 (14:40, not 14:55) and the Cut at 30 (16:15). With the source reverted
+both projection fixtures fail and the fixture check passes.
+
+**What it left behind.** A gap client's own block is not checked against the
+colour's projected SECOND block. At a delta large enough to push the trim into
+the rinse, the trim reads as late as the application makes her, not later. That
+needs a delta bigger than the gap, and D-62's cap already bounds it. The
+backlog has no ⬜ rows left.
