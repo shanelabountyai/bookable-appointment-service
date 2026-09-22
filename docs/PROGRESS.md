@@ -5554,3 +5554,34 @@ colour's projected SECOND block. At a delta large enough to push the trim into
 the rinse, the trim reads as late as the application makes her, not later. That
 needs a delta bigger than the gap, and D-62's cap already bounds it. The
 backlog has no ⬜ rows left.
+
+## Operator review at the Phase 19 close: the claim follows the next client into the chair
+
+**Commit:** _pending_
+
+**What it produced.** `docs/reviews/29-operator-review-phase-19-close.md`, and
+Phase 20 in the backlog: **A-135 (M, decide first — D-64)**. No product code
+changed. Every finding was proved by running code against `bookable_test` as
+`db:reset:test` produces it; the probe scripts lived in the session scratchpad,
+and the database was reset afterwards.
+
+**Re-run.** A-132, A-133 and A-134 all hold at the instants their fixtures
+freeze.
+
+**The finding.** One defect, three shapes, all in `projectedDelays`' head rule:
+the head is chosen by status and always carries the whole claim. (1a) A claim
+spent by a checkout comes back when the next client sits down, and the ring-round
+flips on-time clients back to STALE. (1b) After a partial push, a checked-in
+client past her pushed start takes the head from the client still in the chair,
+with the pushed-off minutes counted twice. (1c) A colour still in the chair drops
+from the chain at her booked end when her gap client's checkout is forgotten.
+Needs D-64; the operator recommends (a): a post-claim checkout spends the claim
+whatever sits down after, `in_progress` outranks `checked_in`, and every in-chair
+client stays in the chain until checkout.
+
+**What it left behind.** The operator's call: after A-135 the cascade is done and
+the project closes. A pushed head after an empty-chair claim, D-22's interval
+after a spent claim, and Phase 15 §5's match order and column widening go in
+`DEMO.md`'s concessions, not the backlog. Process note: walk a fixture through
+the day's routine taps in order — one walk-through replaces four single-instant
+fixtures.
