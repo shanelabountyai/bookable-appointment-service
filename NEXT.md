@@ -1,19 +1,23 @@
 # Next
 
-## The backlog is empty — Phase 19 close, then project closure
+## A-135 — decide D-64, then build (Phase 20, the last row)
 
-A-134 (`947e459`) was the last ⬜ row. Two things are owed, in order:
+The Phase 19 operator review (`docs/reviews/29-operator-review-phase-19-close.md`,
+commit `cd0646d`) found one defect in `projectedDelays`' head rule: a claim spent
+by a checkout comes back when the next client sits down; a checked-in pushed
+client takes the head (with pushed-off minutes twice) from the client still in
+the chair; a colour drops at her booked end. Backlog row 137 has the measured
+timelines and the D-64 options — ask D-64 as a clickable question first
+(operator recommends (a)), record it in `07-decisions.md`, then build with a
+WALK-THE-DAY fixture (check in → past start → start → checkout, each client in
+turn; no projection moves unless the chair's true free time moved).
 
-1. **Phase 19 close.** Every earlier phase closed with a demo checkpoint
-   (`docs/reviews/2x-demo-checkpoint-N.md`, a production build over a fresh
-   `bookable_cpN`) or an operator review (`salon-operator` agent). Walk it; if
-   it scopes new rows, the backlog is not done.
-2. **Closure deliverables** (global CLAUDE.md, *Definition of done*), none of
-   which exist yet: `docs/DEMO.md` (every command run once), the
-   *Bookable in Brief* exec-brief artifact, and the LinkedIn drafts in the Lab
-   Intelligence Ledger. Record every artifact URL in `docs/RELEASE_NOTES.md`.
+After A-135 the operator says the cascade and the project close: then the
+closure deliverables — `docs/DEMO.md` (every command run once; concessions list
+in review 29 §6), the *Bookable in Brief* exec-brief, LinkedIn drafts in the Lab
+Intelligence Ledger; record every URL in `docs/RELEASE_NOTES.md`.
 
-Model: Opus for the checkpoint/review; Sonnet is fine for the DEMO.md write-up.
+Model: Opus (correctness-critical derivation).
 
 ## Environment notes (carried forward, still true)
 
