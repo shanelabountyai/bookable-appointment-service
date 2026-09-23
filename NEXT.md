@@ -5,7 +5,7 @@
 A-135 shipped and CI is green (`aa35cde`, run 35892508204). Review 29 §6 says
 the cascade is done and the project closes. Three deliverables, in this order:
 
-1. **`docs/DEMO.md`** — screen by screen: exact commands, accounts and where
+1. ✅ DONE (2026-09-23, every command run against a fresh `bookable_demo`) **`docs/DEMO.md`** — screen by screen: exact commands, accounts and where
    each credential lives, the seeded names to point at, what to say at each
    stop; a troubleshooting table; and a *concede before you're asked* section.
    The concessions list is already written: `docs/reviews/29-operator-review-phase-19-close.md` §6,
