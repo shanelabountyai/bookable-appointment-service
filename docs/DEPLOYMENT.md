@@ -35,7 +35,6 @@ projects. The decision, and what was rejected, is **D-65** in
 | `SESSION_SECRET` | Staff sign-in refuses to work — by design, there is no default. |
 | `CRON_SECRET` | The reminder route refuses every call, including Vercel Cron's. |
 | `DEMO_ACCESS_PASSWORD` | **The site is fully public**, and so is the staff password DEMO.md publishes. |
-| `PRISMA_QUERY_ENGINE_LIBRARY` | `/var/task/packages/db/generated/client/libquery_engine-rhel-openssl-3.0.x.so.node`. Every page that reads the database 500s with *"could not locate the Query Engine"*. See below. |
 
 These are *not* the values in `.env.local` — those are local demo values.
 Adding one: `grep '^NAME=' .env.production.local | cut -d= -f2- | tr -d '"' | tr -d '\n' | vercel env add NAME production`
@@ -58,7 +57,11 @@ would touch 106 files, so the fix is three small pieces instead:
   (`outputFileTracingIncludes`). Check after any build:
   `grep -rl libquery_engine-rhel apps/web/.next/server --include='*.nft.json' | wc -l`
   should equal the number of `*.nft.json` files.
-- `PRISMA_QUERY_ENGINE_LIBRARY` tells the client the traced file's absolute path.
+- `packages/db/index.ts` sets `PRISMA_QUERY_ENGINE_LIBRARY` to the traced
+  file's absolute path, on Vercel and only when the file exists. **Not as a
+  Vercel env var**: that was the second attempt, and it failed the build,
+  because `prisma generate` also reads the variable and refuses a path that
+  does not exist on the build machine.
 
 Local and CI never read any of it. The build being green told us nothing:
 only a request to a page that queries can fail this way.
