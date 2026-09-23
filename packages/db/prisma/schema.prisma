@@ -31,6 +31,13 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/client"
+  // D-65. Vercel's functions run rhel-openssl-3.0.x. Named explicitly so the
+  // engine exists whatever machine generated the client; apps/web's
+  // next.config traces it into every function, and PRISMA_QUERY_ENGINE_LIBRARY
+  // (a Vercel env var) points at it. The custom `output` above is why this is
+  // needed at all: a client generated outside node_modules is bundled, and a
+  // bundled client cannot find its own engine (Countertop's C-045).
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

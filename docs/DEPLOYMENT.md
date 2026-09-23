@@ -35,10 +35,33 @@ projects. The decision, and what was rejected, is **D-65** in
 | `SESSION_SECRET` | Staff sign-in refuses to work — by design, there is no default. |
 | `CRON_SECRET` | The reminder route refuses every call, including Vercel Cron's. |
 | `DEMO_ACCESS_PASSWORD` | **The site is fully public**, and so is the staff password DEMO.md publishes. |
+| `PRISMA_QUERY_ENGINE_LIBRARY` | `/var/task/packages/db/generated/client/libquery_engine-rhel-openssl-3.0.x.so.node`. Every page that reads the database 500s with *"could not locate the Query Engine"*. See below. |
 
 These are *not* the values in `.env.local` — those are local demo values.
 Adding one: `grep '^NAME=' .env.production.local | cut -d= -f2- | tr -d '"' | tr -d '\n' | vercel env add NAME production`
 (stdin keeps it out of `ps` and shell history). Env changes need a redeploy: `vercel --prod`.
+
+## The Prisma engine on Vercel (the first deploy's 500)
+
+The first deployment built green and returned **500 on every page that reads
+the database**: *"Prisma Client could not locate the Query Engine for runtime
+rhel-openssl-3.0.x"*. The cause is that the client is generated to
+`packages/db/generated/client` rather than `node_modules`, so Next bundles it,
+and a bundled client looks for its engine relative to the function's working
+directory (`/var/task/apps/web/packages/db/…`, which never exists). This is
+Countertop's C-045 in a different shape. Moving the client to `node_modules`
+would touch 106 files, so the fix is three small pieces instead:
+
+- `schema.prisma` pins `binaryTargets = ["native", "rhel-openssl-3.0.x"]`, so
+  the Linux engine exists whatever machine generated the client.
+- `apps/web/next.config.ts` traces that one file into every function
+  (`outputFileTracingIncludes`). Check after any build:
+  `grep -rl libquery_engine-rhel apps/web/.next/server --include='*.nft.json' | wc -l`
+  should equal the number of `*.nft.json` files.
+- `PRISMA_QUERY_ENGINE_LIBRARY` tells the client the traced file's absolute path.
+
+Local and CI never read any of it. The build being green told us nothing:
+only a request to a page that queries can fail this way.
 
 ## Before each demo: refresh the book
 
@@ -51,7 +74,7 @@ the grid goes empty. Before a demo:
 
 It refuses any target that is not a Neon host. Seeding straight into Neon
 works too but takes ~45 minutes (one network round trip per row), which is why
-the script exists. Two things it works around, each of which failed a run:
+the script exists. Three things it works around, each of which failed a run:
 
 - **Neon refuses `session_replication_role`**, so triggers cannot be switched
   off during a data load. The two tables a trigger derives from each
