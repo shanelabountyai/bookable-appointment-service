@@ -46,8 +46,16 @@ The book is anchored to fixed dates for the DST cases (spring-forward 2026-03-08
 ### 1. The public site — `http://localhost:3300/`
 Pages: `/`, `/services`, `/stylists`, `/visit`, `/book`. **Say:** a client picks a service and is offered real times from the same engine the desk uses. Slot identity is the *instant*, never a `{date, time}` pair — on the fall-back day "01:30" names two moments.
 
+
+![Public site and booking](screenshots/01-public-home.png)
+![Public site and booking](screenshots/02-book-services.png)
+![Public site and booking](screenshots/03-book-times.png)
+
 ### 2. Sign in — `/staff/login`
 Use the owner account. Lands on `/staff/day`, today's grid: four columns, one chip per appointment (about 40 today).
+
+
+![Today's day grid](screenshots/04-day-today.png)
 
 ### 3. The day grid — `/staff/day`, then `?day=2026-09-24` (Thursday)
 Thursday is the dense day. Point at:
@@ -55,25 +63,48 @@ Thursday is the dense day. Point at:
 - **Dev Iyer, 09:00** — `⚑ OVR` / `OVERRIDE`: a double-booking the desk chose on purpose, drawn in its own lane beside Leo Dunn. The database constraint is never lied to (a zero-width blocked range plus the remembered original), and the grid still shows the true collision.
 - **Nadia Rahman, 11:00 / Jordan Fairweather-Okonkwo, 09:00 (Tess)** — `⚑ 1 late cancel`. Dev Iyer also carries `⚑ 1 no-show`. **Say:** the flag is the half the desk acts on, and a test compares `scrollWidth` with `clientWidth` because a clipped line passes every other assertion.
 
+
+![Tomorrow's dense grid and Tom Byrne's appointment](screenshots/06-day-tomorrow.png)
+![Tomorrow's dense grid and Tom Byrne's appointment](screenshots/07-appointment-detail.png)
+
 ### 4. Running late — today's `/staff/day`, Dana's column
 Type `15` into **Behind by** and press **Set**. Dana's later chips read `→ 14:15`-style projections, and the panel says *"Nobody has been messaged. Setting the delta changes no times and sends nothing."* Press **Back on time** to clear it. **Say:** a delta is a named claim, not a stored per-client delay; one derivation feeds the chip, the name and the ring-round, so they cannot disagree. Times only move when the desk taps **Push the column**.
 
 *Needs Dana to have appointments later today. After ~17:00 the panel has nothing to project — use a weekday morning.*
 
+
+![Dana 15 minutes behind: still to ring, nobody messaged](screenshots/05-running-late.png)
+
 ### 5. What's opened up — `/staff/opened`
 Freed time (cancelled, shortened, moved), soonest-to-expire first, each with **Who wants this slot?** Points at *"Dev Iyer never came — the rest of the time was put back"* and Alice Hall's cancelled Blow-dry. The matcher measures the whole footprint (buffers included), so it only offers people the gap actually fits.
+
+
+![What's opened up](screenshots/08-opened.png)
 
 ### 6. Waitlist — `/staff/waitlist`
 Dev Iyer, Nadia Rahman, Tom Byrne waiting, with acceptable providers, date window, days and time of day.
 
+
+![Waitlist](screenshots/09-waitlist.png)
+
 ### 7. Call-down — `/staff/call-down`
 Tomorrow's unconfirmed bookings (34 of 36 still to ring). Buttons: **No answer / Left a message / Confirmed**. **Say:** marking a call sends nothing; it records that a person picked up the phone. A no-show tomorrow is nobody's default.
+
+
+![Call-down](screenshots/10-call-down.png)
 
 ### 8. Still open — `/staff/unfinished`
 128 past appointments nobody closed out, with **Came / Didn't come** and the dollar figure the week's numbers cannot see.
 
+
+![Still open](screenshots/11-unfinished.png)
+
 ### 9. Dashboard — `/staff/dashboard`
 Bookings, cancellations, no-shows by provider, worked vs booked utilization. Drill-downs: `/staff/dashboard/lapsed` (clients who stopped coming — who to ring to fill a quiet Tuesday) and `/staff/dashboard/overruled`.
+
+
+![Dashboard and lapsed clients](screenshots/12-dashboard.png)
+![Dashboard and lapsed clients](screenshots/13-lapsed.png)
 
 ### 10. The reminder job — from a terminal
 ```bash
@@ -88,6 +119,16 @@ Returns `{"reminders":{"due":…},"dispatch":{…}}`. **Say:** the route refuses
 - The no-overlap invariant is a Postgres exclusion constraint (SQLSTATE `23P01`), not application code.
 - CI runs the suite under `TZ=UTC` and `TZ=Pacific/Kiritimati` and expects identical results.
 
+## Screenshots
+
+Thirteen shots in `docs/screenshots/`, taken from this same seeded book at 1440×900 (@2x, light scheme). To retake them after a re-seed, with the server up:
+
+```bash
+node docs/screenshots/capture.mjs docs/screenshots
+```
+
+Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSWORD=… node docs/screenshots/capture.mjs docs/screenshots`. The running-late shot sets a delta on Dana and clears it again afterwards, so a second run starts from the same book. The dates in the shots are whatever "today" was when the book was seeded.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -99,6 +140,7 @@ Returns `{"reminders":{"due":…},"dispatch":{…}}`. **Say:** the route refuses
 | `EADDRINUSE :3300` | A previous server is still up | `lsof -ti :3300 \| xargs kill` |
 | Running-late panel shows nothing to project | Dana has no appointments later today | Demo on a weekday before ~17:00 |
 | Walk-in refused for ~15 min after a claim is cleared | See concession 2 below | Tap **Back on time** |
+| Tess's column is cut off on a laptop screen | The grid scrolls sideways inside its own box, and the page itself doesn't | Scroll the grid, or pick one stylist with the filter buttons |
 | `zsh: no matches found` on a URL | zsh globs `?` | Quote the URL |
 
 ## Concede before you're asked
