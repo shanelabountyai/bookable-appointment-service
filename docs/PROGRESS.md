@@ -5585,3 +5585,34 @@ after a spent claim, and Phase 15 §5's match order and column widening go in
 `DEMO.md`'s concessions, not the backlog. Process note: walk a fixture through
 the day's routine taps in order — one walk-through replaces four single-instant
 fixtures.
+
+## A-135 — a spent claim stays spent through the rest of the day
+
+Commit `PENDING`.
+
+**What it decided.** D-64 (a), the operator's recommendation: the claim belongs
+to the chair as it was at the claim. A post-claim checkout seeds the chain
+whoever sits down next; `in_progress` outranks `checked_in` for the head; every
+client in the chair stays in the chain until checked out.
+
+**What it built.** Three changes inside `projectedDelays`, no new input. The
+checkout is read first and, when it exists, there is no head; the head sort
+ranks `in_progress` before latest-starting; the chain filter admits every
+in-chair client, not only the head, past her booked end.
+
+**What it tested.** Seven DB fixtures through `loadDayView` and the real
+`transitionAppointment`/`pushColumn` paths, each WALKING a shape through check
+in → clock past her start → start → checkout and asserting the chips and the
+ring-round of everybody still to arrive at every step: 1a with Cat started, 1a
+with the start tap skipped, A-132's early checkout walked on to the 14:00
+starting, a client seated late after the checkout (exactly the overrun), 1b on
+A-133's +20-of-45 push with Bea checked in past her pushed start, and 1c with
+the trim's checkout forgotten and remembered. With the source reverted six
+fail; the seventh (a trim checked out in the gap does not spend the colour's
+claim) is a guard and passes on both.
+
+**What it left behind.** A client seated long before a gap client's post-claim
+checkout (the colour) is projected from that checkout and so reads capped at
+the delta — right for any claim smaller than the time she has been in the
+chair, which is every real one. Per review 29 §6 the cascade is done; next is
+project closure (`DEMO.md`, the exec brief, LinkedIn drafts).

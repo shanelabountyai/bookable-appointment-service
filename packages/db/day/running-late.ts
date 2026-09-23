@@ -282,6 +282,15 @@ export const CALL_AHEAD_MINUTES = 180;
  * each projected at its own appointment's delay (the head's blocks at the
  * head's) — capped at the delta as before.
  *
+ * D-64 (A-135) — WHOSE CLAIM IT IS ONCE THE CHAIR CHANGES HANDS. D-63 read
+ * the checkout only when nobody was in the chair, so the next client to sit
+ * down became the head and took the whole claim back; a pushed client merely
+ * checked in outranked the one in the chair; and a second client in the chair
+ * dropped out at her booked end. The claim belongs to the chair as it was when
+ * it was made: a post-claim checkout seeds the chain whoever sits down next,
+ * `in_progress` heads before `checked_in`, and nobody in the chair leaves the
+ * chain until checked out.
+ *
  * Returns minutes late per appointment id, 0 included. Nothing absent from
  * the map is late.
  */
@@ -306,24 +315,40 @@ export function projectedDelays(args: {
   if (!args.late || minutes <= 0) return delays;
   const now = args.now.getTime();
 
-  const head = args.appointments
-    .filter((a) => a.status === 'in_progress' || (a.status === 'checked_in' && a.startAt.getTime() <= now))
-    .sort((a, b) => b.startAt.getTime() - a.startAt.getTime())[0];
+  const inChair = (a: (typeof args.appointments)[number]) =>
+    a.status === 'in_progress' || (a.status === 'checked_in' && a.startAt.getTime() <= now);
 
-  const checkout = head
+  // D-64(1). A checkout after the claim spends it, whether or not the chair
+  // has been filled since: whoever sat down next is a member projected from
+  // it, never a new head carrying the whole claim back.
+  const checkout = args.appointments
+    .filter(
+      (a) =>
+        a.status === 'completed' &&
+        a.endedAt !== null &&
+        a.endedAt.getTime() >= args.late!.claimedAt.getTime() &&
+        a.endedAt.getTime() <= now,
+    )
+    .sort((a, b) => b.endedAt!.getTime() - a.endedAt!.getTime())[0];
+
+  // D-64(2). `in_progress` outranks `checked_in`: a pushed client waiting past
+  // her new start is not the client the claim was about. Latest-starting
+  // breaks the tie within a status (D-63).
+  const head = checkout
     ? undefined
     : args.appointments
-        .filter(
-          (a) =>
-            a.status === 'completed' &&
-            a.endedAt !== null &&
-            a.endedAt.getTime() >= args.late!.claimedAt.getTime() &&
-            a.endedAt.getTime() <= now,
-        )
-        .sort((a, b) => b.endedAt!.getTime() - a.endedAt!.getTime())[0];
+        .filter(inChair)
+        .sort(
+          (a, b) =>
+            Number(b.status === 'in_progress') - Number(a.status === 'in_progress') ||
+            b.startAt.getTime() - a.startAt.getTime(),
+        )[0];
 
+  // D-64(3). Everybody in the chair stays in the chain until checked out, not
+  // only the head: a colour whose gap client was never checked out still
+  // holds up the Cut after her rinse.
   const chain = args.appointments
-    .filter((a) => a === head || (isPushable(a.status as AppointmentStatus) && a.occupiesEnd.getTime() > now))
+    .filter((a) => inChair(a) || (isPushable(a.status as AppointmentStatus) && a.occupiesEnd.getTime() > now))
     .sort((a, b) => a.occupiesStart.getTime() - b.occupiesStart.getTime());
 
   const freeFrom = checkout

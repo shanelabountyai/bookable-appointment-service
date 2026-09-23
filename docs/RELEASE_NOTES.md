@@ -4767,3 +4767,20 @@ client waits only on the work booked to start by her own start, each block
 shifted by its own appointment's delay. No new query: the day view already
 loaded the blocks. The tests reproduce the backlog's measurement exactly, and
 fail against the old code.
+
+## A-135 — a running-late claim no longer comes back when the next client sits down
+
+When a stylist caught up and checked her client out, the late-running
+projection correctly let the rest of the afternoon go back to on time — until
+the next client sat down. The moment she was started (or simply checked in with
+her time passed), she inherited the whole claim, and clients the desk had just
+rung to say "come at your booked time" flipped back onto the ring-round.
+After a partial push, a client waiting past her new time took over from the
+one still in the chair and counted the pushed minutes twice.
+
+**What is engineered here** is a precise answer to "whose claim is it once the
+chair has changed hands" (D-64), and a test style that closes the class: each
+fixture walks one shape through the day's ordinary taps in order and asserts
+that nobody still to arrive moves unless the chair's real free time did. Every
+earlier fixture stopped the clock at the event that set the answer; six of the
+seven new ones fail against the old code.

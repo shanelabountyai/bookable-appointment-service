@@ -1163,3 +1163,160 @@ describe('A-134 — the cascade chains worked blocks, not envelopes', () => {
     ]);
   });
 });
+
+/**
+ * A-135 / D-64 — WALK THE DAY.
+ *
+ * Every fixture above stops the clock at the event that set the answer, and
+ * the next routine tap reset it: the next client sat down and took the whole
+ * claim back, a pushed client checked in and outranked the one in the chair,
+ * a colour dropped out at her booked end. These walk each shape through its
+ * ordinary events in order — check in, clock past her start, start, checkout —
+ * and assert at every step that nobody still to arrive moves unless the
+ * chair's true free time did.
+ */
+describe('D-64 — a spent claim stays spent through the rest of the day', () => {
+  const t = (hhmmLocal: string) => at(`${DAY}T${hhmmLocal}:00-05:00`);
+  const setLate = (minutes: number) =>
+    setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR, now: t('13:30') });
+  const tap = (appointmentId: string, to: 'checked_in' | 'in_progress' | 'completed', when: string) =>
+    transitionAppointment(prisma, { appointmentId, to, actor: ACTOR, now: t(when) });
+  const viewAt = async (now: string) =>
+    (await loadDayView(prisma, { businessId, day: DAY, now: t(now) })).columns.find((c) => c.providerId === danaId)!;
+  /** Everybody not yet in the building: her delay, and the ring-round. */
+  const stillComingAt = async (now: string) => {
+    const column = await viewAt(now);
+    return {
+      delays: Object.fromEntries(
+        column.appointments.filter((a) => a.status === 'booked').map((a) => [hhmm(a.startAt), a.lateMinutes]),
+      ),
+      calls: column.lateCalls.map((c) => [hhmm(c.scheduled), c.lateMinutes, c.stale]),
+    };
+  };
+
+  it('1a: the next client sitting down after the checkout does not take the claim back', async () => {
+    const ann = await book(`${DAY}T13:00:00-05:00`);
+    const bea = await book(`${DAY}T14:00:00-05:00`);
+    const cat = await book(`${DAY}T15:00:00-05:00`);
+    await book(`${DAY}T16:00:00-05:00`);
+    await tap(ann.id, 'checked_in', '12:55');
+    await tap(ann.id, 'in_progress', '13:00');
+    await setLate(40);
+    await prisma.appointment.update({ where: { id: bea.id }, data: { status: 'cancelled' } });
+
+    // Ann out by 14:40 at worst; the 15:00 and 16:00 are on time, all day.
+    const onTime = (...starts: string[]) => ({ delays: Object.fromEntries(starts.map((s) => [s, 0])), calls: [] });
+    expect(await stillComingAt('13:31')).toEqual(onTime('15:00', '16:00'));
+    await tap(ann.id, 'completed', '14:36');
+    expect(await stillComingAt('14:40')).toEqual(onTime('15:00', '16:00'));
+    await tap(cat.id, 'checked_in', '14:51');
+    expect(await stillComingAt('14:52')).toEqual(onTime('16:00'));
+    await tap(cat.id, 'in_progress', '14:52');
+    expect(await stillComingAt('14:53')).toEqual(onTime('16:00'));
+    expect(await stillComingAt('15:30')).toEqual(onTime('16:00'));
+    await tap(cat.id, 'completed', '15:40');
+    expect(await stillComingAt('15:41')).toEqual(onTime('16:00'));
+  });
+
+  it('1a, start tap skipped: checked in and the clock past her start is the same as started', async () => {
+    const ann = await book(`${DAY}T13:00:00-05:00`);
+    const bea = await book(`${DAY}T14:00:00-05:00`);
+    const cat = await book(`${DAY}T15:00:00-05:00`);
+    await book(`${DAY}T16:00:00-05:00`);
+    await tap(ann.id, 'in_progress', '13:00');
+    await setLate(40);
+    await prisma.appointment.update({ where: { id: bea.id }, data: { status: 'cancelled' } });
+    await tap(ann.id, 'completed', '14:36');
+    await tap(cat.id, 'checked_in', '14:58');
+    expect(await stillComingAt('15:01')).toEqual({ delays: { '16:00': 0 }, calls: [] });
+  });
+
+  it('A-132’s early checkout, walked on: the 14:00 starting on time leaves everybody on time', async () => {
+    const ann = await book(`${DAY}T13:00:00-05:00`);
+    const bea = await book(`${DAY}T14:00:00-05:00`);
+    await book(`${DAY}T15:00:00-05:00`);
+    await book(`${DAY}T16:00:00-05:00`);
+    await tap(ann.id, 'in_progress', '13:00');
+    await setLate(40);
+    await tap(ann.id, 'completed', '13:50');
+    expect((await stillComingAt('13:51')).delays).toEqual({ '14:00': 0, '15:00': 0, '16:00': 0 });
+    await tap(bea.id, 'checked_in', '13:58');
+    await tap(bea.id, 'in_progress', '14:00');
+    expect(await stillComingAt('14:01')).toEqual({ delays: { '15:00': 0, '16:00': 0 }, calls: [] });
+  });
+
+  it('a client seated late after the checkout is late by exactly the overrun, and it carries on', async () => {
+    const ann = await book(`${DAY}T13:00:00-05:00`);
+    const bea = await book(`${DAY}T14:00:00-05:00`);
+    await book(`${DAY}T15:00:00-05:00`);
+    await tap(ann.id, 'in_progress', '13:00');
+    await setLate(40);
+    await tap(ann.id, 'completed', '14:25');
+    await tap(bea.id, 'checked_in', '13:55');
+    expect((await stillComingAt('14:26')).delays).toEqual({ '15:00': 25 });
+    await tap(bea.id, 'in_progress', '14:26');
+    expect((await stillComingAt('14:27')).delays).toEqual({ '15:00': 25 });
+  });
+
+  it('1b: a pushed client checking in does not take the head from the client in the chair', async () => {
+    const ann = await book(`${DAY}T13:00:00-05:00`);
+    await book(`${DAY}T14:15:00-05:00`);
+    await book(`${DAY}T15:15:00-05:00`);
+    await tap(ann.id, 'in_progress', '13:00');
+    await setLate(45);
+    await pushColumn(prisma, { businessId, providerId: danaId, day: DAY, fromAt: t('14:00'), minutes: 20, actor: ACTOR, reason: 'Dana is behind' });
+    const bea = (await viewAt('13:31')).appointments.find((a) => hhmm(a.startAt) === '14:35')!;
+
+    // Ann out at 14:45 (delta 25 + pushed off 20): Bea and Cat 10 late, all day.
+    expect((await stillComingAt('13:31')).delays).toEqual({ '14:35': 10, '15:35': 10 });
+    await tap(bea.id, 'checked_in', '14:30');
+    expect((await stillComingAt('14:36')).delays).toEqual({ '15:35': 10 });
+    expect((await viewAt('14:36')).appointments.find((a) => a.id === bea.id)!.lateMinutes).toBe(10);
+    await tap(ann.id, 'completed', '14:45');
+    expect((await stillComingAt('14:45')).delays).toEqual({ '15:35': 10 });
+    await tap(bea.id, 'in_progress', '14:45');
+    expect((await stillComingAt('14:46')).delays).toEqual({ '15:35': 10 });
+    await tap(bea.id, 'completed', '15:45');
+    expect((await stillComingAt('15:45')).delays).toEqual({ '15:35': 10 });
+  });
+
+  describe('1c: a colour with a trim in her processing gap', () => {
+    let colourId: string;
+    let trimId: string;
+    beforeEach(async () => {
+      const service = async (name: string, durationMinutes: number, buffers: [number, number]) => {
+        const s = await prisma.service.create({
+          data: { businessId, name, durationMinutes, bufferBeforeMinutes: buffers[0], bufferAfterMinutes: buffers[1], priceCents: 9000 },
+        });
+        await prisma.serviceProvider.create({ data: { businessId, serviceId: s.id, providerId: danaId } });
+        return s.id;
+      };
+      const colourService = await service('Colour', 130, [10, 10]);
+      await prisma.serviceSegment.createMany({
+        data: [45, 40, 45].map((durationMinutes, ordinal) => ({ businessId, serviceId: colourService, ordinal, durationMinutes, isGap: ordinal === 1 })),
+      });
+      colourId = (await book(`${DAY}T13:15:00-05:00`, { serviceIds: [colourService] })).id;
+      trimId = (await book(`${DAY}T14:15:00-05:00`, { serviceIds: [await service('Fringe trim', 20, [0, 0])] })).id;
+      await book(`${DAY}T15:45:00-05:00`);
+      await tap(colourId, 'in_progress', '13:05');
+      await setLate(40);
+    });
+
+    it('the Cut after the rinse stays 30 late while the trim’s checkout is forgotten, past the colour’s booked end', async () => {
+      // Rinse out at 16:15, not 15:35.
+      expect((await stillComingAt('13:31')).delays).toEqual({ '14:15': 25, '15:45': 30 });
+      await tap(trimId, 'checked_in', '14:10');
+      await tap(trimId, 'in_progress', '14:40');
+      expect((await stillComingAt('14:41')).delays).toEqual({ '15:45': 30 });
+      expect((await stillComingAt('15:36')).delays).toEqual({ '15:45': 30 });
+      expect((await stillComingAt('15:36')).calls).toEqual([['15:45', 30, false]]);
+    });
+
+    it('the trim checked out in the gap does not spend the colour’s claim', async () => {
+      await tap(trimId, 'in_progress', '14:40');
+      await tap(trimId, 'completed', '15:00');
+      expect((await stillComingAt('15:01')).delays).toEqual({ '15:45': 30 });
+      expect((await stillComingAt('15:36')).delays).toEqual({ '15:45': 30 });
+    });
+  });
+});
