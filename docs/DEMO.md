@@ -4,7 +4,16 @@ Every command below was run once against a fresh database on 2026-09-23 (seed 20
 
 **What this is:** appointment scheduling for a sample 4-chair salon, "Shear Genius" (Dana, Priya, Marcus, Tess). Time zone America/Chicago. Everything is synthetic.
 
-## Setup (once, ~2 min)
+## The hosted copy — https://appt.labintelligence.co
+
+The same build, on Vercel + Neon (D-65, `docs/DEPLOYMENT.md`). Two passwords:
+
+1. **The browser's password box** (the whole site sits behind one shared password): any username, and `DEMO_ACCESS_PASSWORD` from `.env.production.local`. Hand this out with the link.
+2. **Staff sign-in**, once past it: the owner account in the table below.
+
+**Refresh the book before every demo**: `./scripts/refresh-hosted-demo.sh` (~2 min). The live week is anchored to the day it was seeded, so a book seeded ten days ago shows an empty grid. Everything below works the same on the hosted copy; `localhost:3300` becomes `https://appt.labintelligence.co`.
+
+## Local setup (once, ~2 min)
 
 Run from the repo root. A fresh database keeps the demo book separate from `bookable_dev` and `bookable_test`.
 
@@ -137,6 +146,8 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 | Day grid is empty or shows another book | `DATABASE_URL` was not exported before `dotenv`, so `.env.local` (`bookable_dev`) won | Stop, export the variables, restart |
 | Waitlist / override / call marks all zero | Seed did not finish (`P2028` timeout on a loaded machine) | Check `sysctl -n vm.loadavg`; kill orphaned vitest workers; `dropdb bookable_demo && createdb bookable_demo` and redo Setup |
 | Every page 500s after the repo directory moved | Old absolute path baked into `apps/web/.next` | `rm -rf apps/web/.next && npm run db:generate`, rebuild |
+| Hosted grid is empty | The hosted book is more than about ten days old | `./scripts/refresh-hosted-demo.sh` |
+| Hosted site keeps asking for a password | That's the shared demo gate, not staff sign-in | Any username + `DEMO_ACCESS_PASSWORD` from `.env.production.local` |
 | `EADDRINUSE :3300` | A previous server is still up | `lsof -ti :3300 \| xargs kill` |
 | Running-late panel shows nothing to project | Dana has no appointments later today | Demo on a weekday before ~17:00 |
 | Walk-in refused for ~15 min after a claim is cleared | See concession 2 below | Tap **Back on time** |
@@ -154,7 +165,7 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 7. **A gap client's block is not checked against a colour's projected second block** — needs a delta larger than the gap; bounded by D-62 (A-134).
 8. **Waitlist matching is oldest-first**, and **D-54 widens a column on heavy cancellation days.** Both open since Phase 15; not built.
 9. **Deliberately not built:** holds, automated offers (OQ-4), a staleness alarm, a per-client stored delay.
-10. **Not deployed.** Local only; there is no production database, no real client data, and every name, phone number and dollar figure is synthetic.
+10. **A demo deployment, not production.** The hosted copy has no backups, monitoring or on-call, and sits behind one shared password. There is no real client data; every name, phone number and dollar figure is synthetic.
 11. **Reminders:** two of the seeded reminders are left by the skipped band on purpose — the never-reminded screen is not empty on a fresh install.
 
 ## Reset

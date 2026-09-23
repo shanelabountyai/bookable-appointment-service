@@ -9,3 +9,5 @@ playwright-report/
 .vercel/
 .data/
 packages/db/generated/
+.env*.local
+.env.production*
