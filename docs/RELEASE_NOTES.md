@@ -4791,4 +4791,5 @@ seven new ones fail against the old code.
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.
 - **Exec brief — Bookable in Brief:** https://claude.ai/artifact/AUve67hviR4hkQ6AH9t6nq (private until shared). Its counts come from CI run 35892508204: 1,752 unit tests passed + 1 skipped, run under both TZ legs, and 340 e2e tests passed.
+- **Live demo:** https://appt.labintelligence.co, behind one shared password (`DEMO_ACCESS_PASSWORD` in `.env.production.local`). Setup and refresh are in `docs/DEPLOYMENT.md` (D-65).
 - **LinkedIn drafts:** Lab Intelligence Ledger, https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i (pending).

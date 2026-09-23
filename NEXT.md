@@ -16,6 +16,11 @@ the cascade is done and the project closes. Three deliverables, in this order:
    non-engineering reader. Match the storage and rental briefs so the set reads
    as one thing. Scope honesty near the top: what is synthetic, what is not
    deployed.
+2b. ✅ DONE (2026-09-23) — **Hosted demo + screenshots** (asked for mid-closure):
+   https://appt.labintelligence.co behind one shared password (D-65,
+   `docs/DEPLOYMENT.md`); 13 screenshots in `docs/screenshots/`, embedded in
+   DEMO.md. **Refresh the hosted book before any demo:**
+   `./scripts/refresh-hosted-demo.sh` (~2 min; the live week goes stale in ~10 days).
 3. **LinkedIn drafts** — into the Lab Intelligence Ledger
    (`https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i`), tagged to project and
    pillar, no two adjacent drafts sharing a pillar. Mine the *Defects Found* /

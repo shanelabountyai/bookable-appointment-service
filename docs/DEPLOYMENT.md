@@ -109,6 +109,18 @@ In Cloudflare, `labintelligence.co` → DNS → Add record:
 It must be DNS only. A proxied (orange) record puts Cloudflare's certificate in
 front of Vercel's, and Vercel cannot issue or renew its own.
 
+Added 2026-09-23 through the Cloudflare API (`CLOUDFLARE_API_TOKEN` in
+`~/.zshrc`, zone `597c0a80dbd38ca78d339cde739be36b`), record comment "Bookable
+demo on Vercel (D-65)". **If `dig` says NXDOMAIN right after adding it, ask a
+public resolver before debugging anything**: the home router (192.168.4.1)
+answers port 53 itself and cached the pre-record NXDOMAIN, while Cloudflare and
+Google DNS-over-HTTPS already returned the record:
+
+```bash
+curl -s -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name=appt.labintelligence.co&type=A'
+curl -s --resolve appt.labintelligence.co:443:76.76.21.21 -o /dev/null -w '%{http_code}\n' https://appt.labintelligence.co/book   # 401 = live
+```
+
 ## Verify
 
 ```bash
