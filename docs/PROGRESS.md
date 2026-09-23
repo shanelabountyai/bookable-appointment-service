@@ -5588,7 +5588,7 @@ fixtures.
 
 ## A-135 — a spent claim stays spent through the rest of the day
 
-Commit `PENDING`.
+Commit `aa35cde`.
 
 **What it decided.** D-64 (a), the operator's recommendation: the claim belongs
 to the chair as it was at the claim. A post-claim checkout seeds the chain
