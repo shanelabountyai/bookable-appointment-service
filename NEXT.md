@@ -1,39 +1,46 @@
 # Next
 
-## A-135 — decide D-64, then build (Phase 20, the last row)
+## Project closure — the three deliverables (the backlog has no ⬜ rows left)
 
-The Phase 19 operator review (`docs/reviews/29-operator-review-phase-19-close.md`,
-commit `cd0646d`) found one defect in `projectedDelays`' head rule: a claim spent
-by a checkout comes back when the next client sits down; a checked-in pushed
-client takes the head (with pushed-off minutes twice) from the client still in
-the chair; a colour drops at her booked end. Backlog row 137 has the measured
-timelines and the D-64 options — ask D-64 as a clickable question first
-(operator recommends (a)), record it in `07-decisions.md`, then build with a
-WALK-THE-DAY fixture (check in → past start → start → checkout, each client in
-turn; no projection moves unless the chair's true free time moved).
+A-135 shipped and CI is green (`aa35cde`, run 35892508204). Review 29 §6 says
+the cascade is done and the project closes. Three deliverables, in this order:
 
-After A-135 the operator says the cascade and the project close: then the
-closure deliverables — `docs/DEMO.md` (every command run once; concessions list
-in review 29 §6), the *Bookable in Brief* exec-brief, LinkedIn drafts in the Lab
-Intelligence Ledger; record every URL in `docs/RELEASE_NOTES.md`.
+1. **`docs/DEMO.md`** — screen by screen: exact commands, accounts and where
+   each credential lives, the seeded names to point at, what to say at each
+   stop; a troubleshooting table; and a *concede before you're asked* section.
+   The concessions list is already written: `docs/reviews/29-operator-review-phase-19-close.md` §6,
+   plus A-135's own leave-behind (a colour seated before a gap client's
+   post-claim checkout reads capped at the delta). **Run every command in it
+   once before it ships**, including the env-var greps.
+2. **The exec brief** — `Bookable in Brief`, via the `exec-brief` skill, for a
+   non-engineering reader. Match the storage and rental briefs so the set reads
+   as one thing. Scope honesty near the top: what is synthetic, what is not
+   deployed.
+3. **LinkedIn drafts** — into the Lab Intelligence Ledger
+   (`https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i`), tagged to project and
+   pillar, no two adjacent drafts sharing a pillar. Mine the *Defects Found* /
+   *Hardest Bug* material first — the A-093 segmented-colour map collapse, the
+   A-120 truncation, and this phase's "the claim follows the next client into
+   the chair" are better posts than any feature.
 
-Model: Opus (correctness-critical derivation).
+**Record every artifact URL in `docs/RELEASE_NOTES.md`** before calling it closed.
+
+Model: Sonnet for DEMO.md (mechanical: run the commands, write them down).
+Opus only if the exec brief's framing needs it.
 
 ## Environment notes (carried forward, still true)
 
 - `bookable_cisim`, `bookable_drift_shadow`, `bookable_shadow` are the non-core DBs; leave them.
 - Check `sysctl -n vm.loadavg` and orphan vitest before trusting a slow/killed run.
 - `pkill -9 -f "$PWD.*playwright"` before every sweep. Run from REPO ROOT.
-- **`--list` says 340.** Unit total 1746 (1745 + 1 skipped). Unit ~3.5 min; e2e ~5 min; CI ~25 min (A-134: 24–43 min lately).
+- **`--list` says 340.** Unit total 1753 (1752 + 1 skipped). Unit ~3.5 min; e2e ~5 min; CI ~25 min.
+- `npm test` needs the env: `npx dotenv -e .env.test -e .env.local -- npx vitest run <file>` for one file.
 - **A vitest `Killed`/137 with no JetsamEvent file may be the countertop
-  session**: its gate runs an UNSCOPED `pkill -9 -f 'node \(vitest'`, which
-  kills this repo's unit run (A-129 lost one that way). Wait for its gate to end.
+  session**: its gate runs an UNSCOPED `pkill -9 -f 'node \(vitest'`.
 - `npm run test:e2e -- -g X` breaks (npm eats `-g`); pass a spec file instead.
 - No prettier config — don't `prettier --write`.
 - zsh globs `?`: quote routes. Docs-only pushes skip CI.
 - Local drift check (no shadow DB): `npm run db:migrate:test`, then
   `npx dotenv -e .env.test -- sh -c 'npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel packages/db/prisma/schema.prisma --exit-code'`.
-- **Monitors that `tail -f` a log the command truncates with `>` never fire**
-  (A-128). Use `tail -F`, or poll `gh run view --json` for CI. `tail -F`
-  replays an OLD log's last lines — use a fresh filename per run, or the
-  first event is a stale `EXIT=`.
+- **Monitors that `tail -F` a log a finished command already wrote never fire** —
+  arm the monitor BEFORE the run, or just reconcile the log by hand afterwards.
