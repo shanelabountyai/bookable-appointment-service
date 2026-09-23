@@ -12,7 +12,7 @@ the cascade is done and the project closes. Three deliverables, in this order:
    plus A-135's own leave-behind (a colour seated before a gap client's
    post-claim checkout reads capped at the delta). **Run every command in it
    once before it ships**, including the env-var greps.
-2. **The exec brief** — `Bookable in Brief`, via the `exec-brief` skill, for a
+2. ✅ DONE (2026-09-23) — https://claude.ai/artifact/AUve67hviR4hkQ6AH9t6nq — **The exec brief** — `Bookable in Brief`, via the `exec-brief` skill, for a
    non-engineering reader. Match the storage and rental briefs so the set reads
    as one thing. Scope honesty near the top: what is synthetic, what is not
    deployed.

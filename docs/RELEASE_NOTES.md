@@ -4784,3 +4784,11 @@ fixture walks one shape through the day's ordinary taps in order and asserts
 that nobody still to arrive moves unless the chair's real free time did. Every
 earlier fixture stopped the clock at the event that set the answer; six of the
 seven new ones fail against the old code.
+
+---
+
+## Project closure artifacts
+
+- **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.
+- **Exec brief — Bookable in Brief:** https://claude.ai/artifact/AUve67hviR4hkQ6AH9t6nq (private until shared). Its counts come from CI run 35892508204: 1,752 unit tests passed + 1 skipped, run under both TZ legs, and 340 e2e tests passed.
+- **LinkedIn drafts:** Lab Intelligence Ledger, https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i (pending).
