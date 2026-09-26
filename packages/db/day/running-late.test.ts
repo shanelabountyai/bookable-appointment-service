@@ -108,7 +108,7 @@ describe('D-22 — the running-late delta', () => {
 
   it('clears in one tap, and clearing means the row is gone', async () => {
     await setLate(40);
-    await clearRunningLate(prisma, { providerId: danaId, day: DAY });
+    await clearRunningLate(prisma, { businessId, providerId: danaId, day: DAY });
     expect(await findRunningLate(prisma, { businessId, day: DAY })).toEqual([]);
   });
 
@@ -497,7 +497,7 @@ describe('A-059 — "I have already rung her"', () => {
     await mark(booked.id);
     expect(await prisma.runningLateTold.count()).toBe(1);
 
-    await clearRunningLate(prisma, { providerId: danaId, day: DAY });
+    await clearRunningLate(prisma, { businessId, providerId: danaId, day: DAY });
     expect(await prisma.runningLateTold.count()).toBe(0);
 
     await setLate(25);
@@ -934,7 +934,7 @@ describe('D-63 — the cascade keeps its head until the chair is empty', () => {
     expect(await delaysAt('14:30')).toEqual(expected);
 
     // Checked out at 14:36 by the real path, which stamps `endedAt`.
-    await transitionAppointment(prisma, { appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('14:36') });
+    await transitionAppointment(prisma, { businessId, appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('14:36') });
     expect(await delaysAt('14:36')).toEqual(expected);
     expect(await delaysAt('14:50')).toEqual(expected);
   });
@@ -975,7 +975,7 @@ describe('D-63 — the cascade keeps its head until the chair is empty', () => {
   it('a claim made with an EMPTY chair still lands whole on the next client', async () => {
     const { chair } = await column();
     // Checked out at 13:50, and THEN the desk says Dana is 30 behind.
-    await transitionAppointment(prisma, { appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('13:50') });
+    await transitionAppointment(prisma, { businessId, appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('13:50') });
     await setLate(30, '13:55');
     expect(await delaysAt('13:56')).toEqual({ '14:00': 30, '15:00': 30, '16:00': 30 });
   });
@@ -983,7 +983,7 @@ describe('D-63 — the cascade keeps its head until the chair is empty', () => {
   it('a checkout AFTER the claim frees the chair from that moment — an early one included', async () => {
     const { chair } = await column();
     await setLate(40, '13:30');
-    await transitionAppointment(prisma, { appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('13:50') });
+    await transitionAppointment(prisma, { businessId, appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('13:50') });
     // Out ten minutes early: the 14:00 is on time, and so is everybody after.
     expect(await delaysAt('13:51')).toEqual({ '14:00': 0, '15:00': 0, '16:00': 0 });
   });
@@ -991,7 +991,7 @@ describe('D-63 — the cascade keeps its head until the chair is empty', () => {
   it('a checkout after the claim but past the next start leaves her late by exactly the overrun', async () => {
     const { chair } = await column();
     await setLate(40, '13:30');
-    await transitionAppointment(prisma, { appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('14:25') });
+    await transitionAppointment(prisma, { businessId, appointmentId: chair.id, to: 'completed', actor: ACTOR, now: t('14:25') });
     // The 14:00 starts at 14:25, which pushes the 15:00 by 25 as well.
     expect(await delaysAt('14:25')).toEqual({ '14:00': 25, '15:00': 25, '16:00': 25 });
   });
@@ -1089,7 +1089,7 @@ describe('D-63(2) — the head carries the minutes a push took off', () => {
     await column('14:00', '15:00');
     await setLate(40);
     await push(20);
-    await clearRunningLate(prisma, { providerId: danaId, day: DAY });
+    await clearRunningLate(prisma, { businessId, providerId: danaId, day: DAY });
     await setLate(10);
     expect((await findRunningLate(prisma, { businessId, day: DAY }))[0]!.pushedOffMinutes).toBe(0);
   });
@@ -1180,7 +1180,7 @@ describe('D-64 — a spent claim stays spent through the rest of the day', () =>
   const setLate = (minutes: number) =>
     setRunningLate(prisma, { businessId, providerId: danaId, day: DAY, minutes, actor: ACTOR, now: t('13:30') });
   const tap = (appointmentId: string, to: 'checked_in' | 'in_progress' | 'completed', when: string) =>
-    transitionAppointment(prisma, { appointmentId, to, actor: ACTOR, now: t(when) });
+    transitionAppointment(prisma, { businessId, appointmentId, to, actor: ACTOR, now: t(when) });
   const viewAt = async (now: string) =>
     (await loadDayView(prisma, { businessId, day: DAY, now: t(now) })).columns.find((c) => c.providerId === danaId)!;
   /** Everybody not yet in the building: her delay, and the ring-round. */

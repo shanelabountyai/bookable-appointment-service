@@ -590,6 +590,7 @@ describe('BOOK-03 — the deterministic race matrix', () => {
       const destination = at('2026-06-09T14:00:00-05:00');
       const results = await Promise.allSettled([
         rescheduleAppointment(prisma, {
+          businessId,
           appointmentId: mine.id,
           startAt: destination,
           now: NOW,

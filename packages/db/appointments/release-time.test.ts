@@ -140,6 +140,7 @@ async function noShow() {
     audience: 'staff',
   } as Parameters<typeof bookAppointment>[1]);
   await transitionAppointment(prisma, {
+    businessId,
     appointmentId: appointment.id,
     to: 'no_show',
     now: GAVE_UP,
@@ -340,6 +341,7 @@ describe('correcting her back (APPT-06)', () => {
     expect((await rowOf(appointment.id)).blockedEnd).toEqual(GAVE_UP);
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: at('2026-06-09T12:00:00-05:00'),
@@ -373,6 +375,7 @@ describe('correcting her back (APPT-06)', () => {
     // so the refusal must not be a transition-table one, which would pass this
     // test while proving nothing about the room.
     const refusal = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: at('2026-06-09T12:00:00-05:00'),
@@ -481,6 +484,7 @@ describe('the chair it gives back (A-074, RES-02)', () => {
     await release(appointment.id);
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: at('2026-06-09T12:00:00-05:00'),
@@ -541,6 +545,7 @@ describe('the chair it gives back (A-074, RES-02)', () => {
 
     await expect(
       transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'completed',
         now: at('2026-06-09T12:00:00-05:00'),
@@ -667,6 +672,7 @@ describe('she walked in after all (A-075, D-45)', () => {
     // THE WHOLE POINT: the APPT-06 correction now goes through, so she does
     // not keep a no-show she did not earn.
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: at('2026-06-09T12:00:00-05:00'),
@@ -716,6 +722,7 @@ describe('she walked in after all (A-075, D-45)', () => {
 
     await expect(
       transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'completed',
         now: at('2026-06-09T12:00:00-05:00'),
@@ -839,18 +846,21 @@ describe('A-102 — the no-shows nobody has given back', () => {
     expect(await list(GAVE_UP)).toEqual([]);
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'checked_in',
       now: GAVE_UP,
       actor: STAFF,
     });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'in_progress',
       now: GAVE_UP,
       actor: STAFF,
     });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: at('2026-06-09T11:00:00-05:00'),

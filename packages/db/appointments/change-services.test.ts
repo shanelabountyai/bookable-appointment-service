@@ -140,6 +140,7 @@ const book = (serviceIds: string[] = [cutId], over: Record<string, unknown> = {}
 
 const change = (id: string, serviceIds: string[], over: Record<string, unknown> = {}) =>
   changeVisitServices(prisma, {
+    businessId,
     appointmentId: id,
     serviceIds,
     now: NOW,
@@ -192,7 +193,7 @@ describe('the add-on at the chair (VISIT-01)', () => {
   it('works on an appointment that is already in progress', async () => {
     const appointment = await book();
     for (const to of ['confirmed', 'checked_in', 'in_progress'] as const) {
-      await transitionAppointment(prisma, { appointmentId: appointment.id, to, actor: STAFF, now: NOW });
+      await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to, actor: STAFF, now: NOW });
     }
 
     const changed = await change(appointment.id, [cutId, colourId]);
@@ -203,7 +204,7 @@ describe('the add-on at the chair (VISIT-01)', () => {
   it('refuses to change a finished or cancelled visit', async () => {
     const done = await book();
     for (const to of ['confirmed', 'checked_in', 'in_progress', 'completed'] as const) {
-      await transitionAppointment(prisma, { appointmentId: done.id, to, actor: STAFF, now: NOW });
+      await transitionAppointment(prisma, { businessId, appointmentId: done.id, to, actor: STAFF, now: NOW });
     }
     await expect(change(done.id, [cutId, colourId])).rejects.toBeInstanceOf(VisitNotEditable);
   });

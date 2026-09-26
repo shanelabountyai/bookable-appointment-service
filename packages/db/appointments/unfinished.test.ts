@@ -178,6 +178,7 @@ describe('closing one out (D-46)', () => {
     const appointment = await visit({ startAt: at('2026-06-13T10:00:00-05:00'), status });
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: NOW,
@@ -196,6 +197,7 @@ describe('closing one out (D-46)', () => {
     const appointment = await visit({ startAt: at('2026-06-13T10:00:00-05:00') });
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: at('2026-06-15T09:40:00-05:00'),
@@ -219,6 +221,7 @@ describe('closing one out (D-46)', () => {
     const atTheTill = toDate(instant(fromDate(appointment.endAt) + 10 * 60_000));
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: atTheTill,
@@ -235,6 +238,7 @@ describe('closing one out (D-46)', () => {
 
     await expect(
       transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'completed',
         now: NOW,
@@ -247,6 +251,7 @@ describe('closing one out (D-46)', () => {
     const appointment = await visit({ startAt: at('2026-06-13T10:00:00-05:00') });
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       now: NOW,

@@ -6,7 +6,7 @@
  */
 import { type Segment, sumSegmentMinutes, validateSegmentStructure } from '../../core/settings';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { ServiceRejected } from './services';
+import { ServiceRejected, assertServiceOf } from './services';
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
@@ -69,6 +69,7 @@ export async function replaceSegments(
 ): Promise<SegmentRow[]> {
   const violations = validateSegmentStructure(segments);
   if (violations.length > 0) throw new ServiceRejected(violations[0]!.field, violations[0]!.message);
+  await assertServiceOf(db, businessId, serviceId);
 
   await db.serviceSegment.deleteMany({ where: { serviceId } });
   if (segments.length > 0) {

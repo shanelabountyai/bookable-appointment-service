@@ -120,6 +120,7 @@ export async function cancelConflicting(_previous: ImpactState, formData: FormDa
   // count (CLIENT-04) of somebody who did nothing, and `reliability.ts` counts
   // by status alone and could never tell the difference afterwards.
   await transitionAppointment(prisma, {
+    businessId: staff.businessId,
     appointmentId,
     to: 'cancelled',
     actor: staffActor(staff.id),

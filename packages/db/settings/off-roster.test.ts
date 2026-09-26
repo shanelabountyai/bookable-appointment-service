@@ -175,7 +175,7 @@ async function tessLeaves() {
   // from "the query returned nothing".
   await visit({ providerId: danaId, day: DAY, startAt: at('2026-06-09T11:00:00-05:00') });
 
-  await setProviderActive(prisma, tessId, false);
+  await setProviderActive(prisma, businessId, tessId, false);
   return { unfinished, stillBooked, freed };
 }
 
@@ -266,7 +266,7 @@ describe('a stylist taken off the roster', () => {
 
   it('goes back to an ordinary column when she is put back on the roster', async () => {
     await tessLeaves();
-    await setProviderActive(prisma, tessId, true);
+    await setProviderActive(prisma, businessId, tessId, true);
 
     const column = await columnFor(tessId);
     expect(column!.offRoster).toBe(false);

@@ -81,6 +81,9 @@ export class AppointmentAlreadyMoved extends Error {
 }
 
 export interface RescheduleInput {
+  /** SEC-02. The caller's tenant; another business's appointment reads as
+   *  not-found, so an id from a form cannot reach across. */
+  businessId: string;
   appointmentId: string;
   /** The new start, as an INSTANT (D-4). No `{date, time}` pair reaches here:
    *  on fall-back day "01:30" names two moments. */
@@ -126,7 +129,7 @@ export async function rescheduleAppointment(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const appointment = await loadAppointment(tx, input.appointmentId);
+        const appointment = await loadAppointment(tx, input.businessId, input.appointmentId);
 
         if (fromDate(appointment.startAt) === fromDate(input.startAt)) {
           // Moving an appointment to where it already is would write an event
@@ -312,9 +315,9 @@ export async function rescheduleAppointment(
 
 // ─────────────────────────── internals ───────────────────────────
 
-async function loadAppointment(db: Prisma.TransactionClient | PrismaClient, id: string) {
-  return db.appointment.findUniqueOrThrow({
-    where: { id },
+async function loadAppointment(db: Prisma.TransactionClient | PrismaClient, businessId: string, id: string) {
+  return db.appointment.findFirstOrThrow({
+    where: { id, businessId },
     select: {
       id: true,
       businessId: true,
@@ -481,6 +484,7 @@ async function slotsForMove(
 export async function daysForMove(
   prisma: PrismaClient,
   args: {
+    businessId: string;
     appointmentId: string;
     fromDay: string;
     now: Date;
@@ -488,7 +492,7 @@ export async function daysForMove(
     providerId?: string | null;
   },
 ): Promise<string[]> {
-  const appointment = await loadAppointment(prisma, args.appointmentId);
+  const appointment = await loadAppointment(prisma, args.businessId, args.appointmentId);
   return daysWithAvailability(prisma, {
     businessId: appointment.businessId,
     providerId: args.providerId?.trim() || appointment.providerId,
@@ -508,6 +512,7 @@ export async function daysForMove(
 export async function rescheduleOptions(
   prisma: PrismaClient,
   args: {
+    businessId: string;
     appointmentId: string;
     day: string;
     now: Date;
@@ -517,7 +522,7 @@ export async function rescheduleOptions(
     providerId?: string | null;
   },
 ): Promise<SlotResult> {
-  const appointment = await loadAppointment(prisma, args.appointmentId);
+  const appointment = await loadAppointment(prisma, args.businessId, args.appointmentId);
   return slotsForMove(prisma, appointment, {
     day: args.day,
     now: args.now,
@@ -602,6 +607,7 @@ async function assertProviderCanTakeIt(
   }
 
   const qualified = await qualifiedForVisit(tx, {
+    businessId: appointment.businessId,
     providerId: toProviderId,
     serviceIds: appointment.lines.map((l) => l.serviceId),
   });

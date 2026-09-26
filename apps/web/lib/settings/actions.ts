@@ -77,10 +77,10 @@ export async function addProvider(_prev: FormState, formData: FormData): Promise
 }
 
 export async function renameProvider(_prev: FormState, formData: FormData): Promise<FormState> {
-  await requireStaff();
+  const staff = await requireStaff();
   const id = String(formData.get('providerId') ?? '');
   try {
-    await updateProvider(prisma, id, { displayName: String(formData.get('displayName') ?? '') });
+    await updateProvider(prisma, staff.businessId, id, { displayName: String(formData.get('displayName') ?? '') });
   } catch (error) {
     if (error instanceof ProviderRejected) return { errors: { [error.field]: error.message } };
     throw error;
@@ -110,7 +110,7 @@ export async function toggleProviderActive(
   _prev: ProviderToggleState,
   formData: FormData,
 ): Promise<ProviderToggleState> {
-  await requireStaff();
+  const staff = await requireStaff();
   const id = String(formData.get('providerId') ?? '');
   const active = String(formData.get('active')) === 'true';
   const confirm = formData.get('confirm') === 'true';
@@ -127,7 +127,7 @@ export async function toggleProviderActive(
     }
   }
 
-  await setProviderActive(prisma, id, active);
+  await setProviderActive(prisma, staff.businessId, id, active);
   revalidatePath('/staff/providers');
   return { ok: true };
 }

@@ -141,6 +141,7 @@ async function shortenedColour(options: { day: string; time: string }): Promise<
     // Through the real mutator, so the event this screen reads is the one
     // A-055 actually writes — a hand-written payload would prove nothing.
     await changeVisitServices(prisma, {
+      businessId: business.id,
       appointmentId: appointment.id,
       serviceIds: [cut.id],
       now: new Date(),

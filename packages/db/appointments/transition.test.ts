@@ -102,7 +102,7 @@ describe('D-7 — which statuses free the slot', () => {
 
   it.each(['cancelled', 'cancelled_late'] as const)('frees the time on %s', async (to) => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to, actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to, actor: STAFF, now: BEFORE });
     expect(await tenAmOffered()).toBe(true);
   });
 
@@ -115,20 +115,20 @@ describe('D-7 — which statuses free the slot', () => {
     const appointment = await book();
     // §7 has no booked -> completed edge: a visit that was never checked in
     // cannot have finished. Routing through the real path is the point.
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'completed', actor: STAFF, now: AFTER_END });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'completed', actor: STAFF, now: AFTER_END });
     expect(await tenAmOffered()).toBe(false);
   });
 
   it('keeps the time occupied on no_show', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'no_show', actor: STAFF, now: AFTER_END });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'no_show', actor: STAFF, now: AFTER_END });
     expect(await tenAmOffered()).toBe(false);
   });
 
   it('lets a freed slot be booked by somebody else', async () => {
     const first = await book();
-    await transitionAppointment(prisma, { appointmentId: first.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: first.id, to: 'cancelled', actor: STAFF, now: BEFORE });
     const second = await book({ idempotencyKey: 'second' });
     expect(second.id).not.toBe(first.id);
     expect(second.startAt.toISOString()).toBe(TEN_AM.toISOString());
@@ -138,8 +138,8 @@ describe('D-7 — which statuses free the slot', () => {
 describe('APPT-07 — the event log', () => {
   it('appends one event per transition, with actor and both sides', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'confirmed', actor: CUSTOMER, now: BEFORE });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'confirmed', actor: CUSTOMER, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: BEFORE });
 
     const events = await prisma.appointmentEvent.findMany({
       where: { appointmentId: appointment.id },
@@ -156,8 +156,9 @@ describe('APPT-07 — the event log', () => {
 
   it('records a terminal correction as a correction, not an ordinary change', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'no_show', actor: STAFF, now: AFTER_END });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'no_show', actor: STAFF, now: AFTER_END });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       actor: STAFF,
@@ -175,7 +176,7 @@ describe('APPT-07 — the event log', () => {
 
   it('cannot be rewritten afterwards — the log is append-only by trigger', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
     const event = await prisma.appointmentEvent.findFirstOrThrow({ where: { appointmentId: appointment.id } });
     await expect(
       prisma.appointmentEvent.update({ where: { id: event.id }, data: { reason: 'rewritten' } }),
@@ -186,7 +187,7 @@ describe('APPT-07 — the event log', () => {
     const appointment = await book();
     const before = await prisma.appointmentEvent.count({ where: { appointmentId: appointment.id } });
     await expect(
-      transitionAppointment(prisma, { appointmentId: appointment.id, to: 'completed', actor: STAFF, now: BEFORE }),
+      transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'completed', actor: STAFF, now: BEFORE }),
     ).rejects.toBeInstanceOf(TransitionRefused);
     expect(await prisma.appointmentEvent.count({ where: { appointmentId: appointment.id } })).toBe(before);
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
@@ -198,14 +199,15 @@ describe('D-7 — actual timestamps, not scheduled ones', () => {
   it('stamps each arrival step with when it really happened', async () => {
     const appointment = await book();
     const late = at('2026-06-09T10:12:00-05:00');
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: late });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: late });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'in_progress',
       actor: STAFF,
       now: at('2026-06-09T10:20:00-05:00'),
     });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'completed', actor: STAFF, now: AFTER_END });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'completed', actor: STAFF, now: AFTER_END });
 
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     // Scheduled times are untouched — "she was twelve minutes late" is the
@@ -218,9 +220,10 @@ describe('D-7 — actual timestamps, not scheduled ones', () => {
 
   it('clears the arrival timestamps when a completed visit is corrected to a no-show', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'completed', actor: STAFF, now: AFTER_END });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'completed', actor: STAFF, now: AFTER_END });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'no_show',
       actor: STAFF,
@@ -244,8 +247,9 @@ describe('D-7 — actual timestamps, not scheduled ones', () => {
    *  measurement that a utilization report would then average in. */
   it('invents no end time when a no-show is corrected to completed', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'no_show', actor: STAFF, now: AFTER_END });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'no_show', actor: STAFF, now: AFTER_END });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       actor: STAFF,
@@ -266,9 +270,10 @@ describe('D-47 — `now` is a measurement only while the visit is plausibly stil
    *  taken while she was standing at the desk. */
   it('invents no finish time when a checked-in visit is closed three days later', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
 
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'completed',
       actor: STAFF,
@@ -287,8 +292,9 @@ describe('D-47 — `now` is a measurement only while the visit is plausibly stil
   it('invents no arrival or start time when the taps come days late', async () => {
     const appointment = await book();
     const tuesday = at('2026-06-12T09:40:00-05:00');
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: tuesday });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: tuesday });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'in_progress',
       actor: STAFF,
@@ -308,8 +314,8 @@ describe('D-47 — `now` is a measurement only while the visit is plausibly stil
   it('keeps the finish time of a visit that overran its slot', async () => {
     const appointment = await book();
     const overran = at('2026-06-09T12:20:00-05:00'); // 80 minutes past an 11:00 end.
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'in_progress', actor: STAFF, now: TEN_AM });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'completed', actor: STAFF, now: overran });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'in_progress', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'completed', actor: STAFF, now: overran });
 
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     expect(row.endedAt?.toISOString()).toBe(overran.toISOString());
@@ -322,7 +328,7 @@ describe('D-47 — `now` is a measurement only while the visit is plausibly stil
   it('still stamps a confirmation whenever it arrives', async () => {
     const appointment = await book();
     const late = at('2026-06-12T09:40:00-05:00');
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'confirmed', actor: STAFF, now: late });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'confirmed', actor: STAFF, now: late });
 
     const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     expect(row.confirmedAt?.toISOString()).toBe(late.toISOString());
@@ -339,6 +345,7 @@ describe('D-19 — the cutoff comes from the rows, most restrictive first', () =
     const threeHoursBefore = at('2026-06-09T07:00:00-05:00');
     await expect(
       transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'cancelled',
         actor: CUSTOMER,
@@ -348,6 +355,7 @@ describe('D-19 — the cutoff comes from the rows, most restrictive first', () =
 
     // The same moment is a legitimate LATE cancellation.
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled_late',
       actor: CUSTOMER,
@@ -361,6 +369,7 @@ describe('D-19 — the cutoff comes from the rows, most restrictive first', () =
     // 121 minutes before start: outside the business's 120.
     const outside = at('2026-06-09T07:59:00-05:00');
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       actor: CUSTOMER,
@@ -373,9 +382,10 @@ describe('D-19 — the cutoff comes from the rows, most restrictive first', () =
     const appointment = await book();
     const inside = at('2026-06-09T09:30:00-05:00');
     await expect(
-      transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: CUSTOMER, now: inside }),
+      transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: CUSTOMER, now: inside }),
     ).rejects.toMatchObject({ refusal: 'inside-cancellation-cutoff' });
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       actor: STAFF,
@@ -389,7 +399,7 @@ describe('two people at the front desk', () => {
   it('lets exactly one of two simultaneous check-ins win, and writes one event', async () => {
     const appointment = await book();
     const attempt = () =>
-      transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+      transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
 
     const results = await Promise.allSettled([attempt(), attempt()]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
@@ -406,10 +416,11 @@ describe('two people at the front desk', () => {
 
   it('reports what the appointment actually became when the caller guessed wrong', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
 
     await expect(
       transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'checked_in',
         actor: STAFF,
@@ -435,6 +446,7 @@ describe('A-036 — the cancellation notice', () => {
   it('enqueues one notice carrying the reason the desk gave', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       actor: STAFF,
@@ -454,13 +466,14 @@ describe('A-036 — the cancellation notice', () => {
    *  split is about who wears the cost, not about who gets told. */
   it('tells her about a late cancellation too', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled_late', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled_late', actor: STAFF, now: TEN_AM });
     expect(await notices()).toHaveLength(1);
   });
 
   it('sends nothing when the desk says it already rang her', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       actor: STAFF,
@@ -476,7 +489,7 @@ describe('A-036 — the cancellation notice', () => {
     // The day before: BEFORE is exactly 120 minutes out, which is the cutoff
     // boundary a customer is refused at and staff walk straight through.
     const dayBefore = at('2026-06-08T08:00:00-05:00');
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: CUSTOMER, now: dayBefore });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: CUSTOMER, now: dayBefore });
     expect(await notices()).toHaveLength(0);
   });
 
@@ -484,7 +497,7 @@ describe('A-036 — the cancellation notice', () => {
    *  — a check-in is not something to text anybody about. */
   it('says nothing for a status change that is not a cancellation', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
     expect(await notices()).toHaveLength(0);
   });
 
@@ -492,10 +505,10 @@ describe('A-036 — the cancellation notice', () => {
    *  cancellation that lost the race leaves no message promising it won. */
   it('leaves no notice behind when the transition is refused', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
 
     await expect(
-      transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE }),
+      transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE }),
     ).rejects.toBeInstanceOf(TransitionRefused);
 
     expect(await notices()).toHaveLength(1);
@@ -518,6 +531,7 @@ describe('A-037 — the event log names the person', () => {
     const { id: priyaId } = await saveStaffMember(prisma, { businessId, name: 'Priya', pin: '4821' });
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'checked_in',
       actor: staffActor(priyaId),
@@ -534,6 +548,7 @@ describe('A-037 — the event log names the person', () => {
     const { id: samId } = await saveStaffMember(prisma, { businessId, name: 'Sam', pin: '5150' });
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'checked_in',
       actor: staffActor(samId),
@@ -550,6 +565,7 @@ describe('A-037 — the event log names the person', () => {
   it('names nobody for a customer acting on her own link', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       actor: CUSTOMER,
@@ -565,6 +581,7 @@ describe('A-037 — the event log names the person', () => {
   it('falls back for a staff id that is not on any roster', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'checked_in',
       actor: STAFF,
@@ -601,6 +618,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
   it('writes an ordinary cancellation outside the cutoff', async () => {
     const appointment = await book();
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       cancellation: 'derive',
@@ -613,6 +631,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
   it('writes a late cancellation inside it, whatever `to` said', async () => {
     const appointment = await book();
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       // The surface always posts `cancelled`; the machine upgrades it. If this
       // were honoured the whole item would be decorative.
@@ -631,6 +650,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
     const appointment = await book();
     // Outside the business's two hours, well inside the service's full day.
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       cancellation: 'derive',
@@ -642,12 +662,13 @@ describe('A-060 — one cancel button, the machine classifies', () => {
 
   it('never derives a status §7 refuses — she is in the chair', async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: INSIDE });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'in_progress', actor: STAFF, now: TEN_AM });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: INSIDE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'in_progress', actor: STAFF, now: TEN_AM });
 
     // The clock says "inside the cutoff" and §7 permits `cancelled` only. A
     // walk-out mid-colour must not error, and must not count against her.
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       cancellation: 'derive',
@@ -662,6 +683,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
     it('downgrades a late one and records what it overruled', async () => {
       const appointment = await book();
       const result = await transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'cancelled',
         cancellation: 'override',
@@ -683,6 +705,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
       const appointment = await book();
       await expect(
         transitionAppointment(prisma, {
+          businessId,
           appointmentId: appointment.id,
           to: 'cancelled',
           cancellation: 'override',
@@ -700,6 +723,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
       // type "." into the box that has to mean something.
       const appointment = await book();
       const result = await transitionAppointment(prisma, {
+        businessId,
         appointmentId: appointment.id,
         to: 'cancelled',
         cancellation: 'override',
@@ -713,6 +737,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
     it('leaves nothing on the rolling late-cancel count', async () => {
       const late = await book();
       await transitionAppointment(prisma, {
+        businessId,
         appointmentId: late.id,
         to: 'cancelled',
         cancellation: 'derive',
@@ -721,6 +746,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
       });
       const forgiven = await book({ idempotencyKey: 'forgiven', startAt: at('2026-06-09T13:00:00-05:00') });
       await transitionAppointment(prisma, {
+        businessId,
         appointmentId: forgiven.id,
         to: 'cancelled',
         cancellation: 'override',
@@ -741,6 +767,7 @@ describe('A-060 — one cancel button, the machine classifies', () => {
   it('leaves every other transition alone', async () => {
     const appointment = await book();
     const result = await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'confirmed',
       actor: STAFF,
@@ -766,12 +793,13 @@ describe('A-112 — reinstating a cancellation', () => {
 
   const cancelThen = async () => {
     const appointment = await book();
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
     return { appointment };
   };
 
   const reinstate = (appointmentId: string, over: Partial<Parameters<typeof transitionAppointment>[1]> = {}) =>
     transitionAppointment(prisma, {
+      businessId,
       appointmentId,
       to: 'booked',
       actor: STAFF,
@@ -832,6 +860,7 @@ describe('A-112 — reinstating a cancellation', () => {
   it('takes the late cancel off her twelve-month record', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled_late',
       actor: STAFF,
@@ -926,6 +955,7 @@ describe('A-112 — reinstating a cancellation', () => {
     const { appointment } = await cancelThen();
     await reinstate(appointment.id);
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       actor: STAFF,
@@ -1012,12 +1042,12 @@ describe('A-116 — reinstating into the chair somebody else took', () => {
     await aRoomOf(chairs);
     const appointment = await book();
     const seated = (await chairOf(appointment.id)).resourceId;
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', actor: STAFF, now: BEFORE });
     return { appointment, seated };
   };
 
   const reinstate = (appointmentId: string) =>
-    transitionAppointment(prisma, { appointmentId, to: 'booked', actor: STAFF, now: BEFORE, reason: REASON });
+    transitionAppointment(prisma, { businessId, appointmentId, to: 'booked', actor: STAFF, now: BEFORE, reason: REASON });
 
   it('puts her back while the stylist is free and another chair is empty', async () => {
     const { appointment, seated } = await cancelThen(3);

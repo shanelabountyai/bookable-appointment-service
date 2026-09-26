@@ -4787,6 +4787,25 @@ seven new ones fail against the old code.
 
 ---
 
+## A-136 — one business can no longer touch another's book
+
+A security audit found that staff actions trusted the record ids a form sent,
+so a logged-in user at one salon could, in principle, cancel, move or edit
+another salon's appointments, services, stylists and chairs. Latent while the
+system hosts one business; serious the day it hosts two.
+
+**What's engineered.** The fix is structural, not a patch per screen: every
+database function that acts on a submitted id now REQUIRES the caller's
+business, so the compiler — not a reviewer's memory — found all ~160 callers,
+and the next feature cannot compile without answering the question. A sweep
+past the audit's sample found more than it listed, including a two-step chain
+the audit missed: link another salon's stylist to your service, then use the
+staff override (which deliberately skips availability) to book your client
+into her column. That chain was demonstrated against the old code before it
+was closed. One test builds two salons, fires every refused action at the
+other's ids, and diffs every row the victim owns before and after — so an
+action that refuses AFTER writing something is caught too.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

@@ -27,7 +27,7 @@ import {
 import { type Actor } from '../../core/auth';
 import { type ZoneId, calendarDay, toDate, wallTime } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
-import { bookAppointment } from './book';
+import { assertBookingIdsOfBusiness, bookAppointment } from './book';
 import { NoResourceFree, SlotNotOffered, SlotTaken } from './errors';
 
 export interface CreateSeriesInput {
@@ -109,6 +109,7 @@ export async function createSeries(prisma: PrismaClient, input: CreateSeriesInpu
     zone,
   );
 
+  await assertBookingIdsOfBusiness(prisma, input.businessId, input);
   const series = await prisma.appointmentSeries.create({
     data: {
       businessId: input.businessId,

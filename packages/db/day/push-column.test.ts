@@ -188,6 +188,7 @@ describe('A-079 — a stationary occupied row AFTER fromAt (the push)', () => {
     // She did not come, and D-7 says the slot stays hers: `no_show` still
     // occupies 15:00–16:00, and it is not pushable (A-075).
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: missed.id,
       to: 'no_show',
       now: at('2026-06-09T15:30:00-05:00'),

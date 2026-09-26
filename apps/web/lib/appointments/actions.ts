@@ -52,6 +52,7 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
 
   try {
     await transitionAppointment(prisma, {
+      businessId: staff.businessId,
       appointmentId,
       to: cancellation ? 'cancelled' : to,
       cancellation,

@@ -82,12 +82,12 @@ test.beforeEach(async ({ page }) => {
 
     const completed = await book('09:00', danaId);
     for (const to of ['checked_in', 'in_progress', 'completed'] as const) {
-      await transitionAppointment(prisma, { appointmentId: completed.id, to, actor: staffActor('seed'), now });
+      await transitionAppointment(prisma, { businessId, appointmentId: completed.id, to, actor: staffActor('seed'), now });
     }
     const cancelledLate = await book('11:00', danaId);
-    await transitionAppointment(prisma, { appointmentId: cancelledLate.id, to: 'cancelled_late', actor: staffActor('seed'), now });
+    await transitionAppointment(prisma, { businessId, appointmentId: cancelledLate.id, to: 'cancelled_late', actor: staffActor('seed'), now });
     const noShow = await book('09:00', priyaId);
-    await transitionAppointment(prisma, { appointmentId: noShow.id, to: 'no_show', actor: staffActor('seed'), now: at('18:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: noShow.id, to: 'no_show', actor: staffActor('seed'), now: at('18:00') });
     // A-101 (D-51). Marcus's stays `booked` — nothing has happened to it, on a
     // week in which nothing CAN have happened yet. He is the row that carries
     // both halves of the decision at once: no retrospective number to show,

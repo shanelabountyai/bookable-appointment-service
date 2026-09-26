@@ -57,6 +57,7 @@ export async function changeServices(_previous: VisitState, formData: FormData):
 
   try {
     const changed = await changeVisitServices(prisma, {
+      businessId: staff.businessId,
       appointmentId,
       serviceIds,
       now: new Date(),

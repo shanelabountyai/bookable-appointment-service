@@ -289,6 +289,7 @@ describe('the record it moves (CLIENT-04)', () => {
   it('moves a past no-show onto the client it is attached to', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'no_show',
       now: at('2026-06-09T10:30:00-05:00'),
@@ -314,6 +315,7 @@ describe('the record it moves (CLIENT-04)', () => {
   it('takes a no-show off a client it was never hers', async () => {
     const appointment = await book({ clientId: sarahId });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'no_show',
       now: at('2026-06-09T10:30:00-05:00'),

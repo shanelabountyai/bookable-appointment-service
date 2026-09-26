@@ -73,13 +73,13 @@ export async function toggleResourceActive(
   _prev: ResourceToggleState,
   formData: FormData,
 ): Promise<ResourceToggleState> {
-  await requireStaff();
+  const staff = await requireStaff();
   const resourceId = String(formData.get('resourceId') ?? '');
   const active = String(formData.get('active')) === 'true';
   const confirm = formData.get('confirm') === 'true';
 
   if (!active && !confirm) {
-    const holds = await countFutureHolds(prisma, resourceId, new Date());
+    const holds = await countFutureHolds(prisma, staff.businessId, resourceId, new Date());
     if (holds > 0) {
       return {
         errors: {
@@ -90,7 +90,7 @@ export async function toggleResourceActive(
     }
   }
 
-  await setResourceActive(prisma, resourceId, active);
+  await setResourceActive(prisma, staff.businessId, resourceId, active);
   revalidatePath('/staff/resources');
   revalidatePath('/staff/day');
   return { ok: true };

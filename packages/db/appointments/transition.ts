@@ -69,6 +69,9 @@ export class AppointmentMovedFirst extends Error {
 }
 
 export interface TransitionInput {
+  /** SEC-02. The caller's tenant; the lookup refuses any other business's
+   *  appointment as not-found, so an id from a form cannot reach across. */
+  businessId: string;
   appointmentId: string;
   to: AppointmentStatus;
   actor: Actor;
@@ -160,8 +163,8 @@ export async function transitionAppointment(db: Db, input: TransitionInput): Pro
 
 async function runTransition(db: Db, input: TransitionInput): Promise<TransitionResult> {
   return db.$transaction(async (tx) => {
-    const appointment = await tx.appointment.findUniqueOrThrow({
-      where: { id: input.appointmentId },
+    const appointment = await tx.appointment.findFirstOrThrow({
+      where: { id: input.appointmentId, businessId: input.businessId },
       select: {
         id: true,
         businessId: true,

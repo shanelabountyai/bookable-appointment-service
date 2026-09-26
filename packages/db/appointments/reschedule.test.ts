@@ -124,6 +124,7 @@ const book = (over: Partial<Parameters<typeof bookAppointment>[1]> = {}) =>
 
 const move = (id: string, to: Date, over: Partial<Parameters<typeof rescheduleAppointment>[1]> = {}) =>
   rescheduleAppointment(prisma, {
+    businessId,
     appointmentId: id,
     startAt: to,
     now: NOW,

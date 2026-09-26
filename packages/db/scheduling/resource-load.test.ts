@@ -427,6 +427,7 @@ describe('a room that is never full and still cannot seat her (A-082)', () => {
     // She rang and asked to come in earlier. Her chair follows her, and the
     // room drops back below capacity.
     await rescheduleAppointment(prisma, {
+      businessId,
       appointmentId: mover.id,
       startAt: at('2026-06-09T13:45:00-05:00'),
       now: NOW,

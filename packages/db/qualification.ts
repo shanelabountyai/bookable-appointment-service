@@ -19,13 +19,13 @@ type Db = Prisma.TransactionClient | PrismaClient;
  */
 export async function qualifiedForVisit(
   db: Db,
-  args: { providerId: string; serviceIds: readonly string[] },
+  args: { businessId: string; providerId: string; serviceIds: readonly string[] },
 ): Promise<boolean> {
   const needed = new Set(args.serviceIds);
   if (needed.size === 0) return true;
 
   const linked = await db.serviceProvider.count({
-    where: { providerId: args.providerId, serviceId: { in: [...needed] } },
+    where: { businessId: args.businessId, providerId: args.providerId, serviceId: { in: [...needed] } },
   });
   return linked >= needed.size;
 }

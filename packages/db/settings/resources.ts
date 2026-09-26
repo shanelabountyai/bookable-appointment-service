@@ -132,7 +132,15 @@ export async function createResource(
  * and the holds counted against it, so a retired chair shrinks the room
  * without also filling it.
  */
-export async function setResourceActive(db: Db, resourceId: string, active: boolean): Promise<ResourceRow> {
+export async function setResourceActive(
+  db: Db,
+  businessId: string,
+  resourceId: string,
+  active: boolean,
+): Promise<ResourceRow> {
+  // SEC-01. The id comes from a form; refuse any other business's chair.
+  const found = await db.resource.findFirst({ where: { id: resourceId, businessId }, select: { id: true } });
+  if (!found) throw new ResourceRejected('resourceId', 'That resource is not on this book.');
   return db.resource.update({
     where: { id: resourceId },
     data: { active },
@@ -148,8 +156,8 @@ export async function setResourceActive(db: Db, resourceId: string, active: bool
  * and its `blockedEnd` is the envelope — an appointment whose body has ended
  * but whose after-buffer has not is still in that chair.
  */
-export async function countFutureHolds(db: Db, resourceId: string, now: Date): Promise<number> {
+export async function countFutureHolds(db: Db, businessId: string, resourceId: string, now: Date): Promise<number> {
   return db.appointmentResourceHold.count({
-    where: { resourceId, status: { in: [...ACTIVE_STATUSES] }, blockedEnd: { gt: now } },
+    where: { businessId, resourceId, status: { in: [...ACTIVE_STATUSES] }, blockedEnd: { gt: now } },
   });
 }

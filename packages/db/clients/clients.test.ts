@@ -172,6 +172,7 @@ describe('CLIENT-02 — history', () => {
   it('includes no-shows and late cancels', async () => {
     const missed = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: missed.id,
       to: 'no_show',
       actor: STAFF,

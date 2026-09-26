@@ -35,6 +35,7 @@ export async function closeOut(_previous: CloseOutState, formData: FormData): Pr
 
   try {
     await transitionAppointment(prisma, {
+      businessId: staff.businessId,
       appointmentId,
       to: came === 'yes' ? 'completed' : 'no_show',
       actor: staffActor(staff.id),

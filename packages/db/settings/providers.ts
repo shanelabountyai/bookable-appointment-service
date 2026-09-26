@@ -81,11 +81,19 @@ export async function createProvider(
   });
 }
 
+/** SEC-01. The provider id comes from a form; refuse any other business's. */
+async function assertProviderOf(db: Db, businessId: string, providerId: string): Promise<void> {
+  const found = await db.provider.findFirst({ where: { id: providerId, businessId }, select: { id: true } });
+  if (!found) throw new ProviderRejected('providerId', 'That provider is not on this book.');
+}
+
 export async function updateProvider(
   db: Db,
+  businessId: string,
   providerId: string,
   input: { displayName?: string; displayOrder?: number },
 ): Promise<ProviderRow> {
+  await assertProviderOf(db, businessId, providerId);
   const data: Prisma.ProviderUpdateInput = {};
   if (input.displayName !== undefined) {
     const displayName = input.displayName.trim();
@@ -115,7 +123,13 @@ export async function updateProvider(
  * is `onDelete: Restrict` precisely so nobody can erase her out from under
  * them. An inactive provider simply stops being offered.
  */
-export async function setProviderActive(db: Db, providerId: string, active: boolean): Promise<ProviderRow> {
+export async function setProviderActive(
+  db: Db,
+  businessId: string,
+  providerId: string,
+  active: boolean,
+): Promise<ProviderRow> {
+  await assertProviderOf(db, businessId, providerId);
   return db.provider.update({
     where: { id: providerId },
     data: { active },
@@ -131,9 +145,15 @@ export async function setProviderActive(db: Db, providerId: string, active: bool
  * Returns 0 until A-009 exists to create appointments — correct, and the
  * reason the full preview is not built here.
  */
-export async function countFutureAppointments(db: Db, providerId: string, now: Date): Promise<number> {
+export async function countFutureAppointments(
+  db: Db,
+  businessId: string,
+  providerId: string,
+  now: Date,
+): Promise<number> {
   return db.appointment.count({
     where: {
+      businessId,
       providerId,
       startAt: { gte: now },
       status: { notIn: ['cancelled', 'cancelled_late'] },

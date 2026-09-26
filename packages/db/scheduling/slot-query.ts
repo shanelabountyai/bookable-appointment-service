@@ -128,7 +128,7 @@ export async function buildSlotQuery(db: Db, args: BuildSlotQueryArgs): Promise<
   const business = await db.business.findUnique({ where: { id: args.businessId } });
   if (!business) throw new SlotQueryUnavailable(`No such business: ${args.businessId}`);
 
-  const links = await loadVisitLinks(db, args.providerId, args.serviceIds);
+  const links = await loadVisitLinks(db, args.businessId, args.providerId, args.serviceIds);
   if (!links.provider.active || links.rows.some((l) => !l.service.active)) {
     return emptyQuery(args, business, links.visit, audience, false);
   }
@@ -411,13 +411,15 @@ function emptyQuery(
  * A findMany would return them in database order and silently reorder the
  * client's appointment.
  */
-async function loadVisitLinks(db: Db, providerId: string, serviceIds: readonly string[]) {
+async function loadVisitLinks(db: Db, businessId: string, providerId: string, serviceIds: readonly string[]) {
   if (serviceIds.length === 0) {
     throw new SlotQueryUnavailable('A visit needs at least one service.');
   }
 
   const found = await db.serviceProvider.findMany({
-    where: { providerId, serviceId: { in: [...serviceIds] } },
+    // SEC-02. Scoped, so a provider id from a form cannot put this business's
+    // booking in another business's column even if a stray link exists.
+    where: { businessId, providerId, serviceId: { in: [...serviceIds] } },
     include: { service: true, provider: true },
   });
 

@@ -76,7 +76,7 @@ describe('service CRUD', () => {
 
   it('lists inactive services by default, and can exclude them', async () => {
     const created = await createService(prisma, businessId, svc());
-    await setServiceActive(prisma, created.id, false, NOW);
+    await setServiceActive(prisma, businessId, created.id, false, NOW);
     expect(await listServices(prisma, businessId, true)).toHaveLength(1);
     expect(await listServices(prisma, businessId, false)).toHaveLength(0);
   });
@@ -106,14 +106,14 @@ describe('service CRUD', () => {
 describe('deactivation (SVC-03)', () => {
   it('deactivates freely when there are no future appointments', async () => {
     const created = await createService(prisma, businessId, svc());
-    const result = await setServiceActive(prisma, created.id, false, NOW);
+    const result = await setServiceActive(prisma, businessId, created.id, false, NOW);
     expect(result.active).toBe(false);
   });
 
   it('reactivates a deactivated service', async () => {
     const created = await createService(prisma, businessId, svc());
-    await setServiceActive(prisma, created.id, false, NOW);
-    expect((await setServiceActive(prisma, created.id, true, NOW)).active).toBe(true);
+    await setServiceActive(prisma, businessId, created.id, false, NOW);
+    expect((await setServiceActive(prisma, businessId, created.id, true, NOW)).active).toBe(true);
   });
 
   // Nothing can create an appointment until A-009, so this count is
@@ -123,7 +123,7 @@ describe('deactivation (SVC-03)', () => {
   // appointment.
   it('counts zero future appointments today', async () => {
     const created = await createService(prisma, businessId, svc());
-    expect(await countServiceFutureAppointments(prisma, created.id, NOW)).toBe(0);
+    expect(await countServiceFutureAppointments(prisma, businessId, created.id, NOW)).toBe(0);
   });
 });
 
@@ -178,14 +178,14 @@ describe('qualification (SVC-02)', () => {
     const service = await createService(prisma, businessId, svc());
     const provider = await createProvider(prisma, businessId, { displayName: 'Dana' });
     await qualifyProvider(prisma, businessId, service.id, provider.id);
-    await unqualifyProvider(prisma, service.id, provider.id, NOW);
+    await unqualifyProvider(prisma, businessId, service.id, provider.id, NOW);
     expect(await listQualifications(prisma, businessId)).toEqual([]);
   });
 
   it('unqualifying a provider not qualified is a harmless no-op', async () => {
     const service = await createService(prisma, businessId, svc());
     const provider = await createProvider(prisma, businessId, { displayName: 'Dana' });
-    await expect(unqualifyProvider(prisma, service.id, provider.id, NOW)).resolves.toBeUndefined();
+    await expect(unqualifyProvider(prisma, businessId, service.id, provider.id, NOW)).resolves.toBeUndefined();
   });
 });
 
@@ -224,9 +224,9 @@ describe('the SVC-03 confirm gate, against a real appointment', () => {
     const priya = await createProvider(prisma, businessId, { displayName: 'Priya' });
     await insertFutureAppointment(service.id, dana.id);
 
-    expect(await countServiceFutureAppointments(prisma, service.id, NOW)).toBe(1);
-    expect(await countServiceFutureAppointments(prisma, service.id, NOW, dana.id)).toBe(1);
-    expect(await countServiceFutureAppointments(prisma, service.id, NOW, priya.id)).toBe(0);
+    expect(await countServiceFutureAppointments(prisma, businessId, service.id, NOW)).toBe(1);
+    expect(await countServiceFutureAppointments(prisma, businessId, service.id, NOW, dana.id)).toBe(1);
+    expect(await countServiceFutureAppointments(prisma, businessId, service.id, NOW, priya.id)).toBe(0);
   });
 
   it('refuses deactivation without confirm, and succeeds with it', async () => {
@@ -234,12 +234,12 @@ describe('the SVC-03 confirm gate, against a real appointment', () => {
     const dana = await createProvider(prisma, businessId, { displayName: 'Dana' });
     await insertFutureAppointment(service.id, dana.id);
 
-    const error = await setServiceActive(prisma, service.id, false, NOW).catch((e) => e);
+    const error = await setServiceActive(prisma, businessId, service.id, false, NOW).catch((e) => e);
     expect(error).toBeInstanceOf(DeactivationRequiresConfirm);
     expect(error.futureAppointmentCount).toBe(1);
     expect((await listServices(prisma, businessId)).find((s) => s.id === service.id)!.active).toBe(true);
 
-    const result = await setServiceActive(prisma, service.id, false, NOW, true);
+    const result = await setServiceActive(prisma, businessId, service.id, false, NOW, true);
     expect(result.active).toBe(false);
   });
 
@@ -249,10 +249,10 @@ describe('the SVC-03 confirm gate, against a real appointment', () => {
     await qualifyProvider(prisma, businessId, service.id, dana.id);
     await insertFutureAppointment(service.id, dana.id);
 
-    await expect(unqualifyProvider(prisma, service.id, dana.id, NOW)).rejects.toThrow(DeactivationRequiresConfirm);
+    await expect(unqualifyProvider(prisma, businessId, service.id, dana.id, NOW)).rejects.toThrow(DeactivationRequiresConfirm);
     expect(await listQualifications(prisma, businessId)).toHaveLength(1);
 
-    await unqualifyProvider(prisma, service.id, dana.id, NOW, true);
+    await unqualifyProvider(prisma, businessId, service.id, dana.id, NOW, true);
     expect(await listQualifications(prisma, businessId)).toHaveLength(0);
   });
 
@@ -261,8 +261,8 @@ describe('the SVC-03 confirm gate, against a real appointment', () => {
     const dana = await createProvider(prisma, businessId, { displayName: 'Dana' });
     await insertFutureAppointment(service.id, dana.id); // dated 2026-07-01
     const wellAfter = toDate(instantFromIso('2026-08-01T00:00:00Z'));
-    expect(await countServiceFutureAppointments(prisma, service.id, wellAfter)).toBe(0);
-    await expect(setServiceActive(prisma, service.id, false, wellAfter)).resolves.toMatchObject({ active: false });
+    expect(await countServiceFutureAppointments(prisma, businessId, service.id, wellAfter)).toBe(0);
+    await expect(setServiceActive(prisma, businessId, service.id, false, wellAfter)).resolves.toMatchObject({ active: false });
   });
 
   it('a CANCELLED appointment does not block deactivation', async () => {
@@ -270,6 +270,6 @@ describe('the SVC-03 confirm gate, against a real appointment', () => {
     const dana = await createProvider(prisma, businessId, { displayName: 'Dana' });
     await insertFutureAppointment(service.id, dana.id);
     await prisma.appointment.updateMany({ data: { status: 'cancelled' } });
-    expect(await countServiceFutureAppointments(prisma, service.id, NOW)).toBe(0);
+    expect(await countServiceFutureAppointments(prisma, businessId, service.id, NOW)).toBe(0);
   });
 });

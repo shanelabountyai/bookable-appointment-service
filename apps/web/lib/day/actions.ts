@@ -50,8 +50,9 @@ export async function setColumnRunningLate(_previous: DayActionState, formData: 
 }
 
 export async function clearColumnRunningLate(_previous: DayActionState, formData: FormData): Promise<DayActionState> {
-  await requireStaff();
+  const staff = await requireStaff();
   await clearRunningLate(prisma, {
+    businessId: staff.businessId,
     providerId: String(formData.get('providerId') ?? ''),
     day: String(formData.get('day') ?? ''),
   });

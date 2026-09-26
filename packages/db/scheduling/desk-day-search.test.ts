@@ -159,7 +159,7 @@ describe('A-106 — the move panel asks about ITS appointment, not about the cat
     const appointmentId = await bookNadia();
     await daysAway();
 
-    const days = await daysForMove(prisma, { appointmentId, fromDay: DAY, now: NOW, audience: 'staff' });
+    const days = await daysForMove(prisma, { businessId, appointmentId, fromDay: DAY, now: NOW, audience: 'staff' });
     expect(days[0]).toBe(BACK);
 
     // The agreement assertion (checkpoint 6's lesson): `daysForMove` and
@@ -168,7 +168,7 @@ describe('A-106 — the move panel asks about ITS appointment, not about the cat
     // function checked against itself.
     for (let i = 0; i < DESK_DAY_SEARCH_DAYS; i++) {
       const day = addDays(calendarDay(DAY), i);
-      const offered = (await rescheduleOptions(prisma, { appointmentId, day, now: NOW, audience: 'staff' })).slots.length > 0;
+      const offered = (await rescheduleOptions(prisma, { businessId, appointmentId, day, now: NOW, audience: 'staff' })).slots.length > 0;
       expect([day, days.includes(day)]).toEqual([day, offered]);
     }
   });
@@ -178,7 +178,7 @@ describe('A-106 — the move panel asks about ITS appointment, not about the cat
     // Her own Tuesday is in the list, and it is there BECAUSE she is excluded
     // from her own busy set — the day she is already on is the commonest thing
     // a desk moves within.
-    const days = await daysForMove(prisma, { appointmentId, fromDay: DAY, now: NOW, audience: 'staff' });
+    const days = await daysForMove(prisma, { businessId, appointmentId, fromDay: DAY, now: NOW, audience: 'staff' });
     expect(days).toContain(DAY);
   });
 
@@ -196,7 +196,7 @@ describe('A-106 — the move panel asks about ITS appointment, not about the cat
     // Hers is not. A day list that dropped D-18 would tell the desk there is
     // nowhere to move her for a fortnight, on an appointment the move itself
     // would have accepted.
-    const days = await daysForMove(prisma, { appointmentId, fromDay: DAY, now: NOW, audience: 'staff' });
+    const days = await daysForMove(prisma, { businessId, appointmentId, fromDay: DAY, now: NOW, audience: 'staff' });
     expect(days).toContain(DAY);
     expect(days.length).toBeGreaterThan(1);
   });

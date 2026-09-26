@@ -90,12 +90,12 @@ export async function editService(_prev: FormState, formData: FormData): Promise
  * so A-009 inherits a working gate rather than an untested one.
  */
 export async function toggleServiceActive(_prev: FormState, formData: FormData): Promise<FormState> {
-  await requireStaff();
+  const staff = await requireStaff();
   const serviceId = String(formData.get('serviceId') ?? '');
   const active = String(formData.get('active')) === 'true';
   const confirm = String(formData.get('confirm')) === 'true';
   try {
-    await setServiceActive(prisma, serviceId, active, new Date(), confirm);
+    await setServiceActive(prisma, staff.businessId, serviceId, active, new Date(), confirm);
   } catch (error) {
     if (error instanceof DeactivationRequiresConfirm) {
       return { errors: { _confirm: error.message } };
@@ -127,7 +127,7 @@ export async function toggleQualification(_prev: FormState, formData: FormData):
   } else {
     const confirm = String(formData.get('confirm')) === 'true';
     try {
-      await unqualifyProvider(prisma, serviceId, providerId, new Date(), confirm);
+      await unqualifyProvider(prisma, staff.businessId, serviceId, providerId, new Date(), confirm);
     } catch (error) {
       if (error instanceof DeactivationRequiresConfirm) return { errors: { _confirm: error.message } };
       throw error;

@@ -116,9 +116,11 @@ export async function setRunningLate(
 
 export async function clearRunningLate(
   db: Db,
-  args: { providerId: string; day: string },
+  args: { businessId: string; providerId: string; day: string },
 ): Promise<void> {
-  await db.providerRunningLate.deleteMany({ where: { providerId: args.providerId, day: args.day } });
+  await db.providerRunningLate.deleteMany({
+    where: { businessId: args.businessId, providerId: args.providerId, day: args.day },
+  });
 }
 
 /**

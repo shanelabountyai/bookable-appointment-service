@@ -172,6 +172,7 @@ describe('a visit shortened at the chair (A-055)', () => {
   it('puts the tail on the list, with the DROPPED service as the one to ring about', async () => {
     const appointment = await book({ serviceIds: [cutId, colourId] });
     await changeVisitServices(prisma, {
+      businessId,
       appointmentId: appointment.id,
       serviceIds: [cutId],
       now: NOW,
@@ -204,6 +205,7 @@ describe('a visit shortened at the chair (A-055)', () => {
   it('drops off again the moment somebody books over it, with no clearing code', async () => {
     const appointment = await book({ serviceIds: [cutId, colourId] });
     await changeVisitServices(prisma, {
+      businessId,
       appointmentId: appointment.id,
       serviceIds: [cutId],
       now: NOW,
@@ -222,6 +224,7 @@ describe('a visit shortened at the chair (A-055)', () => {
   it('reports nothing for a visit that got LONGER — an add-on freed no time', async () => {
     const appointment = await book();
     await changeVisitServices(prisma, {
+      businessId,
       appointmentId: appointment.id,
       serviceIds: [cutId, colourId],
       now: NOW,
@@ -239,6 +242,7 @@ describe('a visit shortened at the chair (A-055)', () => {
   it('reports a shortened-then-cancelled visit once, as the cancellation', async () => {
     const appointment = await book({ serviceIds: [cutId, colourId] });
     await changeVisitServices(prisma, {
+      businessId,
       appointmentId: appointment.id,
       serviceIds: [cutId],
       now: NOW,
@@ -246,6 +250,7 @@ describe('a visit shortened at the chair (A-055)', () => {
       audience: 'staff',
     });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       now: NOW,
@@ -263,6 +268,7 @@ describe('a visit moved off its time (D-6)', () => {
   it('reports the range it vacated, saying where it went', async () => {
     const appointment = await book();
     await rescheduleAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       startAt: at('2026-06-09T14:00:00-05:00'),
       now: NOW,
@@ -290,6 +296,7 @@ describe('a visit moved off its time (D-6)', () => {
   it('reports ONE span for a move that also changed stylist, on the stylist it LEFT', async () => {
     const appointment = await book();
     await rescheduleAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       startAt: at('2026-06-09T14:00:00-05:00'),
       toProviderId: priyaId,
@@ -462,6 +469,7 @@ describe("a no-show's time given back (A-069)", () => {
   async function releasedNoShow() {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'no_show',
       now: GAVE_UP,
@@ -503,6 +511,7 @@ describe("a no-show's time given back (A-069)", () => {
   it('is not on the list at all until somebody releases it — a no-show occupies its time (D-7)', async () => {
     const appointment = await book();
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'no_show',
       now: GAVE_UP,
@@ -724,7 +733,7 @@ describe('a cancellation read through the afternoon (A-128)', () => {
   /** Cancel the long visit, then sell a fringe trim late inside what it left. */
   async function cancelledWithALateSale() {
     const appointment = await book({ serviceIds: [cutId, colourId], startAt: CANCELLED_START });
-    await transitionAppointment(prisma, { appointmentId: appointment.id, to: 'cancelled', now: NOW, actor: STAFF });
+    await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'cancelled', now: NOW, actor: STAFF });
 
     const buyer = await prisma.client.create({ data: { businessId, name: 'Nell', phone: '5125550177' } });
     await book({ serviceIds: [fringeId], clientId: buyer.id, startAt: SOLD_FROM });

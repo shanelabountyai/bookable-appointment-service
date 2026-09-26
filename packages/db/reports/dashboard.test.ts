@@ -60,7 +60,7 @@ const book = (startIso: string, providerId: string) =>
 
 const complete = async (appointmentId: string, at_: string) => {
   for (const to of ['checked_in', 'in_progress', 'completed'] as const) {
-    await transitionAppointment(prisma, { appointmentId, to, actor: ACTOR, now: at(at_) });
+    await transitionAppointment(prisma, { businessId, appointmentId, to, actor: ACTOR, now: at(at_) });
   }
 };
 
@@ -75,10 +75,10 @@ describe('dashboardSummary', () => {
     const noShowPriya = await book('2026-06-09T09:00:00-05:00', priyaId);
 
     await complete(completed.id, '2026-06-09T18:00:00-05:00');
-    await transitionAppointment(prisma, { appointmentId: noShowDana.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
-    await transitionAppointment(prisma, { appointmentId: noShowPriya.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
-    await transitionAppointment(prisma, { appointmentId: cancelled.id, to: 'cancelled', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00'), reason: 'plans changed' });
-    await transitionAppointment(prisma, { appointmentId: cancelledLate.id, to: 'cancelled_late', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: noShowDana.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: noShowPriya.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: cancelled.id, to: 'cancelled', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00'), reason: 'plans changed' });
+    await transitionAppointment(prisma, { businessId, appointmentId: cancelledLate.id, to: 'cancelled_late', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00') });
 
     const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09', now: NOW });
 
@@ -172,7 +172,7 @@ describe('dashboardSummary', () => {
       await complete(completed.id, '2026-06-09T18:00:00-05:00');
       await book('2026-06-10T09:00:00-05:00', danaId); // still `booked`
       const cancelled = await book('2026-06-11T09:00:00-05:00', danaId);
-      await transitionAppointment(prisma, { appointmentId: cancelled.id, to: 'cancelled', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00'), reason: 'x' });
+      await transitionAppointment(prisma, { businessId, appointmentId: cancelled.id, to: 'cancelled', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00'), reason: 'x' });
 
       const summary = await dashboardSummary(prisma, { businessId, anyDayInWeek: '2026-06-09', now: NOW });
       const dana = summary.utilizationByProvider.find((p) => p.providerId === danaId)!;
@@ -209,8 +209,8 @@ describe('listReportAppointments', () => {
     const cancelled = await book('2026-06-09T09:00:00-05:00', danaId);
     const cancelledLate = await book('2026-06-10T09:00:00-05:00', danaId);
     await book('2026-06-11T09:00:00-05:00', danaId); // left booked, excluded by the filter below
-    await transitionAppointment(prisma, { appointmentId: cancelled.id, to: 'cancelled', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00'), reason: 'x' });
-    await transitionAppointment(prisma, { appointmentId: cancelledLate.id, to: 'cancelled_late', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: cancelled.id, to: 'cancelled', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00'), reason: 'x' });
+    await transitionAppointment(prisma, { businessId, appointmentId: cancelledLate.id, to: 'cancelled_late', actor: ACTOR, now: at('2026-06-08T08:00:00-05:00') });
 
     const rows = await listReportAppointments(prisma, {
       businessId,
@@ -225,9 +225,9 @@ describe('listReportAppointments', () => {
   it('filters by provider too', async () => {
     const danaNoShow = await book('2026-06-09T09:00:00-05:00', danaId);
     await book('2026-06-09T09:00:00-05:00', priyaId);
-    await transitionAppointment(prisma, { appointmentId: danaNoShow.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: danaNoShow.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
     const otherProviderNoShow = await book('2026-06-09T11:00:00-05:00', priyaId);
-    await transitionAppointment(prisma, { appointmentId: otherProviderNoShow.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
+    await transitionAppointment(prisma, { businessId, appointmentId: otherProviderNoShow.id, to: 'no_show', actor: ACTOR, now: at('2026-06-09T18:00:00-05:00') });
 
     const rows = await listReportAppointments(prisma, {
       businessId,

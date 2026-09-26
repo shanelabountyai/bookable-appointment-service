@@ -75,6 +75,7 @@ async function letOneOff(reason: string) {
     });
 
     await transitionAppointment(prisma, {
+      businessId: business.id,
       appointmentId: appointment.id,
       to: 'cancelled',
       cancellation: 'override',

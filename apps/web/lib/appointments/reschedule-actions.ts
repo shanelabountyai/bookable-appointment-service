@@ -56,10 +56,11 @@ export async function staffMoveOptions(
    *  provider it is already with. */
   providerId?: string,
 ): Promise<MoveOption[]> {
-  await requireStaff();
+  const staff = await requireStaff();
   if (!appointmentId || !day) return [];
 
   const result = await rescheduleOptions(prisma, {
+    businessId: staff.businessId,
     appointmentId,
     day,
     providerId: providerId || null,
@@ -94,10 +95,11 @@ export async function staffMoveDays(
   fromDay: string,
   providerId?: string,
 ): Promise<string[]> {
-  await requireStaff();
+  const staff = await requireStaff();
   if (!appointmentId || !fromDay) return [];
 
   return daysForMove(prisma, {
+    businessId: staff.businessId,
     appointmentId,
     fromDay,
     now: new Date(),
@@ -120,7 +122,7 @@ export async function moveProviderChoices(appointmentId: string): Promise<{ id: 
   const staff = await requireStaff();
 
   const lines = await prisma.appointmentServiceLine.findMany({
-    where: { appointmentId },
+    where: { appointmentId, appointment: { businessId: staff.businessId } },
     select: { serviceId: true },
   });
   const serviceIds = [...new Set(lines.map((l) => l.serviceId))];
@@ -168,6 +170,7 @@ export async function moveAppointment(_previous: MoveState, formData: FormData):
 
   try {
     await rescheduleAppointment(prisma, {
+      businessId: staff.businessId,
       appointmentId,
       startAt,
       now: new Date(),

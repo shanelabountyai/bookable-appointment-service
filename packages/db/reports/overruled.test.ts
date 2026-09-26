@@ -65,6 +65,7 @@ describe('A-060 — how many did we overrule, and who', () => {
   it('lists the overrule with the person, the client and the reason', async () => {
     const appointment = await book('2026-06-09T09:00:00-05:00');
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       cancellation: 'override',
@@ -90,6 +91,7 @@ describe('A-060 — how many did we overrule, and who', () => {
     const late = await book('2026-06-09T09:00:00-05:00');
     const ontime = await book('2026-06-10T09:00:00-05:00');
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: late.id,
       to: 'cancelled',
       cancellation: 'derive',
@@ -97,6 +99,7 @@ describe('A-060 — how many did we overrule, and who', () => {
       now: anHourBefore('2026-06-09'),
     });
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: ontime.id,
       to: 'cancelled',
       cancellation: 'derive',
@@ -110,6 +113,7 @@ describe('A-060 — how many did we overrule, and who', () => {
   it('scopes by the appointment’s own day, so it reconciles with the tile it hangs off', async () => {
     const nextWeek = await book('2026-06-16T09:00:00-05:00');
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: nextWeek.id,
       to: 'cancelled',
       cancellation: 'override',
@@ -128,6 +132,7 @@ describe('A-060 — how many did we overrule, and who', () => {
   it('is the same number the dashboard shows', async () => {
     const appointment = await book('2026-06-09T09:00:00-05:00');
     await transitionAppointment(prisma, {
+      businessId,
       appointmentId: appointment.id,
       to: 'cancelled',
       cancellation: 'override',

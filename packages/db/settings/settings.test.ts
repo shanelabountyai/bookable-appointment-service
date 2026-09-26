@@ -122,7 +122,7 @@ describe('provider roster', () => {
   it('refuses a blank name on create and update', async () => {
     await expect(createProvider(prisma, businessId, { displayName: '  ' })).rejects.toThrow(ProviderRejected);
     const p = await createProvider(prisma, businessId, { displayName: 'Dana' });
-    await expect(updateProvider(prisma, p.id, { displayName: '' })).rejects.toThrow(ProviderRejected);
+    await expect(updateProvider(prisma, businessId, p.id, { displayName: '' })).rejects.toThrow(ProviderRejected);
   });
 
   it('trims names', async () => {
@@ -134,16 +134,16 @@ describe('provider roster', () => {
   // appointments all survive. Only "is she offered" changes.
   it('deactivates and reactivates without destroying the row', async () => {
     const p = await createProvider(prisma, businessId, { displayName: 'Dana' });
-    const off = await setProviderActive(prisma, p.id, false);
+    const off = await setProviderActive(prisma, businessId, p.id, false);
     expect(off.active).toBe(false);
     expect(await listProviders(prisma, businessId, false)).toHaveLength(0);
     expect(await listProviders(prisma, businessId, true)).toHaveLength(1);
-    expect((await setProviderActive(prisma, p.id, true)).active).toBe(true);
+    expect((await setProviderActive(prisma, businessId, p.id, true)).active).toBe(true);
   });
 
   it('counts zero future appointments until A-009 can create any', async () => {
     const p = await createProvider(prisma, businessId, { displayName: 'Dana' });
-    expect(await countFutureAppointments(prisma, p.id, toDate(instantFromIso('1970-01-01T00:00:00Z')))).toBe(0);
+    expect(await countFutureAppointments(prisma, businessId, p.id, toDate(instantFromIso('1970-01-01T00:00:00Z')))).toBe(0);
   });
 });
 

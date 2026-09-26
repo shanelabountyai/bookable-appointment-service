@@ -320,7 +320,7 @@ describe('A-046 — the room is data the operator owns', () => {
       select: { resourceId: true },
     });
 
-    await setResourceActive(prisma, seated.resourceId!, false);
+    await setResourceActive(prisma, businessId, seated.resourceId!, false);
 
     // Her hold survives — retiring never rewrites history.
     expect(await prisma.appointmentResourceHold.count({ where: { resourceId: seated.resourceId! } })).toBe(1);

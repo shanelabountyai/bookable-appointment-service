@@ -324,6 +324,7 @@ export async function seedDensity(
   for (const appointment of danaWeek) {
     if (lateCancelIds.has(appointment.id)) {
       await transitionAppointment(prisma, {
+        businessId: business.id,
         appointmentId: appointment.id,
         to: 'cancelled_late',
         actor: staffActor('seed'),
@@ -332,7 +333,7 @@ export async function seedDensity(
       continue;
     }
     for (const to of ['checked_in', 'in_progress', 'completed'] as const) {
-      await transitionAppointment(prisma, { appointmentId: appointment.id, to, actor: staffActor('seed'), now: transitionedAt });
+      await transitionAppointment(prisma, { businessId: business.id, appointmentId: appointment.id, to, actor: staffActor('seed'), now: transitionedAt });
     }
   }
 
@@ -466,13 +467,13 @@ export async function seedDensity(
       leftUnfinished += 1; // never checked in
       continue;
     }
-    await transitionAppointment(prisma, { appointmentId: row.id, to: 'checked_in', actor: staffActor('seed'), now: row.startAt });
+    await transitionAppointment(prisma, { businessId: business.id, appointmentId: row.id, to: 'checked_in', actor: staffActor('seed'), now: row.startAt });
     if (stage === 1) {
       leftUnfinished += 1; // she was seen to arrive and nobody closed it
       continue;
     }
-    await transitionAppointment(prisma, { appointmentId: row.id, to: 'in_progress', actor: staffActor('seed'), now: row.startAt });
-    await transitionAppointment(prisma, { appointmentId: row.id, to: 'completed', actor: staffActor('seed'), now: row.endAt });
+    await transitionAppointment(prisma, { businessId: business.id, appointmentId: row.id, to: 'in_progress', actor: staffActor('seed'), now: row.startAt });
+    await transitionAppointment(prisma, { businessId: business.id, appointmentId: row.id, to: 'completed', actor: staffActor('seed'), now: row.endAt });
   }
 
   // A-043's cancellation and A-069's release, the two things `/staff/opened`
@@ -499,7 +500,7 @@ export async function seedDensity(
   // and a different fixture, and the demo wants an ordinary one.
   const toCancel = recentFuture[Math.min(3, recentFuture.length - 1)];
   if (toCancel) {
-    await transitionAppointment(prisma, { appointmentId: toCancel.id, to: 'cancelled', actor: staffActor('seed'), now });
+    await transitionAppointment(prisma, { businessId: business.id, appointmentId: toCancel.id, to: 'cancelled', actor: staffActor('seed'), now });
   }
 
   const todaysLast = await prisma.appointment.findFirst({
@@ -508,7 +509,7 @@ export async function seedDensity(
     select: { id: true, startAt: true, endAt: true },
   });
   if (todaysLast) {
-    await transitionAppointment(prisma, { appointmentId: todaysLast.id, to: 'no_show', actor: staffActor('seed'), now: todaysLast.endAt });
+    await transitionAppointment(prisma, { businessId: business.id, appointmentId: todaysLast.id, to: 'no_show', actor: staffActor('seed'), now: todaysLast.endAt });
     await releaseNoShowTime(prisma, {
       businessId: business.id,
       appointmentId: todaysLast.id,

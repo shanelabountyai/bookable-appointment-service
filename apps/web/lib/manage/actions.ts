@@ -44,7 +44,7 @@ export async function cancelAppointment(_previous: CancelState, formData: FormDa
   }
 
   try {
-    await cancelWithLateSplit(gate.grant.appointmentId, gate.grant.tokenId);
+    await cancelWithLateSplit(gate.grant);
   } catch (error) {
     if (error instanceof TransitionRefused) {
       return { ok: false, message: 'That is not something we can change online. Please call the salon.' };
@@ -70,13 +70,21 @@ export async function cancelAppointment(_previous: CancelState, formData: FormDa
  * Two calls, not one transaction, and that is safe: the first one changed
  * nothing when it refused.
  */
-async function cancelWithLateSplit(appointmentId: string, tokenId: string): Promise<void> {
+async function cancelWithLateSplit({
+  businessId,
+  appointmentId,
+  tokenId,
+}: {
+  businessId: string;
+  appointmentId: string;
+  tokenId: string;
+}): Promise<void> {
   const actor = customerTokenActor(tokenId);
   try {
-    await transitionAppointment(prisma, { appointmentId, to: 'cancelled', actor, now: new Date() });
+    await transitionAppointment(prisma, { businessId, appointmentId, to: 'cancelled', actor, now: new Date() });
   } catch (error) {
     if (error instanceof TransitionRefused && error.refusal === 'inside-cancellation-cutoff') {
-      await transitionAppointment(prisma, { appointmentId, to: 'cancelled_late', actor, now: new Date() });
+      await transitionAppointment(prisma, { businessId, appointmentId, to: 'cancelled_late', actor, now: new Date() });
       return;
     }
     throw error;
@@ -113,6 +121,7 @@ export async function confirmAppointment(_previous: ConfirmState, formData: Form
 
   try {
     await transitionAppointment(prisma, {
+      businessId: gate.grant.businessId,
       appointmentId: gate.grant.appointmentId,
       to: 'confirmed',
       actor: customerTokenActor(gate.grant.tokenId),
@@ -198,6 +207,7 @@ export async function listRescheduleTimes(token: string, day: string): Promise<O
   if (!gate.ok) return [];
 
   const result = await rescheduleOptions(prisma, {
+    businessId: gate.grant.businessId,
     appointmentId: gate.grant.appointmentId,
     day,
     now: new Date(),
@@ -243,6 +253,7 @@ export async function rescheduleToTime(
 
   try {
     await rescheduleAppointment(prisma, {
+      businessId: gate.grant.businessId,
       appointmentId: gate.grant.appointmentId,
       startAt,
       now: new Date(),

@@ -140,6 +140,8 @@ export async function bookAppointment(
     throw new BookingRejected('startAt', 'A booking must start on a whole minute.');
   }
 
+  await assertBookingIdsOfBusiness(prisma, input.businessId, input);
+
   // A-058 (BOOK-01). WHO MAY START THIS, asked before anything is locked or
   // computed, because it is not a scheduling question — no time, provider or
   // day changes the answer.
@@ -307,6 +309,26 @@ function businessDayOf(at: Date, zone: string): string {
  * hashtext collisions merely serialize two unrelated provider-days for a
  * moment, which costs nothing and can never let an extra booking through.
  */
+/**
+ * SEC-02. `providerId` and `clientId` arrive from a form, and neither FK on
+ * `Appointment` carries `businessId`. Without this, a staff override (which
+ * skips the engine) could put this business's booking in another business's
+ * column, and attaching another business's client would text them the
+ * confirmation. Exported for `createSeries`, which writes both onto the
+ * series row before booking anything.
+ */
+export async function assertBookingIdsOfBusiness(
+  db: Pick<PrismaClient, 'client' | 'provider'>,
+  businessId: string,
+  ids: { providerId: string; clientId?: string | null },
+): Promise<void> {
+  const provider = await db.provider.findFirst({ where: { id: ids.providerId, businessId }, select: { id: true } });
+  if (!provider) throw new BookingRejected('providerId', 'That provider is not on this book.');
+  if (!ids.clientId) return;
+  const client = await db.client.findFirst({ where: { id: ids.clientId, businessId }, select: { id: true } });
+  if (!client) throw new BookingRejected('clientId', 'That client is not on this book.');
+}
+
 async function lockProviderDay(
   tx: Prisma.TransactionClient,
   providerId: string,
@@ -344,7 +366,9 @@ async function writeAppointment(
   // Loaded in the CALLER's order, not the database's — the buffers come from
   // the ends, so reordering the lines would change the appointment.
   const found = await tx.serviceProvider.findMany({
-    where: { providerId: input.providerId, serviceId: { in: [...input.serviceIds] } },
+    // SEC-02. Scoped: the override path skips the engine, so this is the only
+    // link check it meets, and a provider id from a form must not reach across.
+    where: { businessId: input.businessId, providerId: input.providerId, serviceId: { in: [...input.serviceIds] } },
     include: {
       service: {
         include: {

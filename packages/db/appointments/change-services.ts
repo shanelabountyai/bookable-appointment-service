@@ -75,6 +75,9 @@ export class VisitAlreadyChanged extends Error {
 }
 
 export interface ChangeVisitServicesInput {
+  /** SEC-02. The caller's tenant; another business's appointment reads as
+   *  not-found, so an id from a form cannot reach across. */
+  businessId: string;
   appointmentId: string;
   /**
    * The WHOLE new ordered list, not a delta.
@@ -132,8 +135,8 @@ export async function changeVisitServices(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const appointment = await tx.appointment.findUniqueOrThrow({
-          where: { id: input.appointmentId },
+        const appointment = await tx.appointment.findFirstOrThrow({
+          where: { id: input.appointmentId, businessId: input.businessId },
           select: {
             id: true,
             businessId: true,
@@ -161,7 +164,7 @@ export async function changeVisitServices(
         // The provider must be qualified for everything in the NEW list —
         // A-019's SVC-02 rule reused rather than restated. A service Dana
         // cannot do is a reschedule-with-provider, not an edit.
-        const links = await resolveLinks(tx, appointment.providerId, serviceIds);
+        const links = await resolveLinks(tx, appointment.businessId, appointment.providerId, serviceIds);
 
         // D-18, AND THE PART OF IT THAT IS NOT OBVIOUS: a line the client has
         // already agreed to keeps the price and duration it was booked with,
@@ -380,9 +383,14 @@ export async function changeVisitServices(
 
 /** The provider's own qualification rows, in the CALLER's order — the buffers
  *  come from the ends, so the order is the appointment. */
-async function resolveLinks(tx: Prisma.TransactionClient, providerId: string, serviceIds: string[]) {
+async function resolveLinks(
+  tx: Prisma.TransactionClient,
+  businessId: string,
+  providerId: string,
+  serviceIds: string[],
+) {
   const found = await tx.serviceProvider.findMany({
-    where: { providerId, serviceId: { in: serviceIds } },
+    where: { businessId, providerId, serviceId: { in: serviceIds } },
     include: { service: { include: { segments: { where: { status: 'active' }, orderBy: { ordinal: 'asc' } } } } },
   });
   const byService = new Map(found.map((row) => [row.serviceId, row]));

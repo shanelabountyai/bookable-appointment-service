@@ -5616,3 +5616,35 @@ checkout (the colour) is projected from that checkout and so reads capped at
 the delta — right for any claim smaller than the time she has been in the
 chair, which is every real one. Per review 29 §6 the cascade is done; next is
 project closure (`DEMO.md`, the exec brief, LinkedIn drafts).
+
+## A-136 — no staff write reaches another business (SEC-01 + SEC-02)
+
+Commit `TBD`.
+
+**What it decided.** D-66: reopen the closed project for the audit's two IDOR
+findings together, and fix at the `packages/db` sink with a REQUIRED
+`businessId`, so typecheck — not a reviewer — finds every caller.
+
+**What it built.** The audit sampled; a sweep of all 79 server actions and the
+staff pages found 10 unscoped write sinks and 5 unscoped reads. Appointment
+loads scope by business (not-found error unchanged); settings writes guard
+ownership first with the screen's existing rejection; counts filter by
+business; every `serviceProvider` link read is scoped; booking and
+`createSeries` check provider and client ownership at entry. The manage link
+passes its token's `businessId`. Around 160 test and seed call sites updated
+mechanically.
+
+**What it tested.** `tenant-isolation.test.ts`: two businesses, every sink
+called as A with B's ids, then a snapshot diff of every row B owns. The chain
+case — link B's stylist to A's service, then a staff OVERRIDE — booked A's
+client into B's column against the unguarded code; the link scope alone did
+NOT stop it (the stray link carries A's `businessId`), which is why ownership
+is checked at booking entry.
+
+**What it left behind.** SEC-03 (public booking rate limit), SEC-04 (returning
+client matched by phone + name), SEC-05 (`timingSafeEqual` on the cron secret),
+SEC-06 (`x-forwarded-for`). The public side still resolves its business with
+`findFirstOrThrow()` and no `where` — correct while one business exists, and
+the thing to replace before a second one does. Process note: an id that
+arrives from a form is scoped where it is USED, not where it is read — the
+override path never met the engine's link check at all.

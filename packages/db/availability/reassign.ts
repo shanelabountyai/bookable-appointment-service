@@ -90,6 +90,7 @@ export async function reassignAppointment(
       // the operative half of the bulk action's name. The rule lives in ONE
       // module (A-038) because the cross-provider reschedule asks it too.
       const qualified = await qualifiedForVisit(tx, {
+        businessId: args.businessId,
         providerId: args.toProviderId,
         serviceIds: appointment.lines.map((l) => l.serviceId),
       });

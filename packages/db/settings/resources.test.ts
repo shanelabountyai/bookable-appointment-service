@@ -76,7 +76,7 @@ describe('resource types', () => {
     const type = await createResourceType(prisma, businessId, { name: 'Chair' });
     const one = await createResource(prisma, businessId, { resourceTypeId: type.id, name: 'Chair 1' });
     await createResource(prisma, businessId, { resourceTypeId: type.id, name: 'Chair 2' });
-    await setResourceActive(prisma, one.id, false);
+    await setResourceActive(prisma, businessId, one.id, false);
 
     const [listed] = await listResourceTypes(prisma, businessId);
     expect(listed!.capacity).toBe(1);
@@ -160,7 +160,7 @@ describe('resources', () => {
     expect(hold.blockedEnd.getTime()).toBeGreaterThan(NOW.getTime());
     expect(endAt.getTime()).toBeLessThan(NOW.getTime());
 
-    expect(await countFutureHolds(prisma, chair.id, NOW)).toBe(1);
+    expect(await countFutureHolds(prisma, businessId, chair.id, NOW)).toBe(1);
   });
 
   it('a cancelled appointment stops counting against a retirement', async () => {
@@ -196,9 +196,9 @@ describe('resources', () => {
       },
     });
 
-    expect(await countFutureHolds(prisma, chair.id, NOW)).toBe(1);
+    expect(await countFutureHolds(prisma, businessId, chair.id, NOW)).toBe(1);
     await prisma.appointment.update({ where: { id: appointment.id }, data: { status: 'cancelled' } });
-    expect(await countFutureHolds(prisma, chair.id, NOW)).toBe(0);
+    expect(await countFutureHolds(prisma, businessId, chair.id, NOW)).toBe(0);
   });
 });
 

@@ -29,10 +29,10 @@ export default async function AvailabilityPage({
     listWeeklyWindows(prisma, staff.businessId, dbProviderId),
     listDateOverrides(prisma, staff.businessId, dbProviderId),
     dbProviderId
-      ? prisma.timeOff.findMany({ where: { providerId: dbProviderId }, orderBy: { startAt: 'asc' } })
+      ? prisma.timeOff.findMany({ where: { businessId: staff.businessId, providerId: dbProviderId }, orderBy: { startAt: 'asc' } })
       : Promise.resolve([]),
     dbProviderId
-      ? prisma.adHocBlock.findMany({ where: { providerId: dbProviderId }, orderBy: { startAt: 'asc' } })
+      ? prisma.adHocBlock.findMany({ where: { businessId: staff.businessId, providerId: dbProviderId }, orderBy: { startAt: 'asc' } })
       : Promise.resolve([]),
   ]);
 

@@ -138,12 +138,28 @@ export async function createService(db: Db, businessId: string, input: SaveServi
   });
 }
 
+/**
+ * SEC-01. Every service write takes its id from a form; the row must be this
+ * business's or the write does not happen. Thrown as the same rejection a bad
+ * field is, so the settings screen already knows how to say it.
+ */
+export async function assertServiceOf(db: Db, businessId: string, serviceId: string): Promise<void> {
+  const found = await db.service.findFirst({ where: { id: serviceId, businessId }, select: { id: true } });
+  if (!found) throw new ServiceRejected('serviceId', 'That service is not on this book.');
+}
+
+async function assertProviderOf(db: Db, businessId: string, providerId: string): Promise<void> {
+  const found = await db.provider.findFirst({ where: { id: providerId, businessId }, select: { id: true } });
+  if (!found) throw new ServiceRejected('providerId', 'That provider is not on this book.');
+}
+
 export async function updateService(
   db: Db,
   businessId: string,
   serviceId: string,
   input: SaveServiceInput,
 ): Promise<ServiceRow> {
+  await assertServiceOf(db, businessId, serviceId);
   await assertValid(db, businessId, input);
   await assertSegmentsStillAddUp(db, serviceId, input.durationMinutes);
   return db.service.update({
@@ -231,12 +247,14 @@ async function assertOverrideFitsSegments(
  */
 export async function countServiceFutureAppointments(
   db: Db,
+  businessId: string,
   serviceId: string,
   now: Date,
   providerId?: string,
 ): Promise<number> {
   return db.appointment.count({
     where: {
+      businessId,
       startAt: { gte: now },
       status: { notIn: ['cancelled', 'cancelled_late'] },
       ...(providerId ? { providerId } : {}),
@@ -270,13 +288,15 @@ export class DeactivationRequiresConfirm extends Error {
  */
 export async function setServiceActive(
   db: Db,
+  businessId: string,
   serviceId: string,
   active: boolean,
   now: Date,
   confirm = false,
 ): Promise<ServiceRow> {
+  await assertServiceOf(db, businessId, serviceId);
   if (!active) {
-    const count = await countServiceFutureAppointments(db, serviceId, now);
+    const count = await countServiceFutureAppointments(db, businessId, serviceId, now);
     if (count > 0 && !confirm) throw new DeactivationRequiresConfirm(count);
   }
   return db.service.update({ where: { id: serviceId }, data: { active }, select });
@@ -319,6 +339,11 @@ export async function qualifyProvider(
 ): Promise<QualificationRow> {
   const violations = validateQualificationOverride(overrides);
   if (violations.length > 0) throw new ServiceRejected(violations[0]!.field, violations[0]!.message);
+  // SEC-01. Both halves, because the link is what the engine reads to decide
+  // who may be booked for what: linking another business's stylist to this
+  // service would put this business's clients in her column.
+  await assertServiceOf(db, businessId, serviceId);
+  await assertProviderOf(db, businessId, providerId);
   await assertOverrideFitsSegments(db, serviceId, overrides.durationOverrideMinutes);
 
   return db.serviceProvider.upsert({
@@ -345,13 +370,14 @@ export async function qualifyProvider(
  */
 export async function unqualifyProvider(
   db: Db,
+  businessId: string,
   serviceId: string,
   providerId: string,
   now: Date,
   confirm = false,
 ): Promise<void> {
-  const count = await countServiceFutureAppointments(db, serviceId, now, providerId);
+  const count = await countServiceFutureAppointments(db, businessId, serviceId, now, providerId);
   if (count > 0 && !confirm) throw new DeactivationRequiresConfirm(count);
 
-  await db.serviceProvider.deleteMany({ where: { serviceId, providerId } });
+  await db.serviceProvider.deleteMany({ where: { businessId, serviceId, providerId } });
 }

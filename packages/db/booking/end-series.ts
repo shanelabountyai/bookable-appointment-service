@@ -198,6 +198,7 @@ export async function endSeriesHere(prisma: PrismaClient, input: EndSeriesInput)
     if (row.problem) continue;
     try {
       await transitionAppointment(prisma, {
+        businessId: input.businessId,
         appointmentId: row.appointmentId,
         // A-060 owns the classification, for the same reason it took it off
         // the single cancel button: the cutoff is resolved from real rows in

@@ -169,6 +169,7 @@ describe('what the flag deliberately does NOT touch', () => {
     const booked = await book([correctionId], 'staff');
 
     const moved = await rescheduleAppointment(prisma, {
+      businessId,
       appointmentId: booked.id,
       startAt: at('2026-06-09T14:00:00-05:00'),
       now: NOW,
