@@ -420,6 +420,12 @@ export async function confirmAppointment(input: {
   // prevent ("the daughter's two no-shows block the mother"). The salon still
   // sees the flag the moment the desk looks the number up, and merging the
   // duplicate (A-015) combines the counts.
+  //
+  // SEC-04 / D-67. Anyone who knows her name and number can book onto her
+  // record, exactly as they could by ringing the desk. What keeps that from
+  // being a leak: this action answers "confirmed" and nothing more, the typed
+  // email is dropped on a match, and the manage link goes to the contact on
+  // HER record — so she hears about a booking she did not make.
   const client = {
     id:
       (await findReturningClient(prisma, business, { phone, name })) ??

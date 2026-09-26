@@ -5676,3 +5676,24 @@ failed on two untouched DB suites; the baseline failed identically, because
 another project's vitest sweep had the machine at load 40. Re-run once it
 finished: green.
 
+
+## A-138 — SEC-04: the website's returning-client match stays (D-67)
+
+Commit `PENDING`.
+
+**What it decided.** D-67: keep the match, accept the residual. The audit said
+the match exposes the client's history link. It doesn't. `confirmAppointment`
+returns "confirmed" and nothing else, a typed email is dropped on a match, and
+the confirmation with the manage link goes to the contact on the stored record.
+What remains is booking in someone's name, which the phone desk already allows.
+New-client-per-booking would reopen D-55's duplicates and hollow out CLIENT-04.
+An OTP needs a real SMS provider, which D-65 kept off.
+
+**What it built.** No behaviour change. A SEC-04 note at the match in
+`public-actions.ts`.
+
+**What it tested.** `booking.spec.ts`: booking onto a desk record while typing
+a stranger's email puts the record's own email on the outbox row, leaves the
+record's email unchanged, and puts no `/manage/` link on screen.
+
+**What it left behind.** SEC-06. Revisit D-67 if an SMS provider is ever wired.

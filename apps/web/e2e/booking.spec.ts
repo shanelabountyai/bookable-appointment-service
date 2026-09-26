@@ -155,6 +155,47 @@ test.describe('customer booking flow (A-010)', () => {
     }
   });
 
+  /**
+   * SEC-04 / D-67 — the reuse match is kept, and what makes it safe is WHERE
+   * the manage link goes: to the contact the desk holds, never to one typed on
+   * the form. A stranger who knows her name and number gets "confirmed" and
+   * nothing else; she gets the message and the link to cancel it.
+   */
+  test('a returning match sends the manage link to the record\'s contact, not the one typed', async ({ page }) => {
+    const seed = new PrismaClient();
+    let deskId: string;
+    try {
+      const business = await seed.business.findFirstOrThrow();
+      deskId = (
+        await seed.client.create({
+          data: { businessId: business.id, name: 'Rae Núñez', phone: '+1 512 555 0104', email: 'rae@example.com' },
+        })
+      ).id;
+    } finally {
+      await seed.$disconnect();
+    }
+
+    await reachTheTimeList(page);
+    await firstOption(page).click();
+    await page.getByLabel('Your name').fill('Rae Nunez');
+    await page.getByLabel('Phone').fill('5125550104');
+    await page.getByLabel('Email (optional)').fill('stranger@example.com');
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+    await expect(page.getByText('/manage/')).toHaveCount(0);
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow();
+      expect(appointment.clientId).toBe(deskId);
+      const sent = await prisma.notificationOutbox.findFirstOrThrow({ where: { appointmentId: appointment.id } });
+      expect(sent.recipient).toBe('rae@example.com');
+      expect((await prisma.client.findUniqueOrThrow({ where: { id: deskId } })).email).toBe('rae@example.com');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   // BOOK-01's two hard numbers.
   test('is five screens with two required text inputs', async ({ page }) => {
     await reachTheTimeList(page);

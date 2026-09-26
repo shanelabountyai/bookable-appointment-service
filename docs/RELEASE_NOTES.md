@@ -4817,6 +4817,18 @@ changes. The scheduler's secret is also now compared in constant time, closing
 a timing side channel. The test for the limit was run against the unguarded
 code first and failed there.
 
+## A-138 — checking a security finding before fixing it
+
+An audit reported that anyone who knew a client's name and phone number could
+book in her name and see her appointment history link. The code shows the
+second half is wrong: the page only ever says "confirmed", and the link to
+manage the booking goes to the email or phone the salon already holds for
+her. So the finding was answered with a recorded decision and a test that
+locks in where the link goes. Two heavier fixes were turned down: a new record
+for every website booking would bring back the duplicate clients an earlier
+change removed, and a text-message code needs a live SMS provider the demo
+doesn't have.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.
