@@ -5651,7 +5651,7 @@ override path never met the engine's link check at all.
 
 ## A-137 — public booking rate limit and constant-time cron secret (SEC-03 + SEC-05)
 
-Commit `TBD`.
+Commit `5d3a2f6`.
 
 **What it decided.** Limit per CALLER, not per client — a flood types a new
 name every time. 10 bookings an hour: far above one household, far below
