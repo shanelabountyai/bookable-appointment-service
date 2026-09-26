@@ -5619,7 +5619,7 @@ project closure (`DEMO.md`, the exec brief, LinkedIn drafts).
 
 ## A-136 — no staff write reaches another business (SEC-01 + SEC-02)
 
-Commit `TBD`.
+Commit `2d805bf`.
 
 **What it decided.** D-66: reopen the closed project for the audit's two IDOR
 findings together, and fix at the `packages/db` sink with a REQUIRED
