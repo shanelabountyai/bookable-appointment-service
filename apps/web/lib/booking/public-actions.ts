@@ -32,6 +32,8 @@ import { computeDaySlots, daysWithAvailability } from '@bookable/db/scheduling';
 import { systemActor } from '@bookable/core/auth';
 import { isPlausiblePhone } from '@bookable/core/clients';
 import { findReturningClient } from '@bookable/db/clients';
+import { consumeRateLimit } from '@bookable/db/rate-limit';
+import { callerKey } from '@/lib/manage/token-gate';
 
 export interface OfferedTime {
   /** The appointment's identity is its INSTANT (D-4). An offset-bearing ISO
@@ -309,6 +311,15 @@ async function sameTimeWithSomebodyElse(
   };
 }
 
+/**
+ * SEC-03 — per caller, not per client: a flood types a new name every time.
+ * Ten an hour is far above one household booking its week and far below
+ * emptying a book; the ceiling is a salon's own guest wifi, where every client
+ * rebooking at the desk shares one address — past ten, the desk books her.
+ */
+const BOOK_LIMIT = 10;
+const BOOK_WINDOW_MS = 60 * 60 * 1000;
+
 export interface ConfirmResult {
   ok: boolean;
   /** Customer-facing wording only (D-10). */
@@ -381,6 +392,19 @@ export async function confirmAppointment(input: {
     startAt = toDate(instantFromIso(input.at));
   } catch {
     return { ok: false, message: 'That time is no longer available. Please choose another.' };
+  }
+
+  // SEC-03. Without this a script can hold every slot in the book with no
+  // login. Counted before the client row is written, so a flood makes neither
+  // clients nor appointments; after the field checks, so a typo costs nothing.
+  const allowed = await consumeRateLimit(prisma, {
+    key: `book:${await callerKey()}`,
+    limit: BOOK_LIMIT,
+    windowMs: BOOK_WINDOW_MS,
+    now: new Date(),
+  });
+  if (!allowed) {
+    return { ok: false, message: 'We can’t take more bookings from this connection right now. Please call the salon and we’ll book you in.' };
   }
 
   const business = await businessId();

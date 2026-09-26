@@ -89,12 +89,7 @@ export function verifySession(token: string, secret: string, now: number): Sessi
   const body = token.slice(0, dot);
   const provided = token.slice(dot + 1);
 
-  const expected = sign(body, secret);
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  // Length check first: timingSafeEqual throws on unequal lengths. A length
-  // mismatch leaks only the length of an HMAC, which is a constant.
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (!constantTimeEqual(provided, sign(body, secret))) return null;
 
   let payload: unknown;
   try {
@@ -139,3 +134,15 @@ export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
  * symmetrical, so the window is sized for the second.
  */
 export const ACT_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * String equality that takes the same time wherever the first difference is —
+ * for comparing anything secret (an HMAC here, the cron bearer in SEC-05).
+ * Length is checked first because `timingSafeEqual` throws on unequal lengths;
+ * that leaks only the length, which for an HMAC or a fixed secret is public.
+ */
+export function constantTimeEqual(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}

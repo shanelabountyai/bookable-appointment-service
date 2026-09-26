@@ -5648,3 +5648,31 @@ SEC-06 (`x-forwarded-for`). The public side still resolves its business with
 the thing to replace before a second one does. Process note: an id that
 arrives from a form is scoped where it is USED, not where it is read — the
 override path never met the engine's link check at all.
+
+## A-137 — public booking rate limit and constant-time cron secret (SEC-03 + SEC-05)
+
+Commit `TBD`.
+
+**What it decided.** Limit per CALLER, not per client — a flood types a new
+name every time. 10 bookings an hour: far above one household, far below
+emptying a book. The known ceiling is the salon's own guest wifi, where every
+client rebooking at the desk shares one address; past ten, the desk books her.
+
+**What it built.** `confirmAppointment` consumes `book:<callerKey()>` through
+the existing `consumeRateLimit`, after field validation and before the client
+row is written. `callerKey` is exported from `token-gate.ts`, so SEC-06's
+upgrade lands in one function for both limits. `constantTimeEqual` in
+`packages/core/auth/session.ts` replaces the cron route's `!==` and the
+inline compare in `verifySession`.
+
+**What it tested.** An e2e spec pre-fills the counter for one
+`x-forwarded-for` (Next keeps a client-supplied value — `??=` in
+`base-server.js`) and asserts the refusal, no appointment and no client; it
+was run red with the check disabled first. Unit tests cover the compare's
+length and multi-byte cases, the ones that would make `timingSafeEqual` throw.
+
+**What it left behind.** SEC-04 and SEC-06. Process note: the first gate run
+failed on two untouched DB suites; the baseline failed identically, because
+another project's vitest sweep had the machine at load 40. Re-run once it
+finished: green.
+

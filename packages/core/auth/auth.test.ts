@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hashPassword, verifyPassword } from './password';
-import { ACT_TTL_MS, MissingSessionSecret, SESSION_TTL_MS, signSession, verifySession } from './session';
+import { ACT_TTL_MS, MissingSessionSecret, SESSION_TTL_MS, constantTimeEqual, signSession, verifySession } from './session';
 import { customerTokenActor, staffActor, systemActor } from './actor';
 
 const SECRET = 'test-secret-not-a-real-one';
@@ -225,5 +225,26 @@ describe('actors (D-9)', () => {
     expect(staffActor('staff1')).toEqual({ type: 'staff', ref: 'staff1' });
     expect(customerTokenActor('tok1')).toEqual({ type: 'customer_token', ref: 'tok1' });
     expect(systemActor).toEqual({ type: 'system', ref: null });
+  });
+});
+
+/** SEC-05 — the cron bearer's compare. `timingSafeEqual` throws on unequal
+ *  lengths, so the length cases are the ones that would crash the route. */
+describe('constantTimeEqual', () => {
+  it('is true only for the identical string', () => {
+    expect(constantTimeEqual('Bearer s3cret', 'Bearer s3cret')).toBe(true);
+    expect(constantTimeEqual('Bearer s3creT', 'Bearer s3cret')).toBe(false);
+  });
+
+  it('refuses a different length, shorter or longer, without throwing', () => {
+    expect(constantTimeEqual('', 'Bearer s3cret')).toBe(false);
+    expect(constantTimeEqual('Bearer s3cre', 'Bearer s3cret')).toBe(false);
+    expect(constantTimeEqual('Bearer s3cret!', 'Bearer s3cret')).toBe(false);
+  });
+
+  it('compares bytes, not UTF-16 units', () => {
+    // Same .length in JS, different byte lengths: a Buffer-length check is the
+    // one that keeps timingSafeEqual from throwing here.
+    expect(constantTimeEqual('é', 'e')).toBe(false);
   });
 });

@@ -4806,6 +4806,17 @@ was closed. One test builds two salons, fires every refused action at the
 other's ids, and diffs every row the victim owns before and after — so an
 action that refuses AFTER writing something is caught too.
 
+## A-137 — a script can no longer fill the book
+
+The public booking page needed no login, so a script could book every open
+slot under invented names. It is now limited per connection — ten bookings an
+hour, far more than any household makes — and a refused attempt writes
+nothing, not even the client record. The limit reuses the one the
+appointment-link page already had, so both move together if the hosting
+changes. The scheduler's secret is also now compared in constant time, closing
+a timing side channel. The test for the limit was run against the unguarded
+code first and failed there.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

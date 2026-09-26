@@ -19,6 +19,7 @@
  */
 import { NextResponse } from 'next/server';
 import { prisma } from '@bookable/db';
+import { constantTimeEqual } from '@bookable/core/auth';
 import { dispatchPendingNotifications, notificationAdapter, sendDueReminders } from '@bookable/db/notifications';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,8 @@ function cronSecret(): string {
 }
 
 export async function GET(request: Request) {
-  if (request.headers.get('authorization') !== `Bearer ${cronSecret()}`) {
+  // SEC-05: constant-time, so response timing cannot recover the secret a byte at a time.
+  if (!constantTimeEqual(request.headers.get('authorization') ?? '', `Bearer ${cronSecret()}`)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

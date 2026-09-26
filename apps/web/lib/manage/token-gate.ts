@@ -54,9 +54,10 @@ export async function openManageLink(token: string, now: Date): Promise<GateResu
  * caller and the limit is collective. Vercel (the deploy target) always sets
  * it, so the ceiling bites in local dev, where it is harmless. Upgrade path if
  * this ever runs behind something else: read the platform's own trusted
- * client-IP header instead, in this one function.
+ * client-IP header instead, in this one function. The public booking action
+ * (SEC-03) keys its limit here too, so the upgrade reaches both.
  */
-async function callerKey(): Promise<string> {
+export async function callerKey(): Promise<string> {
   const forwarded = (await headers()).get('x-forwarded-for');
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }

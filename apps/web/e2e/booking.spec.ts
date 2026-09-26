@@ -93,6 +93,35 @@ test.describe('customer booking flow (A-010)', () => {
   });
 
   /**
+   * SEC-03 — a caller who has spent the hour's budget is refused, and the
+   * refusal writes nothing: no appointment and no client. The counter is
+   * pre-filled rather than spent through ten bookings, because the limiter's
+   * counting is `rate-limit.test.ts`'s job; this asserts the action consults
+   * it, under the key `callerKey` builds from the header this sets.
+   */
+  test('refuses a caller over the booking limit, and writes nothing (SEC-03)', async ({ page }) => {
+    const ip = '203.0.113.9';
+    await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
+    const prisma = new PrismaClient();
+    try {
+      const now = new Date();
+      await prisma.rateLimitCounter.create({ data: { key: `book:${ip}`, windowStart: now, count: 10, updatedAt: now } });
+
+      await reachTheTimeList(page);
+      await firstOption(page).click();
+      await page.getByLabel('Your name').fill('Flood Bot');
+      await page.getByLabel('Phone').fill('(512) 555-0199');
+      await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+      await expect(page.getByText(/can’t take more bookings from this connection/)).toBeVisible();
+      expect(await prisma.appointment.count()).toBe(0);
+      expect(await prisma.client.count({ where: { name: 'Flood Bot' } })).toBe(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
    * A-114 / D-55 — TWO PEOPLE TYPING. The desk wrote her with a +1 and her
    * accents; she types brackets and no accents. One client, and the booking is
    * on it. The assertion above used to type a number and read the same number

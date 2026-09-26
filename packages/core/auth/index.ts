@@ -9,6 +9,7 @@ export {
 export { DUMMY_HASH_PROMISE, hashPassword, isValidPin, verifyPassword } from './password';
 export {
   MissingSessionSecret,
+  constantTimeEqual,
   ACT_TTL_MS,
   SESSION_TTL_MS,
   type SessionPayload,
