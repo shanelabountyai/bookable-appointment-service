@@ -5679,7 +5679,7 @@ finished: green.
 
 ## A-138 — SEC-04: the website's returning-client match stays (D-67)
 
-Commit `PENDING`.
+Commit `117c651`.
 
 **What it decided.** D-67: keep the match, accept the residual. The audit said
 the match exposes the client's history link. It doesn't. `confirmAppointment`
