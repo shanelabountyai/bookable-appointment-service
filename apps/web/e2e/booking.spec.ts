@@ -122,6 +122,71 @@ test.describe('customer booking flow (A-010)', () => {
   });
 
   /**
+   * A-141 — the per-BUSINESS cap: many addresses, each under its own limit,
+   * together meet a ceiling counted from the book. The 99 extra rows are
+   * clones of one real online booking (cancelled, so the exclusion constraint
+   * ignores them), first dated a day ago — which must NOT count — and then
+   * today, which must.
+   */
+  test('refuses online bookings past the day cap, counting only the last 24 hours', async ({ page }) => {
+    const prisma = new PrismaClient();
+    const bookFrom = async (ip: string, name: string) => {
+      await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
+      await reachTheTimeList(page);
+      await firstOption(page).click();
+      await page.getByLabel('Your name').fill(name);
+      await page.getByLabel('Phone').fill('(512) 555-0142');
+      await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    };
+    try {
+      await bookFrom('203.0.113.20', 'Ines Park');
+      await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+      const [source] = await prisma.appointment.findMany({ select: { id: true } });
+      await prisma.$executeRaw`
+        INSERT INTO "Appointment"
+        SELECT (jsonb_populate_record(NULL::"Appointment", to_jsonb(a) || jsonb_build_object(
+          'id', 'flood-' || g, 'idempotencyKey', 'public:flood-' || g, 'status', 'cancelled',
+          'createdAt', now() - interval '25 hours'))).*
+        FROM "Appointment" a, generate_series(1, 99) g WHERE a.id = ${source!.id}`;
+
+      await bookFrom('203.0.113.21', 'Jo Park');
+      await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeVisible();
+
+      await prisma.$executeRaw`UPDATE "Appointment" SET "createdAt" = now() WHERE id LIKE 'flood-%'`;
+      const before = await prisma.appointment.count();
+      await bookFrom('203.0.113.22', 'Kit Park');
+      await expect(page.getByText(/can’t take more online bookings today/)).toBeVisible();
+      expect(await prisma.appointment.count()).toBe(before);
+      expect(await prisma.client.count({ where: { name: 'Kit Park' } })).toBe(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * A-141 — the slot reads are limited per caller too. Pre-filled like SEC-03's
+   * counter: the day list comes back empty, so the flow offers no day at all.
+   */
+  test('a caller over the slot-read limit is offered nothing', async ({ page }) => {
+    // A DIFFERENT address in the same /64 — the bucket, not the address, is limited.
+    await page.setExtraHTTPHeaders({ 'x-forwarded-for': '2001:db8:0:7::beef' });
+    const prisma = new PrismaClient();
+    try {
+      const now = new Date();
+      await prisma.rateLimitCounter.create({
+        data: { key: `slots:2001:db8:0:7::/64`, windowStart: now, count: 60, updatedAt: now },
+      });
+      await page.goto('/book');
+      await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await page.getByRole('button', { name: 'Dana', exact: true }).click();
+      await expect(page.getByText('No appointments available in the next few weeks')).toBeVisible();
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
    * A-140 — a booking that SUCCEEDED and lost its response is retried past the
    * limit. The limiter runs before `bookAppointment`'s idempotency lookup, so
    * without the check beside it she was told "can't take more bookings" about

@@ -13,7 +13,7 @@
  * crosses this boundary. The only ids returned are the ones the next request
  * must echo back.
  */
-import { type CalendarDay, addDays, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { type CalendarDay, addDays, fromDate, instant, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { readableDay, readableDayParts } from '@/lib/customer-format';
 import { prisma } from '@bookable/db';
 import {
@@ -60,6 +60,28 @@ async function businessId(): Promise<string> {
 
 async function theBusiness() {
   return prisma.business.findFirstOrThrow({ select: { id: true, timezone: true } });
+}
+
+/**
+ * A-141 — the four slot reads below are endpoints anyone can call in a loop,
+ * and each one is a slot computation (a day list is twenty-eight of them).
+ * Sixty in five minutes is several whole walks through the flow, changing
+ * stylist and day every time; a scraper or a load script meets it in seconds.
+ *
+ * ponytail: past the limit the read returns NOTHING, which the flow renders as
+ * "no appointments available". Only a caller no person could be reaches that,
+ * so it gets no copy of its own; give it one if a real client ever does.
+ */
+const READ_LIMIT = 60;
+const READ_WINDOW_MS = 5 * 60 * 1000;
+
+async function readAllowed(): Promise<boolean> {
+  return consumeRateLimit(prisma, {
+    key: `slots:${await callerKey()}`,
+    limit: READ_LIMIT,
+    windowMs: READ_WINDOW_MS,
+    now: new Date(),
+  });
 }
 
 /** How far ahead the day list looks. Shorter than the booking horizon on
@@ -151,7 +173,7 @@ export interface OpenDay {
  * business's own calendar is the only one that decides (spec §1.3).
  */
 export async function listDaysWithOpenings(serviceIds: string[], providerId: string): Promise<OpenDay[]> {
-  if (await anyDeskOnly(serviceIds)) return [];
+  if (!(await readAllowed()) || (await anyDeskOnly(serviceIds))) return [];
   const business = await theBusiness();
   const now = new Date();
   // A-054: the `fromDay` argument went with `resolvePrefill`. It existed only
@@ -180,6 +202,7 @@ export async function listTimesOn(serviceIds: string[], providerId: string, day:
   // browser can call with anything it likes, and a holder taken from there is
   // a stranger naming somebody else's chair. The one caller that knows her
   // resolved her server-side and calls `timesOn` directly.
+  if (!(await readAllowed())) return [];
   return timesOn(serviceIds, providerId, day, null);
 }
 
@@ -218,7 +241,7 @@ async function timesOn(
  * utilization gap A-024's dashboard reports and cannot explain.
  */
 export async function listAnyProviderDays(serviceIds: string[]): Promise<OpenDay[]> {
-  if (await anyDeskOnly(serviceIds)) return [];
+  if (!(await readAllowed()) || (await anyDeskOnly(serviceIds))) return [];
   const business = await theBusiness();
   const now = new Date();
   const start = toLabel(fromDate(now), zoneId(business.timezone)).day as CalendarDay;
@@ -238,6 +261,7 @@ export async function listAnyProviderDays(serviceIds: string[]): Promise<OpenDay
  *  carrying the stylist SVC-02 assigned it to. */
 export async function listAnyProviderTimes(serviceIds: string[], day: string): Promise<OfferedTime[]> {
   // A-105 — anonymous for the same reason as `listTimesOn` above.
+  if (!(await readAllowed())) return [];
   return anyoneTimesOn(serviceIds, day, null);
 }
 
@@ -319,6 +343,25 @@ async function sameTimeWithSomebodyElse(
  */
 const BOOK_LIMIT = 10;
 const BOOK_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * A-141 — the ceiling on a flood from MANY addresses, which the per-caller
+ * limit cannot see. Counted from the book itself (online appointments CREATED
+ * in the last 24 hours), not from a counter, so refused and failed attempts
+ * spend none of it: a flood that the per-caller limit already stops cannot
+ * close online booking for everybody else.
+ *
+ * A hundred is above any real day for a four-chair salon (its whole week is
+ * about 160 appointments, and a promotional email does not move half of it
+ * online in a day) and it bounds what a distributed script can do to one
+ * morning's cancelling. Past it, the website says to call; the desk still books.
+ *
+ * ponytail: count-then-write, so concurrent requests at the edge can overshoot
+ * by however many are in flight. A soft cap on abuse, not an invariant; make it
+ * a counter consumed inside `bookAppointment`'s transaction if it ever must be exact.
+ */
+const PUBLIC_BOOKINGS_PER_DAY = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface ConfirmResult {
   ok: boolean;
@@ -404,13 +447,24 @@ export async function confirmAppointment(input: {
   const idempotencyKey = (clientId: string) =>
     `public:${input.providerId}:${input.serviceIds.join('+')}:${startAt.toISOString()}:${clientId}`;
 
-  const allowed = await consumeRateLimit(prisma, {
+  const now = new Date();
+  const refusal = !(await consumeRateLimit(prisma, {
     key: `book:${await callerKey()}`,
     limit: BOOK_LIMIT,
     windowMs: BOOK_WINDOW_MS,
-    now: new Date(),
-  });
-  if (!allowed) {
+    now,
+  }))
+    ? 'We can’t take more bookings from this connection right now. Please call the salon and we’ll book you in.'
+    : (await prisma.appointment.count({
+          where: {
+            businessId: business,
+            idempotencyKey: { startsWith: 'public:' },
+            createdAt: { gte: toDate(instant(fromDate(now) - DAY_MS)) },
+          },
+        })) >= PUBLIC_BOOKINGS_PER_DAY
+      ? 'We can’t take more online bookings today. Please call the salon and we’ll book you in.'
+      : null;
+  if (refusal) {
     // A retry of a booking that already SUCCEEDED (a double submit, a dropped
     // response) is told so, not refused: `bookAppointment`'s own idempotency
     // lookup never runs on this path. Read-only, so a flood still writes nothing.
@@ -422,7 +476,7 @@ export async function confirmAppointment(input: {
         select: { id: true },
       }));
     if (done) return { ok: true, message: 'Your appointment is confirmed.' };
-    return { ok: false, message: 'We can’t take more bookings from this connection right now. Please call the salon and we’ll book you in.' };
+    return { ok: false, message: refusal };
   }
 
 

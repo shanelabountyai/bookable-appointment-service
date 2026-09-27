@@ -16,6 +16,7 @@ import { headers } from 'next/headers';
 import { prisma } from '@bookable/db';
 import { type ManageGrant, verifyManageToken } from '@bookable/db/appointments';
 import { consumeRateLimit } from '@bookable/db/rate-limit';
+import { ipBucket } from './ip-bucket';
 
 /**
  * Generous by human standards, useless by scraping ones: a customer opening
@@ -63,9 +64,10 @@ export async function openManageLink(token: string, now: Date): Promise<GateResu
  * anywhere else without switching to the platform's own client-IP header.
  *
  * The public booking action
- * (SEC-03) keys its limit here too, so the upgrade reaches both.
+ * (SEC-03) keys its limit here too, so the upgrade reaches both. So do the
+ * public slot reads (A-141), and an IPv6 caller is keyed by its /64 (`ipBucket`).
  */
 export async function callerKey(): Promise<string> {
   const forwarded = (await headers()).get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || 'unknown';
+  return ipBucket(forwarded?.split(',')[0]?.trim() || 'unknown');
 }

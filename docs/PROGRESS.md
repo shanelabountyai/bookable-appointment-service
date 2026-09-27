@@ -5745,3 +5745,34 @@ hand-made request can reach. From the reviewers, not scheduled: IPv6 /64
 grouping and a per-business daily cap on anonymous bookings, pruning
 `RateLimitCounter`, and limits on the public slot reads. The salon-operator
 gaps are candidates in D-68.
+
+## A-141 — the security leftovers: IPv6 buckets, a day cap, pruning, slot-read limits (D-69)
+
+Commit `PENDING`.
+
+**What it decided.** D-69: all four in one item. The day cap counts the book,
+not a counter, so refused attempts cannot close online booking.
+
+**What it built.**
+- `ipBucket` (`apps/web/lib/manage/ip-bucket.ts`): `callerKey` keys an IPv6
+  caller by its /64, and reads an IPv4-mapped address as IPv4. Both existing
+  limits and the new one inherit it.
+- `confirmAppointment` refuses once 100 online appointments were created in
+  the last 24 h, with its own "call the salon" wording. The refusal runs the
+  same read-only idempotency check as the per-caller limit, so a retry of a
+  booking that went through is still confirmed.
+- `pruneRateLimits` deletes counters idle for over a day. It runs from the
+  reminders cron, which already fires every 5 minutes.
+- `readAllowed` limits the four public slot reads to 60 per 5 minutes per caller.
+
+**What it tested.** `ip-bucket.test.ts` (spellings of one /64, neighbouring
+/64s, `::`, IPv4-mapped, junk). `rate-limit.test.ts`: prune at both edges, and
+a spent counter survives a prune. `booking.spec.ts`: the cap with 99 cloned
+rows first dated 25 h ago (accepted) then today (refused, no rows written),
+and the slot limit reached from a different address in the same /64.
+
+**What it left behind.** The cap is count-then-write, so it can overshoot by
+the requests in flight (a soft cap on abuse). A caller past the slot limit sees
+"no appointments available", with no wording of its own. Reviewer agents
+(stylist, booking client, UX, accessibility) are next.
+

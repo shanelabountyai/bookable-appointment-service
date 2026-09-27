@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@bookable/db';
 import { constantTimeEqual } from '@bookable/core/auth';
 import { dispatchPendingNotifications, notificationAdapter, sendDueReminders } from '@bookable/db/notifications';
+import { pruneRateLimits } from '@bookable/db/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,9 @@ export async function GET(request: Request) {
 
   const reminders = await sendDueReminders(prisma, new Date());
   const dispatch = await dispatchPendingNotifications(prisma, notificationAdapter);
+  // A-141 — rides the one scheduled route rather than adding a second cron;
+  // one statement, over a table this keeps down to the last day of callers.
+  const prunedRateLimits = await pruneRateLimits(prisma, new Date());
 
-  return NextResponse.json({ reminders, dispatch });
+  return NextResponse.json({ reminders, dispatch, prunedRateLimits });
 }

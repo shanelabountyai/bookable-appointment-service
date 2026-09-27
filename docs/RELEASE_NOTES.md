@@ -4845,6 +4845,19 @@ were removed. It now checks for the specific refusal, and it was proven to fail
 against the removed fix. Every new test was run against the unfixed code
 first and failed there.
 
+## A-141 — closing the last gaps in the booking limits
+
+The public booking page already limited how often one connection could book.
+Four gaps were left. A phone or laptop on a modern network can change its
+address on every request, so the limit now applies to the whole block of
+addresses one household is given. A script spread across many connections
+now meets a salon-wide ceiling of a hundred online bookings a day. That
+ceiling is counted from the appointment book itself, so refused attempts do
+not use it up and cannot shut the website for real clients. The pages that
+list open times are limited too, because each one costs a full availability
+calculation. The table that records callers is also cleared of anything
+older than a day.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

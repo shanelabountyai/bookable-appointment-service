@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { fromDate, instant, instantFromIso, toDate } from '../core/time';
 import { PrismaClient } from './generated/client/index.js';
-import { consumeRateLimit } from './rate-limit';
+import { consumeRateLimit, pruneRateLimits, RATE_LIMIT_PRUNE_AFTER_MS } from './rate-limit';
 import { resetDatabase } from './testing';
 
 const prisma = new PrismaClient();
@@ -76,5 +76,22 @@ describe('consumeRateLimit', () => {
     const results = await Promise.all(Array.from({ length: 12 }, () => consume('a', NOW)));
     expect(results.filter(Boolean)).toHaveLength(LIMIT);
     expect((await prisma.rateLimitCounter.findUniqueOrThrow({ where: { key: 'a' } })).count).toBe(12);
+  });
+});
+
+describe('pruneRateLimits (A-141)', () => {
+  it('deletes only counters idle for longer than a day', async () => {
+    await consume('stale', NOW);
+    await consume('live', plus(1));
+
+    expect(await pruneRateLimits(prisma, plus(RATE_LIMIT_PRUNE_AFTER_MS + 1))).toBe(1);
+    expect((await prisma.rateLimitCounter.findMany()).map((r) => r.key)).toEqual(['live']);
+  });
+
+  it('never deletes a counter whose window is still open', async () => {
+    // A caller refused just now must still be refused after the cron runs.
+    for (let i = 0; i <= LIMIT; i++) await consume('flood', NOW);
+    await pruneRateLimits(prisma, NOW);
+    expect(await consume('flood', NOW)).toBe(false);
   });
 });

@@ -72,3 +72,18 @@ export async function consumeRateLimit(db: Db, input: RateLimitInput): Promise<b
 export async function resetRateLimit(db: Db, key: string): Promise<void> {
   await db.rateLimitCounter.deleteMany({ where: { key } });
 }
+
+/**
+ * A-141 — the limiter writes one row per caller and nothing ever deleted them,
+ * so every address that ever loaded the booking page stayed in the table. A
+ * row is dead once its window has closed: `consumeRateLimit` would restart it
+ * at 1 anyway, so deleting it changes no answer. A day is longer than every
+ * window in the repo (the longest is the booking limit's hour); a new limiter
+ * with a longer window must raise this, or pruning becomes a reset.
+ */
+export const RATE_LIMIT_PRUNE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export async function pruneRateLimits(db: Db, now: Date): Promise<number> {
+  const before = toDate(instant(fromDate(now) - RATE_LIMIT_PRUNE_AFTER_MS));
+  return (await db.rateLimitCounter.deleteMany({ where: { updatedAt: { lt: before } } })).count;
+}
