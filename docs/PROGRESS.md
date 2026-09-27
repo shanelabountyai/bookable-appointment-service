@@ -5713,7 +5713,7 @@ leftmost hop is client-supplied and both limits are bypassable.
 
 ## A-140 — SEC-07..SEC-10: the post-audit review's cross-tenant findings (D-68)
 
-Commit `PENDING`.
+Commit `6d38684`.
 
 **What it decided.** D-68: reopen once more, same shape as D-66: the check
 lives at the `packages/db` sink.
