@@ -5748,7 +5748,7 @@ gaps are candidates in D-68.
 
 ## A-141 — the security leftovers: IPv6 buckets, a day cap, pruning, slot-read limits (D-69)
 
-Commit `PENDING`.
+Commit `bc80d54`.
 
 **What it decided.** D-69: all four in one item. The day cap counts the book,
 not a counter, so refused attempts cannot close online booking.
