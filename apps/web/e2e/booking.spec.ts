@@ -122,6 +122,53 @@ test.describe('customer booking flow (A-010)', () => {
   });
 
   /**
+   * A-140 — a booking that SUCCEEDED and lost its response is retried past the
+   * limit. The limiter runs before `bookAppointment`'s idempotency lookup, so
+   * without the check beside it she was told "can't take more bookings" about
+   * an appointment she holds. The first submit reaches the server and its
+   * response is dropped; the retry then meets a spent counter.
+   */
+  test('a retry of a booking that already went through is confirmed, not refused', async ({ page }) => {
+    const ip = '203.0.113.10';
+    await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
+    const prisma = new PrismaClient();
+    try {
+      await reachTheTimeList(page);
+      await firstOption(page).click();
+      await page.getByLabel('Your name').fill('Rae Nunez');
+      await page.getByLabel('Phone').fill('5125550104');
+
+      // The first submit reaches the server; its response never reaches her.
+      let sent: { url: string; headers: Record<string, string>; body: string } | null = null;
+      await page.route('**/book', async (route) => {
+        const request = route.request();
+        if (sent || request.method() !== 'POST') return route.fallback();
+        sent = { url: request.url(), headers: await request.allHeaders(), body: request.postData() ?? '' };
+        await route.fetch();
+        await route.abort();
+      });
+      await page.getByRole('button', { name: 'Confirm appointment' }).click();
+      await expect.poll(() => prisma.appointment.count()).toBe(1);
+
+      const now = new Date();
+      await prisma.rateLimitCounter.upsert({
+        where: { key: `book:${ip}` },
+        create: { key: `book:${ip}`, windowStart: now, count: 10, updatedAt: now },
+        update: { windowStart: now, count: 10, updatedAt: now },
+      });
+      // The retry: the same request, byte for byte, as a network layer resends it.
+      const retry = sent!;
+      const response = await page.request.fetch(retry.url, { method: 'POST', headers: retry.headers, data: retry.body });
+      const text = await response.text();
+      expect(text).toContain('Your appointment is confirmed.');
+      expect(text).not.toContain('more bookings from this connection');
+      expect(await prisma.appointment.count()).toBe(1);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
    * A-114 / D-55 — TWO PEOPLE TYPING. The desk wrote her with a +1 and her
    * accents; she types brackets and no accents. One client, and the booking is
    * on it. The assertion above used to type a number and read the same number

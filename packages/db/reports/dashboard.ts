@@ -204,7 +204,7 @@ async function availableMinutesForProviderDay(
 
   const windowStart = toDate(startOfDay(args.day, args.zone));
   const windowEnd = toDate(startOfDay(addDays(args.day, 1), args.zone));
-  const absences = await findAbsences(db, { providerId: args.providerId, windowStart, windowEnd });
+  const absences = await findAbsences(db, { businessId: args.businessId, providerId: args.providerId, windowStart, windowEnd });
 
   return availableMinutesForDay(
     resolved.windows.map((w) => ({

@@ -264,7 +264,7 @@ async function loadColumn(
       weekday: args.weekday,
     }),
     findBusyAppointments(db, { providerId: args.provider.id, windowStart: args.from, windowEnd: args.to }),
-    findAbsences(db, { providerId: args.provider.id, windowStart: args.from, windowEnd: args.to }),
+    findAbsences(db, { businessId: args.businessId, providerId: args.provider.id, windowStart: args.from, windowEnd: args.to }),
     db.appointment.findMany({
       where: {
         providerId: args.provider.id,

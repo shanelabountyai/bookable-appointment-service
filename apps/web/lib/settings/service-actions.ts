@@ -100,6 +100,7 @@ export async function toggleServiceActive(_prev: FormState, formData: FormData):
     if (error instanceof DeactivationRequiresConfirm) {
       return { errors: { _confirm: error.message } };
     }
+    if (error instanceof ServiceRejected) return { errors: { [error.field]: error.message } };
     throw error;
   }
   revalidatePath('/staff/services');

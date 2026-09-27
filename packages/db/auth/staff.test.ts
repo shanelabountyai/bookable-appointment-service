@@ -229,6 +229,18 @@ describe('A-037 — named staff identity', () => {
       expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toBeNull();
     });
 
+    /** SEC-10. The limiter is spent before the business-scoped lookup, so it
+     *  must be keyed by business too, or another salon could post our ids six
+     *  times and lock our desk out of the switcher. */
+    it('cannot be locked out by another business posting our staff id', async () => {
+      const other = await prisma.business.create({ data: { name: 'Elsewhere', timezone: 'America/Chicago' } });
+      const { id } = await add('Priya', '4821');
+      for (let i = 0; i < 6; i++) {
+        await verifyStaffPin(prisma, { businessId: other.id, staffUserId: id, pin: '0000' }).catch(() => null);
+      }
+      expect(await verifyStaffPin(prisma, { businessId, staffUserId: id, pin: '4821' })).toMatchObject({ id });
+    });
+
     it('refuses somebody who has been taken off the roster', async () => {
       const { id } = await add('Priya', '4821');
       await saveStaffMember(prisma, { businessId, id, name: 'Priya', active: false });

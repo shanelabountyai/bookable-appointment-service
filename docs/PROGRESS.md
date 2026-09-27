@@ -5710,3 +5710,38 @@ guessed at from here.
 leftmost hop is client-supplied and both limits are bypassable.
 
 **What it left behind.** Nothing; the audit is closed.
+
+## A-140 — SEC-07..SEC-10: the post-audit review's cross-tenant findings (D-68)
+
+Commit `PENDING`.
+
+**What it decided.** D-68: reopen once more, same shape as D-66: the check
+lives at the `packages/db` sink.
+
+**What it built.**
+- (07) `createTimeOff`/`createAdHocBlock` check the provider is the business's,
+  and `findAbsences` takes a required `businessId`. All four readers (engine,
+  day view, free runs, dashboard) pass it.
+- (08) `setRunningLate` checks the provider before its `providerId_day` upsert.
+- (09) `acknowledgeConflict` writes no event when its scoped update matched
+  nothing.
+- (10) `markToldAbout` checks the appointment is this column's. The PIN
+  limiter key is `pin:<businessId>:<staffUserId>`, for both consume and reset.
+- The three settings toggles map `*Rejected` to a form error instead of a 500.
+- Public booking: when the limit refuses, a read-only idempotency lookup still
+  confirms a booking that already succeeded.
+
+**What it tested.** `tenant-isolation.test.ts` asserts `P2025` instead of a
+bare `toThrow()`. With `changeVisitServices`' scope reverted it now fails
+(`BookingRejected` where `P2025` was expected); before, it passed. New cases:
+absences (including a stray row written straight to the table), running late
+(an existing row and a squat on a new day), the conflict-ack event, and the
+told mark. `staff.test.ts` covers the cross-business PIN lockout.
+`booking.spec.ts` replays a POST whose response was dropped, after the counter
+is spent. Every new test was run red against the unfixed code.
+
+**What it left behind.** No test for the toggles' error mapping, which only a
+hand-made request can reach. From the reviewers, not scheduled: IPv6 /64
+grouping and a per-business daily cap on anonymous bookings, pruning
+`RateLimitCounter`, and limits on the public slot reads. The salon-operator
+gaps are candidates in D-68.

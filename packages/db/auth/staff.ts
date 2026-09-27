@@ -178,8 +178,10 @@ export async function verifyStaffPin(
   // possibilities, the switcher lists the names to try them against, and it is
   // standing in a room the public walks into. Keyed per staff row so one
   // stylist mistyping hers cannot lock the desk out of everybody else's.
+  // SEC-10: the business is in the key, so another business posting OUR staff
+  // ids spends its own bucket and cannot lock our desk out.
   const within = await consumeRateLimit(prisma, {
-    key: `pin:${args.staffUserId}`,
+    key: `pin:${args.businessId}:${args.staffUserId}`,
     limit: PIN_LIMIT,
     windowMs: PIN_WINDOW_MS,
     now: args.now ?? new Date(),
@@ -201,7 +203,7 @@ export async function verifyStaffPin(
   const ok = await verifyPassword(args.pin, staff.pinHash);
   if (!ok) return null;
 
-  await resetRateLimit(prisma, `pin:${args.staffUserId}`);
+  await resetRateLimit(prisma, `pin:${args.businessId}:${args.staffUserId}`);
 
   return {
     id: staff.id,

@@ -470,10 +470,14 @@ export async function acknowledgeConflict(
   db: Db,
   args: { appointmentId: string; businessId: string; reason: string; actor: Actor; now: Date },
 ): Promise<void> {
-  await db.appointment.updateMany({
+  const { count } = await db.appointment.updateMany({
     where: { id: args.appointmentId, businessId: args.businessId },
     data: { conflictAckAt: args.now, conflictAckReason: args.reason.trim() || null },
   });
+  // SEC-09. The log is append-only, so an event written against another
+  // business's appointment could never be removed. Nothing matched, nothing
+  // happened, and nothing is recorded.
+  if (count === 0) return;
 
   await db.appointmentEvent.create({
     data: {

@@ -127,7 +127,12 @@ export async function toggleProviderActive(
     }
   }
 
-  await setProviderActive(prisma, staff.businessId, id, active);
+  try {
+    await setProviderActive(prisma, staff.businessId, id, active);
+  } catch (error) {
+    if (error instanceof ProviderRejected) return { errors: { [error.field]: error.message } };
+    throw error;
+  }
   revalidatePath('/staff/providers');
   return { ok: true };
 }

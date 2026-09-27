@@ -4829,6 +4829,22 @@ for every website booking would bring back the duplicate clients an earlier
 change removed, and a text-message code needs a live SMS provider the demo
 doesn't have.
 
+## A-140 — a second look at the security fixes found four more
+
+After the audit fixes, three separate automated reviews read the result: a
+salon owner's view of what is missing, a security review trying to break the
+fixes, and a code review of the changes. The security review found four more
+places of the same kind as the audit's worst finding, where one salon could
+reach another's data: blocking another salon's stylist with invisible time
+off, overwriting another salon's "running late" note, writing forged entries
+into another salon's permanent history, and locking another salon's front desk
+out of its PIN switcher. None could be exploited while the product hosts one
+salon, and all four are now refused where the data is written. The code review
+found a test that would have kept passing even if one of the original fixes
+were removed. It now checks for the specific refusal, and it was proven to fail
+against the removed fix. Every new test was run against the unfixed code
+first and failed there.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

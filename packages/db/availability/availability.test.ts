@@ -255,6 +255,7 @@ describe('AVAIL-03 — time off and ad-hoc blocks', () => {
   it('records time off with its actor and reason', async () => {
     await createTimeOff(prisma, { businessId, providerId, startAt: start, endAt: end, reason: 'Dentist' }, STAFF);
     const found = await findAbsences(prisma, {
+      businessId,
       providerId,
       windowStart: toDate(instantFromIso('2026-06-09T00:00:00Z')),
       windowEnd: toDate(instantFromIso('2026-06-10T00:00:00Z')),
@@ -269,6 +270,7 @@ describe('AVAIL-03 — time off and ad-hoc blocks', () => {
   it('distinguishes an ad-hoc block from time off', async () => {
     await createAdHocBlock(prisma, { businessId, providerId, startAt: start, endAt: end, reason: 'Stock take' }, STAFF);
     const [found] = await findAbsences(prisma, {
+      businessId,
       providerId,
       windowStart: toDate(instantFromIso('2026-06-09T00:00:00Z')),
       windowEnd: toDate(instantFromIso('2026-06-10T00:00:00Z')),
@@ -298,11 +300,13 @@ describe('AVAIL-03 — time off and ad-hoc blocks', () => {
       STAFF,
     );
     const dayBefore = await findAbsences(prisma, {
+      businessId,
       providerId,
       windowStart: toDate(instantFromIso('2026-06-09T00:00:00Z')),
       windowEnd: toDate(instantFromIso('2026-06-10T00:00:00Z')),
     });
     const dayAfter = await findAbsences(prisma, {
+      businessId,
       providerId,
       windowStart: toDate(instantFromIso('2026-06-10T00:00:00Z')),
       windowEnd: toDate(instantFromIso('2026-06-11T00:00:00Z')),
@@ -323,6 +327,7 @@ describe('AVAIL-03 — time off and ad-hoc blocks', () => {
       STAFF,
     );
     const dayBefore = await findAbsences(prisma, {
+      businessId,
       providerId,
       windowStart: toDate(instantFromIso('2026-06-09T00:00:00Z')),
       windowEnd: toDate(instantFromIso('2026-06-10T00:00:00Z')),
@@ -333,6 +338,7 @@ describe('AVAIL-03 — time off and ad-hoc blocks', () => {
   it('scopes absences to their own provider', async () => {
     await createTimeOff(prisma, { businessId, providerId, startAt: start, endAt: end }, STAFF);
     const other = await findAbsences(prisma, {
+      businessId,
       providerId: otherProviderId,
       windowStart: toDate(instantFromIso('2026-06-09T00:00:00Z')),
       windowEnd: toDate(instantFromIso('2026-06-10T00:00:00Z')),

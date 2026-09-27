@@ -26,7 +26,9 @@ import { qualifyProvider, setServiceActive, unqualifyProvider, updateService } f
 import { replaceSegments } from './settings/segments';
 import { countFutureAppointments, setProviderActive, updateProvider } from './settings/providers';
 import { countFutureHolds, createResource, createResourceType, setResourceActive } from './settings/resources';
-import { clearRunningLate, setRunningLate } from './day/running-late';
+import { clearRunningLate, markToldAbout, setRunningLate } from './day/running-late';
+import { createAdHocBlock, createTimeOff, findAbsences } from './availability/availability';
+import { acknowledgeConflict } from './availability/impact';
 
 const prisma = new PrismaClient();
 const STAFF = staffActor('staff-1');
@@ -98,6 +100,11 @@ async function snapshot(businessId: string) {
   };
 }
 
+/** Prisma's not-found. A bare `toThrow()` passed with `changeVisitServices`'
+ *  scope reverted, because B's appointment then failed a LATER check against
+ *  A's service — refused for the wrong reason, which is no proof of the scope. */
+const NOT_FOUND = { code: 'P2025' };
+
 let a: Tenant;
 let b: Tenant;
 let before: Awaited<ReturnType<typeof snapshot>>;
@@ -123,10 +130,10 @@ describe('staff at A posting B ids', () => {
     const id = b.appointmentId;
     await expect(
       transitionAppointment(prisma, { businessId: asA(), appointmentId: id, to: 'cancelled', actor: STAFF, now: NOW }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject(NOT_FOUND);
     await expect(
       changeVisitServices(prisma, { businessId: asA(), appointmentId: id, serviceIds: [a.serviceId], now: NOW, actor: STAFF }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject(NOT_FOUND);
     await expect(
       rescheduleAppointment(prisma, {
         businessId: asA(),
@@ -136,9 +143,9 @@ describe('staff at A posting B ids', () => {
         actor: STAFF,
         audience: 'staff',
       }),
-    ).rejects.toThrow();
-    await expect(rescheduleOptions(prisma, { businessId: asA(), appointmentId: id, day: DAY, now: NOW })).rejects.toThrow();
-    await expect(daysForMove(prisma, { businessId: asA(), appointmentId: id, fromDay: DAY, now: NOW })).rejects.toThrow();
+    ).rejects.toMatchObject(NOT_FOUND);
+    await expect(rescheduleOptions(prisma, { businessId: asA(), appointmentId: id, day: DAY, now: NOW })).rejects.toMatchObject(NOT_FOUND);
+    await expect(daysForMove(prisma, { businessId: asA(), appointmentId: id, fromDay: DAY, now: NOW })).rejects.toMatchObject(NOT_FOUND);
   });
 
   it('cannot edit B’s services, segments, providers, qualifications or chairs', async () => {
@@ -221,6 +228,69 @@ describe('staff at A posting B ids', () => {
     // the scope and not an empty fixture.
     expect(await countFutureAppointments(prisma, b.businessId, b.providerId, NOW)).toBe(1);
     expect(await countFutureHolds(prisma, b.businessId, b.resourceId, NOW)).toBe(1);
+  });
+
+  /** SEC-07..SEC-10 (A-140). These rows would be written under A's business,
+   *  so B's snapshot below cannot see them — each is asserted directly. */
+  it('cannot block B’s stylist, even with a row written straight to the table', async () => {
+    const input = {
+      businessId: asA(),
+      providerId: b.providerId,
+      startAt: at('2026-06-09T09:00:00-05:00'),
+      endAt: at('2026-06-09T17:00:00-05:00'),
+    };
+    await expect(createTimeOff(prisma, input, STAFF_ROW)).rejects.toThrow(/not on this book/);
+    await expect(createAdHocBlock(prisma, input, STAFF_ROW)).rejects.toThrow(/not on this book/);
+    expect(await prisma.timeOff.count({ where: { providerId: b.providerId } })).toBe(0);
+
+    const stray = await prisma.timeOff.create({ data: { ...input, ...STAFF_ROW } });
+    const window = { windowStart: input.startAt, windowEnd: input.endAt, providerId: b.providerId };
+    expect(await findAbsences(prisma, { ...window, businessId: b.businessId })).toEqual([]);
+    // The premise: asked as the business that wrote it, the stray row IS found.
+    expect(await findAbsences(prisma, { ...window, businessId: asA() })).toHaveLength(1);
+    await prisma.timeOff.delete({ where: { id: stray.id } });
+  });
+
+  it('cannot claim or squat on B’s running-late row', async () => {
+    await expect(
+      setRunningLate(prisma, { businessId: asA(), providerId: b.providerId, day: DAY, minutes: 45, actor: STAFF, now: NOW }),
+    ).rejects.toThrow(/not on this book/);
+    await expect(
+      setRunningLate(prisma, {
+        businessId: asA(),
+        providerId: b.providerId,
+        day: '2026-06-10',
+        minutes: 45,
+        actor: STAFF,
+        now: NOW,
+      }),
+    ).rejects.toThrow(/not on this book/);
+    expect(await prisma.providerRunningLate.count({ where: { providerId: b.providerId } })).toBe(1);
+  });
+
+  it('cannot write to B’s audit log or mark B’s client as told', async () => {
+    const events = () => prisma.appointmentEvent.count({ where: { appointmentId: b.appointmentId } });
+    const eventsBefore = await events();
+    await acknowledgeConflict(prisma, {
+      businessId: asA(),
+      appointmentId: b.appointmentId,
+      reason: 'forged',
+      actor: STAFF,
+      now: NOW,
+    });
+    expect(await events()).toBe(eventsBefore);
+
+    // A's own column has a claim (makeTenant), so only the appointment id can refuse this.
+    expect(
+      await markToldAbout(prisma, {
+        businessId: asA(),
+        providerId: a.providerId,
+        day: DAY,
+        appointmentId: b.appointmentId,
+        actor: STAFF,
+      }),
+    ).toBeNull();
+    expect(await prisma.runningLateTold.count({ where: { appointmentId: b.appointmentId } })).toBe(0);
   });
 
   it('left every one of B’s rows exactly as it was', async () => {

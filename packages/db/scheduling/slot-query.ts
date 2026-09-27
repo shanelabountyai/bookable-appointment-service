@@ -513,7 +513,7 @@ async function loadBusy(
       windowEnd,
       excludeAppointmentId: args.excludeAppointmentId,
     }),
-    findAbsences(db, { providerId: args.providerId, windowStart, windowEnd }),
+    findAbsences(db, { businessId: args.businessId, providerId: args.providerId, windowStart, windowEnd }),
     // D-22. Keyed on the business day, so it can only ever apply to the day it
     // was set for — a delta does not survive to tomorrow, and nothing has to
     // remember to clear it overnight.

@@ -397,6 +397,13 @@ export async function confirmAppointment(input: {
   // SEC-03. Without this a script can hold every slot in the book with no
   // login. Counted before the client row is written, so a flood makes neither
   // clients nor appointments; after the field checks, so a typo costs nothing.
+  const business = await businessId();
+  // The SERVICES are part of what makes this request the same request:
+  // without them a retry that changed the visit would silently return the
+  // first appointment and report success on a booking that was never made.
+  const idempotencyKey = (clientId: string) =>
+    `public:${input.providerId}:${input.serviceIds.join('+')}:${startAt.toISOString()}:${clientId}`;
+
   const allowed = await consumeRateLimit(prisma, {
     key: `book:${await callerKey()}`,
     limit: BOOK_LIMIT,
@@ -404,10 +411,20 @@ export async function confirmAppointment(input: {
     now: new Date(),
   });
   if (!allowed) {
+    // A retry of a booking that already SUCCEEDED (a double submit, a dropped
+    // response) is told so, not refused: `bookAppointment`'s own idempotency
+    // lookup never runs on this path. Read-only, so a flood still writes nothing.
+    const returning = await findReturningClient(prisma, business, { phone, name });
+    const done =
+      returning &&
+      (await prisma.appointment.findFirst({
+        where: { businessId: business, idempotencyKey: idempotencyKey(returning) },
+        select: { id: true },
+      }));
+    if (done) return { ok: true, message: 'Your appointment is confirmed.' };
     return { ok: false, message: 'We can’t take more bookings from this connection right now. Please call the salon and we’ll book you in.' };
   }
 
-  const business = await businessId();
 
   // Reuse on the same (phone, name) — CANONICALLY, see the note above. Before
   // D-55 this compared what she typed against what was stored, so writing her
@@ -449,10 +466,7 @@ export async function confirmAppointment(input: {
       // the cancellation cutoff apply to them and not to the front desk.
       actor: systemActor,
       audience: 'public',
-      // The SERVICES are part of what makes this request the same request:
-      // without them a retry that changed the visit would silently return the
-      // first appointment and report success on a booking that was never made.
-      idempotencyKey: `public:${input.providerId}:${input.serviceIds.join('+')}:${startAt.toISOString()}:${client.id}`,
+      idempotencyKey: idempotencyKey(client.id),
     });
   } catch (error) {
     // CLIENT-04's block. The wording says the ONE thing she can act on and

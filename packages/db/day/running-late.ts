@@ -83,6 +83,14 @@ export async function setRunningLate(
   if (!Number.isInteger(args.minutes)) {
     throw new RangeError(`Running-late minutes must be a whole number, got: ${args.minutes}`);
   }
+  // SEC-08. The upsert below is keyed on `providerId_day` alone, so without
+  // this another business's providerId would overwrite its row, or create one
+  // under OUR business that its own later claims then silently update.
+  const provider = await db.provider.findFirst({
+    where: { id: args.providerId, businessId: args.businessId },
+    select: { id: true },
+  });
+  if (!provider) throw new Error('That provider is not on this book.');
   if (args.minutes <= 0) {
     await clearRunningLate(db, args);
     return null;
@@ -516,6 +524,13 @@ export async function markToldAbout(
     where: { providerId_day: { providerId: args.providerId, day: args.day } },
   });
   if (!late || late.businessId !== args.businessId) return null;
+  // SEC-10. The appointment id is from the form too: a mark must name one of
+  // THIS column's appointments, never another business's.
+  const appointment = await db.appointment.findFirst({
+    where: { id: args.appointmentId, businessId: args.businessId, providerId: args.providerId },
+    select: { id: true },
+  });
+  if (!appointment) return null;
   const told =
     args.minutes !== undefined && Number.isInteger(args.minutes)
       ? Math.min(late.minutes, Math.max(0, args.minutes))

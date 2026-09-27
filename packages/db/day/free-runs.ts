@@ -128,7 +128,7 @@ export async function freeRunsFor(
       windowEnd: to,
       excludeAppointmentId: args.excludeAppointmentId ?? null,
     }),
-    findAbsences(db, { providerId: args.providerId, windowStart: from, windowEnd: to }),
+    findAbsences(db, { businessId: args.businessId, providerId: args.providerId, windowStart: from, windowEnd: to }),
   ]);
 
   const windows = resolved.windows.map((w) =>

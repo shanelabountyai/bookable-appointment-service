@@ -105,9 +105,13 @@ async function loadPattern(
  */
 export async function findAbsences(
   db: Db,
-  args: { providerId: string; windowStart: Date; windowEnd: Date },
+  args: { businessId: string; providerId: string; windowStart: Date; windowEnd: Date },
 ): Promise<{ id: string; start: Date; end: Date; kind: 'time_off' | 'ad_hoc_block'; reason: string | null }[]> {
+  // SEC-07. Scoped by business as well as provider: the provider FK does not
+  // carry `businessId`, so a row written against another business's stylist
+  // must never reach that business's engine, grid or dashboard.
   const where = {
+    businessId: args.businessId,
     providerId: args.providerId,
     startAt: { lt: args.windowEnd },
     endAt: { gt: args.windowStart },
@@ -296,6 +300,7 @@ export interface AbsenceInput {
  */
 export async function createTimeOff(db: Db, input: AbsenceInput, actor: ActorStamp) {
   assertInterval(input);
+  await assertProviderOfBusiness(db, input);
   const created = await db.timeOff.create({
     data: { ...input, reason: input.reason ?? null, createdByActor: actor.createdByActor, actorRef: actor.actorRef },
   });
@@ -305,6 +310,7 @@ export async function createTimeOff(db: Db, input: AbsenceInput, actor: ActorSta
 
 export async function createAdHocBlock(db: Db, input: AbsenceInput, actor: ActorStamp) {
   assertInterval(input);
+  await assertProviderOfBusiness(db, input);
   const created = await db.adHocBlock.create({
     data: { ...input, reason: input.reason ?? null, createdByActor: actor.createdByActor, actorRef: actor.actorRef },
   });
@@ -354,6 +360,16 @@ function assertInterval(input: AbsenceInput): void {
   if (!(input.endAt > input.startAt)) {
     throw new InvalidAvailability('endAt', 'The end of an absence must come after its start.');
   }
+}
+
+/** SEC-07. `providerId` arrives from a form and the FK does not carry
+ *  `businessId`, so without this one business could block another's stylist. */
+async function assertProviderOfBusiness(db: Db, input: AbsenceInput): Promise<void> {
+  const found = await db.provider.findFirst({
+    where: { id: input.providerId, businessId: input.businessId },
+    select: { id: true },
+  });
+  if (!found) throw new InvalidAvailability('providerId', 'That provider is not on this book.');
 }
 
 export async function deleteTimeOff(db: Db, args: { businessId: string; id: string }): Promise<void> {

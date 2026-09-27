@@ -90,7 +90,12 @@ export async function toggleResourceActive(
     }
   }
 
-  await setResourceActive(prisma, staff.businessId, resourceId, active);
+  try {
+    await setResourceActive(prisma, staff.businessId, resourceId, active);
+  } catch (error) {
+    if (error instanceof ResourceRejected) return { errors: { [error.field]: error.message } };
+    throw error;
+  }
   revalidatePath('/staff/resources');
   revalidatePath('/staff/day');
   return { ok: true };
