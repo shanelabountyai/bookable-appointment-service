@@ -5700,7 +5700,7 @@ record's email unchanged, and puts no `/manage/` link on screen.
 
 ## A-139 — SEC-06: `callerKey` names its Vercel dependency
 
-Commit `PENDING`.
+Commit `30c7458`.
 
 **What it decided.** Document, don't switch header. The deploy target is
 Vercel, which overwrites `x-forwarded-for`; a platform header would only be
