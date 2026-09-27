@@ -54,7 +54,15 @@ export async function openManageLink(token: string, now: Date): Promise<GateResu
  * caller and the limit is collective. Vercel (the deploy target) always sets
  * it, so the ceiling bites in local dev, where it is harmless. Upgrade path if
  * this ever runs behind something else: read the platform's own trusted
- * client-IP header instead, in this one function. The public booking action
+ * client-IP header instead, in this one function.
+ *
+ * SEC-06: the leftmost hop is whatever the CLIENT sent unless a trusted proxy
+ * overwrites it, which Vercel does and `next start` does not — off Vercel a
+ * caller can mint a fresh bucket per request and walk past both limits (the
+ * booking e2e spec relies on exactly that to pin one). Do not host this
+ * anywhere else without switching to the platform's own client-IP header.
+ *
+ * The public booking action
  * (SEC-03) keys its limit here too, so the upgrade reaches both.
  */
 export async function callerKey(): Promise<string> {

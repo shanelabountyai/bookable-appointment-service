@@ -5697,3 +5697,16 @@ a stranger's email puts the record's own email on the outbox row, leaves the
 record's email unchanged, and puts no `/manage/` link on screen.
 
 **What it left behind.** SEC-06. Revisit D-67 if an SMS provider is ever wired.
+
+## A-139 — SEC-06: `callerKey` names its Vercel dependency
+
+Commit `PENDING`.
+
+**What it decided.** Document, don't switch header. The deploy target is
+Vercel, which overwrites `x-forwarded-for`; a platform header would only be
+guessed at from here.
+
+**What it built.** A SEC-06 paragraph in `callerKey`'s comment: off Vercel the
+leftmost hop is client-supplied and both limits are bypassable.
+
+**What it left behind.** Nothing; the audit is closed.
