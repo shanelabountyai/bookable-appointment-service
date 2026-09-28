@@ -5807,7 +5807,7 @@ link still drops `?provider=`.
 
 ## A-143 — C2: losing the race on /book (D-70)
 
-Commit `SHA-PENDING`.
+Commit `c53db69`.
 
 **What it built.** All in `apps/web/app/book/booking-flow.tsx`.
 - The `alternatives` branch now says why she is back on the time list: the
