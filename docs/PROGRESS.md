@@ -5846,3 +5846,7 @@ and focus on the done heading. The second covers the stylist dead end. The
 - The first local run of this item broke the slot-read-limit spec: the empty
   day's copy had been replaced for named stylists. The sentence is back and
   the button sits beneath it.
+- CI run 36459326499 failed six `staff-reschedule` specs. Putting the step
+  count in the legend changes each step group's accessible name, so
+  `/^What time on/` no longer matched. Fixed by removing the `^`. That was the
+  only locator in the suite anchored on a step's name.

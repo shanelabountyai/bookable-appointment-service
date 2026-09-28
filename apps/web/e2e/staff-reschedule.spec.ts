@@ -62,7 +62,7 @@ async function bookAsCustomer(page: Page): Promise<{ appointmentId: string; mana
   // so the second click can land on a day button again before the times have
   // rendered — which failed one run in four here before this was pinned.
   await page.getByRole('group', { name: 'Which day suits you?' }).getByRole('button').first().click();
-  await page.getByRole('group', { name: /^What time on/ }).getByRole('button').first().click();
+  await page.getByRole('group', { name: /What time on/ }).getByRole('button').first().click();
   await page.getByLabel('Your name').fill('Ada Chen');
   await page.getByLabel('Phone').fill('(512) 555-0101');
   await page.getByRole('button', { name: 'Confirm appointment' }).click();
