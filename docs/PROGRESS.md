@@ -5779,6 +5779,8 @@ the requests in flight (a soft cap on abuse). A caller past the slot limit sees
 
 ## A-142 — C1: a stylist's own list stays live (D-70)
 
+Commit `e442098`.
+
 **What it built.**
 - `useAutoRefresh` moved out of `day-grid.tsx` into
   `apps/web/components/auto-refresh.tsx`, plus `<AutoRefresh />` for server
