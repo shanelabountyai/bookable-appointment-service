@@ -1,27 +1,20 @@
 # Next
 
-**Pick up: define four reviewer agents, then run all five reviews in parallel**
-(decided 2026-09-27, D-69's last line). `.claude/agents/salon-operator.md`
-already exists (owner lens, Opus). Add, in the same shape (read-only tools,
-`model:` pinned in frontmatter):
+**Pick up: the owner picks which bundles from `docs/reviews/30-five-lens-review.md`
+to schedule.** Five parallel reviews (operator, stylist, booking client, UX,
+accessibility) ran 2026-09-28 at `59de25b`. The findings are grouped into
+bundles C1–C16 there, and nothing is scheduled yet. For each pick, record a
+D-number, then add an A-row to `06-backlog.md`.
 
-- `stylist` — Opus. Works one column on the staff day view: late clients,
-  colour processing gaps, the push, running late, what's opened up.
-- `booking-client` — Sonnet. `/book` and `/manage` on a 390px phone,
-  first-timer vs regular, no-preference, the fall-back day.
-- `ux-design` — Sonnet. Hierarchy, consistency and copy across staff and
-  public screens.
-- `accessibility` — Opus. Keyboard, screen reader, contrast in both schemes,
-  beyond what the axe helper already catches.
+The recommended first four are small, verified defects: C1 (a stylist's own
+list never refreshes), C2 (the lost race on /book), C3 (one-tap cancel on the
+manage page), and C4 (staff live regions that never announce).
 
-Findings go to a review doc in `docs/reviews/` and become backlog candidates;
-nothing is scheduled until the owner picks.
-
-Security leftovers are closed (A-141). Candidates, not scheduled (D-68):
-two-stylist visit linking, recording request-vs-anyone, a rebook-rate read
-model, reschedule counting, oldest-first waitlist ranking.
+The D-68 candidates still stand, and the operator ranked them in §3 of the
+review. Two-stylist linking should be built. The rebook-rate read model is
+superseded by C10.
 
 Known ceiling, not an item yet: the public side resolves its business with
-`findFirstOrThrow()` and no `where` — replace before a second business exists.
+`findFirstOrThrow()` and no `where`. Replace it before a second business exists.
 
 Before any demo: `./scripts/refresh-hosted-demo.sh`.
