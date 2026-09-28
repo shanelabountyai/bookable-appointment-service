@@ -200,14 +200,33 @@ test.describe('the staff day grid (A-016)', () => {
    * reload and no interaction: a test that navigated would prove only that the
    * page renders.
    */
-  test('picks up a booking made elsewhere within 30 seconds', async ({ page }) => {
-    await page.goto(`/staff/day?day=${DAY}`);
-    await expect(page.getByRole('heading', { name: 'Tuesday 9 June' })).toBeVisible();
-    await expect(page.getByText('Ada Chen')).toHaveCount(0);
+  // A-142 — and on ONE STYLIST'S LIST, which is a server component with no
+  // client code of its own: it claimed to be kept fresh by "the page's timer"
+  // while the only timer was private to the grid, so this contract held on
+  // the desk's screen and silently failed on hers.
+  for (const view of ['grid', 'list'] as const) {
+    test(`picks up a booking made elsewhere within 30 seconds (${view})`, async ({ page }) => {
+      await page.goto(view === 'grid' ? `/staff/day?day=${DAY}` : `/staff/day?day=${DAY}&provider=${await danaId()}`);
+      await expect(page.getByRole('heading', { name: 'Tuesday 9 June' })).toBeVisible();
+      // The premise: the page under test is the one this case names.
+      await expect(page.getByRole('link', { name: 'Walk-in' })).toHaveAttribute(
+        'href',
+        view === 'list' ? /provider=(?!any)/ : /walkin=1/,
+      );
+      await expect(page.getByText('Ada Chen')).toHaveCount(0);
 
-    await seedAppointment({ start: '2026-06-09T13:00:00-05:00', end: '2026-06-09T13:45:00-05:00' });
+      await seedAppointment({ start: '2026-06-09T13:00:00-05:00', end: '2026-06-09T13:45:00-05:00' });
 
-    await expect(page.getByText('Ada Chen')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('Ada Chen')).toBeVisible({ timeout: 30_000 });
+    });
+  }
+
+  /** A-142 — on her own list the stylist IS the answer to "who can take her",
+   *  so Walk-in opens her booking panel rather than asking the whole salon. */
+  test('Walk-in on one stylist\'s list books with that stylist', async ({ page }) => {
+    await page.goto(`/staff/day?day=${DAY}&provider=${await danaId()}`);
+    await page.getByRole('link', { name: 'Walk-in' }).click();
+    await expect(page.getByRole('heading', { name: 'Book with Dana' })).toBeVisible();
   });
 
   /**

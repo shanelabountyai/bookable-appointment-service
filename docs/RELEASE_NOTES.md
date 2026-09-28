@@ -4858,6 +4858,17 @@ list open times are limited too, because each one costs a full availability
 calculation. The table that records callers is also cleared of anything
 older than a day.
 
+## A-142 — a stylist's own screen stays up to date
+
+The front desk's view of the day refreshes itself every 15 seconds. A
+stylist's own list, the one she reads on her phone between clients, looked the
+same but never refreshed: a code comment said it did, and the timer only ever
+ran on the desk's screen. A booking made at the desk could stay off her screen
+until she reloaded it. The timer is now one shared piece that the list and the
+"what's opened up" screen both use. The half-minute freshness test that
+guarded the desk's screen now runs against hers too. The Walk-in button on her
+screen now books with her rather than asking the whole salon.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

@@ -5776,3 +5776,29 @@ the requests in flight (a soft cap on abuse). A caller past the slot limit sees
 "no appointments available", with no wording of its own. Reviewer agents
 (stylist, booking client, UX, accessibility) are next.
 
+
+## A-142 — C1: a stylist's own list stays live (D-70)
+
+**What it built.**
+- `useAutoRefresh` moved out of `day-grid.tsx` into
+  `apps/web/components/auto-refresh.tsx`, plus `<AutoRefresh />` for server
+  components. The grid imports it, and no copy is left behind.
+- `?provider=` (the list) and `/staff/opened` now mount the same 15 s timer.
+- On `?provider=`, Walk-in opens that stylist's booking panel
+  (`/staff/book?provider=…`) instead of the salon-wide "who can take them".
+  An unknown id still falls back to the walk-in mode.
+- `provider-day.tsx`'s comment claimed "the page's own refresh timer already
+  keeps it fresh". Nothing did, because the timer was private to the grid. The
+  comment is corrected.
+
+**What it decided.** Walk-in on one stylist's list means *her*: the person
+holding that screen is the answer to "who can?".
+
+**What it tested.** A-016's 30 s staleness e2e now runs twice, once on the
+grid and once on the list. Its premise asserts the Walk-in href, so each case
+proves it loaded the view it names. A new e2e checks that Walk-in on the list
+lands on "Book with Dana".
+
+**What it left behind.** `/staff/opened` has no staleness e2e of its own: it
+mounts the same component the list's test proves. The book page's "← day"
+link still drops `?provider=`.

@@ -4,6 +4,7 @@ import { listOpenedSlots, listUnreleasedNoShows } from '@bookable/db/appointment
 import { listCallMarks } from '@bookable/db/clients';
 import { requireStaff } from '@/lib/auth/session';
 import { EmptyState } from '@/components/ui/empty-state';
+import { AutoRefresh } from '@/components/auto-refresh';
 import { FreedSlotRow } from './freed-slot-row';
 import { StillBlockedRow } from './still-blocked-row';
 
@@ -59,6 +60,9 @@ export default async function OpenedPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
+      {/* A-142 — this list expires while the desk reads it (see A-102 above),
+          so it re-reads on the day grid's timer. */}
+      <AutoRefresh />
       <div>
         <Link href="/staff/day" className="text-body text-ink-muted hover:underline">
           &larr; Today

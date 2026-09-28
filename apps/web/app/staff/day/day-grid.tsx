@@ -1,14 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { laneStyle } from '@/lib/day/lanes';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { hasDayToRunLate } from '@/lib/day/run-late';
 import { AppointmentChip, CHIP_SHELL } from './appointment-chip';
 import { ColumnControls } from './column-controls';
+import { useAutoRefresh } from '@/components/auto-refresh';
 
 /**
  * The day grid (A-016, Goal 3).
@@ -29,16 +28,7 @@ import { ColumnControls } from './column-controls';
  * now `--ink-muted`'s, asserted by `tokens.test.ts` instead of repeated here.
  */
 
-/**
- * The staleness bound the backlog asks for is 30 seconds, so the grid
- * re-reads every 15 — half the budget, which leaves room for a slow request
- * without the screen ever being older than promised.
- *
- * `router.refresh()` re-runs the server component, so the refresh path is the
- * SAME code as the first render. A client-side fetch-and-merge would be a
- * second way of building the grid, and the two would drift.
- */
-const REFRESH_MS = 15_000;
+/** Kept fresh by the shared 15 s timer (A-142, `components/auto-refresh`). */
 
 export function DayGrid({ model, live = true }: { model: GridModel; live?: boolean }) {
   // `live` is off in the gallery only (A-090). Four grids on `/staff/design`
@@ -333,14 +323,3 @@ const DECORATION: Record<Exclude<GridItem['kind'], 'appointment'>, string> = {
   break: 'bg-ground-sunken text-ink-muted',
   absence: 'bg-ground-sunken text-ink-secondary',
 };
-
-/** Re-reads the server component on a timer. An interval is a subscription to
- *  an external system (the clock), which is what effects are for. */
-function useAutoRefresh(live: boolean) {
-  const router = useRouter();
-  useEffect(() => {
-    if (!live) return;
-    const timer = setInterval(() => router.refresh(), REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [router, live]);
-}

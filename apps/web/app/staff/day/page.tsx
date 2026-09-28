@@ -13,6 +13,7 @@ import { Tab, Tabs } from '@/components/ui/tabs';
 import { DayGrid } from './day-grid';
 import { DaySheet } from './day-sheet';
 import { ProviderDay } from './provider-day';
+import { AutoRefresh } from '@/components/auto-refresh';
 import { RoomStrip } from './room-strip';
 
 export const dynamic = 'force-dynamic';
@@ -121,9 +122,13 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
       <div className="flex flex-wrap gap-2">
         {/* BOOK-04's walk-in: the client is standing at the desk, so the
             entry point is one tap from the day and asks the engine who can
-            take her rather than making the front desk scan four columns. */}
+            take her rather than making the front desk scan four columns.
+
+            A-142 — EXCEPT on one stylist's own list. The person holding that
+            screen is the one who would take her, so "who can?" is already
+            answered: it opens her own booking panel, not the salon-wide one. */}
         <Link
-          href={`/staff/book?walkin=1&day=${day}`}
+          href={column ? `/staff/book?provider=${column.providerId}&day=${day}` : `/staff/book?walkin=1&day=${day}`}
           className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
         >
           Walk-in
@@ -190,7 +195,12 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
           {model.columns.length === 0 ? (
             <p className="text-zinc-600 dark:text-zinc-400">No providers yet. Add one in Providers.</p>
           ) : column ? (
-            <ProviderDay column={column} day={model.day} />
+            <>
+              {/* A-142 — the grid carries its own timer; the list is a server
+                  component, so it borrows the same one. */}
+              <AutoRefresh />
+              <ProviderDay column={column} day={model.day} />
+            </>
           ) : (
             <DayGrid model={model} />
           )}

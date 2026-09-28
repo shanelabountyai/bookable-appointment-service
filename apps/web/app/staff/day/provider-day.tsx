@@ -22,9 +22,11 @@ import { StatusActions } from './status-actions';
  * timetable. A list also needs no absolute positioning, so it reflows at any
  * width and reads in order with no further work.
  *
- * A server component: nothing here needs state, and the page's own refresh
- * timer already keeps it fresh. The status buttons (A-035) are the one island
- * of client code, and they own only their own form.
+ * A server component: nothing here needs state. The page mounts the shared
+ * refresh timer beside it (A-142 — this said "the page's own refresh timer
+ * already keeps it fresh" for 126 items while nothing did; the timer was
+ * private to the grid). The status buttons (A-035) are the one island of
+ * client code, and they own only their own form.
  */
 export function ProviderDay({ column, day }: { column: GridColumn; day: string }) {
   /*
