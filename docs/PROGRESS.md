@@ -5853,7 +5853,7 @@ and focus on the done heading. The second covers the stylist dead end. The
 
 ## A-144 — C3: the manage page gets the phone pass (D-70)
 
-Commit `SHA-PENDING`.
+Commit `287398e`.
 
 **What it built.** All under `apps/web/app/manage/[token]/`.
 - `CancelForm` now asks once, then confirms inside the form: "Cancel this
