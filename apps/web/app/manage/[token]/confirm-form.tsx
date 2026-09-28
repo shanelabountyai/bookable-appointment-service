@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
+import { Button } from '@/components/ui/button';
 import { type ConfirmState, confirmAppointment } from '@/lib/manage/actions';
 
 const initial: ConfirmState = {};
@@ -13,13 +14,9 @@ export function ConfirmForm({ token }: { token: string }) {
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="token" value={token} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-      >
+      <Button type="submit" variant="primary" pending={pending} className="self-start">
         {pending ? 'Confirming…' : "I'll be there"}
-      </button>
+      </Button>
       <p aria-live="polite" className="text-sm text-zinc-600 dark:text-zinc-400">
         {state.message ?? ''}
       </p>

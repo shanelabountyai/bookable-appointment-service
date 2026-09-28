@@ -136,6 +136,7 @@ test.describe('the manage link (A-013)', () => {
     const link = await bookAndTakeTheLink(page);
     await page.goto(link);
     await page.getByRole('button', { name: 'Cancel this appointment' }).click();
+    await page.getByRole('button', { name: 'Yes, cancel' }).click();
     // The PAGE is the feedback: the action revalidates, so the appointment
     // re-renders in its new state and the button that no longer applies goes
     // away. Deliberately not asserting the action's own success sentence —
@@ -166,6 +167,91 @@ test.describe('the manage link (A-013)', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  /**
+   * A-144 (C3). Before this item, one tap cancelled outright — the only
+   * destructive control on this whole app with no confirmation step. The
+   * guard is the shape of a customer's actual mis-tap: press the button that
+   * used to fire immediately and confirm nothing changed.
+   */
+  test('a single tap on "Cancel this appointment" does not cancel it (A-144)', async ({ page }) => {
+    const link = await bookAndTakeTheLink(page);
+    await page.goto(link);
+    await page.getByRole('button', { name: 'Cancel this appointment' }).click();
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow();
+      expect(appointment.status).not.toBe('cancelled');
+      expect(appointment.status).not.toBe('cancelled_late');
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    // The confirm step, not the status sentence: nothing has been submitted.
+    await expect(page.getByRole('button', { name: 'Yes, cancel' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Keep it' })).toBeVisible();
+
+    // TOKEN-03: the confirm sentence names the visit she already sees above —
+    // never the `cancelled_late` her cutoff may resolve to.
+    await expect(page.getByText(/^Cancel your /)).toBeVisible();
+    await expect(page.getByText('cancelled_late')).toHaveCount(0);
+  });
+
+  test('"Keep it" backs out of the confirm step without cancelling', async ({ page }) => {
+    const link = await bookAndTakeTheLink(page);
+    await page.goto(link);
+    await page.getByRole('button', { name: 'Cancel this appointment' }).click();
+    await page.getByRole('button', { name: 'Keep it' }).click();
+
+    await expect(page.getByRole('button', { name: 'Cancel this appointment' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Yes, cancel' })).toHaveCount(0);
+
+    const prisma = new PrismaClient();
+    try {
+      const appointment = await prisma.appointment.findFirstOrThrow();
+      expect(appointment.status).toBe('booked');
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  /**
+   * §4's 44px bar (A-089), MEASURED — a class-string assertion passes the day
+   * somebody adds a class that wins the cascade. Every control the customer
+   * can tap to change her appointment, across all three forms.
+   */
+  test('every manage button clears the 44px target (A-144)', async ({ page }) => {
+    const link = await bookAndTakeTheLink(page, { far: true });
+    await page.goto(link);
+
+    await expect(page.getByRole('button', { name: "I'll be there" })).toBeVisible();
+    const select = page.getByLabel('Move to which day?');
+    const days = await select.locator('option').allTextContents();
+    await select.selectOption({ label: days.filter((d) => d !== 'Choose a day…')[0]! });
+    await page.getByRole('radio').first().check();
+    await page.getByRole('button', { name: 'Cancel this appointment' }).click();
+
+    for (const name of ["I'll be there", 'Reschedule', 'Yes, cancel', 'Keep it']) {
+      const box = await page.getByRole('button', { name }).boundingBox();
+      expect(box?.height, `"${name}" is under the 44px bar`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  /** The salon's own phone, not this appointment's — so it belongs equally on
+   *  a valid link and on a dead one, and the "call the salon" sentence on
+   *  both is no longer a dead end. */
+  test('the salon phone is a tel: link in the shell, on a valid link and a dead one', async ({ page }) => {
+    const link = await bookAndTakeTheLink(page);
+    await page.goto(link);
+    const onAppointment = page.getByRole('link', { name: /^\(312\) 555-0184$/ });
+    await expect(onAppointment).toHaveAttribute('href', 'tel:3125550184');
+    const box = await onAppointment.boundingBox();
+    expect(box?.height, 'the phone link is under the 44px bar').toBeGreaterThanOrEqual(44);
+
+    await page.goto('/manage/definitely-not-a-real-token');
+    await expect(page.getByRole('link', { name: /^\(312\) 555-0184$/ })).toHaveAttribute('href', 'tel:3125550184');
   });
 
   /** A-021: the customer's half of the confirm loop (APPT-02). */

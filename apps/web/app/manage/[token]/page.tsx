@@ -19,7 +19,9 @@ import { prisma } from '@bookable/db';
 import { type AppointmentStatus, canReschedule, possibleTransitionsFrom } from '@bookable/core/scheduling';
 import { worstCutoff } from '@bookable/core/settings';
 import { fromDate } from '@bookable/core/time';
+import { PhoneLink } from '@/components/ui/phone-link';
 import { readableInstant } from '@/lib/customer-format';
+import { salon } from '@/lib/site/content';
 import { openManageLink } from '@/lib/manage/token-gate';
 import { listRescheduleDays } from '@/lib/manage/actions';
 import { CancelForm } from './cancel-form';
@@ -32,11 +34,17 @@ export const metadata: Metadata = {
 
 export default async function ManagePage({ params }: PageProps<'/manage/[token]'>) {
   const { token } = await params;
+  // The one business this deployment serves (`salon()`, same lookup the
+  // public site uses) — independent of the token, so fetching it here tells
+  // an invalid or expired link nothing it did not already know (TOKEN-02).
+  // It is why the "call the salon" sentence on the failure branch can now
+  // carry a number to actually call.
+  const phone = (await salon())?.phone;
   const gate = await openManageLink(token, new Date());
 
   if (!gate.ok) {
     return (
-      <Shell>
+      <Shell phone={phone}>
         <p className="text-zinc-600 dark:text-zinc-400">
           {gate.reason === 'too-many'
             ? 'Too many requests just now. Please wait a minute and try again.'
@@ -63,6 +71,7 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
   });
 
   const status = appointment.status as AppointmentStatus;
+  const services = appointment.lines.map((line) => line.service.name).join(' + ');
 
   /**
    * The reschedule affordance is asked of the SAME function the write path
@@ -86,11 +95,11 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
   });
 
   return (
-    <Shell>
+    <Shell phone={phone}>
       <h1 className="text-2xl font-semibold tracking-tight">Your appointment</h1>
 
       <dl className="flex flex-col gap-3 text-sm">
-        <Row label="What">{appointment.lines.map((line) => line.service.name).join(' + ')}</Row>
+        <Row label="What">{services}</Row>
         <Row label="With">{appointment.provider.displayName}</Row>
         <Row label="When">{readableInstant(appointment.startAt, appointment.business.timezone)}</Row>
         <Row label="Where">{appointment.business.name}</Row>
@@ -107,7 +116,12 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
       {/* An AFFORDANCE, not an authorisation: the table says which states a
           cancellation can leave at all, and the server action asks it again
           — with the actor and the cutoff — when the button is pressed. */}
-      {possibleTransitionsFrom(status).includes('cancelled_late') ? <CancelForm token={token} /> : null}
+      {possibleTransitionsFrom(status).includes('cancelled_late') ? (
+        <CancelForm
+          token={token}
+          summary={`${services} on ${readableInstant(appointment.startAt, appointment.business.timezone)}`}
+        />
+      ) : null}
 
       {!movable.allowed && movable.refusal === 'inside-cancellation-cutoff' ? (
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -142,8 +156,20 @@ const PLAIN_LANGUAGE = {
   cancelled_late: 'This appointment is cancelled.',
 } satisfies Record<AppointmentStatus, string>;
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 p-8">{children}</main>;
+/**
+ * A-144 (C3): `phone` is nullable and rendered only when set (same rule the
+ * public site's `salon()` carries) — a salon that has not filled it in shows
+ * nothing, never a dead `tel:` link. It sits in the shell rather than in each
+ * branch above because every one of them — happy path, too-many, no-link —
+ * ends in "call the salon" and none of them should say that without a number.
+ */
+function Shell({ children, phone }: { children: React.ReactNode; phone?: string | null }) {
+  return (
+    <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 p-8">
+      {children}
+      {phone ? <PhoneLink phone={phone} /> : null}
+    </main>
+  );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

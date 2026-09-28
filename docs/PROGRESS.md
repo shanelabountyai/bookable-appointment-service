@@ -5850,3 +5850,48 @@ and focus on the done heading. The second covers the stylist dead end. The
   count in the legend changes each step group's accessible name, so
   `/^What time on/` no longer matched. Fixed by removing the `^`. That was the
   only locator in the suite anchored on a step's name.
+
+## A-144 — C3: the manage page gets the phone pass (D-70)
+
+Commit `SHA-PENDING`.
+
+**What it built.** All under `apps/web/app/manage/[token]/`.
+- `CancelForm` now asks once, then confirms inside the form: "Cancel this
+  appointment" opens a local-state confirm step reading "Cancel your {service}
+  on {day} at {time}?" with "Yes, cancel" / "Keep it" — `variant="destructive"`
+  on both the opener and the "Yes, cancel" button. The confirm sentence is
+  built from the same `services` and `readableInstant()` the page already
+  prints above the form, never a status word: TOKEN-03 forbids surfacing
+  `cancelled_late` here, so the sentence only ever repeats what she can already
+  see.
+- `ConfirmForm` and `RescheduleForm`'s submit buttons moved onto the shared
+  `Button` (44px `md` size), matching `CancelForm`. All three manage forms now
+  go through the one component instead of three hand-rolled `<button>`s.
+- The salon's phone renders as a `PhoneLink` (the existing sanitized, 44px
+  staff component — reused rather than a fourth hand-rolled `tel:` copy) in
+  `Shell`, which wraps every branch of the page: the happy path, the
+  too-many-requests page, and the invalid/expired-link page. `salon()` — the
+  same nullable, business-agnostic lookup the public site's footer uses — is
+  fetched once, ahead of the token gate, so an invalid link learns nothing
+  about which appointment it might have named (TOKEN-02): the number shown is
+  the salon's, not this appointment's, and it renders identically whether the
+  token resolves or not.
+
+**What it decided.** The phone fetch sits above `openManageLink`, not inside
+the success branch — the two "please call the salon" sentences (rate-limited,
+invalid link) were dead ends with no number attached, and `salon()` answering
+independently of the token is what makes adding it there safe.
+
+**What it tested.** `e2e/manage.spec.ts`: the existing cancel test now clicks
+"Yes, cancel" after "Cancel this appointment". Added a single-tap-does-not-
+cancel test (asserts the DB status is unchanged and the confirm step is what's
+showing, not a cancellation), a "Keep it" back-out test, a `boundingBox()`
+guard across all three forms' buttons ("I'll be there", "Reschedule",
+"Yes, cancel", "Keep it"), and a phone-link test asserting the sanitized
+`tel:` href and 44px target on both a valid link and
+`/manage/definitely-not-a-real-token`.
+
+**What it left behind.** Nothing new. The two pre-existing items already on
+`NEXT.md` stand: the non-barrier-based check-in race test, and the
+single-business `findFirstOrThrow()`/`findFirst()` ceiling — `salon()` is
+another caller of that same one-business assumption.

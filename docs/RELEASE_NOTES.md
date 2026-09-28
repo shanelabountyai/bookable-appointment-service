@@ -4883,6 +4883,22 @@ available" instead of a dead end. This path had no end-to-end test. It has one
 now, and it plays the race out for real: a second booking lands while the
 first client is typing.
 
+## A-144 — cancelling now asks once, on purpose
+
+The customer's own cancel link used to fire the moment it was tapped — the
+single most destructive action open to an anonymous visitor, with no
+confirmation and a touch target under the accessibility floor. It now asks:
+"Cancel your Cut on Tuesday 9 June at 10:00?", with "Yes, cancel" and "Keep
+it" as equally-sized buttons, styled to read as destructive. The sentence
+never says which cancellation category the salon will book it under — that
+distinction is the salon's business record, not something to show the person
+cancelling. All three forms on the page (confirm, reschedule, cancel) now
+share the same button component, measured at the accessibility target rather
+than assumed from a class name. And every version of this page — including
+the "this link is no longer valid, call the salon" dead end — now has the
+salon's phone number as a tappable link, so the sentence it ends on has
+somewhere to go.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

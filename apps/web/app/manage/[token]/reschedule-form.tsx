@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   type OfferedTime,
   type OpenDay,
@@ -89,13 +90,9 @@ export function RescheduleForm({ token, days }: { token: string; days: OpenDay[]
       ) : null}
 
       <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={submitting || times.length === 0}
-          className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-        >
+        <Button type="submit" variant="primary" pending={submitting} disabled={times.length === 0}>
           {submitting ? 'Moving…' : 'Reschedule'}
-        </button>
+        </Button>
         <p aria-live="polite" className="text-sm text-zinc-600 dark:text-zinc-400">
           {state.message ?? ''}
         </p>
