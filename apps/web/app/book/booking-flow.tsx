@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
@@ -130,7 +130,29 @@ export function BookingFlow({ services }: { services: Service[] }) {
   const [times, setTimes] = useState<OfferedTime[]>([]);
   const [time, setTime] = useState<OfferedTime | null>(null);
   const [result, setResult] = useState<ConfirmResult | null>(null);
+  /** A-143. What she typed, kept outside the form so it survives the form
+   *  unmounting — a lost race sends her back to the time list, and the name
+   *  and phone she typed are not what she lost. */
+  const [details, setDetails] = useState({ name: '', phone: '', email: '' });
   const [pending, startTransition] = useTransition();
+
+  /** A-143 — each screen's question takes focus when the screen changes, so a
+   *  screen reader hears where she has arrived instead of silence on a <body>
+   *  whose last-focused button just unmounted. Skipped on first render: the
+   *  page opening is not a move. Compared to the previous step rather than
+   *  flagged, so Strict Mode's double effect does not focus twice. */
+  const root = useRef<HTMLDivElement>(null);
+  const shown = useRef(step);
+  useEffect(() => {
+    if (shown.current === step) return;
+    shown.current = step;
+    root.current?.querySelector<HTMLElement>('[data-step-heading]')?.focus();
+  }, [step]);
+
+  /** A-143 — why she is back on the time list. Only the `alternatives` branch
+   *  lands there with a refusal in hand; every other way onto this step clears
+   *  `result` first, so this cannot outlive the list it explains. */
+  const lostRace = step === 'time' && result && !result.ok ? result.message : undefined;
 
   /** Announced politely whenever the list of times changes (BOOK-01).
    *
@@ -140,9 +162,11 @@ export function BookingFlow({ services }: { services: Service[] }) {
   const announcement =
     step !== 'time' || pending
       ? ''
-      : times.length === 0
-        ? 'No appointments available that day. Please choose another day.'
-        : `${times.length} appointment ${times.length === 1 ? 'time' : 'times'} available on ${day?.label ?? ''}.`;
+      : `${lostRace ? `${lostRace} ` : ''}${
+          times.length === 0
+            ? 'No appointments available that day. Please choose another day.'
+            : `${times.length} appointment ${times.length === 1 ? 'time' : 'times'} available on ${day?.label ?? ''}.`
+        }`;
 
   /** ORDER MATTERS (VISIT-01): tapping adds to the end, so selection order is
    *  the visit order. Re-tapping removes. Changing the visit invalidates
@@ -170,13 +194,30 @@ export function BookingFlow({ services }: { services: Service[] }) {
    *  the second tap on a slow connection turning into a second server action. */
   const stepProps = { disabled: pending, 'aria-busy': pending || undefined };
 
+  /** A-143 — the step count lives IN the question, so the focus move above
+   *  reads "Step 3 of 5, Which day suits you?" in one breath. */
+  const legend = (question: React.ReactNode) => (
+    <legend data-step-heading tabIndex={-1} className="mb-2 text-section font-semibold outline-none">
+      <span className="block text-body font-normal text-ink-muted">
+        Step {stepIndex + 1} of {STEP_ORDER.length}
+      </span>
+      {question}
+    </legend>
+  );
+
+  /** A-056's "no preference", from the stylist step and — A-143 — from a
+   *  named stylist's empty day, where it is the one tap out of a dead end. */
+  const chooseAnyone = () => {
+    setProvider({ id: ANYONE, name: 'No preference' });
+    setDay(null);
+    startTransition(async () => {
+      setOpenDays(await listAnyProviderDays(ids));
+      setStep('day');
+    });
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      {step !== 'done' && (
-        <nav aria-label="Progress" className="text-body text-ink-muted">
-          Step {stepIndex + 1} of {STEP_ORDER.length}
-        </nav>
-      )}
+    <div ref={root} className="flex flex-col gap-6">
 
       {/* One live region for the whole flow, so a screen reader hears the
           times change without the focus moving. */}
@@ -191,7 +232,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
           tap past. */}
       {step === 'service' && (
         <fieldset {...stepProps} className="flex flex-col gap-3">
-          <legend className="mb-2 text-section font-semibold">What would you like booked?</legend>
+          {legend('What would you like booked?')}
           <p className="-mt-2 text-body text-ink-muted">Pick as many as you like — we&apos;ll book them together.</p>
           {services.map((s) => {
             const index = ids.indexOf(s.id);
@@ -265,7 +306,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
 
       {step === 'who' && chosen.length > 0 && (
         <fieldset {...stepProps} className="flex flex-col gap-3">
-          <legend className="mb-2 text-section font-semibold">Who would you like to see?</legend>
+          {legend('Who would you like to see?')}
           {/* A-056 (SVC-02) — FIRST, and that position is the point. A client
               who has never been here has no opinion about Dana or Priya, and a
               forced choice is answered by picking the top name or leaving.
@@ -273,14 +314,9 @@ export function BookingFlow({ services }: { services: Service[] }) {
               every new client while the junior sits at 40%. */}
           <button
             type="button"
+            aria-pressed={provider?.id === ANYONE}
             className={cn(card, provider?.id === ANYONE && selected)}
-            onClick={() => {
-              setProvider({ id: ANYONE, name: 'No preference' });
-              startTransition(async () => {
-                setOpenDays(await listAnyProviderDays(ids));
-                setStep('day');
-              });
-            }}
+            onClick={chooseAnyone}
           >
             <span className="font-medium">No preference</span>
             <span className="block text-body text-ink-muted">Whoever is free — we&apos;ll match you up</span>
@@ -289,9 +325,11 @@ export function BookingFlow({ services }: { services: Service[] }) {
             <button
               key={p.id}
               type="button"
+              aria-pressed={provider?.id === p.id}
               className={cn(card, provider?.id === p.id && selected)}
               onClick={() => {
                 setProvider(p);
+                setDay(null);
                 startTransition(async () => {
                   setOpenDays(await listDaysWithOpenings(ids, p.id));
                   setStep('day');
@@ -307,9 +345,19 @@ export function BookingFlow({ services }: { services: Service[] }) {
 
       {step === 'day' && chosen.length > 0 && provider && (
         <fieldset {...stepProps} className="flex flex-col gap-3">
-          <legend className="mb-2 text-section font-semibold">Which day suits you?</legend>
+          {legend('Which day suits you?')}
           {openDays.length === 0 ? (
-            <p className="text-ink-muted">No appointments available in the next few weeks. Please call us.</p>
+            <>
+              <p className="text-ink-muted">No appointments available in the next few weeks. Please call us.</p>
+              {/* A-143 — her stylist is full, and "please call us" was the
+                  only way on. Most clients asking for a name would take
+                  anyone over a phone call; one tap asks the salon instead. */}
+              {provider.id !== ANYONE && (
+                <Button className="w-full sm:w-auto" onClick={chooseAnyone}>
+                  See anyone available
+                </Button>
+              )}
+            </>
           ) : (
             // TWO COLUMNS, weekday over date. The list is up to twenty days
             // and was a thousand pixels of "Tuesday 8 September" rows on a
@@ -323,9 +371,11 @@ export function BookingFlow({ services }: { services: Service[] }) {
                 <li key={d.day}>
                   <button
                     type="button"
+                    aria-pressed={day?.day === d.day}
                     className={cn(card, 'px-3', day?.day === d.day && selected)}
                     onClick={() => {
                       setDay(d);
+                      setResult(null);
                       startTransition(async () => {
                         setTimes(
                           provider.id === ANYONE
@@ -349,7 +399,11 @@ export function BookingFlow({ services }: { services: Service[] }) {
 
       {step === 'time' && chosen.length > 0 && provider && day && (
         <fieldset {...stepProps} className="flex flex-col gap-3">
-          <legend className="mb-2 text-section font-semibold">What time on {day.label}?</legend>
+          {legend(`What time on ${day.label}?`)}
+          {/* A-143 — shown as well as announced: the live region above is
+              for a screen reader, and a sighted client dropped back here
+              with no word of why assumes the page broke. */}
+          {lostRace && <p className="text-body font-medium text-danger-ink">{lostRace}</p>}
           {times.length === 0 ? (
             <p className="text-ink-muted">No appointments left that day. Please choose another.</p>
           ) : (
@@ -369,6 +423,10 @@ export function BookingFlow({ services }: { services: Service[] }) {
                     className={cn(card, 'items-center px-2 text-center', time?.at === t.at && selected)}
                     onClick={() => {
                       setTime(t);
+                      // A-143. A refusal answers the time it was about; kept,
+                      // it fired "that time has just been taken" at the next
+                      // one, which is free.
+                      setResult(null);
                       setStep('details');
                     }}
                   >
@@ -388,6 +446,14 @@ export function BookingFlow({ services }: { services: Service[] }) {
       {step === 'details' && chosen.length > 0 && provider && day && time && (
         <form
           className="flex flex-col gap-4"
+          onChange={(event) => {
+            const data = new FormData(event.currentTarget);
+            setDetails({
+              name: String(data.get('name') ?? ''),
+              phone: String(data.get('phone') ?? ''),
+              email: String(data.get('email') ?? ''),
+            });
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
@@ -424,7 +490,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
             });
           }}
         >
-          <h2 className="text-section font-semibold">
+          <h2 data-step-heading tabIndex={-1} className="text-section font-semibold outline-none">
             {/* A-071. On the "no preference" path the person is whoever the
                 TIME carries — SVC-02 chose her when the list was built, and
                 she changes if the first one is taken while the client is
@@ -445,13 +511,13 @@ export function BookingFlow({ services }: { services: Service[] }) {
               refusal appeared on screen and said nothing at all to a screen
               reader. */}
           <Field id="name" label="Your name" error={result?.fieldErrors?.name ?? ''}>
-            {(control) => <Input {...control} name="name" required autoComplete="name" />}
+            {(control) => <Input {...control} name="name" required autoComplete="name" defaultValue={details.name} />}
           </Field>
           <Field id="phone" label="Phone" error={result?.fieldErrors?.phone ?? ''}>
-            {(control) => <Input {...control} name="phone" type="tel" required autoComplete="tel" />}
+            {(control) => <Input {...control} name="phone" type="tel" required autoComplete="tel" defaultValue={details.phone} />}
           </Field>
           <Field id="email" label="Email (optional)">
-            {(control) => <Input {...control} name="email" type="email" autoComplete="email" />}
+            {(control) => <Input {...control} name="email" type="email" autoComplete="email" defaultValue={details.email} />}
           </Field>
 
           {result && !result.ok && result.message && (
@@ -475,7 +541,9 @@ export function BookingFlow({ services }: { services: Service[] }) {
 
       {step === 'done' && chosen.length > 0 && provider && day && time && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-page-title font-semibold">Your appointment is confirmed</h2>
+          <h2 data-step-heading tabIndex={-1} className="text-page-title font-semibold outline-none">
+            Your appointment is confirmed
+          </h2>
           <p className="text-ink-secondary">
             {/* A-097. The SAME reader the details heading is — the person is
                 whoever the TIME carries, and on the "no preference" path

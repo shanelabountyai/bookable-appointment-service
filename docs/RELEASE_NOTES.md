@@ -4869,6 +4869,20 @@ until she reloaded it. The timer is now one shared piece that the list and the
 guarded the desk's screen now runs against hers too. The Walk-in button on her
 screen now books with her rather than asking the whole salon.
 
+## A-143 — losing a time to someone else, on the phone
+
+Two people can want the same appointment time. When a client loses it while
+typing her phone number, the page used to drop her back on the list of times
+without saying why, and it cleared what she had typed. The "that time has just
+been taken" message then showed up against the next time she chose, which was
+free. Now she is told why, both on screen and to a screen reader, and her
+details are kept. The message stays with the time it was about. Each screen
+moves focus to its own question, so a screen-reader user hears where they have
+arrived. A stylist with nothing free now offers a one-tap "see anyone
+available" instead of a dead end. This path had no end-to-end test. It has one
+now, and it plays the race out for real: a second booking lands while the
+first client is typing.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

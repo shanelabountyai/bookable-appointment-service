@@ -5804,3 +5804,45 @@ lands on "Book with Dana".
 **What it left behind.** `/staff/opened` has no staleness e2e of its own: it
 mounts the same component the list's test proves. The book page's "← day"
 link still drops `?provider=`.
+
+## A-143 — C2: losing the race on /book (D-70)
+
+Commit `SHA-PENDING`.
+
+**What it built.** All in `apps/web/app/book/booking-flow.tsx`.
+- The `alternatives` branch now says why she is back on the time list: the
+  refusal is shown on the time step and prefixed to the live region that
+  already announces the times. The region is not a new one.
+- The typed name, phone and email live in component state (the form's
+  `onChange`) and come back as `defaultValue`, so they survive the form
+  unmounting. They survive Back too.
+- `result` is cleared when she picks a time or a day. Before this, the stale
+  "that time has just been taken" fired on the details step of the next time,
+  which was free.
+- Each step's legend, the details heading and the done heading take focus when
+  the step changes (not on first load). The step count moved into the legend,
+  and the visible "Progress" nav is gone.
+- `aria-pressed` on the stylist, no-preference and day cards.
+- On a named stylist's empty day, "See anyone available" runs the
+  no-preference path in one tap. The "please call us" sentence stays above it.
+
+**What it decided.** The step count belongs in the legend, where focus lands,
+rather than in a separate nav that a screen reader hears only on the way past.
+
+**What it tested.** Two new e2e specs in `booking.spec.ts`. The first covers
+the `alternatives` branch: a named stylist, a stranger booked into Dana's
+09:00 while she types, and the spec asserts the reason on screen and in the
+live region, legend focus, her details kept, no stale error on the next time,
+and focus on the done heading. The second covers the stylist dead end. The
+"five screens" spec now reads the step count from the legend.
+
+**What it left behind.**
+- `packages/db/appointments/transition.test.ts` › "lets exactly one of two
+  simultaneous check-ins win" is not barrier-based. Under load, the second
+  attempt starts after the first commits and gets `TransitionRefused` rather
+  than `AppointmentMovedFirst`. It failed 2 of 6 runs on 2026-09-28 at a load
+  average of 30–60. Both outcomes are correct product behaviour, so this is a
+  test defect. It is not A-143's, and it needs a row.
+- The first local run of this item broke the slot-read-limit spec: the empty
+  day's copy had been replaced for named stylists. The sentence is back and
+  the button sits beneath it.

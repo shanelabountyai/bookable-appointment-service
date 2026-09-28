@@ -311,7 +311,7 @@ test.describe('customer booking flow (A-010)', () => {
   // BOOK-01's two hard numbers.
   test('is five screens with two required text inputs', async ({ page }) => {
     await reachTheTimeList(page);
-    await expect(page.getByRole('navigation', { name: 'Progress' })).toContainText('of 5');
+    await expect(page.getByRole('group')).toContainText('Step 4 of 5');
 
     await firstOption(page).click();
     await expect(page.locator('input[required]')).toHaveCount(2);
@@ -373,6 +373,121 @@ test.describe('customer booking flow (A-010)', () => {
     await scan('time');
     await firstOption(page).click();
     await scan('details');
+  });
+
+  /**
+   * A-143 — THE `alternatives` BRANCH, which had no spec while its sibling
+   * `instead` had two. Three defects lived in it at once: she was dropped back
+   * on the time list with no word of why, the name and phone she had typed
+   * were gone, and the "that time has just been taken" she never saw on the
+   * time list fired instead against the NEXT time she picked — which is free.
+   *
+   * A NAMED stylist, so the refusal cannot be answered with `instead` (that is
+   * the no-preference path), and a stranger taking the very instant on screen
+   * rather than time off, so the other times on the day stay on offer.
+   */
+  test('losing the race keeps her details, says why, and does not haunt the next time', async ({ page }) => {
+    let day: string;
+    let zone: string;
+    const setup = new PrismaClient();
+    try {
+      zone = (await setup.business.findFirstOrThrow()).timezone;
+      // The next Tuesday: a whole open day, so 09:00 exists whatever hour the
+      // sweep runs — the first day on offer is truncated by the lead time.
+      let target = calendarDay(toLabel(fromDate(new Date()), zoneId(zone)).day);
+      do {
+        target = addDays(target, 1);
+      } while (weekdayOf(target) !== 2);
+      day = target;
+    } finally {
+      await setup.$disconnect();
+    }
+    const { weekday, date } = readableDayParts(day);
+
+    await chooseServiceAndProvider(page);
+    // Each step's question takes focus, and carries the step count.
+    await expect(page.locator('legend')).toBeFocused();
+    await expect(page.locator('legend')).toContainText('Step 3 of 5');
+    await page.getByRole('button', { name: `${weekday} ${date}` }).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await page.getByRole('button', { name: '09:00', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 2 })).toBeFocused();
+
+    await page.getByLabel('Your name').fill('Ada Chen');
+    await page.getByLabel('Phone').fill('(512) 555-0101');
+
+    // …and while she is typing, the desk books Dana's 09:00 for somebody else.
+    const race = new PrismaClient();
+    try {
+      const business = await race.business.findFirstOrThrow();
+      const dana = await race.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const cut = await race.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const stranger = await race.client.create({ data: { businessId: business.id, name: 'Walk Up' } });
+      const resolution = resolve(calendarDay(day), wallTime('09:00'), zoneId(zone));
+      if (resolution.kind !== 'unique') throw new Error(`${day} 09:00 is not unique in ${zone}`);
+      await bookAppointment(race, {
+        businessId: business.id,
+        providerId: dana.id,
+        serviceIds: [cut.id],
+        clientId: stranger.id,
+        startAt: toDate(resolution.at),
+        now: toDate(instant(Date.now())),
+        actor: staffActor('staff-1'),
+        audience: 'staff',
+      });
+    } finally {
+      await race.$disconnect();
+    }
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+
+    // Back on the time list, told why — on screen AND through the live region
+    // that already announces the times — with the question focused.
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await expect(page.getByRole('group')).toContainText('that time has just been taken');
+    await expect(page.locator('p[aria-live="polite"]')).toContainText('that time has just been taken');
+    await expect(page.locator('legend')).toBeFocused();
+    await expect(page.getByRole('button', { name: '09:00', exact: true })).toHaveCount(0);
+
+    // A free time: the refusal stays with the time it was about.
+    await firstOption(page).click();
+    await expect(page.getByText('that time has just been taken')).toHaveCount(0);
+    // And what she typed is still typed.
+    await expect(page.getByLabel('Your name')).toHaveValue('Ada Chen');
+    await expect(page.getByLabel('Phone')).toHaveValue('(512) 555-0101');
+
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    await expect(page.getByRole('heading', { name: 'Your appointment is confirmed' })).toBeFocused();
+  });
+
+  test('a stylist with nothing free is one tap from anyone available', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      await prisma.timeOff.create({
+        data: {
+          businessId: business.id,
+          providerId: dana.id,
+          startAt: toDate(instant(Date.now() - 60 * 60_000)),
+          endAt: toDate(instant(Date.now() + 365 * 24 * 60 * 60_000)),
+          reason: 'sabbatical',
+        },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto('/book');
+    await page.getByRole('button', { name: /^Cut 45 min/ }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Dana', exact: true }).click();
+    await expect(page.getByText('No appointments available in the next few weeks')).toBeVisible();
+
+    await page.getByRole('button', { name: 'See anyone available' }).click();
+    await expect(firstOption(page)).toBeVisible();
+    await firstOption(page).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
   });
 
   test('refuses a missing name and phone without losing the chosen time', async ({ page }) => {
