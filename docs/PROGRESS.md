@@ -5898,7 +5898,7 @@ another caller of that same one-business assumption.
 
 ## A-145 — C4: staff announcements and field errors (D-70)
 
-Commit `SHA-PENDING`.
+Commit `d7c4a64`.
 
 **What it built.** Sixteen staff-side files, all sharing one shape:
 - **Every conditionally-mounted `aria-live` element found by the five-lens
