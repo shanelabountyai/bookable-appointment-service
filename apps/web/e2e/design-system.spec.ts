@@ -51,10 +51,10 @@ test('the state matrix has no accessibility violations', async ({ page }) => {
 test('the chip matrix and the four days have no accessibility violations, in both schemes', async ({ page }) => {
   // The compositions §8.5 asks for are all on the page, not just the easy one.
   for (const heading of [
-    'four stylists',
-    'one stylist',
+    'four providers',
+    'one provider',
     'a column forty minutes behind',
-    'a stylist off',
+    'a provider off',
     // A-099 — the fifth, and the only composition that can LOSE a client.
     'two clients in one hour',
   ]) {

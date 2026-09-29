@@ -21,7 +21,8 @@ import {
 import { WEEKDAY_TAGS } from '@bookable/core/waitlist';
 import { calendarDay, weekdayOf } from '@bookable/core/time';
 import { ClientPicker } from '@/components/client-picker';
-import { Field } from '@/components/ui/field';
+import { Button, LinkButton } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
 import { OpenDays } from '@/components/open-days';
 import { readableDay } from '@/lib/customer-format';
 import { readableReason } from '@/lib/scheduling-words';
@@ -36,10 +37,6 @@ interface Service {
 }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const primary =
-  'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900';
-const secondary = 'rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium dark:border-zinc-600';
-const field = 'rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600';
 
 /**
  * Services → who and when → client → book (BOOK-04).
@@ -346,9 +343,9 @@ export function BookingPanel({
   }
 
   const waitlistLink = (
-    <Link href={waitlistHref()} className={`${secondary} self-start`}>
+    <LinkButton href={waitlistHref()} className="self-start">
       Put them on the list for this
-    </Link>
+    </LinkButton>
   );
 
   function toggleService(id: string) {
@@ -436,9 +433,9 @@ export function BookingPanel({
         ) : null}
         {/* The day just booked, not the day the panel was opened on — the
             desk may have moved forward from here (A-039). */}
-        <Link href={`/staff/day?day=${day}`} className={primary + ' self-start'}>
+        <LinkButton href={`/staff/day?day=${day}`} variant="primary" className="self-start">
           Back to the day
-        </Link>
+        </LinkButton>
       </div>
     );
   }
@@ -461,15 +458,16 @@ export function BookingPanel({
       {/* A-039: change the day from right here — no trip back to the grid to
           pick again. Not shown for a walk-in standing at the desk today. */}
       {!walkIn ? (
-        <label className="flex w-fit flex-col gap-1 text-sm">
-          Which day?
-          <input
-            type="date"
-            value={day}
-            onChange={(event) => event.target.value && changeDay(event.target.value)}
-            className={field}
-          />
-        </label>
+        <Field id="book-day" label="Which day?" className="w-fit">
+          {(control) => (
+            <Input
+              {...control}
+              type="date"
+              value={day}
+              onChange={(event) => event.target.value && changeDay(event.target.value)}
+            />
+          )}
+        </Field>
       ) : null}
 
       <fieldset className="flex flex-col gap-2">
@@ -641,16 +639,15 @@ export function BookingPanel({
               <div className="mt-1 flex flex-wrap items-end gap-2">
                 <Field id="another-time" label="Another time?" error={typedError ?? ''}>
                   {(control) => (
-                    <input
+                    <Input
                       type="time"
                       value={wall}
                       onChange={(event) => setWall(event.target.value)}
-                      className={field}
                       {...control}
                     />
                   )}
                 </Field>
-                <button
+                <Button
                   type="button"
                   disabled={composing || wall === ''}
                   onClick={() =>
@@ -664,10 +661,9 @@ export function BookingPanel({
                       if (composed.times.length === 1) setChosenSlot(composed.times[0]!.at);
                     })
                   }
-                  className={secondary}
                 >
                   Use it
-                </button>
+                </Button>
               </div>
               {typed.length > 0 ? (
                 <ul className="flex flex-wrap gap-2">
@@ -792,30 +788,34 @@ export function BookingPanel({
             Repeat it?
           </legend>
           <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-sm">
-              How many appointments?
-              <input
-                type="number"
-                name="repeatCount"
-                min={1}
-                max={104}
-                value={repeatCount}
-                onChange={(event) => setRepeatCount(Number(event.target.value))}
-                className={field + ' w-24'}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Every how many weeks?
-              <input
-                type="number"
-                name="repeatEveryWeeks"
-                min={1}
-                max={26}
-                value={repeatEvery}
-                onChange={(event) => setRepeatEvery(Number(event.target.value))}
-                className={field + ' w-24'}
-              />
-            </label>
+            <Field id="repeat-count" label="How many appointments?">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  name="repeatCount"
+                  min={1}
+                  max={104}
+                  value={repeatCount}
+                  onChange={(event) => setRepeatCount(Number(event.target.value))}
+                  className="w-24"
+                />
+              )}
+            </Field>
+            <Field id="repeat-every" label="Every how many weeks?">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  name="repeatEveryWeeks"
+                  min={1}
+                  max={26}
+                  value={repeatEvery}
+                  onChange={(event) => setRepeatEvery(Number(event.target.value))}
+                  className="w-24"
+                />
+              )}
+            </Field>
           </div>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             1 books just this one. 6 books the next six, this one included — and any week that will not take them is
@@ -871,19 +871,19 @@ export function BookingPanel({
               re-assign (A-056: what you see is what you book), and never
               beside an override, because there is nothing here to override. */}
           {state.fallback ? (
-            <button
+            <Button
               type="submit"
+              variant="primary"
               // Its OWN field, never a second `providerId`: two inputs of one
               // name and `formData.get` returns the first in the DOM, so this
               // button would silently have re-submitted the stylist who has
               // just gone.
               name="insteadProviderId"
               value={state.fallback.providerId}
-              disabled={booking}
-              className={primary}
+              pending={booking}
             >
               {booking ? 'Booking…' : `Book ${state.fallback.providerName} at ${state.fallback.label}`}
-            </button>
+            </Button>
           ) : null}
 
           {state.canOverride ? (
@@ -895,27 +895,28 @@ export function BookingPanel({
                 <input type="checkbox" name="isOverride" />
                 Book it anyway
               </label>
-              <label className="flex flex-col gap-1 text-sm">
-                Why?
-                <input
-                  ref={overrideReasonRef}
-                  name="overrideReason"
-                  required={false}
-                  className={field}
-                  placeholder="Wedding party, agreed with Dana"
-                />
-              </label>
+              <Field id="override-reason" label="Why?">
+                {(control) => (
+                  <Input
+                    {...control}
+                    ref={overrideReasonRef}
+                    name="overrideReason"
+                    required={false}
+                    placeholder="Wedding party, agreed with Dana"
+                  />
+                )}
+              </Field>
             </>
           ) : null}
         </div>
       ) : null}
 
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={!ready || booking} className={primary}>
+        <Button type="submit" variant="primary" disabled={!ready} pending={booking}>
           {/* The count is ON the button: six rows about to be written into the
               book is not something the desk should discover afterwards. */}
           {booking ? 'Booking…' : repeatCount > 1 ? `Book ${repeatCount} appointments` : 'Book'}
-        </button>
+        </Button>
         {!ready ? (
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             {chosen.length === 0 ? 'Choose a service.' : 'Choose who and when.'}

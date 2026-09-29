@@ -59,7 +59,7 @@ export default async function CallDownPage() {
         <Link href="/staff/day" className="text-sm text-ink-muted hover:underline">
           ← Today
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Call-down: {readableDay(tomorrow)}</h1>
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">Call-down: {readableDay(tomorrow)}</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           Booked but not yet confirmed. Nothing here has been touched — a no-show tomorrow is still nobody&apos;s default.
           Marking a call sends nothing; it records that a person picked up the phone.

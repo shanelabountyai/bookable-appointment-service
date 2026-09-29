@@ -46,7 +46,7 @@ export default async function ConflictsPage({ searchParams }: PageProps<'/staff/
         <Link href={`/staff/day?day=${day}`} className="text-sm text-ink-muted hover:underline">
           ← {readableDay(day)}
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Conflicts</h1>
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">Conflicts</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           Appointments booked into time that is no longer available. Nothing here has been changed — every one is
           still in the book until somebody decides otherwise.

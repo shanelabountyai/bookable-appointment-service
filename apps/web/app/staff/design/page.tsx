@@ -315,13 +315,13 @@ function ChipBox({ item }: { item: GridItem }) {
  *  fifth, which is §5.4.11's marker in the one place it can be got wrong. */
 const DAYS = [
   {
-    heading: 'The day — four stylists',
+    heading: 'The day — four providers',
     note: 'The tablet’s real shape: a shared gutter, four columns, the now-line, a gap that can be booked, a break, and a chip of most of the eight statuses.',
     model: FOUR_STYLISTS,
   },
   {
-    heading: 'The day — one stylist',
-    note: 'What the desk filters to on a quiet Monday, and what a stylist opens on their own phone.',
+    heading: 'The day — one provider',
+    note: 'What the desk filters to on a quiet Monday, and what a provider opens on their own phone.',
     model: ONE_STYLIST,
   },
   {
@@ -330,13 +330,13 @@ const DAYS = [
     model: RUNNING_FORTY_LATE,
   },
   {
-    heading: 'The day — a stylist off',
-    note: 'Their column is still drawn. A missing column reads as a missing stylist rather than a day off — and time off over a working column is drawn as a band, because AVAIL-05 says a collision is surfaced for a human rather than hidden.',
+    heading: 'The day — a provider off',
+    note: 'Their column is still drawn. A missing column reads as a missing provider rather than a day off — and time off over a working column is drawn as a band, because AVAIL-05 says a collision is surfaced for a human rather than hidden.',
     model: A_STYLIST_OFF,
   },
   {
     heading: 'The day — two clients in one hour',
-    note: 'The only composition that can lose a client. A staff override (BOOK-05, D-8) puts two people on one stylist at one instant; the two chips share the column’s width rather than one painting over the other, and only their own hour is split — the 09:00 and the 12:30 stay whole. Both names are on screen, because the desk overrode in order to see both.',
+    note: 'The only composition that can lose a client. A staff override (BOOK-05, D-8) puts two people on one provider at one instant; the two chips share the column’s width rather than one painting over the other, and only their own hour is split — the 09:00 and the 12:30 stay whole. Both names are on screen, because the desk overrode in order to see both.',
     model: A_DOUBLE_BOOKED_HOUR,
   },
 ];

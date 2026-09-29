@@ -34,7 +34,7 @@ export function AddProviderForm() {
           {pending ? 'Adding…' : 'Add'}
         </button>
       </div>
-      <p id="displayName-error" aria-live="polite" className="min-h-5 text-sm text-red-600 dark:text-red-400">
+      <p id="displayName-error" aria-live="polite" className="min-h-5 text-sm text-danger-ink">
         {state.errors?.displayName ?? ''}
       </p>
     </form>

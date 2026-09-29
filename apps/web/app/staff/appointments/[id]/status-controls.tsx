@@ -5,11 +5,10 @@ import { useActionState } from 'react';
 import { type AppointmentStatus, SLOT_FREEING_STATUSES } from '@bookable/core/scheduling';
 import { type DetailState, changeStatus, releaseTime, unreleaseTime } from '@/lib/appointments/actions';
 import { STATUS_ACTION_LABELS } from '@/app/staff/day/status-actions';
+import { Button } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
 
 const initial: DetailState = {};
-
-const buttonClass =
-  'rounded-md border border-zinc-400 px-3 py-2 text-sm font-medium disabled:opacity-60 dark:border-zinc-600';
 
 /**
  * The status buttons (APPT-01, APPT-03, APPT-06).
@@ -86,14 +85,9 @@ export function StatusControls({
           silently overwriting their decision. */}
       <input type="hidden" name="expectedFrom" value={status} />
 
-      <label className="flex flex-col gap-1 text-sm">
-        Reason (needed for some changes)
-        <input
-          name="reason"
-          placeholder="Walked out / marked wrong yesterday"
-          className="rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
-        />
-      </label>
+      <Field id="status-reason" label="Reason (needed for some changes)">
+        {(control) => <Input {...control} name="reason" placeholder="Walked out / marked wrong yesterday" />}
+      </Field>
 
       {/* A-112 (D-53) — the only OPT-IN notice in the product, and the only
           place a checkbox here means "send" rather than "don't send".
@@ -115,41 +109,34 @@ export function StatusControls({
 
       <div className="flex flex-wrap gap-2">
         {available.map((to) => (
-          <button
-            key={to}
-            type="submit"
-            name="to"
-            value={to}
-            disabled={pending}
-            className={buttonClass}
-          >
+          <Button key={to} type="submit" name="to" value={to} pending={pending}>
             {STATUS_ACTION_LABELS[to]}
-          </button>
+          </Button>
         ))}
 
         {/* One button, and `to` is deliberately absent from it: the status is
             the server's to choose, so this posts the INTENT and the write path
             resolves the cutoff from real rows. */}
         {cancelAs ? (
-          <button type="submit" name="cancel" value="derive" disabled={pending} className={buttonClass}>
+          <Button type="submit" name="cancel" value="derive" pending={pending}>
             {cancelAs === 'cancelled_late' ? 'Cancel — counts as late' : 'Cancel'}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {cancelAs === 'cancelled_late' ? (
-        <button
+        <Button
           type="submit"
           name="cancel"
           value="override"
-          disabled={pending}
-          className="self-start rounded-md border border-dashed border-zinc-400 px-3 py-2 text-left text-sm disabled:opacity-60 dark:border-zinc-600"
+          pending={pending}
+          className="self-start border-dashed text-left"
         >
           Proper notice given, or this one&apos;s on us — don&apos;t count it late
           <span className="mt-0.5 block text-xs text-zinc-600 dark:text-zinc-400">
             Needs a reason. Recorded as overruling the cutoff.
           </span>
-        </button>
+        </Button>
       ) : null}
 
       <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
@@ -227,17 +214,12 @@ function ReleasePanel({
           with a reason box of its own, and two identically-labelled fields are
           ambiguous to a screen reader long before they are ambiguous to a
           test. This one is about what happened to HER. */}
-      <label className="flex flex-col gap-1 text-sm">
-        What happened (optional)
-        <input
-          name="reason"
-          placeholder="Rang twice, no answer"
-          className="rounded-md border border-zinc-400 bg-transparent px-3 py-2 text-sm dark:border-zinc-600"
-        />
-      </label>
-      <button type="submit" disabled={pending} className={`${buttonClass} self-start`}>
+      <Field id="release-reason" label="What happened (optional)">
+        {(control) => <Input {...control} name="reason" placeholder="Rang twice, no answer" />}
+      </Field>
+      <Button type="submit" pending={pending} className="self-start">
         {pending ? 'Putting it back…' : `Put ${release.minutes} min back on the market`}
-      </button>
+      </Button>
       <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
         {state.message ?? ''}
       </p>
@@ -259,9 +241,9 @@ function UnreleasePanel({ appointmentId }: { appointmentId: string }) {
   return (
     <form action={action} className="flex flex-col gap-2 text-sm">
       <input type="hidden" name="appointmentId" value={appointmentId} />
-      <button type="submit" disabled={pending} className={`${buttonClass} self-start`}>
+      <Button type="submit" pending={pending} className="self-start">
         {pending ? 'Putting it back…' : 'They’re here after all — put the time back on the book'}
-      </button>
+      </Button>
       <p aria-live="polite" className="text-zinc-700 dark:text-zinc-300">
         {state.message ?? ''}
       </p>

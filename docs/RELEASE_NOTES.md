@@ -4942,6 +4942,27 @@ this screen, cannot see that: it only shows up on the second submission,
 which nothing had exercised before. Fixed by making the field track its own
 state instead of trusting the DOM to still hold what was typed.
 
+## A-147 — the design system reaches the busy screens
+
+The three screens the desk lives in hardest — the status panel, a column's
+running-late controls, and staff booking — were built before the shared
+`Button` and `Field` components existed, so each had quietly grown its own
+copy of the same button and input classes. That divergence is gone: all
+three now render through the shared components, so a future change to a
+touch target or a focus ring reaches every screen at once instead of three
+places that drift.
+
+The rest was a naming pass across the staff app: a page-title type scale
+applied consistently instead of ad hoc, error text on a shared design token
+instead of raw red, and several places where the product's own words had
+drifted from what they meant — a dashboard tile called "Bookings" for a
+count of appointments, two settings sections named after nothing in
+particular, and "stylist" used interchangeably with the Provider entity in
+some places and not others. One of those instances turned out to be a false
+match on inspection: a role-selector option reading "No — stylist" names an
+account permission, not the booking-provider concept, and renaming it would
+have implied the wrong thing about what that control does.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

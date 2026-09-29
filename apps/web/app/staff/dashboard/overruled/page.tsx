@@ -45,7 +45,7 @@ export default async function OverruledPage({ searchParams }: PageProps<'/staff/
         <Link href={`/staff/dashboard?week=${fromDay}`} className="text-sm text-ink-muted hover:underline">
           ← Dashboard
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Let off the late count</h1>
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">Let off the late count</h1>
         {fromDay && toDay ? (
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
             {`Cancellations inside the cutoff that somebody decided not to count as late — ${readableDay(fromDay)} to ${readableDay(toDay)}.`}

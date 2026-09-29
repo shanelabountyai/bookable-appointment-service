@@ -1088,7 +1088,7 @@ test.describe('what the booking panel says when it has no stylist (A-104)', () =
   test('reached bare, it asks for a stylist instead of putting one out', async ({ page }) => {
     await page.goto(`/staff/book?day=${DAY}`);
 
-    await expect(page.getByText('Pick a stylist from the day view.')).toBeVisible();
+    await expect(page.getByText('Pick a provider from the day view.')).toBeVisible();
     // On a Tuesday with all four in, and no stylist named.
     await expect(page.getByText(NOT_ON_TODAY)).toHaveCount(0);
     // The heading has nobody to name either, and no dangling "Book ".
@@ -1119,7 +1119,7 @@ test.describe('what the booking panel says when it has no stylist (A-104)', () =
   test('says a link resolves to nobody, rather than inventing an absence', async ({ page }) => {
     await page.goto(`/staff/book?provider=00000000-0000-4000-8000-000000000000&day=${DAY}`);
 
-    await expect(page.getByText('No stylist here matches that link.')).toBeVisible();
+    await expect(page.getByText('No provider here matches that link.')).toBeVisible();
     await expect(page.getByText(NOT_ON_TODAY)).toHaveCount(0);
   });
 });

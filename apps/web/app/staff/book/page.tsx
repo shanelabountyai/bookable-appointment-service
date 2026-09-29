@@ -115,14 +115,14 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
         <Link href={`/staff/day?day=${day}`} className="text-sm text-ink-muted hover:underline">
           ← {readableDay(day)}
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">
           {walkIn ? 'Walk-in' : anyone ? 'Book with anyone' : provider ? `Book with ${provider.displayName}` : 'Book'}
         </h1>
         {slotLabel ? <p className="mt-1 text-zinc-600 dark:text-zinc-400">{slotLabel}</p> : null}
         {droppedServices > 0 ? (
           <p className="mt-1 text-amber-800 dark:text-amber-300">
             ⚠ {droppedServices} service{droppedServices === 1 ? '' : 's'} from the last visit{' '}
-            {droppedServices === 1 ? 'is' : 'are'} no longer available with this stylist. Check what they are having.
+            {droppedServices === 1 ? 'is' : 'are'} no longer available with this provider. Check what they are having.
           </p>
         ) : null}
       </div>
@@ -138,7 +138,7 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
         <EmptyState>
           {!providerId ? (
             <>
-              Pick a stylist from the day view.{' '}
+              Pick a provider from the day view.{' '}
               <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
             </>
           ) : providerRow ? (
@@ -151,13 +151,13 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
             </>
           ) : (
             <>
-              No stylist here matches that link.{' '}
+              No provider here matches that link.{' '}
               <Link href={`/staff/day?day=${day}`} className="underline">Back to the day</Link>.
             </>
           )}
         </EmptyState>
       ) : services.length === 0 ? (
-        <EmptyState>No services are set up for this stylist yet.</EmptyState>
+        <EmptyState>No services are set up for this provider yet.</EmptyState>
       ) : (
         <BookingPanel
           day={day}

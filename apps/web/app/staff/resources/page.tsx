@@ -22,10 +22,10 @@ export default async function ResourcesPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">The room</h1>
+        <h1 className="text-page-title font-semibold tracking-tight">The room</h1>
         <p className="mt-1 text-sm text-ink-muted">
           Chairs, basins, rooms — whatever a client occupies that is not a person. A client holds one for their whole
-          visit including any developing time, so a colour keeps its chair through the hour their stylist is with somebody
+          visit including any developing time, so a colour keeps its chair through the hour their provider is with somebody
           else. Which services need one is set on each service.
         </p>
       </div>

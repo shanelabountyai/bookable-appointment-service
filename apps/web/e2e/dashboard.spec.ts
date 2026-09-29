@@ -110,7 +110,7 @@ test.describe('the owner dashboard (A-024)', () => {
   test('shows the week\'s numbers, and every tile drills to the appointments behind it', async ({ page }) => {
     await page.goto(`/staff/dashboard?week=${DAY}`);
 
-    await expect(page.getByText('Bookings')).toBeVisible();
+    await expect(page.getByText('Appointments')).toBeVisible();
     await expect(page.getByText('4', { exact: true })).toBeVisible(); // 4 booked this week
     await expect(page.getByText('0 on time · 1 late')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Priya: 1', exact: true })).toBeVisible();

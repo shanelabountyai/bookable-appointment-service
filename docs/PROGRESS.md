@@ -6069,3 +6069,69 @@ sweep.
 before this one (the non-barrier-based check-in race test, and the
 single-business `findFirstOrThrow()`/`findFirst()` ceiling) are untouched by
 this item.
+
+## A-147 — C7: the design system reaches the busy screens (D-70)
+
+Commit `SHA-PENDING`.
+
+**What it built.**
+- **`Button` and `Field` land in the three busiest forms** —
+  `appointments/[id]/status-controls.tsx`, `day/column-controls.tsx` and
+  `book/booking-panel.tsx` — replacing every local `buttonClass`/`primary`/
+  `secondary`/`field`/`small` string constant those files had accumulated
+  their own copy of. The chip-style toggle buttons (service picker, slot
+  picker, walk-in options) keep their own `aria-pressed` selected-state
+  styling — that is a different control shape from `Button`'s four variants,
+  not a fifth one to invent for this item. A few inline `<label>+<input>`
+  pairs became `Field` wraps in the process (column-controls' "Push by" hint
+  moved from a manually-wired `aria-describedby` paragraph into `Field`'s own
+  `hint` prop, one less id pair to keep in sync by hand).
+- **`text-page-title` on all 20 staff `<h1>`s** that were still on the raw
+  `text-2xl font-semibold tracking-tight` triple (the backlog text says 19;
+  a fresh count found 20 — `settings`, `clients`, `waitlist`, `messages`,
+  `call-down`, `resources`, `dashboard` and its two sub-pages, `conflicts`,
+  `appointments/[id]`, `providers`, `unfinished`, `book`, `availability`,
+  `login`, `services`, `day`, `people`, `clients/[id]` — the other four were
+  already on the token). `text-danger-ink`/`border-danger-line` replace
+  `text-red-600 dark:text-red-400`/`border-red-500` at the 13 error-message
+  sites plus 2 sibling `aria-[invalid=true]` input classes across
+  `settings-form.tsx`, `resources-client.tsx`, `providers-client.tsx`,
+  `availability-client.tsx`, `login/page.tsx` and `service-form-fields.tsx`.
+- **Copy.** The appointment detail page's `<Row label="Status">` now reads
+  `STATUS_WORDS[status]` instead of `status.replace('_', ' ')` (the sibling
+  list on the same page and the client history page keep their own
+  `.replace` — narrower scope than the backlog text names, left alone rather
+  than folded in unasked). Dashboard's "Bookings" tile is "Appointments".
+  Settings' "Booking policy"/"Slot policy" headings are "Booking limits" (the
+  lead-time/cutoff/horizon/no-show numeric thresholds it holds) and "Buffers
+  and daylight saving" (the break/closing buffer toggles plus the DST
+  ambiguous-hour setting). People and Providers each gained a one-line
+  cross-link to the other, since they answer two different questions — who
+  can sign in, and who takes appointments — that this backlog item's own
+  text treats as related enough to connect. "stylist" → "provider" on every
+  staff-visible string that names the booking Provider entity: the four
+  `/staff/design` gallery headings/notes, the conflicts reassignment
+  dropdown's placeholder, three `/staff/book` refusal sentences, and the
+  segment/resource-panel copy. **Gut-checked `people-list.tsx` first, per the
+  item's own instruction**: its `<option value="staff">No — stylist</option>`
+  is the account-role label ("can this person see the money"), unrelated to
+  the Provider entity — renaming it to "No — provider" would have claimed
+  this roster controls who takes appointments, which it does not. Left as
+  written.
+
+**What it tested.** No new tests — a design-token/copy item changes what a
+string renders as, not what the app decides, and the existing coverage
+already asserts on the visible text. Five e2e specs needed their expected
+strings updated to match: `design-system.spec.ts` (the four gallery
+headings), `staff-booking.spec.ts` (two refusal sentences), `dashboard.spec.ts`
+("Appointments"), `segments.spec.ts` (the processing-time sentence), and a
+stale accessible-name comment in `conflicts.spec.ts`. Full gate: lint,
+typecheck, 1,804 unit tests (1 pre-existing skip — clean on a retry after an
+unrelated cross-project Postgres connection-pool contention produced 26
+transient failures, all in `packages/db/clients/clients.test.ts`, none of
+which this item touches), and 356/356 e2e.
+
+**What it left behind.** Nothing new. The two standing items in `NEXT.md`
+before A-146 (the non-barrier-based check-in race test, and the
+single-business `findFirstOrThrow()`/`findFirst()` ceiling) are still
+untouched.

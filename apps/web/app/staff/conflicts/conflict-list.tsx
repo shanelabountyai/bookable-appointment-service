@@ -116,7 +116,7 @@ export function ConflictList({
           <label className="flex flex-col gap-1 text-sm">
             To
             <select name="toProviderId" className={field}>
-              <option value="">Choose a stylist…</option>
+              <option value="">Choose a provider…</option>
               {providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}

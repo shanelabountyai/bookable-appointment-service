@@ -10,7 +10,7 @@ export default function StaffLogin() {
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Staff sign in</h1>
+      <h1 className="text-page-title font-semibold tracking-tight">Staff sign in</h1>
 
       <form action={formAction} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
@@ -44,7 +44,7 @@ export default function StaffLogin() {
         {/* aria-live so a screen reader announces the failure, which a
             silently-appearing <p> would not. role="alert" is deliberately not
             used: it interrupts, and a wrong password is not urgent. */}
-        <p aria-live="polite" className="min-h-5 text-sm text-red-600 dark:text-red-400">
+        <p aria-live="polite" className="min-h-5 text-sm text-danger-ink">
           {state.error ?? ''}
         </p>
 

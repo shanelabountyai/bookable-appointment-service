@@ -72,7 +72,7 @@ export default async function UnfinishedPage({ searchParams }: PageProps<'/staff
         <Link href="/staff/day" className="text-sm text-ink-muted hover:underline">
           ← Today
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Still open</h1>
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">Still open</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           These have been and gone and nobody said what happened. Two taps each, and the week&apos;s numbers are
           right again. Showing the last {lookbackDays} days.

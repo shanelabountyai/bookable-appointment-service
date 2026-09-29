@@ -26,7 +26,7 @@ export function ServiceFormFields({
   errors?: Record<string, string>;
 }) {
   const inputClass =
-    'rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 aria-[invalid=true]:border-red-500';
+    'rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 aria-[invalid=true]:border-danger-line';
   const id = (name: string) => `${idPrefix}-${name}`;
 
   return (
@@ -44,7 +44,7 @@ export function ServiceFormFields({
           className={inputClass}
         />
         {errors?.name && (
-          <p id={id('name-error')} className="text-sm text-red-600 dark:text-red-400">
+          <p id={id('name-error')} className="text-sm text-danger-ink">
             {errors.name}
           </p>
         )}
@@ -63,7 +63,7 @@ export function ServiceFormFields({
           aria-invalid={errors?.durationMinutes ? true : undefined}
           className={inputClass}
         />
-        {errors?.durationMinutes && <p className="text-sm text-red-600 dark:text-red-400">{errors.durationMinutes}</p>}
+        {errors?.durationMinutes && <p className="text-sm text-danger-ink">{errors.durationMinutes}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -79,7 +79,7 @@ export function ServiceFormFields({
           aria-invalid={errors?.priceCents ? true : undefined}
           className={inputClass}
         />
-        {errors?.priceCents && <p className="text-sm text-red-600 dark:text-red-400">{errors.priceCents}</p>}
+        {errors?.priceCents && <p className="text-sm text-danger-ink">{errors.priceCents}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -96,7 +96,7 @@ export function ServiceFormFields({
           className={inputClass}
         />
         {errors?.bufferBeforeMinutes && (
-          <p className="text-sm text-red-600 dark:text-red-400">{errors.bufferBeforeMinutes}</p>
+          <p className="text-sm text-danger-ink">{errors.bufferBeforeMinutes}</p>
         )}
       </div>
 
@@ -114,7 +114,7 @@ export function ServiceFormFields({
           className={inputClass}
         />
         {errors?.bufferAfterMinutes && (
-          <p className="text-sm text-red-600 dark:text-red-400">{errors.bufferAfterMinutes}</p>
+          <p className="text-sm text-danger-ink">{errors.bufferAfterMinutes}</p>
         )}
       </div>
 
@@ -142,7 +142,7 @@ export function ServiceFormFields({
             ))}
           </select>
           {errors?.requiredResourceTypeId && (
-            <p className="text-sm text-red-600 dark:text-red-400">{errors.requiredResourceTypeId}</p>
+            <p className="text-sm text-danger-ink">{errors.requiredResourceTypeId}</p>
           )}
         </div>
       )}
@@ -186,7 +186,7 @@ export function ServiceFormFields({
           className={inputClass}
         />
         {errors?.cancellationCutoffMinutes && (
-          <p id={id('cutoff-error')} className="text-sm text-red-600 dark:text-red-400">
+          <p id={id('cutoff-error')} className="text-sm text-danger-ink">
             {errors.cancellationCutoffMinutes}
           </p>
         )}

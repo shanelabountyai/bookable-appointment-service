@@ -205,7 +205,7 @@ test.describe('the impact workflow (A-019)', () => {
     // October...") — "To" is a substring of "October" whenever the computed
     // day lands in that month, which made this collide with both checkboxes
     // (2026-09-29). `exact: true` alone does not fix it either: the select's
-    // own accessible name is "ToChoose a stylist…" (the wrapping label's text
+    // own accessible name is "ToChoose a provider…" (the wrapping label's text
     // plus its own selected option, per the accname spec), never bare "To".
     // Scoping to `combobox` excludes the checkboxes outright.
     await page.getByRole('combobox', { name: 'To' }).selectOption({ label: 'Priya' });

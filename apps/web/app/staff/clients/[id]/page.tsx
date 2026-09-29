@@ -66,7 +66,7 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
         <Link href="/staff/clients" className="text-sm text-ink-muted hover:underline">
           ← Clients
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{client.name ?? 'No name'}</h1>
+        <h1 className="mt-2 text-page-title font-semibold tracking-tight">{client.name ?? 'No name'}</h1>
         {client.reachedByOldNumber ? (
           <p className="mt-1 text-sm text-amber-700 dark:text-amber-500">
             You reached this record through a number that was merged into it.

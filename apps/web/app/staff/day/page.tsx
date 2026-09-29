@@ -94,7 +94,7 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
       <div className="flex flex-col gap-6 print:hidden">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{model.dayLabel}</h1>
+            <h1 className="text-page-title font-semibold tracking-tight">{model.dayLabel}</h1>
             {day === today ? null : <p className="text-sm text-zinc-600 dark:text-zinc-400">Not today.</p>}
           </div>
 

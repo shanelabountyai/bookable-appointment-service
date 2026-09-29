@@ -44,7 +44,7 @@ export default async function ClientsPage({ searchParams }: PageProps<'/staff/cl
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
+        <h1 className="text-page-title font-semibold tracking-tight">Clients</h1>
       </div>
 
       {/* A-089. The primitives' first real caller. No `error` prop: a search

@@ -35,7 +35,7 @@ function Field({
       {/* The message names the offending service, so it belongs beside the
           field rather than in a summary at the top of an 11-field form. */}
       {error && (
-        <p id={errorId} className="text-sm text-red-600 dark:text-red-400">
+        <p id={errorId} className="text-sm text-danger-ink">
           {error}
         </p>
       )}
@@ -44,7 +44,7 @@ function Field({
 }
 
 const inputClass =
-  'rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 aria-[invalid=true]:border-red-500';
+  'rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 aria-[invalid=true]:border-danger-line';
 
 export function SettingsForm({ settings }: { settings: BusinessSettings }) {
   const [state, formAction, pending] = useActionState(saveBusinessSettings, initial);
@@ -85,7 +85,7 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Booking policy</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Booking limits</h2>
 
         <Field label="Slot interval (minutes)" name="slotIntervalMinutes" hint="How far apart offered start times are." error={err('slotIntervalMinutes')}>
           <input id="slotIntervalMinutes" name="slotIntervalMinutes" type="number" min={1} defaultValue={settings.slotIntervalMinutes}
@@ -119,7 +119,7 @@ export function SettingsForm({ settings }: { settings: BusinessSettings }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Slot policy</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Buffers and daylight saving</h2>
 
         <div className="flex items-start gap-2">
           <input id="bufferMayOverlapBreak" name="bufferMayOverlapBreak" type="checkbox" defaultChecked={settings.bufferMayOverlapBreak} className="mt-1" />

@@ -40,7 +40,7 @@ export function AddResourceTypeForm() {
           {pending ? 'Adding…' : 'Add'}
         </button>
       </div>
-      <p id="typeName-error" aria-live="polite" className="min-h-5 text-sm text-red-600 dark:text-red-400">
+      <p id="typeName-error" aria-live="polite" className="min-h-5 text-sm text-danger-ink">
         {state.errors?.typeName ?? ''}
       </p>
     </form>
@@ -71,7 +71,7 @@ export function AddResourceForm({ resourceTypeId, typeName }: { resourceTypeId: 
           {pending ? 'Adding…' : 'Add'}
         </button>
       </div>
-      <p id={errorId} aria-live="polite" className="min-h-5 text-sm text-red-600 dark:text-red-400">
+      <p id={errorId} aria-live="polite" className="min-h-5 text-sm text-danger-ink">
         {state.errors?.resourceName ?? ''}
       </p>
     </form>

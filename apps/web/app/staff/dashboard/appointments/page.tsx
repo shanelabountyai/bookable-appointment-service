@@ -47,7 +47,7 @@ export default async function DashboardAppointmentsPage({ searchParams }: PagePr
         <Link href={`/staff/dashboard?week=${fromDay}`} className="text-sm text-ink-muted hover:underline">
           ← Dashboard
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">
           {statuses.length ? statuses.map((s) => STATUS_WORDS[s]).join(', ') : 'All appointments'}
         </h1>
         {fromDay && toDay ? (

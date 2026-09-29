@@ -53,7 +53,7 @@ function Impact({ state }: { state: ImpactState }) {
 function Errors({ state }: { state: FormState }) {
   const messages = Object.values(state.errors ?? {});
   return (
-    <p aria-live="polite" className="min-h-5 text-sm text-red-600 dark:text-red-400">
+    <p aria-live="polite" className="min-h-5 text-sm text-danger-ink">
       {messages[0] ?? ''}
     </p>
   );

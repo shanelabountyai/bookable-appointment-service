@@ -20,6 +20,7 @@ import { readableInstant } from '@/lib/customer-format';
 import { releaseWords } from '@/lib/appointments/release-words';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
 import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
+import { STATUS_WORDS } from '@/lib/day/view-model';
 import { flagSentence } from '@/components/client-flag';
 import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
 import { EndSeriesPanel } from './end-series-panel';
@@ -174,7 +175,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
             has a black mark against her. So the client with nothing on her
             record — most of them — had no door at all, and the way through was
             to retype a name the screen was already showing. */}
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+        <h1 className="mt-1 text-page-title font-semibold tracking-tight">
           {detail.clientId ? (
             <Link href={`/staff/clients/${detail.clientId}`} className="hover:underline underline-offset-4">
               {detail.clientName ?? 'No name'}
@@ -285,7 +286,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
             it goes through the existing override. */}
         {gapMinutes > 0 ? (
           <Row label="Free inside it">
-            {gapMinutes} min of processing time — the stylist is not needed for it
+            {gapMinutes} min of processing time — the provider is not needed for it
           </Row>
         ) : null}
         {/* A-046 (RES-01, D-30). WHERE she is — the axis that has been
@@ -299,7 +300,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         ) : detail.isOverride ? (
           <Row label="Where">Holds no chair — booked as an override</Row>
         ) : null}
-        <Row label="Status">{status.replace('_', ' ')}</Row>
+        <Row label="Status">{STATUS_WORDS[status]}</Row>
         {detail.confirmedAt ? <Row label="Confirmed">{readableInstant(detail.confirmedAt, business.timezone)}</Row> : null}
         {/* APPT-03's actual-vs-scheduled: what really happened, beside what
             was planned. */}
