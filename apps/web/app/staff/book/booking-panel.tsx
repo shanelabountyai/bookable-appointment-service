@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useRef, useState, useTransition } from 'react';
+import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
 import {
   type AnyoneChoice,
   type ClientChoice,
@@ -21,6 +21,7 @@ import {
 import { WEEKDAY_TAGS } from '@bookable/core/waitlist';
 import { calendarDay, weekdayOf } from '@bookable/core/time';
 import { ClientPicker } from '@/components/client-picker';
+import { Field } from '@/components/ui/field';
 import { OpenDays } from '@/components/open-days';
 import { readableDay } from '@/lib/customer-format';
 import { readableReason } from '@/lib/scheduling-words';
@@ -166,6 +167,19 @@ export function BookingPanel({
    * nothing anywhere said they disagreed.
    */
   const latestRequest = useRef(0);
+
+  /** A-145 (C4/C2 pattern) — a refusal that needs a reason takes focus the
+   *  moment its input appears, rather than leaving the desk to notice a new
+   *  box grew below the button they just pressed. Compared to the previous
+   *  render rather than flagged, so Strict Mode's double effect does not
+   *  focus twice (the booking-flow step-heading rule, A-143). */
+  const overrideReasonRef = useRef<HTMLInputElement>(null);
+  const overriding = useRef(false);
+  useEffect(() => {
+    if (overriding.current === state.canOverride) return;
+    overriding.current = !!state.canOverride;
+    if (state.canOverride) overrideReasonRef.current?.focus();
+  }, [state.canOverride]);
 
   /**
    * Shared by "pick a service" and "pick a day" (A-039) — either one
@@ -495,6 +509,9 @@ export function BookingPanel({
           <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
             What time? (anyone)
           </legend>
+          <p role="status" aria-live="polite" className="sr-only">
+            {loadingOptions ? 'Looking…' : ''}
+          </p>
           {chosen.length === 0 ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
           ) : loadingOptions ? (
@@ -545,6 +562,9 @@ export function BookingPanel({
           <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
             What time?
           </legend>
+          <p role="status" aria-live="polite" className="sr-only">
+            {loadingOptions ? 'Looking…' : ''}
+          </p>
           {chosen.length === 0 ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
           ) : loadingOptions ? (
@@ -619,15 +639,17 @@ export function BookingPanel({
                   instant (D-4). Composing it here would compose it in the
                   browser's timezone. */}
               <div className="mt-1 flex flex-wrap items-end gap-2">
-                <label className="flex flex-col gap-1 text-sm">
-                  Another time?
-                  <input
-                    type="time"
-                    value={wall}
-                    onChange={(event) => setWall(event.target.value)}
-                    className={field}
-                  />
-                </label>
+                <Field id="another-time" label="Another time?" error={typedError ?? ''}>
+                  {(control) => (
+                    <input
+                      type="time"
+                      value={wall}
+                      onChange={(event) => setWall(event.target.value)}
+                      className={field}
+                      {...control}
+                    />
+                  )}
+                </Field>
                 <button
                   type="button"
                   disabled={composing || wall === ''}
@@ -647,11 +669,6 @@ export function BookingPanel({
                   Use it
                 </button>
               </div>
-              {typedError ? (
-                <p className="text-sm text-amber-800 dark:text-amber-300" aria-live="polite">
-                  {typedError}
-                </p>
-              ) : null}
               {typed.length > 0 ? (
                 <ul className="flex flex-wrap gap-2">
                   {typed.map((time) => (
@@ -679,6 +696,9 @@ export function BookingPanel({
           <legend className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
             Who can take them?
           </legend>
+          <p role="status" aria-live="polite" className="sr-only">
+            {chosen.length > 0 && (loadingOptions || !answer) ? 'Looking…' : ''}
+          </p>
           {chosen.length === 0 ? (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Choose a service first.</p>
           ) : loadingOptions || !answer ? (
@@ -822,11 +842,12 @@ export function BookingPanel({
         />
       </fieldset>
 
+      <p className="text-sm font-medium" aria-live="polite">
+        {state.message ?? ''}
+      </p>
+
       {state.message && !state.ok ? (
         <div className="flex flex-col gap-3 rounded-md border border-amber-500 p-4">
-          <p className="text-sm font-medium" aria-live="polite">
-            {state.message}
-          </p>
           {/* Gated on `canOverride` — the flag that means THE ENGINE refused —
               rather than rendered unconditionally. Not every refusal comes
               from the engine: A-049's "an override cannot repeat" and its
@@ -876,7 +897,13 @@ export function BookingPanel({
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 Why?
-                <input name="overrideReason" required={false} className={field} placeholder="Wedding party, agreed with Dana" />
+                <input
+                  ref={overrideReasonRef}
+                  name="overrideReason"
+                  required={false}
+                  className={field}
+                  placeholder="Wedding party, agreed with Dana"
+                />
               </label>
             </>
           ) : null}

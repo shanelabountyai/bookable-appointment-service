@@ -5895,3 +5895,83 @@ guard across all three forms' buttons ("I'll be there", "Reschedule",
 `NEXT.md` stand: the non-barrier-based check-in race test, and the
 single-business `findFirstOrThrow()`/`findFirst()` ceiling — `salon()` is
 another caller of that same one-business assumption.
+
+## A-145 — C4: staff announcements and field errors (D-70)
+
+Commit `SHA-PENDING`.
+
+**What it built.** Sixteen staff-side files, all sharing one shape:
+- **Every conditionally-mounted `aria-live` element found by the five-lens
+  sweep now mounts unconditionally**, with `{message ?? ''}` (or an
+  `sr-only`/visible className swap) as the only conditional part —
+  `status-actions.tsx`'s existing pattern, now everywhere: waitlist's
+  `EntryStatusButton`, `end-series-panel.tsx` (the preview "Checking…" and the
+  result message), `visit-panel.tsx` (its refusal and success paths merged
+  onto one region), `column-controls.tsx` (the running-late delta message,
+  the push preview's "Checking…", the push result, and `RingRound`'s message),
+  `availability-client.tsx`'s `Impact` (which used to `return null` for the
+  whole region on `!state.ok`), `message-row.tsx` (rebuilt from two entirely
+  separate `<li>` returns, each with its own live span, onto one `<li>` with
+  one span at a fixed position), `close-out-buttons.tsx`, `call-mark-buttons.tsx`.
+- **The running-late delta now announces success, not only refusal**
+  (`column-controls.tsx`'s `lateState` region no longer gates on `!lateState.ok`).
+- **A `role="status"` region for each of the four named async panels**: the
+  client picker (`client-picker.tsx`, which had no live region at all — "Looking…"
+  was a plain, silent paragraph), the push preview (already covered by the
+  aria-live fixes above), the staff slot list (three "Looking…" states in
+  `booking-panel.tsx` — the anyone/named-stylist/walk-in fieldsets — got an
+  `sr-only` status paragraph beside the existing visible text, which stays as
+  it was), and the manage reschedule (`reschedule-form.tsx`'s day fieldset,
+  which had the same silent-"Looking…" gap).
+- **`booking-panel.tsx`'s "Another time?" input now goes through `Field`**,
+  the one ad-hoc error in the four named panels attached to a single labeled
+  control (`typedError`). The panel's own booking-refusal message and
+  `visit-panel.tsx`'s service-change refusal both had their message paragraph
+  pulled out of the amber refusal box into its own unconditional region, with
+  the box now holding only the override reason/checkbox/fallback controls.
+- **A refusal that reveals a reason input now focuses it**: `booking-panel.tsx`
+  and `visit-panel.tsx`'s override-reason inputs take focus the moment
+  `state.canOverride` flips true, mirroring A-143's step-heading pattern
+  (`useRef` comparing to the previous render, so Strict Mode's double effect
+  does not focus twice).
+- **The guard**: `apps/web/lib/aria-live.test.ts`, modeled on `voice.test.ts`
+  — a TypeScript-AST walk (not a grep) over the same five `ROOTS`, flagging any
+  `aria-live` element that is itself the gated side of a truthiness ternary or
+  `&&` whose other side is `null`/`undefined`. It exempts `Field`'s own
+  `error === undefined` gate (an explicit undefined-check, never a truthiness
+  one — every real defect this test was written for was truthiness-gated) and
+  a gate several tags up that removes a whole panel (`pushFrom ? <details>… :
+  null`, nothing to preview at all) rather than flickering the region inside
+  it. Both exemptions are covered by the self-test alongside the two shapes it
+  must catch.
+
+**What it decided.** Fixing every conditionally-mounted region repo-wide,
+not only the four named panels — the guard test asserts zero anywhere in
+`ROOTS`, and a narrower fix would have failed its own guard. The `Field`
+migration stayed to the one ad-hoc error naturally attached to a single
+control; panel-level refusal messages (the push preview's delta error, the
+booking/visit refusal text) stayed as plain unconditional `aria-live`
+paragraphs rather than being forced onto `Field`, which has no natural
+control to attach a panel-level message to.
+
+**What it tested.** `aria-live.test.ts`'s three cases (file-count sanity, a
+synthetic probe covering both bug shapes and both exemptions, and the
+zero-offenders assertion over the real tree). The full gate: lint, typecheck,
+1,791 unit tests (1 pre-existing skip), and 352 of 353 e2e specs.
+
+**What it left behind.**
+- `e2e/conflicts.spec.ts`'s `beforeEach` computes its test day as "next
+  Tuesday after `new Date()`" — a real wall-clock read the engine tests are
+  explicitly forbidden from (CLAUDE.md: "a test that reads the clock is wrong
+  even when it passes"). The date rolled from Monday 2026-09-28 to Tuesday
+  2026-09-29 mid-session, so "next Tuesday" jumped from the 29th to Tuesday 6
+  **October** — and Playwright's `getByLabel('To')` substring-matches
+  "Oc**to**ber", now resolving to three elements (the `<select>` plus two
+  client checkboxes whose accessible names contain the date) instead of one.
+  Deterministic, reproduced twice, unrelated to this item's diff, and it will
+  fail on any day whose computed Tuesday lands in October. It needs a row and
+  a frozen `DAY` fixture (or an exact-match locator), not a workaround here.
+- The two-checkbox `getByLabel` collision this surfaces is itself worth a
+  second look independent of the date bug: `getByLabel` without `exact: true`
+  is substring-matching against accessible names built from arbitrary content
+  (a client's date/time), which can collide with any short, common label.

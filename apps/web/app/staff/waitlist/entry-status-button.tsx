@@ -31,7 +31,7 @@ export function EntryStatusButton({
       >
         {pending ? '…' : label}
       </button>
-      {state.message ? <span className="sr-only" aria-live="polite">{state.message}</span> : null}
+      <span className="sr-only" aria-live="polite">{state.message ?? ''}</span>
     </form>
   );
 }

@@ -131,11 +131,9 @@ export function CallMarkButtons<Outcome extends string>({
         </Button>
       ) : null}
 
-      {state.message ? (
-        <span aria-live="polite" className="w-full text-caption text-ink-muted">
-          {state.message}
-        </span>
-      ) : null}
+      <span aria-live="polite" className="w-full text-caption text-ink-muted">
+        {state.message ?? ''}
+      </span>
     </form>
   );
 }

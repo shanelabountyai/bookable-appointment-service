@@ -91,7 +91,9 @@ export function ClientPicker({
         className={field}
       />
 
-      {searching ? <p className="text-sm text-zinc-600 dark:text-zinc-400">Looking…</p> : null}
+      <p role="status" aria-live="polite" className={searching ? 'text-sm text-zinc-600 dark:text-zinc-400' : 'sr-only'}>
+        {searching ? 'Looking…' : ''}
+      </p>
 
       {candidates.length > 0 ? (
         <ul className="flex flex-col gap-1">

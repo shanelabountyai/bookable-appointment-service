@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { type VisitState, changeServices } from '@/lib/appointments/visit-actions';
 import { readableReason } from '@/lib/scheduling-words';
 
@@ -42,6 +42,18 @@ export function VisitPanel({
 }) {
   const [state, action, pending] = useActionState(changeServices, initial);
   const [chosen, setChosen] = useState<string[]>(current);
+
+  /** A-145 — a refusal that needs a reason takes focus when its input
+   *  appears (the booking-flow/booking-panel rule, A-143). Compared to the
+   *  previous render rather than flagged, so Strict Mode's double effect does
+   *  not focus twice. */
+  const overrideReasonRef = useRef<HTMLInputElement>(null);
+  const overriding = useRef(false);
+  useEffect(() => {
+    if (overriding.current === state.canOverride) return;
+    overriding.current = !!state.canOverride;
+    if (state.canOverride) overrideReasonRef.current?.focus();
+  }, [state.canOverride]);
 
   function toggle(id: string) {
     setChosen(chosen.includes(id) ? chosen.filter((s) => s !== id) : [...chosen, id]);
@@ -94,37 +106,33 @@ export function VisitPanel({
         {minutes} min · {money(cents)}
       </p>
 
-      {state.message && !state.ok ? (
-        <div className="flex flex-col gap-3 rounded-md border border-amber-500 p-4">
-          <p className="text-sm font-medium" aria-live="polite">
-            {state.message}
-          </p>
-          {state.canOverride ? (
-            <>
-              <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                {state.reasons?.length
-                  ? `${state.reasons.map(readableReason).join('; ')}.`
-                  : 'That time is outside their working hours.'}
-              </p>
-              {/* BOOK-05, and the reason is the ceremony — the same words and
-                  the same shape the booking panel uses. */}
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input type="checkbox" name="isOverride" />
-                Do it anyway
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                Why?
-                <input name="overrideReason" className={field} placeholder="Staying late, agreed with Dana" />
-              </label>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+      <p className="text-sm font-medium" aria-live="polite">
+        {state.message ?? ''}
+      </p>
 
-      {state.ok ? (
-        <p className="text-sm font-medium" aria-live="polite">
-          {state.message}
-        </p>
+      {state.message && !state.ok && state.canOverride ? (
+        <div className="flex flex-col gap-3 rounded-md border border-amber-500 p-4">
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+            {state.reasons?.length
+              ? `${state.reasons.map(readableReason).join('; ')}.`
+              : 'That time is outside their working hours.'}
+          </p>
+          {/* BOOK-05, and the reason is the ceremony — the same words and
+              the same shape the booking panel uses. */}
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" name="isOverride" />
+            Do it anyway
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Why?
+            <input
+              ref={overrideReasonRef}
+              name="overrideReason"
+              className={field}
+              placeholder="Staying late, agreed with Dana"
+            />
+          </label>
+        </div>
       ) : null}
 
       <div className="flex flex-wrap items-end gap-3">

@@ -89,11 +89,9 @@ export function ColumnControls({
         )}
       </div>
 
-      {lateState.message && !lateState.ok ? (
-        <p aria-live="polite" className="text-amber-800 dark:text-amber-300">
-          {lateState.message}
-        </p>
-      ) : null}
+      <p aria-live="polite" className={lateState.ok === false ? 'text-amber-800 dark:text-amber-300' : ''}>
+        {lateState.message ?? ''}
+      </p>
 
       {runningLateMinutes && calls.length > 0 ? (
         <RingRound providerId={providerId} providerName={providerName} day={day} calls={calls} />
@@ -140,7 +138,9 @@ export function ColumnControls({
               Minus to pull the column earlier — <code>-20</code> when they have caught up.
             </p>
 
-            {previewing ? <p className="text-zinc-600 dark:text-zinc-400">Checking…</p> : null}
+            <p aria-live="polite" className="text-zinc-600 dark:text-zinc-400">
+              {previewing ? 'Checking…' : ''}
+            </p>
 
             {preview ? (
               <>
@@ -210,11 +210,9 @@ export function ColumnControls({
               </>
             ) : null}
 
-            {pushState.message ? (
-              <p aria-live="polite" className={pushState.ok ? '' : 'text-amber-800 dark:text-amber-300'}>
-                {pushState.message}
-              </p>
-            ) : null}
+            <p aria-live="polite" className={pushState.ok ? '' : 'text-amber-800 dark:text-amber-300'}>
+              {pushState.message ?? ''}
+            </p>
           </div>
         </details>
       ) : null}
@@ -335,11 +333,9 @@ function RingRound({
         ))}
       </ul>
 
-      {state.message && !state.ok ? (
-        <p aria-live="polite" className="mt-2 font-medium text-amber-900 dark:text-amber-200">
-          {state.message}
-        </p>
-      ) : null}
+      <p aria-live="polite" className={state.ok === false ? 'mt-2 font-medium text-amber-900 dark:text-amber-200' : 'mt-2'}>
+        {state.message ?? ''}
+      </p>
     </section>
   );
 }

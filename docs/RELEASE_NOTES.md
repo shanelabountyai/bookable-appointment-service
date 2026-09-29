@@ -4899,6 +4899,28 @@ the "this link is no longer valid, call the salon" dead end — now has the
 salon's phone number as a tappable link, so the sentence it ends on has
 somewhere to go.
 
+## A-145 — the desk's live regions announce, instead of sitting there silent
+
+A screen reader only hears a live region change; it never hears one arrive
+already holding text, because the element and its content showed up in the
+same frame. Across sixteen staff-side files that had the same
+`{state.message ? <p aria-live>…</p> : null}` shape — the running-late delta,
+the column push preview, the client picker, every refusal box on the booking
+and visit-change panels — the announcement region now mounts once, permanently,
+with only its text conditional. Setting a running-late delta now says so out
+loud, not only refusing an out-of-range number. A refusal that needs a typed
+reason now moves keyboard focus to that box the instant it appears, rather
+than leaving a screen-reader user to go looking for what just changed.
+
+The guard is a parser, not a checklist: a small TypeScript-compiler-API walk
+(the same technique `voice.test.ts` uses for gendered language) checks every
+`.tsx` file under the same five roots for an `aria-live` element sitting on
+the gated side of a ternary or `&&` whose other side renders nothing — and
+fails the build if a new one shows up. It knows the difference between that
+bug and two legitimate look-alikes: a form field's error slot that is
+deliberately absent for a field that cannot fail, and a whole panel that does
+not apply yet (nothing to preview) rather than an async result flickering.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

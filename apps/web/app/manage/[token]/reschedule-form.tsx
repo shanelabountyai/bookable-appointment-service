@@ -69,6 +69,9 @@ export function RescheduleForm({ token, days }: { token: string; days: OpenDay[]
       {day ? (
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium">What time?</legend>
+          <p role="status" aria-live="polite" className="sr-only">
+            {loading ? 'Looking…' : ''}
+          </p>
           {loading ? (
             <p className="text-sm text-ink-muted">Looking…</p>
           ) : times.length === 0 ? (

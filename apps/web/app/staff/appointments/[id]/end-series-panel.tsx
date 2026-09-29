@@ -45,7 +45,7 @@ export function EndSeriesPanel({ appointmentId }: { appointmentId: string }) {
           {preview ? 'Check again' : 'Show me what goes'}
         </button>
 
-        {previewing ? <p aria-live="polite">Checking…</p> : null}
+        <p aria-live="polite" className={previewing ? '' : 'sr-only'}>{previewing ? 'Checking…' : ''}</p>
 
         {preview ? (
           <>
@@ -98,11 +98,9 @@ export function EndSeriesPanel({ appointmentId }: { appointmentId: string }) {
           </>
         ) : null}
 
-        {state.message ? (
-          <p aria-live="polite" className={state.ok ? '' : 'text-amber-800 dark:text-amber-300'}>
-            {state.message}
-          </p>
-        ) : null}
+        <p aria-live="polite" className={state.ok ? '' : 'text-amber-800 dark:text-amber-300'}>
+          {state.message ?? ''}
+        </p>
       </div>
     </details>
   );

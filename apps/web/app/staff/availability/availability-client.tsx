@@ -32,11 +32,10 @@ const ghost =
  * out loud on every save is how a warning becomes wallpaper.
  */
 function Impact({ state }: { state: ImpactState }) {
-  if (!state.ok) return null;
   return (
     <p aria-live="polite" className="text-sm">
-      {state.message}
-      {state.strandedCount ? (
+      {state.ok ? state.message : ''}
+      {state.ok && state.strandedCount ? (
         <>
           {' '}
           <span className="font-medium text-amber-800 dark:text-amber-300">

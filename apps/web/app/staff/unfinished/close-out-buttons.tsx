@@ -43,11 +43,9 @@ export function CloseOutButtons({ appointmentId }: { appointmentId: string }) {
       >
         Didn&apos;t come
       </button>
-      {state.message ? (
-        <span aria-live="polite" className="text-xs text-zinc-600 dark:text-zinc-400">
-          {state.message}
-        </span>
-      ) : null}
+      <span aria-live="polite" className="text-xs text-zinc-600 dark:text-zinc-400">
+        {state.message ?? ''}
+      </span>
     </form>
   );
 }
