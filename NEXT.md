@@ -1,13 +1,12 @@
 # Next
 
-**Pick up: A-146, C5. The client record can be corrected, and it explains
-itself** (Phase 22 in `06-backlog.md`, D-70) — **DECIDE FIRST (OQ-23), THEN
-BUILD**: ask the owner question before writing any code. A-145 (C4, staff live
-regions and field errors) is done, `d7c4a64`.
+**Pick up: A-147, C7. The design system reaches the busy screens** (Phase 22
+in `06-backlog.md`, D-70) — no gate, no open dependency. A-146 (C5, the
+client record can be corrected, and it explains itself) is done, `55c5e55`,
+deciding OQ-23 as D-72.
 
-Then A-150 is gated on OQ-24, A-151 on OQ-25 — ask when each comes up, not
-before. A-147 (C7, design system on the busy screens) has no gate and no open
-dependency, so it can go before A-146 if OQ-23 is still unanswered.
+Then A-148 (C6, focus management) depends on A-147. A-150 is gated on OQ-24,
+A-151 on OQ-25 — ask when each comes up, not before.
 
 Needs a backlog row: `packages/db/appointments/transition.test.ts` › "lets
 exactly one of two simultaneous check-ins win" is not barrier-based and fails

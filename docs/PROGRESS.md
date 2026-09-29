@@ -5987,7 +5987,7 @@ worth a second look wherever else this pattern appears.
 
 ## A-146 — C5: the client record can be corrected, and it explains itself (D-70, D-72)
 
-Commit `SHA-PENDING`.
+Commit `55c5e55`.
 
 **What it built.**
 - **A `ClientNoteVersion` table** (`packages/db/prisma/migrations/20260922120000_client_note_version`),
