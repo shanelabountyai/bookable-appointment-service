@@ -5959,19 +5959,28 @@ synthetic probe covering both bug shapes and both exemptions, and the
 zero-offenders assertion over the real tree). The full gate: lint, typecheck,
 1,791 unit tests (1 pre-existing skip), and 352 of 353 e2e specs.
 
-**What it left behind.**
-- `e2e/conflicts.spec.ts`'s `beforeEach` computes its test day as "next
-  Tuesday after `new Date()`" — a real wall-clock read the engine tests are
-  explicitly forbidden from (CLAUDE.md: "a test that reads the clock is wrong
-  even when it passes"). The date rolled from Monday 2026-09-28 to Tuesday
-  2026-09-29 mid-session, so "next Tuesday" jumped from the 29th to Tuesday 6
-  **October** — and Playwright's `getByLabel('To')` substring-matches
-  "Oc**to**ber", now resolving to three elements (the `<select>` plus two
-  client checkboxes whose accessible names contain the date) instead of one.
-  Deterministic, reproduced twice, unrelated to this item's diff, and it will
-  fail on any day whose computed Tuesday lands in October. It needs a row and
-  a frozen `DAY` fixture (or an exact-match locator), not a workaround here.
-- The two-checkbox `getByLabel` collision this surfaces is itself worth a
-  second look independent of the date bug: `getByLabel` without `exact: true`
-  is substring-matching against accessible names built from arbitrary content
-  (a client's date/time), which can collide with any short, common label.
+**What it left behind.** Nothing — the one thing found along the way was
+fixed the same day, in its own commit (`SHA-PENDING`, see below), not
+folded into this item's diff.
+
+**Addendum, same day.** CI (`36584221109`) failed on exactly one spec:
+`e2e/conflicts.spec.ts`'s `beforeEach` computes its test day as "next
+Tuesday after `new Date()`" — a real wall-clock read the engine tests are
+explicitly forbidden from (CLAUDE.md: "a test that reads the clock is wrong
+even when it passes"). The date rolled from Monday 2026-09-28 to Tuesday
+2026-09-29 mid-session, so "next Tuesday" jumped from the 29th to Tuesday 6
+**October**, and `page.getByLabel('To')` — substring-matching by default,
+over every labelled element regardless of role — started resolving to three
+elements: the `<select>` plus two client checkboxes whose accessible names
+contain "Oc**to**ber". `exact: true` alone does not fix it either, because
+the select's own computed accessible name is "ToChoose a stylist…" (the
+wrapping label's text concatenated with the control's own rendered content,
+per the accname spec) — never bare "To". The actual fix scopes the locator by
+role, `page.getByRole('combobox', { name: 'To' })`, which excludes the
+checkboxes outright regardless of what the day's label happens to contain.
+Verified against the live, currently-broken date (both before and after),
+then against the full local sweep (353/353) before pushing. Left as a
+standing lesson rather than a backlog row: `getByLabel` without a role scope
+is substring-matching against accessible names built from arbitrary content
+(a client's date/time), which can collide with any short, common label —
+worth a second look wherever else this pattern appears.

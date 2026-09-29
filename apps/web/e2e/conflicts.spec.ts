@@ -199,7 +199,16 @@ test.describe('the impact workflow (A-019)', () => {
 
     await page.getByRole('checkbox', { name: /Select Client 1/ }).check();
     await page.getByRole('checkbox', { name: /Select Client 2/ }).check();
-    await page.getByLabel('To').selectOption({ label: 'Priya' });
+    // A role scope, not `getByLabel`: `getByLabel` substring-matches over
+    // EVERY labelled element regardless of role, and the two client
+    // checkboxes' accessible names carry the day's label ("...at Tuesday 6
+    // October...") — "To" is a substring of "October" whenever the computed
+    // day lands in that month, which made this collide with both checkboxes
+    // (2026-09-29). `exact: true` alone does not fix it either: the select's
+    // own accessible name is "ToChoose a stylist…" (the wrapping label's text
+    // plus its own selected option, per the accname spec), never bare "To".
+    // Scoping to `combobox` excludes the checkboxes outright.
+    await page.getByRole('combobox', { name: 'To' }).selectOption({ label: 'Priya' });
     await page.getByLabel('Why move them?').fill('Dana off sick');
     await page.getByRole('button', { name: /^Move 2 where qualified$/ }).click();
 
