@@ -5960,7 +5960,7 @@ zero-offenders assertion over the real tree). The full gate: lint, typecheck,
 1,791 unit tests (1 pre-existing skip), and 352 of 353 e2e specs.
 
 **What it left behind.** Nothing — the one thing found along the way was
-fixed the same day, in its own commit (`SHA-PENDING`, see below), not
+fixed the same day, in its own commit (`22560c4`, see below), not
 folded into this item's diff.
 
 **Addendum, same day.** CI (`36584221109`) failed on exactly one spec:
