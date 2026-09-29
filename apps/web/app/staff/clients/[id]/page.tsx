@@ -6,6 +6,7 @@ import {
   clientHistory,
   findClient,
   findSplitRecords,
+  latestClientNoteVersion,
   missedAppointments,
   rebookSuggestion,
   reliabilityFor,
@@ -14,6 +15,7 @@ import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 import { NotesForm } from './notes-form';
+import { ContactForm } from './contact-form';
 import { MergePanel } from './merge-panel';
 import { ClientFlag } from '@/components/client-flag';
 
@@ -42,12 +44,13 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
   const now = new Date();
   const today = toLabel(fromDate(now), zoneId(business.timezone)).day;
 
-  const [history, rebook, reliability, missed, split] = await Promise.all([
+  const [history, rebook, reliability, missed, split, noteVersion] = await Promise.all([
     clientHistory(prisma, staff.businessId, client.id),
     rebookSuggestion(prisma, staff.businessId, client.id, today),
     reliabilityFor(prisma, { businessId: staff.businessId, clientId: client.id, today }),
     missedAppointments(prisma, { businessId: staff.businessId, clientId: client.id, today }),
     findSplitRecords(prisma, staff.businessId, client.id),
+    latestClientNoteVersion(prisma, staff.businessId, client.id),
   ]);
 
   // `history` arrives startAt DESC (packages/db/clients/clients.ts) — that
@@ -64,10 +67,6 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
           ← Clients
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{client.name ?? 'No name'}</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          {client.phone ?? 'No number'}
-          {client.email ? ` · ${client.email}` : ''}
-        </p>
         {client.reachedByOldNumber ? (
           <p className="mt-1 text-sm text-amber-700 dark:text-amber-500">
             You reached this record through a number that was merged into it.
@@ -85,10 +84,19 @@ export default async function ClientPage({ params }: PageProps<'/staff/clients/[
         ) : null}
       </div>
 
+      <ContactForm clientId={client.id} name={client.name ?? ''} phone={client.phone ?? ''} email={client.email ?? ''} />
+
       {/* CLIENT-03: the pinned note is FIRST on the page. It is a safety
           surface — a formula or an allergy — and a note nobody scrolls to is
           a note nobody reads. */}
-      <NotesForm clientId={client.id} notes={client.notes ?? ''} />
+      <NotesForm
+        clientId={client.id}
+        notes={client.notes ?? ''}
+        versionId={noteVersion?.id ?? null}
+        lastChangedBy={
+          noteVersion ? `${noteVersion.actorName ?? 'the desk'} · ${readableInstant(noteVersion.createdAt, business.timezone)}` : null
+        }
+      />
 
       {/* CLIENT-04. The counter WITH ITS WORKING: a bare "3 no-shows" ends the
           conversation at the desk, and every reference links to the

@@ -14,10 +14,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { instantFromIso, toDate } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
+import { staffActor } from '../../core/auth';
 import { clientReliability, missedAppointments, reliabilityFor } from './reliability';
 import { mergeClients } from './clients';
 
 const prisma = new PrismaClient();
+const STAFF = staffActor('staff-1');
 
 const at = (iso: string) => toDate(instantFromIso(iso));
 
@@ -165,7 +167,7 @@ describe('the rolling counters (CLIENT-04)', () => {
     await history({ clientId: mumId, day: '2026-03-10', status: 'no_show' });
     await history({ clientId: daughterId, day: '2026-04-14', status: 'no_show' });
 
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     expect((await countsFor(mumId)).noShows).toBe(2);
   });

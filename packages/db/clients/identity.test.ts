@@ -10,9 +10,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../generated/client/index.js';
 import { resetDatabase } from '../testing';
+import { staffActor } from '../../core/auth';
 import { findReturningClient, findSplitRecords, mergeClients, searchClients } from './clients';
 
 const prisma = new PrismaClient();
+const STAFF = staffActor('staff-1');
 let businessId: string;
 
 beforeAll(async () => {
@@ -90,7 +92,7 @@ describe('findReturningClient — the website finds the record the desk wrote', 
   it('lands on the survivor of a merge, never on the tombstone', async () => {
     const original = await desk('Alice Hall', '+15125550101');
     const duplicate = await desk('alice hall', '(512) 555-0101');
-    await mergeClients(prisma, { businessId, survivorId: duplicate.id, losingId: original.id });
+    await mergeClients(prisma, { businessId, survivorId: duplicate.id, losingId: original.id, actor: STAFF });
 
     expect(await findReturningClient(prisma, businessId, { phone: '512 555 0101', name: 'Alice Hall' })).toBe(duplicate.id);
   });
@@ -98,7 +100,7 @@ describe('findReturningClient — the website finds the record the desk wrote', 
   it('follows an old identity that only the tombstone still carries to its survivor', async () => {
     const old = await desk('Ada Chenn', '5125559999');
     const survivor = await desk('Ada Chen-Marsh', '5125550199');
-    await mergeClients(prisma, { businessId, survivorId: survivor.id, losingId: old.id });
+    await mergeClients(prisma, { businessId, survivorId: survivor.id, losingId: old.id, actor: STAFF });
 
     expect(await findReturningClient(prisma, businessId, { phone: '(512) 555-9999', name: 'ada chenn' })).toBe(survivor.id);
   });
@@ -133,7 +135,7 @@ describe('findSplitRecords — the rows A-114 made, named on the record', () => 
   it('stops naming it once it has been merged', async () => {
     const seeded = await desk('Alice Hall', '+15125550101');
     const typed = await desk('Alice Hall', '(512) 555-0101');
-    await mergeClients(prisma, { businessId, survivorId: seeded.id, losingId: typed.id });
+    await mergeClients(prisma, { businessId, survivorId: seeded.id, losingId: typed.id, actor: STAFF });
 
     expect(await findSplitRecords(prisma, businessId, seeded.id)).toEqual([]);
   });

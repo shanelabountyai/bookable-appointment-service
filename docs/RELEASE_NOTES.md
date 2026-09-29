@@ -4921,6 +4921,27 @@ bug and two legitimate look-alikes: a form field's error slot that is
 deliberately absent for a field that cannot fail, and a whole panel that does
 not apply yet (nothing to preview) rather than an async result flickering.
 
+## A-146 — the client record can be corrected, and it says who and when
+
+A typo in a phone number used to be permanent, short of a database console.
+Staff can now correct a client's name, phone and email in place; if the
+correction would collide with another client's identity, the record offers a
+merge instead of silently creating a duplicate or a split. The pinned note —
+the one field the desk reads for allergies and formulas — now keeps its own
+append-only history, and a save made from a note the screen already left
+behind is refused rather than applied: the person sees what actually
+changed, by whom, and chooses whether to keep it or overwrite it.
+
+The interesting defect here was in the browser, not the database. The write
+path refused a stale save correctly from the first line of code; the bug was
+that React resets a form's own fields the instant any submission — including
+a refused one — finishes, so the person's typed correction vanished from the
+screen at the exact moment they needed to still have it to decide anything.
+A test that submits a form once, the shape of nearly every existing test on
+this screen, cannot see that: it only shows up on the second submission,
+which nothing had exercised before. Fixed by making the field track its own
+state instead of trusting the DOM to still hold what was typed.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

@@ -16,6 +16,7 @@ import { sendDueReminders } from './reminders';
 import { MOVING_EVENT_TYPES, countMissedReminders, lastReminderSweep, listMissedReminders } from './missed-reminders';
 import { countUnsentNotifications } from './stuck';
 import { reminderDedupeKey } from '../../core/notifications';
+import { updateClientContact } from '../clients';
 
 const prisma = new PrismaClient();
 
@@ -631,5 +632,26 @@ describe('listMissedReminders (D-51)', () => {
 
     expect(await listMissedReminders(prisma, { businessId, now: aMinuteLater })).toHaveLength(0);
     expect(await lastReminderSweep(prisma, businessId)).toEqual(NOW);
+  });
+});
+
+describe('A-146 — a corrected phone number reaches the next reminder', () => {
+  const NOW = at('2026-06-08T08:00:00-05:00');
+
+  it('sends to the new number, not the one on file when she booked', async () => {
+    // This client has no email — `sendDueReminders` prefers email, so the
+    // phone is the recipient it will actually pick.
+    const client = await prisma.client.create({ data: { businessId, name: 'Rae', phone: '5125550111' } });
+    clientId = client.id; // `seed()` books against the module-level clientId
+
+    await updateClientContact(prisma, businessId, client.id, { name: 'Rae', phone: '5125550199', email: null });
+
+    const appointment = await seed({ startAt: at('2026-06-09T08:00:00-05:00') });
+    await sendDueReminders(prisma, NOW);
+
+    const row = await prisma.notificationOutbox.findUniqueOrThrow({
+      where: { dedupeKey: `reminder-24h:${appointment.id}:${fromDate(appointment.startAt)}` },
+    });
+    expect(row.recipient).toBe('+15125550199');
   });
 });

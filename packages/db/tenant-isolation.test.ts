@@ -29,6 +29,7 @@ import { countFutureHolds, createResource, createResourceType, setResourceActive
 import { clearRunningLate, markToldAbout, setRunningLate } from './day/running-late';
 import { createAdHocBlock, createTimeOff, findAbsences } from './availability/availability';
 import { acknowledgeConflict } from './availability/impact';
+import { saveClientNotes, updateClientContact } from './clients';
 
 const prisma = new PrismaClient();
 const STAFF = staffActor('staff-1');
@@ -97,6 +98,8 @@ async function snapshot(businessId: string) {
     providers: await prisma.provider.findMany({ ...where, orderBy: { id: 'asc' } }),
     resources: await prisma.resource.findMany({ ...where, orderBy: { id: 'asc' } }),
     late: await prisma.providerRunningLate.findMany({ ...where, orderBy: { id: 'asc' } }),
+    clients: await prisma.client.findMany({ ...where, orderBy: { id: 'asc' } }),
+    noteVersions: await prisma.clientNoteVersion.findMany({ ...where, orderBy: { id: 'asc' } }),
   };
 }
 
@@ -291,6 +294,28 @@ describe('staff at A posting B ids', () => {
       }),
     ).toBeNull();
     expect(await prisma.runningLateTold.count({ where: { appointmentId: b.appointmentId } })).toBe(0);
+  });
+
+  /** A-146. Neither sink throws (see the schema comment on `ClientNoteVersion`
+   *  for why the version write is guarded first) — both resolve a typed
+   *  not-found, same family as `markToldAbout`'s `null` above. */
+  it('cannot correct B’s client record or write to its note history', async () => {
+    const contactResult = await updateClientContact(prisma, asA(), b.clientId, {
+      name: 'Hijacked',
+      phone: '5125559999',
+      email: null,
+    });
+    expect(contactResult).toEqual({ ok: false, reason: 'not-found' });
+
+    const notesResult = await saveClientNotes(prisma, {
+      businessId: asA(),
+      clientId: b.clientId,
+      text: 'forged',
+      baseVersionId: null,
+      actor: STAFF,
+    });
+    expect(notesResult).toEqual({ ok: false, reason: 'not-found' });
+    expect(await prisma.clientNoteVersion.count({ where: { clientId: b.clientId } })).toBe(0);
   });
 
   it('left every one of B’s rows exactly as it was', async () => {

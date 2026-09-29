@@ -16,6 +16,7 @@
 import { patternGapSpans, worstCutoff } from '../../core/settings';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import { resolveStaffNames } from '../auth';
+import { latestClientNoteVersion } from '../clients';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -110,6 +111,11 @@ export interface AppointmentDetail {
   clientPhone: string | null;
   /** CLIENT-03's safety surface, on EVERY appointment render. */
   clientNotes: string | null;
+  /** A-146: who last touched the pinned note, and when — "wherever the note
+   *  renders" (D-72). Null when the client has no note history yet, which is
+   *  true of every note that predates this item. */
+  clientNoteLastChangedBy: string | null;
+  clientNoteLastChangedAt: Date | null;
   checkedInAt: Date | null;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -212,6 +218,10 @@ export async function loadAppointmentDetail(
     (ACTIVE_STATUSES as readonly string[]).includes(appointment.status) &&
     (await overlapsAnAbsence(db, appointment.providerId, appointment.startAt, appointment.endAt));
 
+  const noteVersion = appointment.client
+    ? await latestClientNoteVersion(db, args.businessId, appointment.client.id)
+    : null;
+
   return {
     id: appointment.id,
     status: appointment.status,
@@ -247,6 +257,8 @@ export async function loadAppointmentDetail(
     clientName: appointment.client?.name ?? null,
     clientPhone: appointment.client?.phone ?? null,
     clientNotes: appointment.client?.notes ?? null,
+    clientNoteLastChangedBy: noteVersion?.actorName ?? null,
+    clientNoteLastChangedAt: noteVersion?.createdAt ?? null,
     checkedInAt: appointment.checkedInAt,
     startedAt: appointment.startedAt,
     endedAt: appointment.endedAt,

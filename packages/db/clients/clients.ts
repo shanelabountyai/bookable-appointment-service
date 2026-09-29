@@ -17,6 +17,8 @@
  */
 import { naturalIntervalDays } from '../../core/clients';
 import { addDays, calendarDay } from '../../core/time';
+import type { Actor } from '../../core/auth';
+import { resolveStaffNames } from '../auth';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -180,14 +182,156 @@ export async function findClient(db: Db, businessId: string, id: string): Promis
   return resolved ?? null;
 }
 
-/** CLIENT-03's pinned note — formula, allergies. Rendered on every appointment
- *  surface, which is why it is one field on the client and not a per-visit
- *  scribble (that is `Appointment.notes`). */
-export async function setClientNotes(db: Db, businessId: string, id: string, notes: string): Promise<void> {
-  await db.client.updateMany({
-    where: { id, businessId },
-    data: { notes: notes.trim() || null },
+/** One entry in the pinned note's history (`ClientNoteVersion`), with the
+ *  actor resolved to a name where the log has one. */
+export interface ClientNoteVersionSummary {
+  id: string;
+  text: string;
+  actorName: string | null;
+  createdAt: Date;
+}
+
+/** CLIENT-03's pinned note as it stands right now, with who put it there. */
+export async function latestClientNoteVersion(
+  db: Db,
+  businessId: string,
+  clientId: string,
+): Promise<ClientNoteVersionSummary | null> {
+  const row = await db.clientNoteVersion.findFirst({
+    where: { businessId, clientId },
+    orderBy: { createdAt: 'desc' },
   });
+  if (!row) return null;
+
+  const names = await resolveStaffNames(db as PrismaClient, row.actorRef ? [row.actorRef] : []);
+  return {
+    id: row.id,
+    text: row.text,
+    actorName: (row.actor === 'staff' && row.actorRef ? names.get(row.actorRef) : undefined) ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
+export type SaveNotesResult =
+  | { ok: true; version: ClientNoteVersionSummary }
+  | { ok: false; reason: 'stale'; current: ClientNoteVersionSummary | null }
+  | { ok: false; reason: 'not-found' };
+
+/**
+ * CLIENT-03's pinned note — formula, allergies. Rendered on every appointment
+ * surface, which is why it is one field on the client and not a per-visit
+ * scribble (that is `Appointment.notes`).
+ *
+ * OQ-23(a): a save made from a stale copy is REFUSED, never silently applied.
+ * `baseVersionId` is the id of the version the form was rendered from — `null`
+ * for a client with no note history yet. If the row's newest version has
+ * since moved on, nothing is written; the caller gets that newest version back
+ * so it can show both texts and let a person choose (including choosing to
+ * overwrite, by submitting again with the version id this call just handed
+ * back).
+ *
+ * `Client.notes` is written in the SAME transaction as the new version row —
+ * see the schema comment on `ClientNoteVersion` for why that has to stay true
+ * of every writer, not just this one.
+ */
+export async function saveClientNotes(
+  db: PrismaClient,
+  args: { businessId: string; clientId: string; text: string; baseVersionId: string | null; actor: Actor },
+): Promise<SaveNotesResult> {
+  return db.$transaction(async (tx) => {
+    // Scoped the same way D-66's sink fix scopes every other write: a wrong
+    // businessId must write NOTHING, not a version row under the wrong tenant
+    // followed by a client update that then quietly affects zero rows.
+    const client = await tx.client.findFirst({ where: { id: args.clientId, businessId: args.businessId }, select: { id: true } });
+    if (!client) return { ok: false, reason: 'not-found' };
+
+    const latest = await tx.clientNoteVersion.findFirst({
+      where: { businessId: args.businessId, clientId: args.clientId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if ((latest?.id ?? null) !== args.baseVersionId) {
+      const names = await resolveStaffNames(db, latest?.actorRef ? [latest.actorRef] : []);
+      return {
+        ok: false,
+        reason: 'stale',
+        current: latest
+          ? {
+              id: latest.id,
+              text: latest.text,
+              actorName: (latest.actor === 'staff' && latest.actorRef ? names.get(latest.actorRef) : undefined) ?? null,
+              createdAt: latest.createdAt,
+            }
+          : null,
+      };
+    }
+
+    const text = args.text.trim();
+    const version = await tx.clientNoteVersion.create({
+      data: { businessId: args.businessId, clientId: args.clientId, text, actor: args.actor.type, actorRef: args.actor.ref },
+    });
+    await tx.client.updateMany({
+      where: { id: args.clientId, businessId: args.businessId },
+      data: { notes: text || null },
+    });
+
+    const names = await resolveStaffNames(db, version.actorRef ? [version.actorRef] : []);
+    return {
+      ok: true,
+      version: {
+        id: version.id,
+        text: version.text,
+        actorName: (version.actor === 'staff' && version.actorRef ? names.get(version.actorRef) : undefined) ?? null,
+        createdAt: version.createdAt,
+      },
+    };
+  });
+}
+
+export interface ContactMatch {
+  id: string;
+  name: string | null;
+}
+
+export type UpdateContactResult =
+  | { ok: true; client: ClientSummary }
+  | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'match'; match: ContactMatch };
+
+/**
+ * A-146 (C5): edit name, phone and email, scoped at this sink (D-66) and
+ * derived through D-55's canonical forms via `findReturningClient` — the
+ * same "same number, same folded name" match the website's reuse logic uses.
+ *
+ * A match against another LIVE client is refused, not merged automatically:
+ * merging is a decision (A-015), and this only surfaces the candidate so the
+ * page's existing merge panel can offer it.
+ *
+ * Existence is checked FIRST and scoped to `businessId` — the same D-66
+ * discipline `saveClientNotes` follows, so a wrong businessId is a clean
+ * not-found rather than a no-op `updateMany` followed by a lookup with
+ * nothing to find.
+ */
+export async function updateClientContact(
+  db: Db,
+  businessId: string,
+  id: string,
+  data: { name: string | null; phone: string | null; email: string | null },
+): Promise<UpdateContactResult> {
+  const existing = await db.client.findFirst({ where: { id, businessId }, select: { id: true } });
+  if (!existing) return { ok: false, reason: 'not-found' };
+
+  if (data.phone && data.name) {
+    const matchId = await findReturningClient(db, businessId, { phone: data.phone, name: data.name });
+    if (matchId && matchId !== id) {
+      const match = await db.client.findFirst({ where: { id: matchId, businessId }, select: { id: true, name: true } });
+      if (match) return { ok: false, reason: 'match', match };
+    }
+  }
+
+  await db.client.update({ where: { id }, data });
+  const client = await findClient(db, businessId, id);
+  if (!client) throw new Error('Client not found after update.');
+  return { ok: true, client };
 }
 
 export interface ClientVisit {
@@ -273,7 +417,7 @@ export interface MergeResult {
  */
 export async function mergeClients(
   prisma: PrismaClient,
-  args: { businessId: string; survivorId: string; losingId: string },
+  args: { businessId: string; survivorId: string; losingId: string; actor: Actor },
 ): Promise<MergeResult> {
   if (args.survivorId === args.losingId) {
     throw new MergeRefused('A client cannot be merged into itself.');
@@ -308,16 +452,34 @@ export async function mergeClients(
       data: { mergedIntoClientId: survivor.id },
     });
 
+    const mergedNotes = mergeNotes(survivor.notes, loser.notes);
     await tx.client.update({
       where: { id: survivor.id },
       data: {
-        notes: mergeNotes(survivor.notes, loser.notes),
+        notes: mergedNotes,
         name: survivor.name ?? loser.name,
         phone: survivor.phone ?? loser.phone,
         email: survivor.email ?? loser.email,
         smsConsentAt: survivor.smsConsentAt ?? loser.smsConsentAt,
       },
     });
+    // The version table has to stay the source of truth for what is CURRENT
+    // on `Client.notes` (see the schema comment) — a merge changes that column
+    // exactly like a direct edit does, so it gets a version row too, or the
+    // next `saveClientNotes` compares against a stale pointer and overwrites
+    // the concatenation this merge just made, silently, which is the CLIENT-03
+    // failure this whole item exists to close.
+    if (mergedNotes !== survivor.notes) {
+      await tx.clientNoteVersion.create({
+        data: {
+          businessId: args.businessId,
+          clientId: survivor.id,
+          text: mergedNotes ?? '',
+          actor: args.actor.type,
+          actorRef: args.actor.ref,
+        },
+      });
+    }
 
     await tx.client.update({
       where: { id: loser.id },

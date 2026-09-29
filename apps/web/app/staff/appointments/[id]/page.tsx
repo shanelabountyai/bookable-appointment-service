@@ -201,9 +201,15 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
       {/* CLIENT-03's safety surface, FIRST and unmissable. An allergy note
           nobody scrolls to is a note nobody reads. */}
       {detail.clientNotes ? (
-        <p className="rounded-md border border-amber-500 bg-amber-50 p-4 text-sm font-medium text-amber-950 dark:bg-amber-950 dark:text-amber-100">
-          ⚑ {detail.clientNotes}
-        </p>
+        <div className="rounded-md border border-amber-500 bg-amber-50 p-4 text-sm font-medium text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+          <p>⚑ {detail.clientNotes}</p>
+          {detail.clientNoteLastChangedAt ? (
+            <p className="mt-1 text-xs font-normal text-amber-800 dark:text-amber-300">
+              Last changed by {detail.clientNoteLastChangedBy ?? 'the desk'} ·{' '}
+              {readableInstant(detail.clientNoteLastChangedAt, business.timezone)}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {detail.conflicted ? (

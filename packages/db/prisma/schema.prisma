@@ -219,6 +219,7 @@ model Business {
   lateCalls     RunningLateTold[]
   callAttempts  CallDownAttempt[]
   callMarks     ClientCallMark[]
+  noteVersions  ClientNoteVersion[]
 }
 
 /// D-9. One shared owner credential in v1; multi-user staff auth and roles are
@@ -627,6 +628,7 @@ model Client {
   series       AppointmentSeries[]
   waitlist     WaitlistEntry[]
   callMarks    ClientCallMark[]
+  noteVersions ClientNoteVersion[]
 
   /// Restrict, not Cascade: a survivor that could be deleted out from under
   /// its tombstones would leave the old phone number pointing at nothing.
@@ -637,6 +639,33 @@ model Client {
   @@index([businessId, phone, nameFolded])
   @@index([businessId, name])
   @@index([mergedIntoClientId])
+}
+
+/// A-146 (D-72, OQ-23a) — the pinned note's history, and the concurrency token
+/// a stale save is checked against.
+///
+/// APPEND-ONLY, same mechanism as `AppointmentEvent` (a `BEFORE UPDATE OR
+/// DELETE` trigger, see the migration). `Client.notes` stays the current-value
+/// column every existing reader already selects (day view, running-late, the
+/// appointment detail panel) — untouched by this table on purpose, so none of
+/// those one-to-many joins change shape (the A-093 class of bug). Every write
+/// to `Client.notes` — a direct edit AND a merge's concatenation — inserts a
+/// row here in the SAME transaction; skip either path and the newest version's
+/// `id` stops matching what is actually on the row, and a stale-save check
+/// compared against it would pass when it should refuse.
+model ClientNoteVersion {
+  id         String   @id @default(cuid())
+  businessId String
+  clientId   String
+  text       String
+  actor      Actor
+  actorRef   String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, createdAt])
 }
 
 /// A-049 — A STANDING APPOINTMENT, STORED AS A CALENDAR RULE (D-3, D-34).

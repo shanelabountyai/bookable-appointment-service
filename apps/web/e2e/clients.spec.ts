@@ -148,6 +148,91 @@ test.describe('the client record (A-015)', () => {
     await expect(page.getByLabel('Pinned note')).toHaveValue('Allergic to PPD. Bleach only.');
   });
 
+  /** A-146 (D-72, OQ-23a): a save made from a note the page already left
+   *  behind is refused, not silently applied over what changed underneath
+   *  it — the failure CLIENT-03 exists to prevent. */
+  test('refuses a stale note save, and a resubmit against what it shows then saves', async ({ page }) => {
+    await search(page, 'Ada');
+    await page.getByRole('link', { name: /Ada Chen/ }).click();
+    // Client-side navigation settles before the form is touched — filling
+    // during the RSC swap lands on a DOM node about to be replaced.
+    await page.waitForLoadState('networkidle');
+    // The page has now loaded with NO note history — `baseVersionId` is null.
+
+    const prisma = new PrismaClient();
+    try {
+      const ada = await prisma.client.findFirstOrThrow({ where: { name: 'Ada Chen' } });
+      // Someone else changes the note from elsewhere, after this page loaded.
+      await prisma.clientNoteVersion.create({
+        data: { businessId: ada.businessId, clientId: ada.id, text: 'Allergic to PPD.', actor: 'staff' },
+      });
+      await prisma.client.update({ where: { id: ada.id }, data: { notes: 'Allergic to PPD.' } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.getByLabel('Pinned note').fill('Prefers the 2pm chair.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+
+    await expect(page.getByText(/Someone changed this note/)).toBeVisible();
+    await expect(page.locator('p', { hasText: 'Allergic to PPD.' })).toBeVisible();
+    // Refused — a resubmit is what makes the overwrite deliberate.
+    await expect(page.getByRole('button', { name: 'Save note' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Save note' }).click();
+    await expect(page.getByText('Note saved.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Pinned note')).toHaveValue('Prefers the 2pm chair.');
+  });
+
+  /** A-146 (C5): name, phone and email are editable, scoped and canonicalised
+   *  the same way every other write to a client's identity already is. */
+  test('corrects name, phone and email', async ({ page }) => {
+    await search(page, 'Ada');
+    await page.getByRole('link', { name: /Ada Chen/ }).click();
+    await page.waitForLoadState('networkidle');
+
+    await page.getByLabel('Name').fill('Ada Chen-Marsh');
+    await page.getByLabel('Phone').fill('5125550177');
+    await page.getByLabel('Email').fill('ada.marsh@example.test');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Saved.')).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Ada Chen-Marsh' })).toBeVisible();
+    await expect(page.getByLabel('Phone')).toHaveValue('+15125550177');
+    await expect(page.getByLabel('Email')).toHaveValue('ada.marsh@example.test');
+  });
+
+  /** A match against another live client offers the existing merge instead
+   *  of saving — never a silent collision or a second split record. */
+  test('offers to merge instead of colliding with another live client', async ({ page }) => {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      await prisma.client.create({ data: { businessId: business.id, name: 'Priya Patel', phone: '5125550188' } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await search(page, 'Ada');
+    await page.getByRole('link', { name: /Ada Chen/ }).click();
+    await page.waitForLoadState('networkidle');
+
+    await page.getByLabel('Name').fill('Priya Patel');
+    await page.getByLabel('Phone').fill('5125550188');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page.getByText(/already belong to Priya Patel/)).toBeVisible();
+    await page.getByRole('button', { name: 'Merge it into this record' }).click();
+    await expect(page.getByText(/Merged\. 0 appointments moved across/)).toBeVisible();
+
+    await page.reload();
+    // The contact edit was refused — the name on the record is still hers,
+    // untouched by the collision, and the merge brought Priya's record IN.
+    await expect(page.getByRole('heading', { name: 'Ada Chen' })).toBeVisible();
+  });
+
   /**
    * CLIENT-01's merge plus R-10's tombstone, end to end: the history moves,
    * both notes survive, and the losing record's number still lands on the

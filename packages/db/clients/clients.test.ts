@@ -19,10 +19,12 @@ import {
   clientHistory,
   findClient,
   findClientsByPhone,
+  latestClientNoteVersion,
   mergeClients,
   rebookSuggestion,
+  saveClientNotes,
   searchClients,
-  setClientNotes,
+  updateClientContact,
 } from './clients';
 
 const prisma = new PrismaClient();
@@ -100,6 +102,22 @@ const book = (over: Partial<Parameters<typeof bookAppointment>[1]> = {}) =>
     ...over,
   } as Parameters<typeof bookAppointment>[1]);
 
+/** Most tests do not care about the concurrency token — they just want the
+ *  note set to X, from whatever it currently is. Reads the live base first,
+ *  so it never itself trips OQ-23(a)'s stale-save refusal. */
+async function note(clientId: string, text: string) {
+  const current = await latestClientNoteVersion(prisma, businessId, clientId);
+  const result = await saveClientNotes(prisma, {
+    businessId,
+    clientId,
+    text,
+    baseVersionId: current?.id ?? null,
+    actor: STAFF,
+  });
+  if (!result.ok) throw new Error('note() helper hit a conflict it did not expect');
+  return result.version;
+}
+
 describe('CLIENT-01 — lookup returns a LIST (D-17)', () => {
   /** The whole reason `Client.phone` is not unique. */
   it('returns both people who share a household number', async () => {
@@ -141,17 +159,152 @@ describe('CLIENT-01 — lookup returns a LIST (D-17)', () => {
 
 describe('CLIENT-03 — the pinned note', () => {
   it('saves and clears', async () => {
-    await setClientNotes(prisma, businessId, mumId, '  Allergic to PPD. Bleach only.  ');
+    await note(mumId, '  Allergic to PPD. Bleach only.  ');
     expect((await findClient(prisma, businessId, mumId))?.notes).toBe('Allergic to PPD. Bleach only.');
 
-    await setClientNotes(prisma, businessId, mumId, '   ');
+    await note(mumId, '   ');
     expect((await findClient(prisma, businessId, mumId))?.notes).toBeNull();
   });
 
   it('does not write across businesses', async () => {
     const other = await prisma.business.create({ data: { name: 'Rival', timezone: 'America/Chicago' } });
-    await setClientNotes(prisma, other.id, mumId, 'should not land');
+    const result = await saveClientNotes(prisma, {
+      businessId: other.id,
+      clientId: mumId,
+      text: 'should not land',
+      baseVersionId: null,
+      actor: STAFF,
+    });
+    expect(result).toEqual({ ok: false, reason: 'not-found' });
     expect((await findClient(prisma, businessId, mumId))?.notes).toBeNull();
+    expect(await latestClientNoteVersion(prisma, other.id, mumId)).toBeNull();
+  });
+
+  describe('OQ-23(a) — a stale save is refused, not applied', () => {
+    it('saves when the base version is current, and records who and when', async () => {
+      // A real StaffUser, not the bare `STAFF` fixture the rest of this file
+      // uses — the point of this assertion is that the name RESOLVES (D-9),
+      // and an actorRef with nothing behind it resolves to null by design.
+      const priya = await prisma.staffUser.create({
+        data: { businessId, name: 'Priya', email: 'priya@example.test', passwordHash: 'x', role: 'staff' },
+      });
+      const result = await saveClientNotes(prisma, {
+        businessId,
+        clientId: mumId,
+        text: 'Allergic to PPD.',
+        baseVersionId: null,
+        actor: staffActor(priya.id),
+      });
+      if (!result.ok) throw new Error('unreachable');
+      const version = result.version;
+      expect(version.text).toBe('Allergic to PPD.');
+      expect(version.actorName).toBe('Priya');
+      expect(version.createdAt).toBeInstanceOf(Date);
+
+      expect(await latestClientNoteVersion(prisma, businessId, mumId)).toEqual(version);
+    });
+
+    it('refuses a save made from a stale copy, and hands back what is actually on file', async () => {
+      const original = await note(mumId, 'Allergic to PPD.');
+
+      // Two people open the same client at once; the second never re-reads.
+      const stale = await saveClientNotes(prisma, {
+        businessId,
+        clientId: mumId,
+        text: 'Prefers the 2pm chair.',
+        baseVersionId: null, // the version she loaded before anyone else had written one
+        actor: STAFF,
+      });
+
+      expect(stale.ok).toBe(false);
+      if (stale.ok || stale.reason !== 'stale') throw new Error('unreachable');
+      expect(stale.current?.id).toBe(original.id);
+      expect(stale.current?.text).toBe('Allergic to PPD.');
+      // Refused — the allergy line is still what is on file, not overwritten.
+      expect((await findClient(prisma, businessId, mumId))?.notes).toBe('Allergic to PPD.');
+    });
+
+    it('a resubmit against the version the refusal handed back succeeds', async () => {
+      const original = await note(mumId, 'Allergic to PPD.');
+      const stale = await saveClientNotes(prisma, {
+        businessId,
+        clientId: mumId,
+        text: 'Allergic to PPD. Also prefers the 2pm chair.',
+        baseVersionId: null,
+        actor: STAFF,
+      });
+      if (stale.ok || stale.reason !== 'stale') throw new Error('expected a conflict');
+
+      const retry = await saveClientNotes(prisma, {
+        businessId,
+        clientId: mumId,
+        text: 'Allergic to PPD. Also prefers the 2pm chair.',
+        baseVersionId: stale.current!.id,
+        actor: STAFF,
+      });
+
+      expect(retry.ok).toBe(true);
+      if (!retry.ok) throw new Error('unreachable');
+      expect(retry.version.id).not.toBe(original.id);
+      expect((await findClient(prisma, businessId, mumId))?.notes).toBe('Allergic to PPD. Also prefers the 2pm chair.');
+    });
+  });
+});
+
+describe('A-146 — the client record can be corrected', () => {
+  it('updates name, phone and email, canonicalised the same way every other write is (D-55)', async () => {
+    const result = await updateClientContact(prisma, businessId, mumId, {
+      name: 'Ada Chen-Marsh',
+      phone: '5125550199',
+      email: 'ada.marsh@example.test',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.client.name).toBe('Ada Chen-Marsh');
+    expect(result.client.phone).toBe('+15125550199');
+    expect(result.client.email).toBe('ada.marsh@example.test');
+  });
+
+  it('does not write across businesses (D-66)', async () => {
+    const other = await prisma.business.create({ data: { name: 'Rival', timezone: 'America/Chicago' } });
+    const result = await updateClientContact(prisma, other.id, mumId, { name: 'Hijacked', phone: null, email: null });
+    expect(result).toEqual({ ok: false, reason: 'not-found' });
+    expect((await findClient(prisma, businessId, mumId))?.name).toBe('Ada Chen');
+  });
+
+  /**
+   * A match against another LIVE client offers the existing merge instead of
+   * saving — a save here would otherwise either collide under D-17's rule or
+   * quietly create the split D-55 exists to recover from.
+   */
+  it('refuses a save that would match another live client, and names it', async () => {
+    const priya = await prisma.client.create({ data: { businessId, name: 'Priya Patel', phone: '5125550188' } });
+
+    const result = await updateClientContact(prisma, businessId, mumId, {
+      name: 'Priya Patel',
+      phone: '5125550188',
+      email: null,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok || result.reason !== 'match') throw new Error('unreachable');
+    expect(result.match.id).toBe(priya.id);
+    expect(result.match.name).toBe('Priya Patel');
+    // Refused — nothing was written.
+    expect((await findClient(prisma, businessId, mumId))?.name).toBe('Ada Chen');
+  });
+
+  it('does not refuse editing onto its OWN current identity', async () => {
+    const result = await updateClientContact(prisma, businessId, mumId, { name: 'Ada Chen', phone: SHARED_PHONE, email: 'new@example.test' });
+    expect(result.ok).toBe(true);
+  });
+
+  it('does not refuse a household match on the shared number (D-17)', async () => {
+    // Editing the daughter's name only, keeping the shared phone: this is the
+    // household case, not a duplicate, and must not be treated as one.
+    const result = await updateClientContact(prisma, businessId, daughterId, { name: 'Mei Chen-Ortiz', phone: SHARED_PHONE, email: null });
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -209,7 +362,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
   it('moves the history to the survivor', async () => {
     const appointment = await book({ clientId: daughterId });
 
-    const result = await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    const result = await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     expect(result.appointmentsMoved).toBe(1);
     expect((await clientHistory(prisma, businessId, mumId))[0]?.appointmentId).toBe(appointment.id);
@@ -220,7 +373,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
       data: { businessId, clientId: daughterId, serviceIds: [serviceId], fromDay: '2026-06-09', toDay: '2026-06-30', dayParts: [] },
     });
 
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     expect(await prisma.waitlistEntry.count({ where: { clientId: mumId } })).toBe(1);
   });
@@ -232,14 +385,28 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
    * what that means in code.
    */
   it('keeps BOTH notes, never replacing one with the other', async () => {
-    await setClientNotes(prisma, businessId, mumId, 'Prefers the 2pm chair.');
-    await setClientNotes(prisma, businessId, daughterId, 'Allergic to PPD.');
+    await note(mumId, 'Prefers the 2pm chair.');
+    await note(daughterId, 'Allergic to PPD.');
 
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     const survivor = await findClient(prisma, businessId, mumId);
     expect(survivor?.notes).toContain('Prefers the 2pm chair.');
     expect(survivor?.notes).toContain('Allergic to PPD.');
+  });
+
+  /** The version pointer has to move with the merge, or the next edit's
+   *  concurrency check compares against a version that no longer describes
+   *  what `Client.notes` actually holds — see the schema comment. */
+  it('gives the merged note its own version, so the pointer never goes stale', async () => {
+    await note(mumId, 'Prefers the 2pm chair.');
+    await note(daughterId, 'Allergic to PPD.');
+
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
+
+    const survivorNotes = (await findClient(prisma, businessId, mumId))?.notes ?? '';
+    const version = await latestClientNoteVersion(prisma, businessId, mumId);
+    expect(version?.text).toBe(survivorNotes);
   });
 
   it('fills the survivor’s GAPS but never overwrites what it has', async () => {
@@ -249,7 +416,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
       data: { email: 'mei@example.test', phone: '5125559999' },
     });
 
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     const survivor = await prisma.client.findUniqueOrThrow({ where: { id: mumId } });
     expect(survivor.email).toBe('mei@example.test');
@@ -262,7 +429,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
   it('keeps the losing record so its phone still finds the survivor', async () => {
     await prisma.client.update({ where: { id: daughterId }, data: { phone: '5125559999' } });
 
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     const found = await findClientsByPhone(prisma, businessId, '5125559999');
     expect(found).toHaveLength(1);
@@ -273,7 +440,7 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
   });
 
   it('does not list the tombstone as a second person on the shared number', async () => {
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
 
     const found = await findClientsByPhone(prisma, businessId, SHARED_PHONE);
     expect(found).toHaveLength(1);
@@ -289,8 +456,8 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
       data: { businessId, name: 'Ada Chen-Marsh', phone: '5125550202' },
     });
 
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
-    const second = await mergeClients(prisma, { businessId, survivorId: third.id, losingId: mumId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
+    const second = await mergeClients(prisma, { businessId, survivorId: third.id, losingId: mumId, actor: STAFF });
 
     expect(second.tombstonesRepointed).toBe(1);
     const viaDaughter = await prisma.client.findUniqueOrThrow({ where: { id: daughterId } });
@@ -303,24 +470,24 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
   });
 
   it('refuses to merge a record into itself', async () => {
-    await expect(mergeClients(prisma, { businessId, survivorId: mumId, losingId: mumId })).rejects.toBeInstanceOf(
+    await expect(mergeClients(prisma, { businessId, survivorId: mumId, losingId: mumId, actor: STAFF })).rejects.toBeInstanceOf(
       MergeRefused,
     );
   });
 
   it('refuses to merge one that has already been merged', async () => {
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
     await expect(
-      mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId }),
+      mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF }),
     ).rejects.toBeInstanceOf(MergeRefused);
   });
 
   it('refuses to merge INTO a record that has been merged away', async () => {
-    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId });
+    await mergeClients(prisma, { businessId, survivorId: mumId, losingId: daughterId, actor: STAFF });
     const third = await prisma.client.create({ data: { businessId, name: 'Someone', phone: '5125550303' } });
 
     await expect(
-      mergeClients(prisma, { businessId, survivorId: daughterId, losingId: third.id }),
+      mergeClients(prisma, { businessId, survivorId: daughterId, losingId: third.id, actor: STAFF }),
     ).rejects.toBeInstanceOf(MergeRefused);
   });
 
@@ -329,14 +496,14 @@ describe('CLIENT-01 — merge (operator R-10)', () => {
     const theirs = await prisma.client.create({ data: { businessId: other.id, name: 'Theirs', phone: '5125550404' } });
 
     await expect(
-      mergeClients(prisma, { businessId, survivorId: mumId, losingId: theirs.id }),
+      mergeClients(prisma, { businessId, survivorId: mumId, losingId: theirs.id, actor: STAFF }),
     ).rejects.toBeInstanceOf(MergeRefused);
   });
 
   it('leaves everything alone when it refuses', async () => {
     await book({ clientId: daughterId });
     await expect(
-      mergeClients(prisma, { businessId, survivorId: daughterId, losingId: daughterId }),
+      mergeClients(prisma, { businessId, survivorId: daughterId, losingId: daughterId, actor: STAFF }),
     ).rejects.toBeInstanceOf(MergeRefused);
 
     expect(await clientHistory(prisma, businessId, daughterId)).toHaveLength(1);

@@ -5984,3 +5984,88 @@ standing lesson rather than a backlog row: `getByLabel` without a role scope
 is substring-matching against accessible names built from arbitrary content
 (a client's date/time), which can collide with any short, common label —
 worth a second look wherever else this pattern appears.
+
+## A-146 — C5: the client record can be corrected, and it explains itself (D-70, D-72)
+
+Commit `SHA-PENDING`.
+
+**What it built.**
+- **A `ClientNoteVersion` table** (`packages/db/prisma/migrations/20260922120000_client_note_version`),
+  append-only by the same `BEFORE UPDATE OR DELETE` trigger mechanism as
+  `AppointmentEvent`. `Client.notes` stays the denormalized current-value
+  column every existing reader already selects — day view, running-late,
+  appointment detail — untouched in shape, so none of those one-to-many joins
+  changed (the A-093 class of bug this repo has hit before). Every writer of
+  `Client.notes`, not only the note form — `mergeClients`' concatenation
+  included — inserts a version row in the same transaction as the write.
+- **`saveClientNotes`** (`packages/db/clients/clients.ts`), OQ-23(a)'s decided
+  shape: the form round-trips `baseVersionId` (the version it was rendered
+  from, `null` for a client with no history), and the write is refused —
+  nothing touched — if the row's newest version has moved on since. The
+  refusal hands back what is actually on file (text, author, time) so the
+  person can see both and choose, including choosing to overwrite by
+  resubmitting once the form has picked up the refusal's version id.
+- **`updateClientContact`**, editing name/phone/email at the `packages/db`
+  sink (D-66's pattern) through D-55's `findReturningClient` — a match
+  against another LIVE client's canonical (phone, name) is refused, and the
+  match is surfaced so the page's existing merge affordance can be used
+  instead of silently colliding or creating a second split record.
+- **The UI**: `contact-form.tsx` (new) for name/phone/email, and
+  `notes-form.tsx` rebuilt around the version token — a conflict banner shows
+  what changed and who changed it; "last changed by" appears on the client
+  page and on the appointment detail panel's pinned-note flag (`detail.ts`
+  gained `clientNoteLastChangedBy`/`clientNoteLastChangedAt`), the two
+  surfaces the backlog text names, not the day-grid chip (too narrow for
+  attribution text without repeating the A-120 truncation trap).
+- **The guard**: `packages/db/notifications/reminders.test.ts` books an
+  appointment for a client whose phone was corrected first, and asserts the
+  reminder resolves to the NEW number — already true structurally (the sweep
+  reads `client.phone` live), so the guard is the one thing that could regress
+  it silently.
+
+**What it decided (D-72, answering OQ-23).** (a) — refuse a stale save,
+never (b)'s silent-with-a-flag or (c)'s no-history-table. The backlog text's
+own "a save from a stale copy never wins silently" reads as (a); a flag a
+reader can miss is the same silent-drop failure CLIENT-03 exists to prevent,
+one door over.
+
+**What it found along the way — the hardest bug in this item.** The e2e spec
+for the stale-save refusal passed its "refused" assertion and then failed its
+"resubmit succeeds" assertion: the reload showed an EMPTY note, not what she
+had typed. **React 19 resets a `<form action={fn}>`'s own uncontrolled fields
+once the action returns — including a refused submission**, not only a
+successful one. The refusal correctly left `Client.notes` untouched in the
+database, but the *browser* wiped her typed correction from the textarea at
+the exact moment OQ-23(a) needs her to still have it, so the "resubmit to
+overwrite" half of the decided UX was silently unusable: the second click
+submitted an empty string. A `defaultValue`-based textarea looks identical to
+a controlled one in every manual click-through and in every test that submits
+only once — the pinned-note e2e test that predates this item does exactly
+that. Fix: the textarea is now controlled from `text` state, seeded from
+`state.conflict.attemptedText` — a new field the action round-trips
+specifically to survive the reset — rather than trusting the DOM to still
+hold what was typed. A related, unrelated-looking failure surfaced by the
+SAME new e2e coverage: the contact-edit test's first two fills landed on a
+DOM node about to be replaced by the client-side RSC swap after the `<Link>`
+click resolved — `page.waitForLoadState('networkidle')` after the navigation
+fixed it. Both were caught only because this item added e2e coverage for
+behavior no existing spec exercised; the unit tests (which call the actions
+directly, never through a browser) were green throughout.
+
+**What it tested.** `packages/db/clients/clients.test.ts` (stale-save refusal
+and resubmit, note history with actor+time, merge writing its own version so
+the pointer never goes stale, contact-edit success/conflict/self-edit/
+household-exemption, cross-business scoping) and three new cases in
+`packages/db/tenant-isolation.test.ts` (D-66/D-68's enumerated cross-tenant
+sweep, extended with `clients`/`noteVersions` to its snapshot and a new case
+for both sinks). Three new e2e cases in `clients.spec.ts` drive the actual
+browser flow: the stale-refusal-then-resubmit round trip, the contact edit,
+and the merge-offered-on-collision path. Full gate: lint, typecheck, 1,804
+unit tests (1 pre-existing skip), and the touched e2e specs (51/51,
+`clients.spec.ts` + `appointment-detail.spec.ts`) — CI runs the full e2e
+sweep.
+
+**What it left behind.** Nothing new. The two standing items in `NEXT.md`
+before this one (the non-barrier-based check-in race test, and the
+single-business `findFirstOrThrow()`/`findFirst()` ceiling) are untouched by
+this item.
