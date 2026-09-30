@@ -6230,3 +6230,79 @@ Commit `c468af6`.
 **What it left behind.** Nothing new. The two standing items in `NEXT.md`
 (the non-barrier-based check-in race test, and the single-business
 `findFirstOrThrow()`/`findFirst()` ceiling) are still untouched.
+
+## A-149 — C8: processing time reads as processing time (D-70)
+
+Commit `SHA-PENDING`.
+
+**What it built.**
+- **One shared predicate, not two.** `processingGapContaining` (pure, over
+  blocks already in hand) and `processingGapAt` (its single-instant DB door,
+  for a caller with only a provider and an instant) both live in
+  `packages/db/day/free-runs.ts`. `loadDayView`'s per-column gap annotation
+  and the booking panel's heading both call into the same function, so the
+  grid's "back at 11:25" and the panel's "back at 11:25" can never name a
+  different return time for the same gap — the D-29/A-093 "one copy" rule
+  this file's own header already argues for.
+- **`DayAppointment.blocks` and `DayGap.processingFor`.** `day-view.ts` now
+  exposes the worked spans themselves (not just the envelope's outer edges),
+  and annotates each free run that is exactly a segmented visit's own
+  internal gap with who it belongs to. Both are additive — every existing
+  reader of `DayAppointment`/`DayGap` is untouched, and an ordinary
+  single-block visit or an ordinary free run carries no `processingFor`.
+- **The gap chip/row reads "*Client* — processing, back at *time*"**
+  (`view-model.ts`), on the grid and the stylist's own list — replacing the
+  bare "*N* min free" only when `processingFor` is set. An ordinary gap is
+  unchanged.
+- **The colour's own row shows its worked blocks** (`workedBlocks` on
+  `GridItem`, appointment items only, present only when there is more than
+  one block): on the chip, the stylist's list, and the print sheet, which has
+  no gap row at all to draw the split with (`sheetItems` leaves gaps off on
+  purpose, per its own A-093 comment) — this is what tells the stylist
+  reading paper where the processing time actually falls. Folded into the
+  accessible name too (`worked 09:50–10:45 and 11:25–12:20`), for a reader
+  who gets no benefit from the gap chip drawn over the chip geometrically
+  (A-030).
+- **The booking panel says so when landing in the gap.** `/staff/book`'s
+  heading reads "Starting from … — during *Client*'s processing time, back
+  at *time*. Pick the time below." when `?at=` resolves to a processing gap,
+  via `processingGapAt` — a plain "Starting from …" otherwise. Reached from a
+  saved link or a rebook, not only a click from the day view, so the query
+  runs from the instant alone rather than trusting the day view was the
+  caller.
+- Wording throughout is "processing," matching the term already established
+  on the appointment detail page ("*N* min of processing time"), not
+  "developing" (the public marketing copy's word) — one staff-facing term,
+  not two. No pronoun anywhere in it (`voice.test`, D-52): "*Client* —
+  processing" / "during *Client*'s processing time", never "her processing
+  time".
+
+**Fixture.** The segmented service from A-093/A-134 with its existing
+unequal buffers (0 before, 15 or 20 after depending on the spec) and D-29's
+own `[worked, gap, worked]` pattern — reused rather than re-derived, per the
+segments the day-view and e2e suites already carry.
+
+**What it tested.**
+- **`day-view.test.ts`** — extends the A-093 fixture: both edges of both
+  worked blocks (`colour.blocks`), the gap's `processingFor` naming the right
+  appointment/client/services, and a sibling ordinary gap on the same column
+  carrying no owner at all — so this cannot pass by labelling every gap as
+  somebody's colour.
+- **New `packages/db/day/processing-gap.test.ts`** — `processingGapAt`
+  against a real database: found mid-gap, null for ordinary open time, and
+  the half-open boundary (D-3) checked explicitly — the gap's own start
+  instant is inside it, its own end instant is not.
+- **e2e:** `segments.spec.ts` gains an assertion that the booking panel's
+  heading says "during Robin Colour's processing time, back at 11:25" and a
+  new test for the worked-blocks line on both the list and the printed
+  sheet. `day-grid.spec.ts`'s A-093 geometry test and `segments.spec.ts`'s
+  own gap-booking test both had their old `/40 min free/` / `/25 min free/`
+  locators updated to the new wording — neither loosened. Full gate: lint,
+  typecheck, 1,807 unit tests (1 pre-existing skip, the known
+  non-barrier-based check-in race test), 359/359 e2e (one new test over
+  A-148's 358, plus two existing tests re-asserted against the new wording).
+
+**What it left behind.** Nothing new. The two standing items in `NEXT.md`
+(the non-barrier-based check-in race test, and the single-business
+`findFirstOrThrow()`/`findFirst()` ceiling) are still untouched. A-150 is
+gated on OQ-24 and A-151 on OQ-25 — neither asked yet.

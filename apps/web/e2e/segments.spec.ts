@@ -191,6 +191,27 @@ test.describe('segmented durations (A-029, A-030)', () => {
     await expect(page.getByText('40 min of processing time — the provider is not needed for it')).toBeVisible();
   });
 
+  // A-149 (C8). The colour row shows its worked blocks on every reader of the
+  // day: the grid's own gap chip already says "processing" geometrically
+  // (the test above), but the stylist's own list and the printed sheet — which
+  // has no gap row at all — need the same fact in words on the visit itself.
+  test('the colour row shows its worked blocks, on the list and on paper', async ({ page }) => {
+    await bookDanasColour();
+    const prisma = new PrismaClient();
+    let danaId: string;
+    try {
+      danaId = (await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } })).id;
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.goto(`/staff/day?day=${DAY}&provider=${danaId}`);
+    await expect(page.getByText('Worked 09:50–10:45 · 11:25–12:20')).toBeVisible();
+
+    await page.goto(`/staff/day?day=${DAY}&provider=${danaId}&sheet=1`);
+    await expect(page.getByText('Worked 09:50–10:45 · 11:25–12:20')).toBeVisible();
+  });
+
   // SEG-04/SEG-05, the operator's own acceptance scenario, through the UI: the
   // developing time is an ordinary bookable gap, and taking it does not move
   // the colour.
@@ -198,12 +219,15 @@ test.describe('segmented durations (A-029, A-030)', () => {
     await bookDanasColour();
     await page.goto(`/staff/day?day=${DAY}`);
 
-    // 10:50-11:30, between the two halves of the colour, on Dana's column.
-    const gap = page.getByRole('link', { name: /40 min free, 10:45.*11:25, with Dana/ });
+    // 10:45-11:25, between the two halves of the colour, on Dana's column.
+    // A-149 (C8): it reads as Robin's own processing time, not "40 min free".
+    const gap = page.getByRole('link', { name: /Robin Colour — processing, back at 11:25, with Dana/ });
     await expect(gap).toBeVisible();
     await gap.click();
 
     await expect(page.getByRole('heading', { name: /^Book with/ })).toBeVisible();
+    // The panel says the same thing the gap link did, in its own words.
+    await expect(page.getByText(/during Robin Colour's processing time, back at 11:25/)).toBeVisible();
     // Blow-dry is 30 minutes plus a 5-minute buffer — it fits the 40 free
     // minutes, and the salon could not offer it here before A-030.
     await page.getByRole('button', { name: /^Blow-dry\d/ }).click();

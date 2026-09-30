@@ -39,7 +39,7 @@
  * run only as the bound the offered range must lie inside. A run is a
  * necessary condition, never a sufficient one.
  */
-import { type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
+import { ACTIVE_STATUSES, type Span, resolveWindow, subtractSpans, wallTime } from '../../core/scheduling';
 import { addDays, calendarDay, fromDate, instant, startOfDay, toDate, toLabel, weekdayOf, zoneId } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
 import { findBusyAppointments } from '../scheduling';
@@ -261,5 +261,99 @@ export function pickFreedSpan(
   return {
     run,
     remainder: { start: toDate(instant(start)), end: toDate(instant(end)), minutes: (end - start) / MIN },
+  };
+}
+
+/**
+ * A-149 (C8) — A GAP INSIDE A SEGMENTED ENVELOPE IS SOMEBODY'S PROCESSING
+ * TIME, NOT JUST FREE MINUTES.
+ *
+ * Pure over blocks the caller already has, keyed by appointment id (D-29: one
+ * row per WORKED span) — the same shape `day-view.ts` builds for `blocks?` on
+ * `projectedDelays`, and `processingGapAt` below builds it fresh for a caller
+ * with only a provider and an instant. One predicate, two data paths, so the
+ * day grid's "developing, back at 14:40" and the booking panel's "this is
+ * during Priya's colour" can never name a different return time for the same
+ * gap.
+ */
+export function processingGapContaining(
+  blocksByAppointment: ReadonlyMap<string, readonly { start: Date; end: Date }[]>,
+  at: Date,
+): { appointmentId: string; backAt: Date } | null {
+  const atMs = at.getTime();
+  for (const [appointmentId, spans] of blocksByAppointment) {
+    // A-093's rule again: nothing before block 0, so `i` starts at 1.
+    for (let i = 1; i < spans.length; i++) {
+      if (spans[i - 1]!.end.getTime() <= atMs && atMs < spans[i]!.start.getTime()) {
+        return { appointmentId, backAt: spans[i]!.start };
+      }
+    }
+  }
+  return null;
+}
+
+/** What the booking panel needs to say about the gap it was reached through:
+ *  whose processing time this is, what she is having, and when she is due
+ *  back. Null when `at` is not inside anybody's processing gap — an ordinary
+ *  free run, or a moment the salon simply has open. */
+export interface ProcessingGap {
+  appointmentId: string;
+  clientName: string | null;
+  serviceNames: string[];
+  backAt: Date;
+}
+
+/**
+ * The single-instant door into `processingGapContaining`, for a caller that
+ * has not loaded a whole day — the booking panel arrives with a provider and
+ * an instant, never a `DayView`.
+ *
+ * Scoped to `at` ± 24h for the same reason `day-view.ts` widens its own
+ * queries that far: a segmented visit's blocks cannot straddle more than a
+ * day, so this is generous rather than exact, and generous costs nothing
+ * against an index on `(providerId, blockedStart, blockedEnd)`.
+ */
+export async function processingGapAt(
+  db: Db,
+  args: { providerId: string; at: Date },
+): Promise<ProcessingGap | null> {
+  const from = toDate(instant(fromDate(args.at) - 24 * 60 * MIN));
+  const to = toDate(instant(fromDate(args.at) + 24 * 60 * MIN));
+
+  const blocks = await db.appointmentBlock.findMany({
+    where: {
+      providerId: args.providerId,
+      status: { in: [...ACTIVE_STATUSES] },
+      blockedStart: { lt: to },
+      blockedEnd: { gt: from },
+    },
+    orderBy: [{ appointmentId: 'asc' }, { ordinal: 'asc' }],
+    select: { appointmentId: true, blockedStart: true, blockedEnd: true },
+  });
+
+  const byAppointment = new Map<string, { start: Date; end: Date }[]>();
+  for (const block of blocks) {
+    const spans = byAppointment.get(block.appointmentId) ?? [];
+    spans.push({ start: block.blockedStart, end: block.blockedEnd });
+    byAppointment.set(block.appointmentId, spans);
+  }
+
+  const found = processingGapContaining(byAppointment, args.at);
+  if (!found) return null;
+
+  const appointment = await db.appointment.findUnique({
+    where: { id: found.appointmentId },
+    select: {
+      client: { select: { name: true } },
+      lines: { orderBy: { ordinal: 'asc' }, select: { service: { select: { name: true } } } },
+    },
+  });
+  if (!appointment) return null;
+
+  return {
+    appointmentId: found.appointmentId,
+    clientName: appointment.client?.name ?? null,
+    serviceNames: appointment.lines.map((line) => line.service.name),
+    backAt: found.backAt,
   };
 }

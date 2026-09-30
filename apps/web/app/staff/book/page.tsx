@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { clientReliability, findClient } from '@bookable/db/clients';
+import { type ProcessingGap, processingGapAt } from '@bookable/db/day';
 import { calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
@@ -87,7 +88,13 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
   /** Bookable, which is the only thing every surface below this line asks. */
   const provider = providerRow?.active ? { id: providerRow.id, displayName: providerRow.displayName } : null;
 
-  const slotLabel = atIso ? labelFor(atIso, zone) : null;
+  const atInstant = atIso ? parseAtIso(atIso) : null;
+  // A-149 (C8). A gap reached from a segmented visit's own processing time
+  // says so here too, not only on the day view it was clicked from — the desk
+  // may also land on this page from a saved link or a rebook.
+  const processingGap =
+    atInstant && providerId ? await processingGapAt(prisma, { providerId, at: atInstant }) : null;
+  const slotLabel = atInstant ? labelFor(atInstant, zone, processingGap) : null;
 
   // Only the ones this provider is still qualified for and that are still
   // active — the same defensiveness the public flow's prefill has, because a
@@ -200,18 +207,31 @@ async function resolvePrefillClient(businessId: string, clientId: string, today:
   return { id: found.id, name: found.name, phone: found.phone, ...(missed ? { missed } : {}) };
 }
 
-/** "Tuesday 9 June at 14:15", in the SALON's zone. Server-side, always. */
-function labelFor(atIso: string, zone: ReturnType<typeof zoneId>): string | null {
+function parseAtIso(atIso: string): Date | null {
   try {
-    const label = toLabel(fromDate(toDate(instantFromIso(atIso))), zone);
-    // "STARTING FROM", not a bare time (A-042). A gap begins where the last
-    // appointment's buffer ends — 13:35 — and the panel preselects the first
-    // real slot at or after it, so a heading that read "Tuesday at 13:35" was
-    // naming a time the form was not going to book.
-    return `Starting from ${readableDay(label.day)} at ${label.time} — pick the time below.`;
+    return toDate(instantFromIso(atIso));
   } catch {
     return null;
   }
+}
+
+/** "Starting from Tuesday 9 June at 14:15 — pick the time below.", in the
+ *  SALON's zone. Server-side, always. */
+function labelFor(at: Date, zone: ReturnType<typeof zoneId>, processingGap: ProcessingGap | null): string {
+  const label = toLabel(fromDate(at), zone);
+  // "STARTING FROM", not a bare time (A-042). A gap begins where the last
+  // appointment's buffer ends — 13:35 — and the panel preselects the first
+  // real slot at or after it, so a heading that read "Tuesday at 13:35" was
+  // naming a time the form was not going to book.
+  const start = `Starting from ${readableDay(label.day)} at ${label.time}`;
+  if (!processingGap) return `${start} — pick the time below.`;
+
+  // A-149 (C8). A booking made into a segmented visit's processing gap says
+  // so: the free minutes here exist because somebody else's colour is
+  // developing, not because the column is simply open.
+  const who = processingGap.clientName ?? 'a walk-in';
+  const backAt = toLabel(fromDate(processingGap.backAt), zone).time;
+  return `${start} — during ${who}'s processing time, back at ${backAt}. Pick the time below.`;
 }
 
 function safeDay(candidate: string | undefined, today: string): string {

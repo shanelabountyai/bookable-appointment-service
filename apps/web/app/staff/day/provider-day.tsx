@@ -148,6 +148,14 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
             </p>
           ) : null}
 
+          {/* A-149 (C8) — the colour row shows its worked blocks, same words
+              as the print sheet: the "processing" gap a couple of rows down
+              already says WHEN it is free, this says where the developing
+              hour sits inside the visit itself. */}
+          {item.workedBlocks ? (
+            <p className="w-full text-sm text-zinc-600 dark:text-zinc-400">Worked {item.workedBlocks.join(' · ')}</p>
+          ) : null}
+
           {item.pinnedNote ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</p>
           ) : null}

@@ -265,6 +265,28 @@ describe('the appointments', () => {
     // And the develop time comes back as a gap, which is the whole point of
     // segments: it is sellable, and the grid draws it over the chip.
     expect(dana.gaps.map((g) => [hhmm(g.start), hhmm(g.end)])).toContainEqual(['15:20', '15:45']);
+
+    // A-149 (C8) — THE COLOUR ROW SHOWS ITS WORKED BLOCKS, both edges of
+    // each, the same rule as the envelope assertion above: an assertion on
+    // one edge would pass against the last-wins bug this item's own history
+    // was found by.
+    expect(colour.blocks.map((b) => [hhmm(b.start), hhmm(b.end)])).toEqual([
+      ['15:00', '15:20'],
+      ['15:45', '16:15'],
+    ]);
+
+    // And the gap between them knows whose processing time it is — the fact
+    // the grid, the list and the booking panel all read instead of saying a
+    // bare "25 min free".
+    const gap = dana.gaps.find((g) => hhmm(g.start) === '15:20')!;
+    expect(gap.processingFor).toEqual({ appointmentId: appointment.id, clientName: 'Ada Chen', serviceNames: ['Cut'] });
+
+    // A gap that is NOT a segmented visit's own processing time carries no
+    // owner — the fixture rule (A-120): if every gap came back "owned" this
+    // assertion could not fail against the bug of labelling ordinary free
+    // time as somebody's colour.
+    const ordinaryGap = dana.gaps.find((g) => hhmm(g.start) === '16:15')!;
+    expect(ordinaryGap.processingFor).toBeUndefined();
   });
 
   /**

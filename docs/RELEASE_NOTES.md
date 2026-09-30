@@ -4995,6 +4995,30 @@ suite that searched for that client's name by text. The fix there was
 `aria-label` instead of hidden text: same accessible name, no second node
 for anything else to trip over.
 
+## A-149 — processing time reads as processing time
+
+A segmented service — a colour, where the stylist applies it, leaves it to
+develop, and comes back to rinse it — leaves a real hole in the schedule
+during the develop time, and the product has offered that hole as a bookable
+slot since early in the build. What it never said was *whose* hole it was.
+The day grid, the stylist's own list, and the front desk's booking panel all
+showed it as generic "40 min free" — indistinguishable from an ordinary gap
+between two unrelated clients, and giving no hint that booking into it puts
+a second client into a chair the first one is still, in every practical
+sense, occupying for the next forty minutes.
+
+The fix threads one fact through four surfaces from a single source: the day
+view now knows which appointment a given free run belongs to, and that
+single answer is what the grid chip, the stylist's list, and the booking
+panel all read — "Priya — processing, back at 14:40" instead of "40 min
+free," and the booking panel itself says "during Priya's processing time"
+when a booking is started from that exact gap. The printed sheet has no
+equivalent gap row at all — free time deliberately isn't printed, to save
+space on a page already tight for room to write — so the colour's own row on
+paper now lists its worked spans directly: the stylist sees at a glance
+where her hands-on time actually falls, without a "45 min free" line eating
+a row.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

@@ -200,6 +200,12 @@ export function DaySheet({
                           instant, so the client printed against the same hour
                           further down is not a printing error. */}
                       {item.released ? <div>Time given back from {item.released}.</div> : null}
+                      {/* A-149 (C8). There is no gap row on paper (see
+                          `sheetItems` below) — this is what tells the stylist
+                          where the processing time inside her own row falls,
+                          in place of the "developing, back at …" the grid and
+                          the list say by drawing or listing the gap itself. */}
+                      {item.workedBlocks ? <div>Worked {item.workedBlocks.join(' · ')}</div> : null}
                       {item.pinnedNote ? (
                         <div className='font-semibold'>⚑ {item.pinnedNote}</div>
                       ) : null}

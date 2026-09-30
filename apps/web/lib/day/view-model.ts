@@ -57,6 +57,17 @@ export interface GridItem extends Laned {
    *  chair for, not the envelope `minutes` the chip is drawn from. Appointments
    *  only. */
   durationMinutes?: number;
+  /**
+   * A-149 (C8) — THE COLOUR ROW SHOWS ITS WORKED BLOCKS.
+   *
+   * "10:00–10:20" per span (D-29), present only when there is more than one:
+   * an ordinary visit's block IS its envelope and restating it here would be a
+   * fourth copy of `time`. On the grid the gap chip already draws the split
+   * geometrically (A-030); the print sheet has no gap row to draw it with at
+   * all (`sheetItems` leaves gaps off on purpose), so this is what tells the
+   * stylist reading paper where the processing time actually falls.
+   */
+  workedBlocks?: string[];
   title: string;
   detail?: string;
   /** CLIENT-03's pinned note, surfaced on the chip because an allergy is a
@@ -387,26 +398,45 @@ function toColumn(
       detail: absence.reason ?? undefined,
       label: `${absence.kind === 'time_off' ? 'Time off' : 'Blocked'}, ${f.range(absence.start, absence.end)}${absence.reason ? `, ${absence.reason}` : ''}`,
     })),
-    ...column.gaps.map((gap) => ({
-      key: `gap-${gap.start.toISOString()}`,
-      kind: 'gap' as const,
-      top: f.minutesFrom(gap.start),
-      minutes: gap.minutes,
-      time: f.range(gap.start, gap.end),
-      title: `${gap.minutes} min free`,
-      // A-017 gave the gap somewhere to go, which is what A-016 deliberately
-      // waited for. The link carries the INSTANT (D-4), never a wall label:
-      // on the day the clocks go back, "01:30" names two of these.
-      href: `/staff/book?provider=${column.providerId}&at=${encodeURIComponent(gap.start.toISOString())}&day=${day}`,
-      // A-148 (2.5.3) — the accessible name has to LEAD with the visible
-      // text ("`N` min free"), not paraphrase it as "Book N minutes free":
-      // a voice-control command that speaks what it sees would miss the link.
-      label: `${gap.minutes} min free, ${f.range(gap.start, gap.end)}, with ${column.providerName}. Book this time.`,
-    })),
+    ...column.gaps.map((gap) => {
+      // A-149 (C8) — A GAP INSIDE A SEGMENTED ENVELOPE IS SOMEBODY'S
+      // PROCESSING TIME, NOT "N MIN FREE". `day-view.ts` already knows whose:
+      // `processingGapContaining` is the one predicate the grid, the list and
+      // the booking panel all read, so the return time said here is the exact
+      // instant the panel checks a booking against.
+      const owner = gap.processingFor;
+      const who = owner ? (owner.clientName ?? 'Walk-in') : null;
+      const title = owner ? `${who} — processing` : `${gap.minutes} min free`;
+      return {
+        key: `gap-${gap.start.toISOString()}`,
+        kind: 'gap' as const,
+        top: f.minutesFrom(gap.start),
+        minutes: gap.minutes,
+        time: f.range(gap.start, gap.end),
+        title,
+        detail: owner ? `Back at ${f.clock(gap.end)}` : undefined,
+        // A-017 gave the gap somewhere to go, which is what A-016 deliberately
+        // waited for. The link carries the INSTANT (D-4), never a wall label:
+        // on the day the clocks go back, "01:30" names two of these.
+        href: `/staff/book?provider=${column.providerId}&at=${encodeURIComponent(gap.start.toISOString())}&day=${day}`,
+        // A-148 (2.5.3) — the accessible name has to LEAD with the visible
+        // text, not paraphrase it: a voice-control command that speaks what it
+        // sees would miss the link.
+        label: owner
+          ? `${who} — processing, back at ${f.clock(gap.end)}, with ${column.providerName}. Book this time.`
+          : `${gap.minutes} min free, ${f.range(gap.start, gap.end)}, with ${column.providerName}. Book this time.`,
+      };
+    }),
     ...column.appointments.map((appointment) => {
       const who = appointment.clientName ?? 'Walk-in';
       const services = appointment.serviceNames.join(' + ');
       const missed = appointment.clientId ? missedByClient.get(appointment.clientId) : undefined;
+      // A-149 (C8). More than one worked span (D-29) means a processing gap
+      // sits between them — the fact the gap chip draws geometrically on the
+      // grid and the print sheet, with no gap row of its own, cannot draw at
+      // all.
+      const workedBlocks =
+        appointment.blocks.length > 1 ? appointment.blocks.map((b) => f.range(b.start, b.end)) : undefined;
       return {
         key: `appointment-${appointment.id}`,
         kind: 'appointment' as const,
@@ -417,6 +447,7 @@ function toColumn(
         durationMinutes: (appointment.endAt.getTime() - appointment.startAt.getTime()) / MIN,
         title: who,
         detail: [services, appointment.clientPhone].filter(Boolean).join(' · '),
+        ...(workedBlocks ? { workedBlocks } : {}),
         pinnedNote: appointment.clientNotes ?? undefined,
         // A-070. Selected by `day-view.ts` since A-016 and dropped here until
         // now — an oversight rather than a decision, which is why it is one
@@ -487,6 +518,10 @@ function toColumn(
           lateBy(appointment) > 0
             ? `booked for ${f.clock(appointment.startAt)}, likely to start ${f.shift(appointment.startAt, lateBy(appointment))}`
             : '',
+          // A-149 (C8). The gap chip drawn over this one says "processing"
+          // geometrically; a screen reader gets no geometry, so it needs the
+          // same fact in words.
+          workedBlocks ? `worked ${workedBlocks.join(' and ')}` : '',
         ]
           .filter(Boolean)
           .join(', '),

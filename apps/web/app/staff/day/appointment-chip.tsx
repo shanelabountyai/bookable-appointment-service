@@ -138,6 +138,13 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
     // it: its own line, an arrow, and the word. No colour — see the header.
     item.projected ? <span key="projected" className="truncate font-semibold">→ likely {item.projected}</span> : null,
     item.detail ? <span key="detail" className="truncate">{item.detail}</span> : null,
+    // A-149 (C8). The gap chip drawn over this one (A-030) already says
+    // "processing" geometrically for a sighted reader with room to see it;
+    // this is the same fact in the chip's own text, for the narrow ones and
+    // for a reader that skips straight to the accessible name.
+    item.workedBlocks ? (
+      <span key="worked" className="truncate">Worked {item.workedBlocks.join(' · ')}</span>
+    ) : null,
     // A-069. She never came, and the rest of her slot is back on the market —
     // so the gap chip painting over this one is deliberate. Her chip stays at
     // its BOOKED extent because "who was due at ten?" is what the desk wants.

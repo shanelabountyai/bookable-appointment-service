@@ -23,7 +23,7 @@
 import { ACTIVE_STATUSES, type Span, resolveWindow, wallTime } from '../../core/scheduling';
 import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
-import { freeRunsFrom } from './free-runs';
+import { freeRunsFrom, processingGapContaining } from './free-runs';
 import { type DayRoom, loadRoom } from './room';
 import { type LateCallRow, type RunningLate, findRunningLate, lateCallList, projectedDelays } from './running-late';
 import { findBusyAppointments } from '../scheduling';
@@ -45,6 +45,12 @@ export interface DayAppointment {
    *  sellable, and the grid draws that gap over the chip. */
   occupiesStart: Date;
   occupiesEnd: Date;
+  /** A-149 (C8) / A-093 — the worked spans themselves (D-29), one entry for
+   *  an ordinary visit and more than one for a segmented one. `occupiesStart`
+   *  and `occupiesEnd` are this array's outer edges; a reader that wants to
+   *  say WHERE the developing time falls, rather than only how long the
+   *  envelope is, reads this instead of re-deriving it from `blockedStart`. */
+  blocks: { start: Date; end: Date }[];
   status: string;
   isOverride: boolean;
   /** A-069 / D-44 — the desk gave up on this no-show at this instant and put
@@ -85,6 +91,11 @@ export interface DayGap {
   start: Date;
   end: Date;
   minutes: number;
+  /** A-149 (C8). Set when this run is a segmented visit's OWN processing
+   *  gap (D-29) rather than ordinary open time — whose it is, what she is
+   *  having, and (redundantly with `end`, for a reader that wants the words
+   *  without the arithmetic) when she is due back. */
+  processingFor?: { appointmentId: string; clientName: string | null; serviceNames: string[] };
 }
 
 export interface DayColumn {
@@ -372,6 +383,7 @@ async function loadColumn(
         endAt: row.endAt,
         occupiesStart: span?.start ?? row.startAt,
         occupiesEnd: span?.end ?? row.endAt,
+        blocks: span?.blocks ?? [{ start: row.startAt, end: row.endAt }],
         status: row.status,
         isOverride: row.isOverride,
         releasedAt: row.releasedAt,
@@ -387,12 +399,15 @@ async function loadColumn(
     });
   // A-134. The cascade needs the blocks, not just the envelope: a client
   // booked into a colour's processing gap waits on the application only.
-  const delays = projectedDelays({
-    appointments: loaded.map((a) => ({ ...a, blocks: occupied.get(a.id)?.blocks })),
-    late: args.late,
-    now: args.now,
-  });
+  const delays = projectedDelays({ appointments: loaded, late: args.late, now: args.now });
   const appointments: DayAppointment[] = loaded.map((a) => ({ ...a, lateMinutes: delays.get(a.id) ?? 0 }));
+
+  // A-149 (C8). Whose processing gap each free run is, when it is one at
+  // all — keyed by appointment id so `processingGapContaining` (shared with
+  // `processingGapAt`, the booking panel's single-instant door into the same
+  // fact) cannot answer the grid and the panel differently.
+  const blocksByAppointment = new Map(appointments.filter((a) => a.blocks.length > 1).map((a) => [a.id, a.blocks]));
+  const byId = new Map(appointments.map((a) => [a.id, a]));
 
   return {
     providerId: args.provider.id,
@@ -424,7 +439,15 @@ async function loadColumn(
     // each subtracting their own version of it. The grid and the freed-time
     // screens now draw and sell the identical run.
     gaps: args.provider.active
-      ? freeRunsFrom({ windows: windowSpans, breaks: breakSpans, absences, busy })
+      ? freeRunsFrom({ windows: windowSpans, breaks: breakSpans, absences, busy }).map((gap) => {
+          const found = processingGapContaining(blocksByAppointment, gap.start);
+          if (!found) return gap;
+          const owner = byId.get(found.appointmentId)!;
+          return {
+            ...gap,
+            processingFor: { appointmentId: owner.id, clientName: owner.clientName, serviceNames: owner.serviceNames },
+          };
+        })
       : [],
   };
 }

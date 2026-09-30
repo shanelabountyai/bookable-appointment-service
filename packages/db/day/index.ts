@@ -6,7 +6,16 @@ export {
   type DayView,
   loadDayView,
 } from './day-view';
-export { type FreeRun, freeRunsFor, freeRunsFrom, freedSpanNow, pickFreedSpan } from './free-runs';
+export {
+  type FreeRun,
+  type ProcessingGap,
+  freeRunsFor,
+  freeRunsFrom,
+  freedSpanNow,
+  pickFreedSpan,
+  processingGapAt,
+  processingGapContaining,
+} from './free-runs';
 export { type DayHold, type DayResource, type DayRoom, loadRoom } from './room';
 export {
   type PushCandidate,

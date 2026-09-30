@@ -708,8 +708,9 @@ test.describe('a colour on the grid (A-093)', () => {
 
     const chip = page.locator('li').filter({ hasText: 'Ada Chen' }).first();
     // The develop time comes back as a bookable gap — that is the point of
-    // segments — and it is the box the chip has to be drawn around.
-    const gap = page.getByRole('link', { name: /25 min free/ }).first();
+    // segments — and it is the box the chip has to be drawn around. A-149
+    // (C8): it reads as Ada's own processing time, not bare "25 min free".
+    const gap = page.getByRole('link', { name: /Ada Chen — processing, back at 09:45/ }).first();
 
     const chipBox = await chip.boundingBox();
     const gapBox = await gap.boundingBox();
