@@ -6233,7 +6233,7 @@ Commit `c468af6`.
 
 ## A-149 — C8: processing time reads as processing time (D-70)
 
-Commit `SHA-PENDING`.
+Commit `55da8a2`.
 
 **What it built.**
 - **One shared predicate, not two.** `processingGapContaining` (pure, over
