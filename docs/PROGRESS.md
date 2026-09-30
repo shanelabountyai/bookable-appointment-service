@@ -6138,7 +6138,7 @@ untouched.
 
 ## A-148 — C6: focus management on staff screens (D-70)
 
-Commit `SHA-PENDING`.
+Commit `c468af6`.
 
 **What it built.**
 - **Status buttons keyed by `to`.** Both button lists (`status-controls.tsx`
