@@ -21,8 +21,9 @@
  *     time (D-7) and only cancellations free it.
  */
 import { ACTIVE_STATUSES, type Span, resolveWindow, wallTime } from '../../core/scheduling';
-import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, weekdayOf } from '../../core/time';
+import { type ZoneId, addDays, calendarDay, fromDate, instant, startOfDay, toDate, toLabel, weekdayOf } from '../../core/time';
 import { findAbsences, resolveDayWindows } from '../availability';
+import { CHANGE_TYPES, type DayChange, lastPrintedByProvider, toDayChanges } from './changes';
 import { freeRunsFrom, processingGapContaining } from './free-runs';
 import { type DayRoom, loadRoom } from './room';
 import { type LateCallRow, type RunningLate, findRunningLate, lateCallList, projectedDelays } from './running-late';
@@ -77,6 +78,10 @@ export interface DayAppointment {
    *  on the chip rather than one click away. */
   clientNotes: string | null;
   notes: string | null;
+  /** A-150 (C9, D-73). Moves, pushes, reassignments onto this column and
+   *  the booking itself, newest first — from the start of the salon's today,
+   *  or from the column's last print if that is earlier. */
+  changes: DayChange[];
 }
 
 export interface DayAbsence {
@@ -113,6 +118,15 @@ export interface DayColumn {
   /** D-22. How far behind she is running right now, if anybody has said so.
    *  Null is "on time", which is the state that needs no explanation. */
   runningLateMinutes: number | null;
+  /** A-150 (C9). Who said she is behind, and when — the desk claim, which a
+   *  push does not rewrite (D-63(1), D-73). Null when on time. */
+  runningLateClaim: { actor: string; actorRef: string | null; claimedAt: Date } | null;
+  /** A-150 (C9). When this column's paper was made — the later of the whole
+   *  salon's sheet and her own. Null if nobody has printed this day. */
+  printedAt: Date | null;
+  /** A-150. The start of the salon's TODAY, for "changed today" — carried so
+   *  a reader cannot recompute it in the browser's zone. */
+  todayStart: Date;
   /**
    * A-059 (APPT-03). Who is still on their way inside the next few hours, and
    * therefore has to be RUNG — the list the desk was keeping on a Post-it,
@@ -214,6 +228,15 @@ export async function loadDayView(
   const late = await findRunningLate(db, { businessId: args.businessId, day: args.day });
   const lateByProvider = new Map(late.map((row) => [row.providerId, row]));
 
+  // A-150. "Today" is the SALON's, whatever day is being looked at: a move
+  // made this morning to next Tuesday is news on next Tuesday's column.
+  const todayStart = toDate(startOfDay(calendarDay(toLabel(fromDate(args.now), zone).day), zone));
+  const printed = await lastPrintedByProvider(db, {
+    businessId: args.businessId,
+    day: args.day,
+    providerIds: providers.map((p) => p.id),
+  });
+
   const columns = await Promise.all(
     providers.map((provider) =>
       loadColumn(db, {
@@ -225,6 +248,8 @@ export async function loadDayView(
         from,
         to,
         late: lateByProvider.get(provider.id) ?? null,
+        todayStart,
+        printedAt: printed.get(provider.id) ?? null,
       }),
     ),
   );
@@ -265,8 +290,11 @@ async function loadColumn(
     to: Date;
     now: Date;
     late: RunningLate | null;
+    todayStart: Date;
+    printedAt: Date | null;
   },
 ): Promise<DayColumn> {
+  const changesSince = args.printedAt && args.printedAt < args.todayStart ? args.printedAt : args.todayStart;
   const [resolved, busy, absences, rows] = await Promise.all([
     resolveDayWindows(db, {
       businessId: args.businessId,
@@ -298,6 +326,11 @@ async function loadColumn(
         notes: true,
         client: { select: { id: true, name: true, phone: true, notes: true } },
         lines: { orderBy: { ordinal: 'asc' }, select: { service: { select: { name: true } } } },
+        events: {
+          where: { type: { in: [...CHANGE_TYPES] }, createdAt: { gte: changesSince } },
+          orderBy: { createdAt: 'desc' },
+          select: { type: true, createdAt: true, actor: true, actorRef: true, payload: true },
+        },
       },
     }),
   ]);
@@ -395,6 +428,7 @@ async function loadColumn(
         clientPhone: row.client?.phone ?? null,
         clientNotes: row.client?.notes ?? null,
         notes: row.notes,
+        changes: toDayChanges(row.events),
       };
     });
   // A-134. The cascade needs the blocks, not just the envelope: a client
@@ -413,6 +447,11 @@ async function loadColumn(
     providerId: args.provider.id,
     providerName: args.provider.displayName,
     runningLateMinutes: args.late?.minutes ?? null,
+    runningLateClaim: args.late
+      ? { actor: args.late.setByActor, actorRef: args.late.actorRef, claimedAt: args.late.claimedAt }
+      : null,
+    printedAt: args.printedAt,
+    todayStart: args.todayStart,
     // A-059. Derived from the appointments this column already loaded — no
     // second query, and the same busy set the grid draws, so the ring-list and
     // the column can never disagree about who is coming.

@@ -17,10 +17,12 @@ import {
   markToldAbout,
   previewPush,
   pushColumn,
+  recordSheetPrint,
   setRunningLate,
   unmarkToldAbout,
 } from '@bookable/db/day';
-import { fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { calendarDay, fromDate, instantFromIso, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { resolveStaffNames } from '@bookable/db/auth';
 import { SlotTaken } from '@bookable/db/booking';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
@@ -253,4 +255,28 @@ async function shapeFor(preview: PushPreview, businessId: string): Promise<Previ
       ...(candidate.problem ? { problem: candidate.problem } : {}),
     })),
   };
+}
+
+/**
+ * A-150 (C9, D-73) — the sheet's Print button. Records the print, then hands
+ * back the stamp that goes ON the paper, so the time the screen later counts
+ * "changed since print" from is the time printed on the sheet — one instant,
+ * not two clocks.
+ */
+export async function printDaySheet(day: string, providerId: string | null): Promise<string> {
+  const staff = await requireStaff();
+  const business = await prisma.business.findUniqueOrThrow({
+    where: { id: staff.businessId },
+    select: { timezone: true },
+  });
+  const printedAt = await recordSheetPrint(prisma, {
+    businessId: staff.businessId,
+    day: calendarDay(day),
+    providerId: providerId || null,
+    actor: staffActor(staff.id),
+    now: new Date(),
+  });
+  const name = (await resolveStaffNames(prisma, [staff.id])).get(staff.id);
+  revalidatePath('/staff/day');
+  return `Printed ${toLabel(fromDate(printedAt), zoneId(business.timezone)).time}${name ? ` by ${name}` : ''}`;
 }

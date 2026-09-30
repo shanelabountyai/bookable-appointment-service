@@ -103,6 +103,8 @@ test.describe('running late (A-018)', () => {
     await dana.getByRole('button', { name: 'Set' }).click();
 
     await expect(page.getByText('+40 min')).toBeVisible();
+    // A-150 (C9): whose claim, and when — a person, never "the front desk" role.
+    await expect(dana.getByText(/^Front desk · \d{2}:\d{2}$/)).toBeVisible();
 
     const prisma = new PrismaClient();
     try {

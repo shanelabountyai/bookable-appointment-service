@@ -12,10 +12,11 @@ import 'server-only';
  * Minutes rather than pixels, so the grid's scale is a CSS decision and this
  * file has no opinion about it.
  */
-import { type DayColumn, type DayRoom, type DayView } from '@bookable/db/day';
+import { type DayChange, type DayColumn, type DayRoom, type DayView } from '@bookable/db/day';
 import { releasableAt } from '@bookable/db/appointments';
 import { type AppointmentStatus, availableTransitions, isAwaitingStart } from '@bookable/core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '@bookable/core/time';
+import { readableDay } from '@/lib/customer-format';
 import { type Laned, assignLanes, withLanes } from './lanes';
 
 const MIN = 60_000;
@@ -103,6 +104,13 @@ export interface GridItem extends Laned {
    * clause the desk acts on, silently, on every ordinary chip.
    */
   missed?: { sentence: string; short: string };
+  /**
+   * A-150 (C9, D-73) — what happened to this row TODAY: "Moved from 14:00 ·
+   * Sam · 11:02". The same two-width pair as `missed`, for the same reason:
+   * the chip has 180 pixels and the list has a row. Absent when nothing
+   * counted (OQ-24 (a): no status taps) happened to it today.
+   */
+  changed?: { sentence: string; short: string };
   status?: AppointmentStatus;
   /** A-035. Present on appointment items only — the status buttons post it. */
   appointmentId?: string;
@@ -199,6 +207,14 @@ export interface GridColumn {
   offRoster: boolean;
   /** D-22, for the column header's "Dana +38". */
   runningLateMinutes: number | null;
+  /** A-150 (C9). "Sam · 10:12" — who made the claim and when. */
+  runningLateBy?: string;
+  /** A-150 (C9). "08:45", or with the day if the paper is from an earlier
+   *  one. Absent if this day has not been printed. */
+  printed?: string;
+  /** A-150 (C9). Rows whose latest counted change is newer than the paper —
+   *  the rows the printed sheet is wrong about. 0 when never printed. */
+  changedSincePrint: number;
   /** A-059. Who is still on their way and has to be RUNG — empty unless a
    *  delta is set. Nothing on this list has been sent to anybody. */
   calls: CallRow[];
@@ -272,6 +288,7 @@ export function toGridModel(
 ): GridModel {
   const zone = view.timezone as ZoneId;
   const from = fromDate(view.from);
+  const providerNames = new Map(view.columns.map((c) => [c.providerId, c.providerName]));
   const total = Math.max(60, (fromDate(view.to) - from) / MIN);
   const minutesFrom = (at: Date) => (fromDate(at) - from) / MIN;
   const clock = (at: Date) => toLabel(fromDate(at), zone).time;
@@ -280,6 +297,7 @@ export function toGridModel(
    *  the PHYSICAL axis, so a projection across a DST transition lands where
    *  the clock will actually be. */
   const shift = (at: Date, minutes: number) => clock(toDate(instant(fromDate(at) + minutes * MIN)));
+  const dayOf = (at: Date) => toLabel(fromDate(at), zone).day;
 
   const nowMinutes = (fromDate(now) - from) / MIN;
   const nowTop = nowMinutes >= 0 && nowMinutes <= total ? nowMinutes : null;
@@ -293,15 +311,16 @@ export function toGridModel(
     columns: view.columns.map((column) =>
       toColumn(
         column,
-        { minutesFrom, clock, range, shift },
+        { minutesFrom, clock, range, shift, dayOf },
         view.day,
         now,
         missedByClient,
         view.cancellationCutoffMinutes,
         staffNames,
+        providerNames,
       ),
     ),
-    room: view.room.map((type) => toRoom(type, { minutesFrom, clock, range, shift }, total)),
+    room: view.room.map((type) => toRoom(type, { minutesFrom, clock, range, shift, dayOf }, total)),
   };
 }
 
@@ -360,6 +379,8 @@ interface Formatters {
   clock: (at: Date) => string;
   range: (start: Date, end: Date) => string;
   shift: (at: Date, minutes: number) => string;
+  /** The salon's calendar day an instant falls on. */
+  dayOf: (at: Date) => string;
 }
 
 function toColumn(
@@ -370,7 +391,16 @@ function toColumn(
   missedByClient: ReadonlyMap<string, { sentence: string; short: string }>,
   cutoffMinutes: number,
   staffNames: ReadonlyMap<string, string>,
+  providerNames: ReadonlyMap<string, string>,
 ): GridColumn {
+  // A-150. "08:45" for a paper made on the day it describes or the morning
+  // of; the day is named whenever the paper is from any OTHER day than the
+  // instant is on, so last night's print does not read as this morning's.
+  const when = (at: Date) => (f.dayOf(at) === f.dayOf(now) ? f.clock(at) : `${readableDay(f.dayOf(at))} ${f.clock(at)}`);
+  const todayMark = (a: { changes: DayChange[]; startAt: Date }) => {
+    const latest = a.changes[0];
+    return latest && latest.at >= column.todayStart ? changeMark(latest, a.startAt, f, staffNames, providerNames) : undefined;
+  };
   // D-62. Each chip's OWN delay — a cancellation ahead of her absorbs some or
   // all of the column's — computed once by the column, which the ring-round
   // reads too.
@@ -431,6 +461,7 @@ function toColumn(
       const who = appointment.clientName ?? 'Walk-in';
       const services = appointment.serviceNames.join(' + ');
       const missed = appointment.clientId ? missedByClient.get(appointment.clientId) : undefined;
+      const changed = todayMark(appointment);
       // A-149 (C8). More than one worked span (D-29) means a processing gap
       // sits between them — the fact the gap chip draws geometrically on the
       // grid and the print sheet, with no gap row of its own, cannot draw at
@@ -454,6 +485,7 @@ function toColumn(
         // line.
         visitNote: appointment.notes ?? undefined,
         ...(missed ? { missed } : {}),
+        ...(changed ? { changed } : {}),
         status: appointment.status as AppointmentStatus,
         appointmentId: appointment.id,
         // A-035 — the buttons on the chip, decided HERE by the §7 table with
@@ -522,6 +554,7 @@ function toColumn(
           // geometrically; a screen reader gets no geometry, so it needs the
           // same fact in words.
           workedBlocks ? `worked ${workedBlocks.join(' and ')}` : '',
+          changed ? changed.sentence : '',
         ]
           .filter(Boolean)
           .join(', '),
@@ -535,6 +568,13 @@ function toColumn(
     closed: column.closed,
     offRoster: column.offRoster,
     runningLateMinutes: column.runningLateMinutes,
+    ...(column.runningLateClaim
+      ? { runningLateBy: `${actorWord(column.runningLateClaim, staffNames)} · ${when(column.runningLateClaim.claimedAt)}` }
+      : {}),
+    ...(column.printedAt ? { printed: when(column.printedAt) } : {}),
+    changedSincePrint: column.printedAt
+      ? column.appointments.filter((a) => a.changes[0] && a.changes[0].at > column.printedAt!).length
+      : 0,
     calls: column.lateCalls.map((call) => {
       const who = call.clientName ?? 'Walk-in';
       return {
@@ -603,6 +643,45 @@ function hourTicks(view: DayView, zone: ZoneId, from: number, total: number): { 
 }
 
 const CANCELLED = new Set(['cancelled', 'cancelled_late']);
+
+/** D-9: a person where there is one — "the front desk" is four people. */
+function actorWord(c: { actor: string; actorRef: string | null }, staffNames: ReadonlyMap<string, string>): string {
+  if (c.actor === 'staff') return (c.actorRef && staffNames.get(c.actorRef)) || 'Staff';
+  return c.actor === 'customer_token' ? 'Client' : 'System';
+}
+
+/**
+ * A-150 (C9) — one change, in the two widths it is read at.
+ *
+ * The SHORT form is the verb and where from, never the name or the clock: the
+ * chip is 180 px (A-120), and "moved from 14:00" is the news — who and when
+ * are the follow-up, in the sentence. Its longest form is "Moved from another
+ * day", which is what the chip-width test measures against.
+ */
+function changeMark(
+  c: DayChange,
+  startAt: Date,
+  f: Formatters,
+  staffNames: ReadonlyMap<string, string>,
+  providerNames: ReadonlyMap<string, string>,
+): { sentence: string; short: string } {
+  const tail = ` · ${actorWord(c, staffNames)} · ${f.clock(c.at)}`;
+  const fromWhom = c.fromProviderId ? (providerNames.get(c.fromProviderId) ?? 'another stylist') : null;
+  if (c.type === 'booked' || c.type === 'override_booked') return { short: 'Booked today', sentence: `Booked${tail}` };
+  if (c.type === 'provider_changed') {
+    return { short: 'Reassigned', sentence: `Reassigned from ${fromWhom ?? 'another stylist'}${tail}` };
+  }
+  const verb = c.type === 'column_pushed' ? 'Pushed' : 'Moved';
+  if (!c.fromStartAt) return { short: verb, sentence: `${verb}${tail}` };
+  // The day is said whenever it differs from the day this row starts on — the
+  // "from 14:00" of a move from Tuesday is not a 14:00 on this page.
+  const sameDay = f.dayOf(c.fromStartAt) === f.dayOf(startAt);
+  const from = sameDay ? f.clock(c.fromStartAt) : `${readableDay(f.dayOf(c.fromStartAt))} ${f.clock(c.fromStartAt)}`;
+  return {
+    short: sameDay ? `${verb} from ${f.clock(c.fromStartAt)}` : `${verb} from another day`,
+    sentence: `${verb} from ${from}${fromWhom ? ` with ${fromWhom}` : ''}${tail}`,
+  };
+}
 
 /**
  * THE FOUR MOVES A CHIP CARRIES (A-035, operator P-4): check in, start,

@@ -51,6 +51,10 @@ function fieldsRead(source: string): Set<string> {
  * omission — which is exactly the difference this file exists to keep visible.
  */
 const NOT_ON_PAPER: Record<string, string> = {
+  changed:
+    'A-150 (D-73). The marker is "what moved since you last looked", and the paper IS the ' +
+    'last look: the page is stamped "Printed 08:45 by Sam" and the SCREEN counts what ' +
+    'changed since. A marker printed on the sheet would be stale news frozen in ink.',
   startTime:
     'The chip is POSITIONED by time and needs a short first line; the sheet is a ' +
     'table with a Time column and prints the whole range there.',

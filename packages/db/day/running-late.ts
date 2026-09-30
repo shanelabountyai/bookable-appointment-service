@@ -111,9 +111,10 @@ export async function setRunningLate(
     },
     update: {
       minutes: args.minutes,
-      setByActor: args.actor.type,
-      actorRef: args.actor.ref,
-      ...(args.now ? { claimedAt: args.now } : {}),
+      // A-150 (D-73). The actor travels WITH `claimedAt`: the header reads
+      // "Sam · 10:12" as one claim, and a push rewriting only the name would
+      // pin Jo's push onto Sam's time.
+      ...(args.now ? { claimedAt: args.now, setByActor: args.actor.type, actorRef: args.actor.ref } : {}),
       ...(args.pushedOff ? { pushedOffMinutes: { increment: args.pushedOff } } : {}),
     },
     include: { told: true },

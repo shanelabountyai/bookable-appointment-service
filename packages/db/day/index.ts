@@ -1,4 +1,11 @@
 export {
+  CHANGE_TYPES,
+  type ChangeType,
+  type DayChange,
+  lastPrintedByProvider,
+  recordSheetPrint,
+} from './changes';
+export {
   type DayAbsence,
   type DayAppointment,
   type DayColumn,

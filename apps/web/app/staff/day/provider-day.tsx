@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { GridColumn } from '@/lib/day/view-model';
 import { hasDayToRunLate, hasLiveAppointment } from '@/lib/day/run-late';
 import { ColumnControls } from './column-controls';
+import { PrintDrift } from './print-drift';
 import { ReleaseButton } from '@/components/release-button';
 import { QuickNote } from './quick-note';
 import { StatusActions } from './status-actions';
@@ -57,6 +58,8 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
         )
       ) : null}
 
+      <PrintDrift column={column} />
+
       {/* A-126 ride-along: the grid's only-ever caller of this was the desk's
           screen, so a stylist running late could not say so from her own. */}
       {hasDayToRunLate(column) ? (
@@ -65,6 +68,7 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
           providerName={column.providerName}
           day={day}
           runningLateMinutes={column.runningLateMinutes}
+          runningLateBy={column.runningLateBy}
           calls={column.calls}
           pushFrom={column.pushFrom}
         />
@@ -167,6 +171,8 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
           {item.missed ? (
             <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed.sentence}</p>
           ) : null}
+          {/* A-150 (C9). What happened to her today, and who did it. */}
+          {item.changed ? <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">↻ {item.changed.sentence}</p> : null}
 
           {/* A-070's whole point: writing it here rather than three taps and a
               page load away, which is where it lived and therefore did not get

@@ -217,6 +217,7 @@ model Business {
   manageTokens  ManageToken[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
+  sheetPrints   DaySheetPrint[]
   callAttempts  CallDownAttempt[]
   callMarks     ClientCallMark[]
   noteVersions  ClientNoteVersion[]
@@ -285,6 +286,7 @@ model Provider {
   appointments     Appointment[]
   series           AppointmentSeries[]
   runningLate      ProviderRunningLate[]
+  sheetPrints      DaySheetPrint[]
 
   @@index([businessId, active])
 }
@@ -1238,6 +1240,34 @@ model RunningLateTold {
   /// double entry.
   @@unique([runningLateId, appointmentId])
   @@index([businessId, appointmentId])
+}
+
+/// A-150 (C9, D-73) — "PRINTED 08:45."
+///
+/// The sheet comes off the printer at 8:45 and is read all day, and the screen
+/// has no way to say how far the paper has drifted without knowing when the
+/// paper was made. One row per press of the sheet's Print button. Append-only
+/// by use rather than by trigger: nothing reads a print except "the latest".
+///
+/// `providerId` null is the whole salon's sheet (every column, one per page);
+/// set, it is one stylist's own. A column's paper is the LATER of the two.
+model DaySheetPrint {
+  id         String  @id @default(cuid())
+  businessId String
+  /// The BUSINESS calendar day the sheet is FOR — CHAR(10), never @db.Date (D-3).
+  day        String  @db.Char(10)
+  providerId String?
+
+  /// D-9. "Printed by Sam" is the answer to "whose copy is this".
+  actor    Actor
+  actorRef String?
+
+  printedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, day, printedAt])
 }
 
 /// A-061 (APPT-02) — "WE ALREADY RANG HER."

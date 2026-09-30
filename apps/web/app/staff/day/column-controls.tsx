@@ -36,6 +36,7 @@ export function ColumnControls({
   providerName,
   day,
   runningLateMinutes,
+  runningLateBy,
   calls,
   pushFrom,
 }: {
@@ -43,6 +44,8 @@ export function ColumnControls({
   providerName: string;
   day: string;
   runningLateMinutes: number | null;
+  /** A-150 (C9). "Sam · 10:12" — whose claim the badge is. */
+  runningLateBy?: string;
   /** A-059. Who is still on their way inside the next few hours. Empty unless
    *  a delta is set. */
   calls: CallRow[];
@@ -66,6 +69,7 @@ export function ColumnControls({
             <span className="rounded-sm bg-amber-200 px-2 py-1 font-semibold text-amber-950 dark:bg-amber-900 dark:text-amber-100">
               +{runningLateMinutes} min
             </span>
+            {runningLateBy ? <span className="text-zinc-700 dark:text-zinc-300">{runningLateBy}</span> : null}
             <form action={clearLate}>
               <input type="hidden" name="providerId" value={providerId} />
               <input type="hidden" name="day" value={day} />

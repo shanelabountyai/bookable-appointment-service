@@ -137,6 +137,9 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
     // APPT-03's projected start, BESIDE the booked time rather than instead of
     // it: its own line, an arrow, and the word. No colour — see the header.
     item.projected ? <span key="projected" className="truncate font-semibold">→ likely {item.projected}</span> : null,
+    // A-150 (C9). The short form — the verb and where from. Who and when are
+    // in the accessible name and on the stylist's list.
+    item.changed ? <span key="changed" data-testid="chip-changed" className="truncate">↻ {item.changed.short}</span> : null,
     item.detail ? <span key="detail" className="truncate">{item.detail}</span> : null,
     // A-149 (C8). The gap chip drawn over this one (A-030) already says
     // "processing" geometrically for a sighted reader with room to see it;

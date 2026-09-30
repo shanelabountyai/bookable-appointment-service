@@ -12,6 +12,7 @@ import { DateJump } from '@/components/date-jump';
 import { Tab, Tabs } from '@/components/ui/tabs';
 import { DayGrid } from './day-grid';
 import { DaySheet } from './day-sheet';
+import { SheetPrint } from './sheet-print';
 import { ProviderDay } from './provider-day';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { RoomStrip } from './room-strip';
@@ -74,7 +75,15 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
   // and the reason the tick is worth anything to the second person at the desk.
   const staffNames = await resolveStaffNames(
     prisma,
-    view.columns.flatMap((c) => c.lateCalls.map((call) => call.told?.actorRef).filter((ref) => ref != null)),
+    // A-150 (C9) — and every name the "what changed" markers and the
+    // running-late claim print, in the same one query.
+    view.columns
+      .flatMap((c) => [
+        ...c.lateCalls.map((call) => call.told?.actorRef),
+        ...c.appointments.flatMap((a) => a.changes.map((ch) => ch.actorRef)),
+        c.runningLateClaim?.actorRef,
+      ])
+      .filter((ref) => ref != null),
   );
 
   const model = toGridModel(view, now, readableDay(day), missedByClient, staffNames);
@@ -189,7 +198,9 @@ export default async function DayPage({ searchParams }: PageProps<'/staff/day'>)
       {asSheet ? (
         /* `?provider=` prints that one stylist; otherwise the whole salon,
            one column per page. */
-        <DaySheet model={model} columns={column ? [column] : model.columns} />
+        <SheetPrint day={day} providerId={column?.providerId ?? null}>
+          <DaySheet model={model} columns={column ? [column] : model.columns} />
+        </SheetPrint>
       ) : (
         <div className="flex flex-col gap-6">
           {model.columns.length === 0 ? (

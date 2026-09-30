@@ -69,6 +69,7 @@ function column(over: Partial<GridModel['columns'][number]> & { providerName: st
     closed: false,
     offRoster: false,
     runningLateMinutes: null,
+    changedSincePrint: 0,
     calls: [],
     pushFrom: null,
     items: [],

@@ -5019,6 +5019,28 @@ paper now lists its worked spans directly: the stylist sees at a glance
 where her hands-on time actually falls, without a "45 min free" line eating
 a row.
 
+## A-150 — what changed on my column today
+
+A salon's day moves under the stylist's feet. The desk pushes her column,
+moves a client to 2pm, or hands her someone else's 11:00, and until now the
+only way to find out was to notice that the grid looked different. Every one
+of those changes was already in the appointment's audit log, with who made
+it and when. None of it reached the screen the stylist reads.
+
+Each appointment now carries a small marker for anything that happened to it
+today: "Moved from 14:00 · Sam · 11:02". The marker is deliberately narrow.
+Check-ins and other status taps don't count, because a stylist who sees her
+own check-ins flagged soon stops reading the marker. The running-late badge
+now says who claimed it and when. The printed day sheet, the 8:45 errand
+that is read all day, is stamped with when it was printed and by whom. The
+screen keeps count of how many rows that paper is now wrong about.
+
+The engineering point is that there is no new record of "what changed". The
+markers are derived from the existing append-only event log. The one new
+table records something the log never held: when the paper was made. It is
+written by the same button press that prints, so the time on the paper and
+the time the screen counts from are the same instant.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

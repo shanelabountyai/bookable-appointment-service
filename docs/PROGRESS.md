@@ -6306,3 +6306,38 @@ segments the day-view and e2e suites already carry.
 (the non-barrier-based check-in race test, and the single-business
 `findFirstOrThrow()`/`findFirst()` ceiling) are still untouched. A-150 is
 gated on OQ-24 and A-151 on OQ-25 — neither asked yet.
+
+## A-150 — C9: what changed on my column today (D-70, D-73)
+
+Commit `PENDING`.
+
+**What it built.**
+- **`packages/db/day/changes.ts`.** `CHANGE_TYPES` is OQ-24 (a) as a list:
+  `booked`, `override_booked`, `rescheduled`, `column_pushed`,
+  `provider_changed`. `toDayChanges` drops the `viaReschedule` half of D-31's
+  two-row move, so one move is one change. `recordSheetPrint` is SEC-08
+  guarded, and `lastPrintedByProvider` returns the later of the whole-salon
+  sheet and her own.
+- **`loadDayView` carries the facts, and the view model words them.**
+  - `DayAppointment.changes` is newest first. It is read in the same
+    appointment query, from the salon's today or from the column's last
+    print if that is earlier.
+  - `DayColumn` gains `runningLateClaim`, `printedAt` and `todayStart`.
+- **`GridItem.changed` has two widths, like `missed`.** The chip gets the
+  verb and where from ("↻ Moved from 14:00"). The list and the accessible
+  name get "Moved from 14:00 · Sam · 11:02".
+- **Running-late header.** "+40 min Sam · 10:12".
+- **Paper.** The sheet's Print button records a `DaySheetPrint`, then prints,
+  and stamps "Printed 08:45 by Sam" on every page. The grid and the list show
+  "Printed 08:45 · N changed since print".
+
+**What it decided.** See D-73.
+- A push no longer rewrites the running-late claim's author: the actor
+  travels with `claimedAt`.
+- The browser's own Print menu records nothing and stamps nothing.
+
+**What it left behind.**
+- A row moved OFF the column or cancelled after print does not count
+  toward "changed since print" (D-73 ceiling).
+- A NEW WRITER of a move, push, reassignment or booking has to join
+  `CHANGE_TYPES`, or its change is silently not news.

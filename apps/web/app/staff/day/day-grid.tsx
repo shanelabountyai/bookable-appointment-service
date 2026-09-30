@@ -8,6 +8,7 @@ import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { hasDayToRunLate } from '@/lib/day/run-late';
 import { AppointmentChip, CHIP_SHELL } from './appointment-chip';
 import { ColumnControls } from './column-controls';
+import { PrintDrift } from './print-drift';
 import { useAutoRefresh } from '@/components/auto-refresh';
 
 /**
@@ -215,6 +216,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           </Link>
         )}
       </h2>
+      <PrintDrift column={column} />
 
       {/* A-148 — a long day off the top of the viewport otherwise takes a
           scroll-and-hunt to find where "now" is drawn; this jumps straight to
@@ -240,6 +242,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           providerName={column.providerName}
           day={model.day}
           runningLateMinutes={column.runningLateMinutes}
+          runningLateBy={column.runningLateBy}
           calls={column.calls}
           pushFrom={column.pushFrom}
         />

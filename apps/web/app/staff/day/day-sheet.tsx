@@ -1,6 +1,7 @@
 import { occupiesTime } from '@bookable/core/scheduling';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
 import { statusWord } from './appointment-chip';
+import { PrintedStamp } from './sheet-print';
 
 /**
  * A-062, redrawn for the design brief at A-093 — THE DAY, ON PAPER (§8.7, §5.4.4).
@@ -117,6 +118,8 @@ export function DaySheet({
                     {column.runningLateMinutes
                       ? ` · running ${column.runningLateMinutes} min behind at print`
                       : ''}
+                    {/* A-150 (C9). When this paper was made, and by whom. */}
+                    <PrintedStamp />
                   </p>
                 </td>
               </tr>
