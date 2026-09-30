@@ -1,12 +1,11 @@
 # Next
 
-**Pick up: A-147, C7. The design system reaches the busy screens** (Phase 22
-in `06-backlog.md`, D-70) — no gate, no open dependency. A-146 (C5, the
-client record can be corrected, and it explains itself) is done, `55c5e55`,
-deciding OQ-23 as D-72.
+**Pick up: A-149, C8. Processing time reads as processing time** (Phase 22
+in `06-backlog.md`, D-70) — no gate, no open dependency. A-148 (C6, focus
+management on staff screens) is done, `c468af6`.
 
-Then A-148 (C6, focus management) depends on A-147. A-150 is gated on OQ-24,
-A-151 on OQ-25 — ask when each comes up, not before.
+Then A-150 is gated on OQ-24, A-151 on OQ-25 — ask when each comes up, not
+before.
 
 Needs a backlog row: `packages/db/appointments/transition.test.ts` › "lets
 exactly one of two simultaneous check-ins win" is not barrier-based and fails
