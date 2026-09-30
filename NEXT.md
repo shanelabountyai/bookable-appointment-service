@@ -1,11 +1,10 @@
 # Next
 
-**Pick up: A-149, C8. Processing time reads as processing time** (Phase 22
-in `06-backlog.md`, D-70) — no gate, no open dependency. A-148 (C6, focus
-management on staff screens) is done, `c468af6`.
+**Pick up: A-150** (Phase 22 in `06-backlog.md`, D-70) — gated on OQ-24; ask
+before starting. A-149 (C8, processing time reads as processing time) is
+done, `55da8a2`.
 
-Then A-150 is gated on OQ-24, A-151 on OQ-25 — ask when each comes up, not
-before.
+A-151 is gated on OQ-25 — ask when it comes up, not before.
 
 Needs a backlog row: `packages/db/appointments/transition.test.ts` › "lets
 exactly one of two simultaneous check-ins win" is not barrier-based and fails
