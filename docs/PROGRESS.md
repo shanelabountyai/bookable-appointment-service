@@ -6309,7 +6309,7 @@ gated on OQ-24 and A-151 on OQ-25 — neither asked yet.
 
 ## A-150 — C9: what changed on my column today (D-70, D-73)
 
-Commit `PENDING`.
+Commit `4cc27c9`.
 
 **What it built.**
 - **`packages/db/day/changes.ts`.** `CHANGE_TYPES` is OQ-24 (a) as a list:
