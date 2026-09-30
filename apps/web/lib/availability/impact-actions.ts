@@ -16,7 +16,7 @@ import {
   futureAppointments,
   reassignMany,
 } from '@bookable/db/availability';
-import { transitionAppointment } from '@bookable/db/appointments';
+import { AppointmentMovedFirst, TransitionRefused, transitionAppointment } from '@bookable/db/appointments';
 import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 import { staffActor } from '@bookable/core/auth';
 import { TEMPLATE_WORDS, deliveryWord } from '@/lib/appointments/event-language';
@@ -102,34 +102,69 @@ export async function keepFlagged(_previous: ImpactState, formData: FormData): P
  */
 export async function cancelConflicting(_previous: ImpactState, formData: FormData): Promise<ImpactState> {
   const staff = await requireStaff();
-  const appointmentId = String(formData.get('appointmentId') ?? '');
+  // A-151: one row's form sends one id, the bulk form sends the ticked ones —
+  // opt-in per row, for the reason the bulk reassign is (one mis-tap must not
+  // cancel the three somebody already sorted out). The reason is typed once.
+  const appointmentIds = formData.getAll('appointmentId').map(String).filter(Boolean);
   const reason = String(formData.get('reason') ?? '');
 
+  if (appointmentIds.length === 0) return { ok: false, message: 'Choose at least one appointment.' };
   if (!reason.trim()) return { ok: false, message: 'Say why — it goes in the log and on the client’s record.' };
 
   // A-036: unticked means tell her. The box is there for the desk that rang
   // her first, so the text does not contradict the person she just spoke to.
   const notify = formData.get('skipNotice') === null;
 
-  // A-060: `cancelled`, HARDCODED, and never `cancellation: 'derive'`.
-  //
-  // The stylist is off sick and the salon is taking the appointment away. The
-  // clock says "inside the cutoff" and the clock is answering a question
-  // nobody asked — the cutoff exists to price a CLIENT'S late notice, and this
-  // client gave none. Deriving here would put a late cancel on the rolling
-  // count (CLIENT-04) of somebody who did nothing, and `reliability.ts` counts
-  // by status alone and could never tell the difference afterwards.
-  await transitionAppointment(prisma, {
-    businessId: staff.businessId,
-    appointmentId,
-    to: 'cancelled',
-    actor: staffActor(staff.id),
-    now: new Date(),
-    reason,
-    notify,
-  });
+  // One at a time, and a refusal on one does not stop the rest — the message
+  // names what did NOT happen, the half somebody has to act on next.
+  let cancelled = 0;
+  let stuck = 0;
+  for (const appointmentId of appointmentIds) {
+    try {
+      // A-060: `cancelled`, HARDCODED, and never `cancellation: 'derive'`.
+      //
+      // The stylist is off sick and the salon is taking the appointment away.
+      // The clock says "inside the cutoff" and the clock is answering a
+      // question nobody asked — the cutoff exists to price a CLIENT'S late
+      // notice, and this client gave none. Deriving here would put a late
+      // cancel on the rolling count (CLIENT-04) of somebody who did nothing,
+      // and `reliability.ts` counts by status alone and could never tell the
+      // difference afterwards.
+      //
+      // A-151 (D-74): and it is the SALON'S cancel, written on the event,
+      // which is what puts her on `/staff/owed` until she is rebooked.
+      await transitionAppointment(prisma, {
+        businessId: staff.businessId,
+        appointmentId,
+        to: 'cancelled',
+        actor: staffActor(staff.id),
+        now: new Date(),
+        reason,
+        notify,
+        salonInitiated: true,
+      });
+      cancelled++;
+    } catch (error) {
+      if (!(error instanceof TransitionRefused || error instanceof AppointmentMovedFirst)) throw error;
+      stuck++;
+    }
+  }
   revalidatePath('/staff/conflicts');
-  return { ok: true, message: notify ? 'Cancelled, and they have been told.' : 'Cancelled. No message sent.' };
+  revalidatePath('/staff/owed');
+
+  const told = notify ? 'they have been told.' : 'no message sent.';
+  if (appointmentIds.length === 1) {
+    return stuck
+      ? { ok: false, message: 'That one has already changed — reload the list.' }
+      : { ok: true, message: notify ? 'Cancelled, and they have been told.' : 'Cancelled. No message sent.' };
+  }
+  return {
+    ok: stuck === 0,
+    message:
+      `Cancelled ${cancelled}` +
+      (cancelled > 0 ? `, ${told}` : '.') +
+      (stuck > 0 ? ` ${stuck} had already changed — reload the list.` : ''),
+  };
 }
 
 /** "Reassign Saturday to Priya where qualified." Partial by design. */

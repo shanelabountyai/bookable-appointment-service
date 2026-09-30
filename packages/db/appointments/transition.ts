@@ -118,6 +118,12 @@ export interface TransitionInput {
    * between two cancellation statuses is the tell TOKEN-03 forbids.
    */
   cancellation?: 'derive' | 'override';
+  /**
+   * A-151 (D-74) — "the salon took this one away", written on the event so
+   * `/staff/owed` can tell it from a client's cancel. Status cannot: the
+   * conflicts screen's `cancelled` and a panel cancel's are the same value.
+   */
+  salonInitiated?: boolean;
 }
 
 export interface TransitionResult {
@@ -346,6 +352,7 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
           // have." The only record that the classification was a human's, so
           // the owner's drill-down can count them and name who.
           ...(overruled ? { overruled } : {}),
+          ...(input.salonInitiated ? { salonInitiated: true } : {}),
           // Kept because the update above may have cleared them: a no-show did
           // not arrive, so its arrival timestamps must not survive the
           // correction, and the log is then the only record they existed.

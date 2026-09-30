@@ -356,3 +356,75 @@ test.describe('the impact workflow (A-019)', () => {
     await expectNoAxeViolations(page);
   });
 });
+
+/**
+ * A-151 (C10, D-74) — the salon took these appointments away, so it owes each
+ * of them a new one. The bulk cancel takes the reason once, and everybody it
+ * cancelled is on `/staff/owed` until somebody rebooks them.
+ */
+test.describe('owed a rebook (A-151)', () => {
+  test('bulk-cancels the ticked rows with one reason, and lists each as owed', async ({ page }) => {
+    await danaCallsInSick(['10:00', '11:30']);
+    await page.goto(`/staff/conflicts?day=${DAY}`);
+
+    await page.getByRole('checkbox', { name: /Select Client 1/ }).check();
+    await page.getByRole('checkbox', { name: /Select Client 2/ }).check();
+    await page.getByLabel('Why cancel them?').fill('Dana off sick');
+    await page.getByRole('button', { name: /^Cancel 2 selected$/ }).click();
+    // The page is the feedback, as for the reassign: both left, so nothing is
+    // stranded any more and the rows (and their message) are gone.
+    await expect(page.getByText(/Nothing stranded on/)).toBeVisible();
+
+    const prisma = new PrismaClient();
+    let clientId: string;
+    try {
+      const rows = await prisma.appointment.findMany();
+      expect(rows.map((r) => r.status)).toEqual(['cancelled', 'cancelled']);
+      const events = await prisma.appointmentEvent.findMany({ where: { type: 'status_changed' } });
+      expect(events.map((e) => [e.reason, (e.payload as { salonInitiated?: boolean }).salonInitiated])).toEqual([
+        ['Dana off sick', true],
+        ['Dana off sick', true],
+      ]);
+      clientId = (await prisma.client.findFirstOrThrow({ where: { name: 'Client 1' } })).id;
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await page.getByRole('link', { name: 'Owed visits' }).click();
+    await expect(page).toHaveURL(/\/staff\/owed$/);
+    const items = page.locator('main > ul > li');
+    await expect(items).toHaveCount(2);
+    // Longest waiting first: her 10:00 before the 11:30.
+    await expect(items.nth(0)).toContainText('Client 1');
+    await expect(items.nth(1)).toContainText('Client 2');
+    await expect(items.nth(0)).toContainText('Dana off sick');
+
+    // One tap into staff booking, prefilled with the same visit.
+    await page.getByRole('link', { name: 'Rebook Client 1' }).click();
+    await expect(page).toHaveURL(/\/staff\/book\?/);
+    const url = new URL(page.url());
+    expect(url.searchParams.get('day')).toBe(DAY);
+    expect(url.searchParams.get('client')).toBe(clientId!);
+    expect(url.searchParams.getAll('services')).toHaveLength(1);
+  });
+
+  test('remembers who has been rung, and passes axe', async ({ page }) => {
+    await danaCallsInSick(['10:00']);
+    await page.goto(`/staff/conflicts?day=${DAY}`);
+    await page.getByLabel('Cancel — why?').fill('Dana off sick');
+    await page.getByRole('button', { name: 'Cancel it' }).click();
+    await expect(page.getByText(/Nothing stranded on/)).toBeVisible();
+
+    await page.goto('/staff/owed');
+    await expect(page.getByRole('heading', { name: 'Owed a rebook' })).toBeVisible();
+    await page.getByRole('button', { name: /No answer/ }).click();
+    await expect(page.getByText(/^No answer( — .*)? · /)).toBeVisible();
+
+    await expectNoAxeViolations(page);
+  });
+
+  test('says so plainly when nobody is owed', async ({ page }) => {
+    await page.goto('/staff/owed');
+    await expect(page.getByText('Nobody is waiting on us for a new appointment.')).toBeVisible();
+  });
+});

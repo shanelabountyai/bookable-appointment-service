@@ -500,7 +500,8 @@ export async function seedDensity(
   // and a different fixture, and the demo wants an ordinary one.
   const toCancel = recentFuture[Math.min(3, recentFuture.length - 1)];
   if (toCancel) {
-    await transitionAppointment(prisma, { businessId: business.id, appointmentId: toCancel.id, to: 'cancelled', actor: staffActor('seed'), now });
+    // A-151: the salon's cancel, so `/staff/owed` has a row in the demo too.
+    await transitionAppointment(prisma, { businessId: business.id, appointmentId: toCancel.id, to: 'cancelled', actor: staffActor('seed'), now, reason: 'Stylist off sick', salonInitiated: true });
   }
 
   const todaysLast = await prisma.appointment.findFirst({

@@ -16,9 +16,10 @@ const small = 'rounded-md border border-zinc-400 px-2 py-1 text-xs font-medium d
 const field = 'rounded-md border border-zinc-400 bg-transparent px-2 py-1 text-sm dark:border-zinc-600';
 
 /**
- * AVAIL-05's four actions, per appointment plus one in bulk.
+ * AVAIL-05's four actions, per appointment plus two in bulk (A-151 added the
+ * cancel).
  *
- * The bulk reassign is deliberately opt-in per row rather than "all": the
+ * Both bulk actions are deliberately opt-in per row rather than "all": the
  * front desk works down this list on the phone, and a button that moves
  * everything is one mis-tap away from moving the three somebody has already
  * sorted out.
@@ -31,6 +32,7 @@ export function ConflictList({
   providers: { id: string; name: string }[];
 }) {
   const [reassignState, doReassign, reassigning] = useActionState(reassignConflicting, initial);
+  const [cancelState, doCancel, cancelling] = useActionState(cancelConflicting, initial);
   const [selected, setSelected] = useState<string[]>([]);
 
   const toggle = (id: string) =>
@@ -148,6 +150,40 @@ export function ConflictList({
 
         <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
           {reassignState.message ?? ''}
+        </p>
+      </form>
+
+      {/* A-151 (C10): the bulk cancel. Same ticks as the reassign above, the
+          reason typed ONCE, and every one of them lands on /staff/owed until
+          somebody rebooks her. */}
+      <form action={doCancel} className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+          Cancel the selected
+        </h2>
+        {selected.map((id) => (
+          <input key={id} type="hidden" name="appointmentId" value={id} />
+        ))}
+
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-sm">
+            Why cancel them?
+            <input name="reason" placeholder="Salon closed, rebooking them" className={field} />
+          </label>
+          <label className="flex items-center gap-2 py-2 text-sm">
+            <input type="checkbox" name="skipNotice" />
+            I’ve already rung them — no cancellation texts
+          </label>
+          <button
+            type="submit"
+            disabled={cancelling || selected.length === 0}
+            className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            {cancelling ? 'Cancelling…' : `Cancel ${selected.length} selected`}
+          </button>
+        </div>
+
+        <p aria-live="polite" className="text-sm text-zinc-700 dark:text-zinc-300">
+          {cancelState.message ?? ''}
         </p>
       </form>
     </div>

@@ -52,6 +52,10 @@ const DESK = [
   { href: '/staff/waitlist', label: 'Waitlist', count: null },
   { href: '/staff/call-down', label: 'Call-down', count: null },
   { href: '/staff/conflicts', label: 'Conflicts', count: null },
+  // A-151: the conflicts screen's cancels land here until she is rebooked.
+  // NOT "Owed a rebook": on every staff page that name contains the client
+  // record's "Rebook" link, one accessible name inside another.
+  { href: '/staff/owed', label: 'Owed visits', count: null },
   { href: '/staff/messages', label: 'Messages', count: 'unsentMessages' },
 ] as const;
 

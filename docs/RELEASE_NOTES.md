@@ -5041,6 +5041,30 @@ table records something the log never held: when the paper was made. It is
 written by the same button press that prints, so the time on the paper and
 the time the screen counts from are the same instant.
 
+## A-151 — owed a rebook
+
+When a stylist calls in sick, the desk cancels her clients from the
+conflicts screen and starts ringing. Some are rebooked on the spot. The ones
+who don't answer are forgotten by Monday: the salon took their appointment
+away and never gave them another. That is the quietest way a salon loses a
+client, and nothing on screen showed it.
+
+There is now a list of it. Every appointment the salon cancelled stays on
+"Owed a rebook" until the client has something booked again. Each row has
+the phone number, a record of who has already rung and what they said, and
+one button that opens staff booking with the same services, the same
+stylist and the client already attached. The conflicts screen also gained
+a bulk cancel, with the reason typed once and each row ticked on purpose.
+
+The engineering point is where the fact comes from. A salon's cancel and a
+client's cancel end in the same status value, so nothing downstream could
+tell them apart. The one screen that knows writes it onto the audit event,
+and the list is derived from the log on every read. There is nothing to
+clear, and a client can't be left on it by a missed update. The rule for
+when she comes off was tested against its obvious wrong version: "nothing
+booked ahead" would put a client back on the list the day after her rebooked
+visit. The tests fail if the rule is simplified back to that.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

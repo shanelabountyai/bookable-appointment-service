@@ -43,6 +43,7 @@ export async function recordOffer(_previous: OfferState, formData: FormData): Pr
     // A-073 reuses this action for the lapsed list, so it revalidates there
     // too — one writer, and every reader of it told.
     revalidatePath('/staff/dashboard/lapsed');
+    revalidatePath('/staff/owed');
     // A-091: no pronoun. The record has no gender field and this line
     // renders about whoever the row names.
     return { ok: true, message: 'Cleared — nobody has been asked.' };
@@ -67,6 +68,8 @@ export async function recordOffer(_previous: OfferState, formData: FormData): Pr
   // of the same round of phone calls.
   revalidatePath('/staff/opened');
   revalidatePath('/staff/dashboard/lapsed');
+  // A-151: and the owed-a-rebook list, the third reader of these marks.
+  revalidatePath('/staff/owed');
 
   return mark
     ? { ok: true, message: 'Noted.' }

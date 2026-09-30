@@ -75,3 +75,4 @@ export {
   type TransitionResult,
   transitionAppointment,
 } from './transition';
+export { type OwedRebook, listOwedRebooks } from './owed';

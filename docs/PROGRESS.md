@@ -6341,3 +6341,50 @@ Commit `4cc27c9`.
   toward "changed since print" (D-73 ceiling).
 - A NEW WRITER of a move, push, reassignment or booking has to join
   `CHANGE_TYPES`, or its change is silently not news.
+
+## A-151 — C10: owed a rebook (D-70, D-74)
+
+Commit `PENDING`.
+
+**What it built.**
+- **The salon flag.** `TransitionInput.salonInitiated` writes
+  `payload.salonInitiated: true` on the status event. `cancelConflicting` is
+  its only caller, so every conflicts-screen cancel is the salon's.
+- **`packages/db/appointments/owed.ts`.** `listOwedRebooks` is a derived list,
+  with nothing stored.
+  - It finds salon cancels inside the lapsed window (`LAPSED_WEEKS`), and
+    requires the *latest* status event on the row to carry the flag, so a
+    salon cancel that was reinstated and then client-cancelled is hers.
+  - One row per client (her newest salon cancel).
+  - She leaves the list when anything is booked for her since the cancel, in
+    any status, or anything active is ahead.
+- **Bulk cancel on `/staff/conflicts`.** It uses the same per-row ticks as
+  the bulk reassign, with the reason typed once. `cancelConflicting` now
+  takes one id or many, and names how many had already changed instead of
+  throwing on the first.
+- **`/staff/owed`** (desk, `requireStaff`), linked from the staff nav as "Owed visits" (not "Owed a rebook": that name contains the client record's "Rebook" link, and the full sweep caught the collision). Each
+  row shows the original visit, the cancel reason, the phone number, and
+  A-072's call marks (`owed:<appointmentId>`). Its Rebook button opens
+  `/staff/book` with every service in order, the stylist, the client, and
+  the original day (or today if that day has passed).
+- The density seed's demo cancel is now a salon cancel, so the page has a
+  row in the demo.
+
+**What it decided.** See D-74.
+- "Nothing active ahead", the backlog's wording, is not enough on its own.
+  Rebooked for Tuesday and in on Tuesday means nothing ahead on Wednesday,
+  and she would be back on the list. The rule adds "or anything booked since
+  the cancel". The mutation check confirms that two tests fail without it.
+- The prefill reads the cancelled visit, not `rebookSuggestion`. That
+  function skips cancelled visits on purpose, and it returns nothing at all
+  for a first-time client, who is exactly who a salon cancel strands.
+
+**What it left behind.**
+- A salon cancel made from the appointment panel is not flagged (D-74
+  ceiling). Pre-A-151 cancels carry no flag.
+- A first-time client's debt older than 12 weeks leaves this list, and the
+  lapsed report cannot pick it up because she has no completed visit.
+- No nav badge count. Add one if the desk misses the page.
+- Full unit run: `density-seed.test.ts` and `utilization-constant.test.ts`
+  timed out at 120s under full-suite load and passed when run alone (97s).
+
