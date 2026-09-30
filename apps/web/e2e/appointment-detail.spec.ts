@@ -675,7 +675,7 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
     const freed = column.getByRole('link', { name: /^180 min free, 09:00–12:00/ });
     await expect(freed).toBeVisible();
 
-    await column.getByRole('link', { name: /Ada Chen.*, cancelled$/ }).click();
+    await column.getByRole('link', { name: /Ada Chen.*, cancelled(?:,|$)/ }).click();
     await expect(page).toHaveURL(new RegExp(`/staff/appointments/${appointment.id}`));
     await expect(page.getByRole('button', { name: REINSTATE })).toBeVisible();
 
@@ -701,7 +701,8 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
    * is drawn on the grid on purpose — struck through, so the desk can see what
    * was lost — so "it comes back" was never the visible fact and asserting it
    * would have passed against a reinstatement that did nothing at all. What
-   * changes is the word the chip's accessible name ends on.
+   * changes is the status clause in the chip's accessible name (no longer the
+   * LAST clause since A-150 appends what changed today, hence `(?:,|$)`).
    */
   test('stops calling her cancelled in the column, where the salon will see it', async ({ page }) => {
     const appointment = await bookOne();
@@ -712,7 +713,7 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
     const chip = () => page.getByRole('region', { name: /Dana/ }).getByRole('link', { name: /Ada Chen/ });
 
     await page.goto(`/staff/day?day=${DAY}`);
-    await expect(chip()).toHaveAccessibleName(/, cancelled$/);
+    await expect(chip()).toHaveAccessibleName(/, cancelled(?:,|$)/);
 
     await page.goto(`/staff/appointments/${appointment.id}`);
     await page.getByLabel(/Reason/).fill('Rang off the wrong client');
@@ -720,7 +721,7 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
     await expect(page.getByText('Corrected from cancelled to booked by Front desk.')).toBeVisible();
 
     await page.goto(`/staff/day?day=${DAY}`);
-    await expect(chip()).toHaveAccessibleName(/, booked$/);
+    await expect(chip()).toHaveAccessibleName(/, booked(?:,|$)/);
   });
 
   /**
@@ -810,7 +811,7 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
     await page.goto(`/staff/day?day=${DAY}`);
     await expect(
       page.getByRole('region', { name: /Dana/ }).getByRole('link', { name: /Ada Chen/ }),
-    ).toHaveAccessibleName(/, booked$/);
+    ).toHaveAccessibleName(/, booked(?:,|$)/);
   });
 
   /** The other sentence, and the reason they had to be worded apart: this one
