@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import { laneStyle } from '@/lib/day/lanes';
 import { PX_PER_MINUTE } from '@/lib/day/scale';
 import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
@@ -30,6 +31,11 @@ import { useAutoRefresh } from '@/components/auto-refresh';
 
 /** Kept fresh by the shared 15 s timer (A-142, `components/auto-refresh`). */
 
+/** A-148 — the column heading and its "jump to now" target both need a
+ *  stable DOM id to be focused programmatically rather than by tab order. */
+const headingId = (providerId: string) => `column-heading-${providerId}`;
+const nowId = (providerId: string) => `now-line-${providerId}`;
+
 export function DayGrid({ model, live = true }: { model: GridModel; live?: boolean }) {
   // `live` is off in the gallery only (A-090). Four grids on `/staff/design`
   // each holding a 15-second `router.refresh()` would reload the workbench
@@ -37,6 +43,25 @@ export function DayGrid({ model, live = true }: { model: GridModel; live?: boole
   useAutoRefresh(live);
 
   const height = model.totalMinutes * PX_PER_MINUTE;
+
+  // A-148 — a checked-in chip can lose its button on the next refresh (§7
+  // took the move away), which unmounts whatever had focus and the browser
+  // drops it to `<body>`. Track which column the desk was last in so a lost
+  // focus lands on that column's heading rather than nowhere; there is no
+  // element to ask "what was focused" once it is gone, so this has to be
+  // recorded on the way in, not looked up on the way out.
+  const lastFocusedProviderId = useRef<string | null>(null);
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (document.activeElement !== document.body) return;
+    const fallback = model.columns[0]?.providerId;
+    const targetId = lastFocusedProviderId.current ?? fallback;
+    if (targetId) document.getElementById(headingId(targetId))?.focus();
+  }, [model]);
 
   return (
     /**
@@ -68,7 +93,14 @@ export function DayGrid({ model, live = true }: { model: GridModel; live?: boole
     // Same tab stop as the room strip, for the same reason: a day where every
     // provider is off has no gap chips and no appointments, so this box holds
     // nothing focusable and a keyboard cannot scroll it.
-    <div tabIndex={0} className="grid grid-flow-col auto-cols-[minmax(13rem,1fr)] grid-rows-[auto_auto] gap-x-2 overflow-x-auto">
+    <div
+      tabIndex={0}
+      onFocusCapture={(event) => {
+        const column = (event.target as HTMLElement).closest<HTMLElement>('[data-provider-id]');
+        if (column) lastFocusedProviderId.current = column.dataset.providerId ?? null;
+      }}
+      className="grid grid-flow-col auto-cols-[minmax(13rem,1fr)] grid-rows-[auto_auto] gap-x-2 overflow-x-auto"
+    >
       <div className="row-span-2 grid w-14 shrink-0 grid-rows-subgrid" aria-hidden="true">
         {/* Row one: the gutter has no chrome of its own and takes whatever
             height the tallest column's does. */}
@@ -136,6 +168,7 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
 
   return (
     <section
+      data-provider-id={column.providerId}
       className="row-span-2 grid grid-rows-subgrid"
       style={lanes > 1 ? { gridColumn: `span ${lanes}` } : undefined}
       aria-label={`${column.providerName}${column.offRoster ? ', off the roster, still has clients booked' : ''}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
@@ -144,7 +177,10 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           it a column happens to have, its box below still starts where every
           other column's does. */}
       <div>
-      <h2 className="text-sm font-semibold">
+      {/* A-148 — `tabIndex={-1}` and an id, so a lost focus (the refresh
+          effect above) or "jump to now" (below) has somewhere programmatic
+          to land; neither puts the heading in the ordinary tab order. */}
+      <h2 id={headingId(column.providerId)} tabIndex={-1} className="text-sm font-semibold">
         {column.providerName}
         {column.closed ? <span className="ml-2 font-normal text-ink-muted">off today</span> : null}
         {/* A-098 — SHE IS HERE BECAUSE HER CLIENTS ARE. The column renders
@@ -179,6 +215,23 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
           </Link>
         )}
       </h2>
+
+      {/* A-148 — a long day off the top of the viewport otherwise takes a
+          scroll-and-hunt to find where "now" is drawn; this jumps straight to
+          it and leaves focus there. Only on the day that HAS a now-line. */}
+      {model.nowTop !== null ? (
+        <button
+          type="button"
+          onClick={() => {
+            const line = document.getElementById(nowId(column.providerId));
+            line?.scrollIntoView({ block: 'center' });
+            line?.focus();
+          }}
+          className="ml-2 font-normal text-ink-muted underline underline-offset-4"
+        >
+          Jump to now
+        </button>
+      ) : null}
 
       {/* Nothing to be late for: no clients, no delta, and not open. */}
       {controls ? (
@@ -238,6 +291,8 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
             // for its meaning: a now-line is red in every calendar anyone at
             // the desk has ever used. A `--now-line` token would be one fact
             // under two names (A-088's own rule) with exactly one caller.
+            id={nowId(column.providerId)}
+            tabIndex={-1}
             className="pointer-events-none absolute inset-x-0 z-20 border-t-2 border-danger-line"
             style={{ top: model.nowTop * PX_PER_MINUTE }}
           >
@@ -272,7 +327,7 @@ function Item({ item }: { item: GridItem }) {
   // ended — before every cut on the hour, 40% of the demo book's chips. A gap
   // too short to hold its label is drawn at its true height, as a hatch with no
   // text, and keeps the link and its accessible name, so it is still one Tab
-  // stop and still says "Book 5 minutes free, …". No padding and no border: in
+  // stop and still says "5 min free, …". No padding and no border: in
   // `border-box` both are a minimum height, and would push it back over the chip.
   if (item.kind === 'gap' && item.href && drawn < MIN_LABELLED_PX) {
     return (
@@ -304,7 +359,14 @@ function Item({ item }: { item: GridItem }) {
           {body}
         </Link>
       ) : (
-        <span aria-label={item.label}>{body}</span>
+        // A-148 — `aria-label` on a plain `<span>` (no role) is unreliable:
+        // some AT read it, some read the text content instead, so an sr-only
+        // copy of the full label plus an `aria-hidden` visible body is the
+        // one phrasing every reader agrees on.
+        <span>
+          <span className="sr-only">{item.label}</span>
+          <span aria-hidden="true">{body}</span>
+        </span>
       )}
     </li>
   );

@@ -398,7 +398,10 @@ function toColumn(
       // waited for. The link carries the INSTANT (D-4), never a wall label:
       // on the day the clocks go back, "01:30" names two of these.
       href: `/staff/book?provider=${column.providerId}&at=${encodeURIComponent(gap.start.toISOString())}&day=${day}`,
-      label: `Book ${gap.minutes} minutes free, ${f.range(gap.start, gap.end)}, with ${column.providerName}`,
+      // A-148 (2.5.3) — the accessible name has to LEAD with the visible
+      // text ("`N` min free"), not paraphrase it as "Book N minutes free":
+      // a voice-control command that speaks what it sees would miss the link.
+      label: `${gap.minutes} min free, ${f.range(gap.start, gap.end)}, with ${column.providerName}. Book this time.`,
     })),
     ...column.appointments.map((appointment) => {
       const who = appointment.clientName ?? 'Walk-in';

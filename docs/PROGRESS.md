@@ -6135,3 +6135,98 @@ which this item touches), and 356/356 e2e.
 before A-146 (the non-barrier-based check-in race test, and the
 single-business `findFirstOrThrow()`/`findFirst()` ceiling) are still
 untouched.
+
+## A-148 — C6: focus management on staff screens (D-70)
+
+Commit `SHA-PENDING`.
+
+**What it built.**
+- **Status buttons keyed by `to`.** Both button lists (`status-controls.tsx`
+  and `status-actions.tsx`) were already `key={to}` rather than by array
+  position — nothing to change; the backlog line was already satisfied by an
+  earlier item.
+- **`ClientPicker` (`components/client-picker.tsx`) returns focus.** A pick
+  swaps the whole candidate-button list for the "value" branch, so the
+  button that had focus is unmounted and the browser drops focus to
+  `<body>`; "change" swaps back the other way. An effect keyed on `value`
+  focuses the "change" button on a pick and the search input on a
+  detach/change, skipped on the component's first render so an
+  already-chosen client (the appointment detail's "who was this?") doesn't
+  steal focus on mount.
+- **Lost focus on the day grid lands on the column heading.** A checked-in
+  chip's own button changes `to` on its next render (§7 moved it), so React
+  unmounts it rather than relabelling it — the same loss `router.refresh()`
+  produces every 15 seconds. Both paths hand `DayGrid` a new `model` prop, so
+  one effect in `day-grid.tsx`, keyed on `model` and skipped on mount, checks
+  `document.activeElement === document.body` and refocuses
+  `column-heading-${providerId}` — the column tracked via `onFocusCapture` on
+  the grid's outer wrapper, since the element that had focus is already gone
+  by the time the effect runs.
+- **A skip link and a per-column "jump to now".** `StaffLayout`
+  (`app/staff/layout.tsx`) gains a `sr-only focus:not-sr-only` "Skip to
+  content" link, first in the DOM, pointing at `#main-content`. It wraps
+  `{children}` in a `<div id="main-content" tabIndex={-1}>`, **not** a second
+  `<main>` — every staff page already renders its own, and a landmark
+  wrapping a landmark is what axe's `landmark-unique` flagged, on every
+  single staff page's own accessibility test at once (see below). "Jump to
+  now" is a button beside each column heading (`day-grid.tsx`) that
+  scrolls/focuses the existing now-line marker, now given a stable
+  `now-line-${providerId}` id; only rendered on the day that has one.
+- **The chip status button.** `min-h-6` on `appointment-chip.tsx`'s
+  `buttonClassName` (24px, matching the target-size convention
+  `booking-mobile.spec.ts` already measures on the public side).
+  `StatusActions` takes an optional `clientName` prop (only passed from the
+  chip, not the provider list, which already has the name in the same row)
+  and sets it as the button's `aria-label` — **not** a child sr-only span as
+  the backlog text says, because a sr-only span adds a *second* DOM text
+  node reading the client's name, and this suite's `getByText('Ada Chen')`
+  (used all over) found both and threw a strict-mode violation. `aria-label`
+  overrides the accessible name without touching `textContent`, and a
+  `<button>` has an implicit role, so it's read reliably — the sr-only
+  technique stays right for the next change, which is a bare `<span>` with
+  none.
+- **Break/time-off spans.** The non-interactive branch in `day-grid.tsx`'s
+  `Item` (breaks and absences — the only things on the grid with no `href`)
+  swaps `<span aria-label={item.label}>{body}</span>` for an sr-only span
+  carrying the full label plus an `aria-hidden` sibling carrying the visible
+  body: `aria-label` on a bare `<span>` (no implicit role) is read
+  inconsistently across AT, unlike the button case above.
+- **Gap names lead with their visible text (2.5.3).** The accessible name
+  was `Book ${n} minutes free, …`; the visible text is `${n} min free`.
+  Neither the wording (`minutes` vs `min`) nor the order (`Book` first)
+  matched, so a voice-control command speaking what it sees ("min free")
+  would have missed the link. Now: `${n} min free, ${range}, with
+  ${provider}. Book this time.` — one source (`lib/day/view-model.ts`), both
+  gap renderers (the ordinary link and the A-121 sub-floor hatch) read it.
+
+**What it tested.**
+- **New:** `day-grid.spec.ts` — "the chip status button clears the 24px
+  target minimum" (`boundingBox()`, per the item's own guard, never a class
+  grep) and "check-in does not drop focus to `<body>`" (asserts
+  `document.activeElement.id` matches `^column-heading-`, proving both the
+  check-in-triggered revalidation path and, by the shared effect, the timer
+  path neither test can wait 15s for).
+- **Fixed by this item, found by the gate rather than guessed at:**
+  (1) the sr-only-client-name-as-text-node approach broke
+  `getByText('Ada Chen')` in `day-grid.spec.ts` — switched to `aria-label`
+  as above; (2) the gap wording change broke eight `Book \d+ minutes free`/
+  `Book N minutes free` regexes across seven e2e files (`segments`,
+  `off-roster`, `no-show-block`, `appointment-detail`, `day-grid`,
+  `staff-booking`) plus a DOM-selector premise check in `day-grid.spec.ts`'s
+  A-121 collision test (`a[aria-label^="Book "]` and a `Book (\d+) minutes`
+  regex) and a stale fixture in `staff/design/day-fixtures.ts` — all updated
+  to the new wording, none loosened; (3) wrapping `{children}` in a second
+  `<main>` in the staff layout tripped `landmark-unique` on **every** staff
+  page's own axe test at once (caught on `day-sheet.spec.ts`, first
+  alphabetically) — fixed by using a plain `<div>` (see above); (4) the new
+  skip link is now the first Tab stop on every staff page, ahead of the desk
+  switcher's `<summary>` that `design-system.spec.ts`'s "keyboard focus draws
+  a visible ring" asserted as first — the test now asserts the skip link's
+  own ring, then Tabs again to the `<summary>` it used to check directly.
+  Full gate: lint, typecheck, 1,804 unit tests (1 pre-existing skip, the
+  known non-barrier-based check-in race test), 358/358 e2e (two new tests
+  over A-147's 356).
+
+**What it left behind.** Nothing new. The two standing items in `NEXT.md`
+(the non-barrier-based check-in race test, and the single-business
+`findFirstOrThrow()`/`findFirst()` ceiling) are still untouched.

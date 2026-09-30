@@ -139,8 +139,19 @@ test('desk controls are at least 44px tall', async ({ page }) => {
 
 test('keyboard focus draws a visible ring', async ({ page }) => {
   // A-088 draws the ring once on `:focus-visible`, for every keyboard stop —
-  // the first one on a staff page is the desk switcher's `<summary>`, which is
-  // not a Button and is exactly why the rule does not live in one.
+  // A-148's skip link is the first stop now, an `<a>` rather than a Button,
+  // and the desk switcher's `<summary>` right behind it isn't one either,
+  // which is exactly why the rule does not live in either component.
+  await page.keyboard.press('Tab');
+  const skipLink = await page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    const style = el ? getComputedStyle(el) : null;
+    return { tag: el?.tagName, style: style?.outlineStyle, width: style?.outlineWidth };
+  });
+  expect(skipLink.tag).toBe('A');
+  expect(skipLink.style).not.toBe('none');
+  expect(skipLink.width).toBe('2px');
+
   await page.keyboard.press('Tab');
   const first = await page.evaluate(() => {
     const el = document.activeElement as HTMLElement | null;

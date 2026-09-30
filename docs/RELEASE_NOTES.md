@@ -4963,6 +4963,38 @@ match on inspection: a role-selector option reading "No — stylist" names an
 account permission, not the booking-provider concept, and renaming it would
 have implied the wrong thing about what that control does.
 
+## A-148 — focus management on staff screens
+
+A keyboard or screen-reader user working the day grid was landing on
+`<body>` after almost any action: checking a client in moves that
+appointment's button to a different label, which React treats as a
+different element and swaps out rather than relabels, so the button that
+had focus simply stops existing. The same thing happened every 15 seconds
+from the page's own background refresh. Focus now lands on the column
+heading instead — tracked on the way in, since by the time the loss is
+detected the element that had it is already gone. Staff pages also gained a
+skip link past the repeated desk-bar chrome and a per-column "jump to now,"
+and a status button that used to say only "Check in" — indistinguishable
+from every other "Check in" on a busy column — now says whose.
+
+The best defect this item found was one it caused. The fix for the skip
+link wrapped every staff page's content in a `<main>` landmark for
+consistency; every one of those pages already renders its own. The result
+was two unlabelled `<main>` landmarks on every staff screen at once, and the
+automated accessibility sweep this project runs on every page caught it
+immediately — not as one failing test, but as the *first* accessibility
+test in the whole suite to run after the change, because the violation was
+identical on all of them. The fix was smaller than the mistake: a plain
+`<div>` in the layout, since a skip link's target doesn't need to be a
+landmark to satisfy the requirement it exists for. A second defect of the
+same shape showed up one layer down — giving a status button an accessible
+name that included the client's name, so two identical "Check in" buttons
+on screen could be told apart, was implemented as an invisible text node,
+which promptly became a *second* on-screen match for every test in the
+suite that searched for that client's name by text. The fix there was
+`aria-label` instead of hidden text: same accessible name, no second node
+for anything else to trip over.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

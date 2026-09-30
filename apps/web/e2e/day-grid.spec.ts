@@ -268,6 +268,39 @@ test.describe('the staff day grid (A-016)', () => {
     await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
   });
 
+  /**
+   * A-148 (2.5.8). `boundingBox()`, never a grep for `min-h-6`: a class-string
+   * assertion passes the day something else in the cascade wins (A-089's own
+   * reasoning, on this button).
+   */
+  test('the chip status button clears the 24px target minimum', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const box = await page.getByRole('button', { name: 'Check in' }).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(24);
+  });
+
+  /**
+   * A-148 — the button that was just tapped is gone the instant §7 moves it
+   * to the next step (`key={to}` changes, so React unmounts it rather than
+   * relabelling it), and `revalidatePath('/staff/day')` refetches the same
+   * `model` a 15-second timer refresh would. Both paths go through one
+   * restore effect in `DayGrid`, so proving it here also proves the timer
+   * case, which nothing in this suite can trigger without waiting 15s.
+   */
+  test('check-in does not drop focus to <body>', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    await page.getByRole('button', { name: 'Check in' }).click();
+    await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+
+    const activeId = await page.evaluate(() => document.activeElement?.id);
+    expect(activeId).toMatch(/^column-heading-/);
+  });
+
   test('the button is the NEXT step, never a hardcoded one', async ({ page }) => {
     await seedAppointment({
       start: '2026-06-09T10:00:00-05:00',
@@ -676,7 +709,7 @@ test.describe('a colour on the grid (A-093)', () => {
     const chip = page.locator('li').filter({ hasText: 'Ada Chen' }).first();
     // The develop time comes back as a bookable gap — that is the point of
     // segments — and it is the box the chip has to be drawn around.
-    const gap = page.getByRole('link', { name: /Book 25 minutes free/ }).first();
+    const gap = page.getByRole('link', { name: /25 min free/ }).first();
 
     const chipBox = await chip.boundingBox();
     const gapBox = await gap.boundingBox();
@@ -1006,7 +1039,7 @@ test.describe('a gap too short for its label (A-121)', () => {
     const { shortGaps, collisions } = await column.evaluate((axis) => {
       const rect = (r: DOMRect) => ({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
       const items = [...axis.querySelectorAll(':scope > ol > li')];
-      const gaps = items.filter((li) => li.querySelector('a[aria-label^="Book "]'));
+      const gaps = items.filter((li) => li.querySelector('a[aria-label*="min free,"]'));
       const chips = items.filter((li) => !gaps.includes(li) && li.querySelector('a'));
       // A chip's first line: the first visible text node, measured as a Range.
       const firstLine = (li: Element) => {
@@ -1037,7 +1070,7 @@ test.describe('a gap too short for its label (A-121)', () => {
       }
       const shortGaps = gaps
         .map((g) => g.querySelector('a')!.getAttribute('aria-label')!)
-        .filter((label) => Number(/Book (\d+) minutes/.exec(label)![1]) < 12);
+        .filter((label) => Number(/^(\d+) min free/.exec(label)![1]) < 12);
       return { shortGaps, collisions };
     });
 
@@ -1046,7 +1079,7 @@ test.describe('a gap too short for its label (A-121)', () => {
     expect(collisions, JSON.stringify(collisions, null, 2)).toEqual([]);
 
     // Drawn without its text, but not taken off the book: still a named link.
-    await expect(column.getByRole('link', { name: /^Book 5 minutes free, 09:55–10:00/ })).toHaveAttribute(
+    await expect(column.getByRole('link', { name: /^5 min free, 09:55–10:00/ })).toHaveAttribute(
       'href',
       /\/staff\/book\?/,
     );

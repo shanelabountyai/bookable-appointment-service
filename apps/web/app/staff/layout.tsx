@@ -67,6 +67,15 @@ export default async function StaffLayout({ children }: { children: React.ReactN
 
   return (
     <>
+      {/* A-148 — the desk bar and nav are the same handful of links on every
+          staff screen; a keyboard user re-tabs through them on every page
+          load unless there's a way past. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-control focus:bg-ground-page focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-ink-primary"
+      >
+        Skip to content
+      </a>
       <DeskBar currentName={staff.name} options={options} />
       <StaffNav
         counts={{
@@ -76,7 +85,14 @@ export default async function StaffLayout({ children }: { children: React.ReactN
         }}
         isOwner={staff.role === 'owner'}
       />
-      {children}
+      {/* `div`, not a second `<main>`: every page under here already renders
+          its own — a landmark wrapping a landmark is what axe's
+          `landmark-unique` failed on, on every one of them at once. The skip
+          link only needs a fragment to land the next Tab past the chrome; it
+          does not have to be a landmark itself to satisfy 2.4.1. */}
+      <div id="main-content" tabIndex={-1}>
+        {children}
+      </div>
     </>
   );
 }

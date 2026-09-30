@@ -188,8 +188,9 @@ export function AppointmentChip({ item, style }: { item: GridItem; style?: React
         appointmentId={item.appointmentId}
         status={item.status}
         moves={item.available.slice(0, 1)}
+        clientName={item.title}
         className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px]"
-        buttonClassName="rounded-tight border border-current px-1.5 py-0.5 font-medium disabled:opacity-60"
+        buttonClassName="min-h-6 rounded-tight border border-current px-1.5 py-0.5 font-medium disabled:opacity-60"
       />
     ) : null;
 

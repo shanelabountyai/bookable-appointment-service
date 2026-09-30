@@ -163,7 +163,7 @@ test.describe('a stylist off the roster (A-098)', () => {
     // so every free minute between those two visits would otherwise draw a
     // gap chip carrying a booking link the write refuses.
     await expect(column.getByRole('link', { name: /^Book with Dana/ })).toHaveCount(0);
-    await expect(column.getByRole('link', { name: /minutes free/ })).toHaveCount(0);
+    await expect(column.getByRole('link', { name: /min free/ })).toHaveCount(0);
 
     // Priya is the control: the grid has not simply stopped offering things.
     const priya = page.getByRole('region', { name: /^Priya/ });

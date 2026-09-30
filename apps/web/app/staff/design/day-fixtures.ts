@@ -149,8 +149,8 @@ export const FOUR_STYLISTS = model({
           top: 60,
           minutes: 120,
           time: '10:00–12:00',
-          title: '120 minutes free',
-          label: 'Book 120 minutes free, 10:00–12:00, with Tess',
+          title: '120 min free',
+          label: '120 min free, 10:00–12:00, with Tess. Book this time.',
           href: '/staff/design',
         },
         chip({

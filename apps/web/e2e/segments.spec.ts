@@ -199,7 +199,7 @@ test.describe('segmented durations (A-029, A-030)', () => {
     await page.goto(`/staff/day?day=${DAY}`);
 
     // 10:50-11:30, between the two halves of the colour, on Dana's column.
-    const gap = page.getByRole('link', { name: /Book 40 minutes free, 10:45.*11:25, with Dana/ });
+    const gap = page.getByRole('link', { name: /40 min free, 10:45.*11:25, with Dana/ });
     await expect(gap).toBeVisible();
     await gap.click();
 

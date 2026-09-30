@@ -82,7 +82,7 @@ test.describe('staff booking (A-017)', () => {
   test('books from a gap in the day grid', async ({ page }) => {
     await page.goto(`/staff/day?day=${DAY}`);
 
-    const gap = page.getByRole('link', { name: /Book \d+ minutes free/ }).first();
+    const gap = page.getByRole('link', { name: /\d+ min free/ }).first();
     await expect(gap).toBeVisible();
     await gap.click();
 
@@ -155,7 +155,7 @@ test.describe('staff booking (A-017)', () => {
     }
 
     await page.goto(`/staff/day?day=${DAY}`);
-    await page.getByRole('link', { name: /Book \d+ minutes free/ }).first().click();
+    await page.getByRole('link', { name: /\d+ min free/ }).first().click();
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
     await page.getByLabel('Find a client by name or phone number').fill('0101');
@@ -174,7 +174,7 @@ test.describe('staff booking (A-017)', () => {
 
   test('creates a client that does not exist yet', async ({ page }) => {
     await page.goto(`/staff/day?day=${DAY}`);
-    await page.getByRole('link', { name: /Book \d+ minutes free/ }).first().click();
+    await page.getByRole('link', { name: /\d+ min free/ }).first().click();
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
     await page.getByLabel('Find a client by name or phone number').fill('Priya Nair');
@@ -561,7 +561,7 @@ test.describe('staff booking (A-017)', () => {
 
   test('has no accessibility violations', async ({ page }) => {
     await page.goto(`/staff/day?day=${DAY}`);
-    await page.getByRole('link', { name: /Book \d+ minutes free/ }).first().click();
+    await page.getByRole('link', { name: /\d+ min free/ }).first().click();
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
     await expectNoAxeViolations(page);

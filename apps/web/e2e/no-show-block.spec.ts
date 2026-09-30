@@ -476,7 +476,7 @@ test.describe('the staff bypass (D-27)', () => {
     await signIn(page);
 
     await page.goto(`/staff/day?day=${DAY}`);
-    await page.getByRole('link', { name: /Book \d+ minutes free/ }).first().click();
+    await page.getByRole('link', { name: /\d+ min free/ }).first().click();
     await page.getByRole('button', { name: /^Cut\d/ }).click();
 
     await page.getByLabel('Find a client by name or phone number').fill('0101');

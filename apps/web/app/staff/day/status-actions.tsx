@@ -30,12 +30,18 @@ export function StatusActions({
   moves,
   className = '',
   buttonClassName = '',
+  clientName,
 }: {
   appointmentId: string;
   status: AppointmentStatus;
   moves: AppointmentStatus[];
   className?: string;
   buttonClassName?: string;
+  /** A-148 — set on the day chip, where one column can show the same label
+   *  ("Check in") on several rows at once and the button's own text does not
+   *  say whose. Left unset on the provider list, where the name is already
+   *  the row it's in. */
+  clientName?: string;
 }) {
   const [state, action, pending] = useActionState(changeStatus, initial);
 
@@ -63,6 +69,14 @@ export function StatusActions({
               name="to"
               value={to}
               disabled={pending}
+              // A child sr-only span would add a SECOND text node reading
+              // "Ada Chen" — every `getByText('Ada Chen')` in this suite
+              // finds the chip's name already, and a button somewhere else
+              // on the page with the same words is a strict-mode violation
+              // in the making. `aria-label` overrides the accessible name
+              // without touching `textContent`, and a `<button>` (unlike a
+              // bare `<span>`) has an implicit role, so it's read reliably.
+              aria-label={clientName ? `${STATUS_ACTION_LABELS[to]}, ${clientName}` : undefined}
               className={buttonClassName}
             >
               {STATUS_ACTION_LABELS[to]}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import type { ClientChoice } from '@/lib/booking/staff-actions';
 import { createClientForBooking } from '@/lib/booking/staff-actions';
 
@@ -56,6 +56,23 @@ export function ClientPicker({
   const [searching, startSearching] = useTransition();
   const [creating, startCreating] = useTransition();
 
+  // A-148 — the pick swaps out the whole list of candidate buttons for the
+  // "value" branch, so the button that had focus is gone; without this the
+  // browser drops focus to <body>. Skipped on the FIRST render so an already-
+  // chosen client (the appointment detail's "who was this?") doesn't steal
+  // focus on mount — only a change the person just made should move it.
+  const mounted = useRef(false);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (value) changeRef.current?.focus();
+    else inputRef.current?.focus();
+  }, [value]);
+
   function run(text: string) {
     setQuery(text);
     startSearching(async () => {
@@ -68,7 +85,7 @@ export function ClientPicker({
       <p className="text-sm">
         <span className="font-medium">{value.name ?? 'No name'}</span>{' '}
         <span className="text-zinc-600 dark:text-zinc-400">{value.phone ?? ''}</span>{' '}
-        <button type="button" onClick={() => onChange(null)} className="underline underline-offset-4">
+        <button ref={changeRef} type="button" onClick={() => onChange(null)} className="underline underline-offset-4">
           {changeWord}
         </button>
         {/* Still showing AFTER she is chosen: a flag that disappears at the
@@ -84,6 +101,7 @@ export function ClientPicker({
         Find a client by name or phone number
       </label>
       <input
+        ref={inputRef}
         id={inputId}
         value={query}
         onChange={(event) => run(event.target.value)}

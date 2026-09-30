@@ -672,7 +672,7 @@ test.describe('putting a mis-tapped cancellation back on the book (A-112)', () =
 
     await page.goto(`/staff/day?day=${DAY}`);
     const column = page.getByRole('region', { name: /Dana/ });
-    const freed = column.getByRole('link', { name: /^Book 180 minutes free, 09:00–12:00/ });
+    const freed = column.getByRole('link', { name: /^180 min free, 09:00–12:00/ });
     await expect(freed).toBeVisible();
 
     await column.getByRole('link', { name: /Ada Chen.*, cancelled$/ }).click();
