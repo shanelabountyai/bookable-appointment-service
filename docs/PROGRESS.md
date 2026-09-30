@@ -6344,7 +6344,7 @@ Commit `4cc27c9`.
 
 ## A-151 — C10: owed a rebook (D-70, D-74)
 
-Commit `PENDING`.
+Commit `47538fc`.
 
 **What it built.**
 - **The salon flag.** `TransitionInput.salonInitiated` writes
