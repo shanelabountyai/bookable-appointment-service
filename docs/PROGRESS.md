@@ -6448,7 +6448,7 @@ The project closes after Phase 23 (D-76).
 
 ## A-153 — E1: series extend and "never booked" tell the truth (D-75, D-76)
 
-Commit `PENDING`.
+Commit `ec37952`.
 
 **What it built.**
 - **`LATEST_OCCURRENCE`** (`packages/db/booking/series.ts`): her latest
