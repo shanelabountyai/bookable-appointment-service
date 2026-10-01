@@ -14,7 +14,15 @@
  */
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@bookable/db';
-import { type EndSeriesRow, endSeriesHere, previewEndSeries } from '@bookable/db/booking';
+import {
+  type EndSeriesRow,
+  SeriesExtendRefused,
+  endSeriesHere,
+  extendSeries,
+  previewEndSeries,
+} from '@bookable/db/booking';
+import { InvalidSeries } from '@bookable/core/scheduling';
+import { type SeriesSummary, describeSeries } from '@/lib/booking/series-summary';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
 import { readableInstant } from '@/lib/customer-format';
@@ -110,6 +118,55 @@ export async function endSeries(_previous: SeriesEndState, formData: FormData): 
       (late > 0 ? `, ${late} inside the cancellation window` : '') +
       `. ${result.notified > 0 ? `${result.notified} message${result.notified === 1 ? '' : 's'} sent.` : 'No messages sent.'}` +
       (left ? ` Left as it was: ${left}.` : ''),
+  };
+}
+
+export interface SeriesExtendState {
+  ok?: boolean;
+  message?: string;
+  series?: SeriesSummary;
+}
+
+/**
+ * A-152 (C11) — "extend by the same rule", from `/staff/series`.
+ *
+ * Partial and read back like the booking screen's series (A-049): every new
+ * week, booked or not, with the reason. `requested` is the number the row was
+ * rendered with, so a second tap — or a second person — books nothing twice.
+ */
+export async function extendSeriesAction(_previous: SeriesExtendState, formData: FormData): Promise<SeriesExtendState> {
+  const staff = await requireStaff();
+  const seriesId = String(formData.get('seriesId') ?? '');
+  const count = Number(formData.get('count'));
+  const expectedRequested = Number(formData.get('requested'));
+  if (!Number.isInteger(expectedRequested)) return { ok: false, message: 'Reload the list and try again.' };
+
+  let result;
+  try {
+    result = await extendSeries(prisma, {
+      businessId: staff.businessId,
+      seriesId,
+      count,
+      expectedRequested,
+      now: new Date(),
+      actor: staffActor(staff.id),
+    });
+  } catch (error) {
+    if (error instanceof InvalidSeries || error instanceof SeriesExtendRefused) return { ok: false, message: error.message };
+    throw error;
+  }
+
+  revalidatePath('/staff/series');
+  revalidatePath('/staff/day');
+  return {
+    ok: true,
+    message:
+      result.booked === count
+        ? `Booked ${count} more.`
+        : result.booked === 0
+          ? 'Nothing could be booked. Every week is below, with the reason.'
+          : `Booked ${result.booked} of ${count}. The rest are below, with the reason.`,
+    series: describeSeries(result, { requested: count, intervalWeeks: result.intervalWeeks, time: result.wallTime }),
   };
 }
 

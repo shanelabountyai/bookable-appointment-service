@@ -56,6 +56,7 @@ const DESK = [
   // NOT "Owed a rebook": on every staff page that name contains the client
   // record's "Rebook" link, one accessible name inside another.
   { href: '/staff/owed', label: 'Owed visits', count: null },
+  { href: '/staff/series', label: 'Series ending', count: null },
   { href: '/staff/messages', label: 'Messages', count: 'unsentMessages' },
 ] as const;
 

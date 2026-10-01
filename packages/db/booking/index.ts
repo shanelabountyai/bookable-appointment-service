@@ -18,9 +18,14 @@ export { type QualifiedProvider, providersForVisit, qualifiedForVisit } from '..
 export {
   type CreateSeriesInput,
   type CreateSeriesResult,
+  type EndingSeries,
   type SeriesOccurrenceResult,
   type SkipReason,
+  SERIES_ENDING_WEEKS,
+  SeriesExtendRefused,
   createSeries,
+  extendSeries,
+  listSeriesEnding,
   listSeriesOccurrences,
 } from './series';
 export {

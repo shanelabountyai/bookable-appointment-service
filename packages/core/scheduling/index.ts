@@ -5,6 +5,7 @@ export {
   type SeriesRule,
   bookableInstant,
   planOccurrences,
+  unbookedOccurrences,
 } from './series';
 export {
   type ResolvedWindow,

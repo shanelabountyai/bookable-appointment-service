@@ -10,7 +10,7 @@
  * not re-derived here.
  */
 import { describe, expect, it } from 'vitest';
-import { InvalidSeries, bookableInstant, planOccurrences } from './series';
+import { InvalidSeries, bookableInstant, planOccurrences, unbookedOccurrences } from './series';
 import { type Instant, calendarDay, instantFromIso, toLabel, wallTime, weekdayOf, zoneId } from '../time';
 
 const CHICAGO = zoneId('America/Chicago');
@@ -150,5 +150,18 @@ describe('bookableInstant', () => {
   it('is the instant itself for an ordinary week', () => {
     const planned = planOccurrences(rule({ count: 1 }), CHICAGO);
     expect(bookableInstant(planned[0]!)).toBe(instantFromIso('2026-06-09T14:00:00-05:00'));
+  });
+});
+
+describe('unbookedOccurrences (A-152)', () => {
+  it('names the ordinals the rule asked for that have no row, with their days', () => {
+    const rule = { anchorDay: calendarDay('2026-06-09'), intervalWeeks: 4, requested: 5 };
+    // A cancelled occurrence still has a row (ordinal 2 here), so it is not missing.
+    expect(unbookedOccurrences(rule, [0, 2, null])).toEqual([
+      { ordinal: 1, day: '2026-07-07' },
+      { ordinal: 3, day: '2026-09-01' },
+      { ordinal: 4, day: '2026-09-29' },
+    ]);
+    expect(unbookedOccurrences(rule, [0, 1, 2, 3, 4])).toEqual([]);
   });
 });

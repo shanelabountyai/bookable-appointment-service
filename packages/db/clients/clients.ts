@@ -444,6 +444,12 @@ export async function mergeClients(
       where: { businessId: args.businessId, clientId: loser.id },
       data: { clientId: survivor.id },
     });
+    // A-152: the series too. Its occurrences just moved, and a series left on
+    // the tombstone would be extended (C11) for a record nobody can book.
+    await tx.appointmentSeries.updateMany({
+      where: { businessId: args.businessId, clientId: loser.id },
+      data: { clientId: survivor.id },
+    });
 
     // Chain flattening: anything already pointing at the loser now points at
     // the survivor, so resolution stays one hop forever (see the schema note).

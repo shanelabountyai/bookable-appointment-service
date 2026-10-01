@@ -699,6 +699,11 @@ model AppointmentSeries {
   intervalWeeks Int
   /// How many occurrences the desk asked for, anchor included.
   requested     Int
+  /// A-152 (D-75): set when "End this series here" (D-39) cancelled anything.
+  /// An ended series is not one quietly running out, so `/staff/series` skips
+  /// it — and "move her standing 2pm to 2:30" is end-then-rebook, which would
+  /// otherwise list the old rule as ending soon beside the new one.
+  endedAt       DateTime? @db.Timestamptz(3)
 
   /// Who set it up (operator R-8's question, asked of a series).
   createdByActor Actor?  @default(staff)

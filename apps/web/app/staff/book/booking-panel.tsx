@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
 import {
   type AnyoneChoice,
@@ -26,6 +25,7 @@ import { Field, Input } from '@/components/ui/field';
 import { OpenDays } from '@/components/open-days';
 import { readableDay } from '@/lib/customer-format';
 import { readableReason } from '@/lib/scheduling-words';
+import { SeriesSummaryList } from '@/components/series-summary-list';
 
 const initial: StaffBookingState = {};
 
@@ -406,31 +406,7 @@ export function BookingPanel({
     return (
       <div className="flex flex-col gap-4">
         <p className="text-lg font-medium">{state.message}</p>
-        {/* A-049 — EVERY week, booked and skipped alike, in one list.
-            Creation is partial by design (D-34), so a summary that showed
-            only what succeeded would be the silent skip this whole item is
-            the opposite of: the fourth Tuesday is somebody else's, and the
-            desk finds that out here or on the phone in four weeks' time. */}
-        {state.series ? (
-          <ul className="flex flex-col gap-1">
-            {state.series.lines.map((line) => (
-              <li
-                key={line.day}
-                className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
-              >
-                <span className="font-medium">{line.day}</span>
-                {line.appointmentId ? (
-                  <Link href={`/staff/appointments/${line.appointmentId}`} className="underline underline-offset-4">
-                    booked
-                  </Link>
-                ) : (
-                  <span className="text-amber-800 dark:text-amber-300">not booked</span>
-                )}
-                {line.note ? <span className="text-zinc-600 dark:text-zinc-400">— {line.note}</span> : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {state.series ? <SeriesSummaryList lines={state.series.lines} /> : null}
         {/* The day just booked, not the day the panel was opened on — the
             desk may have moved forward from here (A-039). */}
         <LinkButton href={`/staff/day?day=${day}`} variant="primary" className="self-start">

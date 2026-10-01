@@ -5065,6 +5065,28 @@ when she comes off was tested against its obvious wrong version: "nothing
 booked ahead" would put a client back on the list the day after her rebooked
 visit. The tests fail if the rule is simplified back to that.
 
+## A-152 — standing appointments don't quietly run out
+
+A standing appointment is a number the desk typed once: "the next six". On
+the seventh week the client simply isn't in the book. Nobody decided that.
+It ran out, and the first anyone hears of it is the client asking why she
+wasn't reminded.
+
+There is now a "Series ending" list. It shows every standing appointment
+with nothing booked past a window the desk can widen, soonest first, and
+each row has one Extend button that books the next weeks by the same rule.
+The appointment screen also names every week of the series that never
+booked, each one tap from booking it.
+
+The engineering point is that an extension is the same partial booking as
+a new series, not a second one. It goes through the same loop and comes back
+as the same week-by-week list with the reason for every week that didn't
+take. The extension claims its weeks with a conditional update, so two
+people pressing Extend at once book once. Two latent defects came out of
+it. A series the desk ended on purpose looked exactly like one that ran
+out, so the end is now recorded where it happens. And merging two client
+records left the series pointing at the discarded one.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

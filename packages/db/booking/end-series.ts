@@ -230,6 +230,12 @@ export async function endSeriesHere(prisma: PrismaClient, input: EndSeriesInput)
     }
   }
 
+  // A-152 (D-75): the series was ended on purpose, so it is not "running
+  // out". Only when something actually went — a preview of nothing ends nothing.
+  if (ended > 0) {
+    await prisma.appointmentSeries.update({ where: { id: plan.seriesId }, data: { endedAt: input.now } });
+  }
+
   return { ...plan, ended, notified: input.notify === false ? 0 : ended };
 }
 

@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { bookAppointment } from '@bookable/db/booking';
+import { bookAppointment, createSeries } from '@bookable/db/booking';
 import { createTimeOff } from '@bookable/db/availability';
 import { staffActor } from '@bookable/core/auth';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
@@ -1277,5 +1277,103 @@ test.describe('a full day answers "when can she fit me in?" (A-115)', () => {
     await page.getByLabel('Move to which day?').fill(DAY);
     await expect(page.getByText('Nothing free that day for this visit.')).toBeVisible();
     expect(await firstOpenDay(page)).toBe(fromBooking);
+  });
+});
+
+/**
+ * A-152 (C11) — STANDING APPOINTMENTS DON'T QUIETLY RUN OUT.
+ *
+ * Three weekly Tuesdays for Mrs Kerr, the second already somebody else's. The
+ * detail panel names the week that never booked and links it; the list shows
+ * her series as ending; extending it by the same rule books the next two and
+ * reads them back like a new series.
+ */
+test.describe('series ending (A-152)', () => {
+  async function kerrSeries() {
+    const prisma = new PrismaClient();
+    try {
+      const business = await prisma.business.findFirstOrThrow();
+      const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
+      const cut = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
+      const kerr = await prisma.client.create({ data: { businessId: business.id, name: 'Mrs Kerr', phone: '5125550177' } });
+      const week2 = resolve(addDays(calendarDay(DAY), 7), wallTime('10:00'), zoneId(ZONE));
+      if (week2.kind !== 'unique') throw new Error('week 2 10:00 is not unique');
+      await bookAppointment(prisma, {
+        businessId: business.id,
+        providerId: dana.id,
+        serviceIds: [cut.id],
+        clientId: null,
+        startAt: toDate(week2.at),
+        now: new Date(),
+        actor: staffActor('e2e'),
+        audience: 'staff',
+      });
+      const result = await createSeries(prisma, {
+        businessId: business.id,
+        providerId: dana.id,
+        clientId: kerr.id,
+        serviceIds: [cut.id],
+        anchorDay: DAY,
+        time: '10:00',
+        intervalWeeks: 1,
+        count: 3,
+        now: new Date(),
+        actor: staffActor('e2e'),
+      });
+      expect(result.booked).toBe(2);
+      return { seriesId: result.seriesId, firstId: result.occurrences[0]!.appointmentId!, kerrId: kerr.id };
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  test('names the week that never booked, one tap from booking it', async ({ page }) => {
+    const { firstId, kerrId } = await kerrSeries();
+    await page.goto(`/staff/appointments/${firstId}`);
+
+    const week2 = addDays(calendarDay(DAY), 7);
+    await expect(page.getByText('Never booked')).toBeVisible();
+    await page.getByRole('link', { name: /^Book the 2nd, / }).click();
+    await expect(page).toHaveURL(/\/staff\/book\?/);
+    const url = new URL(page.url());
+    expect(url.searchParams.get('day')).toBe(week2);
+    expect(url.searchParams.get('client')).toBe(kerrId);
+    expect(url.searchParams.getAll('services')).toHaveLength(1);
+  });
+
+  test('lists the series as ending, extends it by the same rule, and passes axe', async ({ page }) => {
+    const { seriesId } = await kerrSeries();
+
+    await page.getByRole('link', { name: 'Series ending' }).click();
+    await expect(page).toHaveURL(/\/staff\/series$/);
+    const items = page.locator('main > ul > li');
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toContainText('Mrs Kerr');
+    await expect(items.first()).toContainText('every week at 10:00');
+    await expectNoAxeViolations(page);
+
+    await page.getByLabel('How many more').fill('2');
+    await page.getByRole('button', { name: 'Extend Mrs Kerr' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Booked 2 more.' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'booked' })).toHaveCount(2);
+
+    const prisma = new PrismaClient();
+    try {
+      const occurrences = await prisma.appointment.findMany({ where: { seriesId }, orderBy: { startAt: 'asc' } });
+      expect(occurrences.map((o) => o.seriesOrdinal)).toEqual([0, 2, 3, 4]);
+      expect(occurrences.slice(2).map((o) => o.startDay)).toEqual([
+        addDays(calendarDay(DAY), 21),
+        addDays(calendarDay(DAY), 28),
+      ]);
+      expect(new Set(occurrences.map((o) => o.startWallTime))).toEqual(new Set(['10:00']));
+      expect((await prisma.appointmentSeries.findUniqueOrThrow({ where: { id: seriesId } })).requested).toBe(5);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  test('says so plainly when nothing is running out', async ({ page }) => {
+    await page.goto('/staff/series');
+    await expect(page.getByText('No standing appointment runs out in the next 6 weeks.')).toBeVisible();
   });
 });

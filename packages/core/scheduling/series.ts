@@ -126,3 +126,24 @@ export function bookableInstant(occurrence: PlannedOccurrence): Instant | null {
       return null;
   }
 }
+
+/**
+ * A-152 (C11) — the weeks the rule asked for that have no appointment at all:
+ * ordinals `0 .. requested - 1` with no row behind them. A cancelled
+ * occurrence still EXISTS (its row is the record she cancelled), so it is not
+ * here; these are the weeks `createSeries` or `extendSeries` skipped, which
+ * the desk was told about once, in a summary that is gone.
+ */
+export function unbookedOccurrences(
+  rule: { anchorDay: CalendarDay; intervalWeeks: number; requested: number },
+  existingOrdinals: Iterable<number | null>,
+): { ordinal: number; day: CalendarDay }[] {
+  const existing = new Set(existingOrdinals);
+  const missing: { ordinal: number; day: CalendarDay }[] = [];
+  for (let ordinal = 0; ordinal < rule.requested; ordinal++) {
+    if (!existing.has(ordinal)) {
+      missing.push({ ordinal, day: addDays(rule.anchorDay, ordinal * rule.intervalWeeks * DAYS_PER_WEEK) });
+    }
+  }
+  return missing;
+}

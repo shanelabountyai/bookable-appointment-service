@@ -17,8 +17,6 @@ import { prisma } from '@bookable/db';
 import {
   BookingRejected,
   NoResourceFree,
-  type SeriesOccurrenceResult,
-  type SkipReason,
   SlotNotOffered,
   SlotTaken,
   type AnyProviderTime,
@@ -36,8 +34,7 @@ import { calendarDay, fromDate, instantFromIso, resolve, toDate, toLabel, wallTi
 import { InvalidSeries } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
 import { requireStaff } from '@/lib/auth/session';
-import { readableDay } from '@/lib/customer-format';
-import { readableReason } from '@/lib/scheduling-words';
+import { type SeriesSummary, describeSeries } from './series-summary';
 import { flagSentence } from '@/components/client-flag';
 
 export interface StaffBookingState {
@@ -70,27 +67,6 @@ export interface StaffBookingState {
   fallback?: { providerId: string; providerName: string; at: string; label: string };
   /** A-049 — set when this was a standing appointment rather than one. */
   series?: SeriesSummary;
-}
-
-/** One week of a standing appointment, as the desk reads it back. */
-export interface SeriesLine {
-  /** "Tuesday 9 June", in the salon's zone. */
-  day: string;
-  /** Set when that week booked — the desk taps through to it. */
-  appointmentId?: string;
-  /**
-   * Why it did not book, or what was odd about the week it did. Empty on an
-   * ordinary occurrence. A SENTENCE, never a code: this list is read at a desk
-   * with a client standing at it, and "not-offered" is not an answer.
-   */
-  note?: string;
-}
-
-export interface SeriesSummary {
-  booked: number;
-  requested: number;
-  intervalWeeks: number;
-  lines: SeriesLine[];
 }
 
 export interface ClientChoice {
@@ -749,41 +725,8 @@ async function bookStandingSeries(
         : result.booked === 0
           ? 'Nothing could be booked. Every week is below, with the reason.'
           : `Booked ${result.booked} of ${input.count}. The rest are below, with the reason.`,
-    series: {
-      booked: result.booked,
-      requested: input.count,
-      intervalWeeks: input.intervalWeeks,
-      lines: result.occurrences.map((occurrence) => {
-        const note = seriesNote(occurrence, anchor.time);
-        return {
-          day: readableDay(occurrence.day),
-          ...(occurrence.appointmentId ? { appointmentId: occurrence.appointmentId } : {}),
-          ...(note ? { note } : {}),
-        };
-      }),
-    },
+    series: describeSeries(result, { requested: input.count, intervalWeeks: input.intervalWeeks, time: anchor.time }),
   };
-}
-
-/** A week's outcome as a sentence somebody can act on, never a code. */
-function seriesNote(occurrence: SeriesOccurrenceResult, time: string): string | null {
-  if (occurrence.doubledHour) return `the clocks go back — booked the first ${time}`;
-  if (!occurrence.skipped) return null;
-  const skipped: SkipReason = occurrence.skipped;
-  switch (skipped.kind) {
-    case 'no-such-time':
-      return `there is no ${time} that day — the clocks go forward`;
-    case 'taken':
-      return readableReason('overlaps-booking');
-    case 'no-chair':
-      return readableReason('no-resource-free');
-    case 'not-offered':
-      // The engine's OWN words, carried through. An empty list means this time
-      // was never a candidate at all — outside her hours entirely.
-      return skipped.reasons.length > 0
-        ? skipped.reasons.map(readableReason).join('; ')
-        : readableReason('outside-working-window');
-  }
 }
 
 // ─────────────────────────── internals ───────────────────────────

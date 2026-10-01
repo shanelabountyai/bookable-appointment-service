@@ -6388,3 +6388,41 @@ Commit `47538fc`.
 - Full unit run: `density-seed.test.ts` and `utilization-constant.test.ts`
   timed out at 120s under full-suite load and passed when run alone (97s).
 
+
+## A-152 — C11: series ending (D-70, D-75)
+
+Commit `PENDING`.
+
+**What it built.**
+- **`listSeriesEnding`** (`packages/db/booking/series.ts`). A series is listed
+  when it has an active occurrence after `now` and none after `now + weeks`.
+  Ended (`endedAt`), clientless and tombstoned series are skipped. Soonest to
+  run out first.
+- **`extendSeries`.** It books the next `count` ordinals on the same series
+  row, from the latest occurrence's services. It shares `bookOccurrences`
+  with `createSeries`, so both book partially and both name every skipped
+  week. A conditional `requested` update claims the range, so a double
+  submit throws `SeriesExtendRefused` and books nothing twice.
+- **`AppointmentSeries.endedAt`** (migration `20261001120000_series_ended_at`),
+  set by `endSeriesHere` when it cancels anything.
+- **The merge re-points `AppointmentSeries.clientId`.** Before this it moved
+  the occurrences and left the series on the tombstone.
+- **`/staff/series`** (desk, `requireStaff`), linked from the staff nav as
+  "Series ending". It has a weeks control (1–52, default 6), and each row has
+  an Extend form that reads back through the same week list as the booking
+  screen (`SeriesSummaryList`, `describeSeries`, both extracted from A-049's
+  code).
+- **The appointment panel names the weeks that never booked**
+  (`unbookedOccurrences`, pure, in core). Each week links to `/staff/book`
+  for that day, with the same services, stylist and client.
+
+**What it decided.** See D-75.
+
+**What it left behind.**
+- No seeded series, so the demo list is empty until the desk books one.
+- Series ended before A-152 have no `endedAt`.
+- A one-off appointment beyond the window does not take a series off the list.
+- Unit runs under heavy machine load (another project's vitest, load average
+  about 42) time out at the 10s hook and then deadlock on the overlapping
+  TRUNCATE. With `--hookTimeout=120000` they pass, so this is the environment
+  and not the code.

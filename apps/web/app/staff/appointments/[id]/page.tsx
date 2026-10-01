@@ -13,10 +13,11 @@ import {
   canChangeServices,
   canReschedule,
   staffCancellationStatus,
+  unbookedOccurrences,
 } from '@bookable/core/scheduling';
-import { fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { calendarDay, fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
-import { readableInstant } from '@/lib/customer-format';
+import { readableDay, readableInstant } from '@/lib/customer-format';
 import { releaseWords } from '@/lib/appointments/release-words';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
 import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
@@ -161,6 +162,12 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   // others" is one question asked in front of a client, and a second route
   // for four rows is a route to keep in step with this one.
   const siblings = detail.series ? await listSeriesOccurrences(prisma, detail.series.id) : [];
+  const unbooked = detail.series
+    ? unbookedOccurrences(
+        { ...detail.series, anchorDay: calendarDay(detail.series.anchorDay) },
+        siblings.map((sibling) => sibling.seriesOrdinal),
+      )
+    : [];
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
@@ -257,6 +264,47 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
               </li>
             ))}
           </ul>
+          {/* A-152 (C11). The weeks the rule asked for that never booked —
+              told to the desk once, in a summary that is gone, and otherwise
+              invisible: the list above only has rows that exist. Each one is
+              a tap into booking her on that day, same visit, same stylist. */}
+          {unbooked.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium">Never booked</p>
+              <ul className="flex flex-col gap-1">
+                {unbooked.map((week) => (
+                  <li
+                    key={week.ordinal}
+                    className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-dashed border-zinc-400 px-3 py-2 text-sm dark:border-zinc-600"
+                  >
+                    <span>
+                      {ordinalWord(week.ordinal + 1)} · {readableDay(week.day)}
+                    </span>
+                    <Link
+                      href={{
+                        pathname: '/staff/book',
+                        query: {
+                          services: detail.services.map((s) => s.serviceId),
+                          provider: detail.providerId,
+                          day: week.day,
+                          ...(detail.clientId ? { client: detail.clientId } : {}),
+                        },
+                      }}
+                      className="underline underline-offset-4"
+                      aria-label={`Book the ${ordinalWord(week.ordinal + 1)}, ${readableDay(week.day)}`}
+                    >
+                      Book this week
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {detail.series.endedAt ? (
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Ended {readableInstant(detail.series.endedAt, business.timezone)}.
+            </p>
+          ) : null}
           {/* A-057 (D-39). HERE, under the list it acts on, because the desk is
               looking at that list while the client is on the phone — and the
               action's own preview is the same rows again with the cutoff

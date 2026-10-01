@@ -130,7 +130,16 @@ export interface AppointmentDetail {
    * provenance: an occurrence detaches from the rule's future, not from its
    * own history.
    */
-  series: { id: string; ordinal: number; intervalWeeks: number; requested: number } | null;
+  series: {
+    id: string;
+    ordinal: number;
+    intervalWeeks: number;
+    requested: number;
+    /** A-152: the rule's first day, so the panel can name the weeks that never booked. */
+    anchorDay: string;
+    /** A-152 (D-75): set once "End this series here" ended it. */
+    endedAt: Date | null;
+  } | null;
   /** AVAIL-05's marker: this appointment sits inside an absence. DERIVED here
    *  and on every render (operator R-7), never stored. */
   conflicted: boolean;
@@ -168,7 +177,7 @@ export async function loadAppointmentDetail(
       conflictAckReason: true,
       seriesId: true,
       seriesOrdinal: true,
-      series: { select: { intervalWeeks: true, requested: true } },
+      series: { select: { intervalWeeks: true, requested: true, anchorDay: true, endedAt: true } },
       provider: { select: { displayName: true } },
       // The hold and not `Appointment.resource` — same row in practice, but
       // the hold is what the exclusion constraint ranges over, so reading it
@@ -272,6 +281,8 @@ export async function loadAppointmentDetail(
           ordinal: appointment.seriesOrdinal ?? 0,
           intervalWeeks: appointment.series.intervalWeeks,
           requested: appointment.series.requested,
+          anchorDay: appointment.series.anchorDay.trim(),
+          endedAt: appointment.series.endedAt,
         }
       : null,
     conflicted,
