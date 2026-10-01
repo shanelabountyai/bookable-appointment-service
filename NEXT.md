@@ -1,7 +1,7 @@
 # Next
 
 **Phase 23 is scheduled (D-76): A-153..A-161, from `docs/reviews/31-five-lens-review-phase-22-close.md`.**
-Pick up: **A-153 (E1) — series extend and "never booked" tell the truth.**
+Pick up: **A-154** (next row in Phase 23). A-153 shipped (`ec37952`).
 The project closes after Phase 23. A-160 (C12) needs OQ-26 answered first.
 
 Known ceiling, not an item yet: the public side resolves its business with
@@ -20,3 +20,7 @@ Known ceilings (D-75): no seeded series, so `/staff/series` is empty in the
 demo until one is booked. Series ended before A-152 carry no `endedAt`.
 
 Before any demo: `./scripts/refresh-hosted-demo.sh`.
+
+Known ceiling (A-153): `AppointmentSeries.providerId` stays the rule's
+ORIGINAL stylist; extend and the list read the latest active occurrence.
+All Extend buttons on /staff/series show pending during any one extend.
