@@ -1,6 +1,6 @@
 # Next
 
-**Phase 23 is scheduled (D-76): A-153..A-161.** Pick up: **A-155** (next row in Phase 23). A-154 shipped.
+**Phase 23 is scheduled (D-76): A-153..A-161.** Pick up: **A-155** (next row in Phase 23). A-154 shipped (`60e37bc`).
 The project closes after Phase 23. A-160 (C12) needs OQ-26 answered first.
 
 Known ceiling, not an item yet: the public side resolves its business with
