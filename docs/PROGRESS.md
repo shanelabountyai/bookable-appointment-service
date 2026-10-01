@@ -6391,7 +6391,7 @@ Commit `47538fc`.
 
 ## A-152 — C11: series ending (D-70, D-75)
 
-Commit `PENDING`.
+Commit `e003405`.
 
 **What it built.**
 - **`listSeriesEnding`** (`packages/db/booking/series.ts`). A series is listed
