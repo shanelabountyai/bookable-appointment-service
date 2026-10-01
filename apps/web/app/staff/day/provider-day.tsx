@@ -1,11 +1,12 @@
-import Link from 'next/link';
-import type { GridColumn } from '@/lib/day/view-model';
-import { hasDayToRunLate, hasLiveAppointment } from '@/lib/day/run-late';
-import { ColumnControls } from './column-controls';
-import { PrintDrift } from './print-drift';
-import { ReleaseButton } from '@/components/release-button';
-import { QuickNote } from './quick-note';
-import { StatusActions } from './status-actions';
+import Link from "next/link";
+import type { GridColumn } from "@/lib/day/view-model";
+import { hasDayToRunLate, hasLiveAppointment } from "@/lib/day/run-late";
+import { FocusRecovery } from "@/components/focus-recovery";
+import { ColumnControls } from "./column-controls";
+import { PrintDrift } from "./print-drift";
+import { ReleaseButton } from "@/components/release-button";
+import { QuickNote } from "./quick-note";
+import { StatusActions } from "./status-actions";
 
 /**
  * ONE STYLIST'S OWN DAY, as a list (A-016).
@@ -29,7 +30,13 @@ import { StatusActions } from './status-actions';
  * private to the grid). The status buttons (A-035) are the one island of
  * client code, and they own only their own form.
  */
-export function ProviderDay({ column, day }: { column: GridColumn; day: string }) {
+export function ProviderDay({
+  column,
+  day,
+}: {
+  column: GridColumn;
+  day: string;
+}) {
   /*
    * A-126 — CLIENTS FIRST, `closed` ONLY FOR A DAY WITH NONE: the sheet's order
    * (`day-sheet.tsx`, A-093). A day with no hours still gets clients — an
@@ -40,10 +47,20 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
    * A-129 — a LIVE client: a cancelled chip is still listed (the desk needs
    * "she cancelled"), but it is nobody she has to come in for.
    */
-  const notWorking = <p className="text-zinc-600 dark:text-zinc-400">{column.providerName} is not working today.</p>;
+  const notWorking = (
+    <p className="text-zinc-600 dark:text-zinc-400">
+      {column.providerName} is not working today.
+    </p>
+  );
 
   if (column.items.length === 0) {
-    return column.closed ? notWorking : <p className="text-zinc-600 dark:text-zinc-400">Nothing in the book yet.</p>;
+    return column.closed ? (
+      notWorking
+    ) : (
+      <p className="text-zinc-600 dark:text-zinc-400">
+        Nothing in the book yet.
+      </p>
+    );
   }
 
   return (
@@ -51,7 +68,8 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
       {column.closed ? (
         hasLiveAppointment(column) ? (
           <p className="font-medium text-amber-900 dark:text-amber-200">
-            Off today — these clients are booked outside {column.providerName}&rsquo;s hours.
+            Off today — these clients are booked outside {column.providerName}
+            &rsquo;s hours.
           </p>
         ) : (
           notWorking
@@ -74,56 +92,76 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
         />
       ) : null}
 
-    <ol className="flex flex-col gap-2">
-      {column.items.map((item) => (
-        <li
-          key={item.key}
-          className={`flex flex-wrap items-baseline gap-x-3 rounded-md border px-4 py-3 ${
-            item.kind === 'appointment'
-              ? 'border-zinc-300 dark:border-zinc-700'
-              : 'border-dashed border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400'
-          }`}
-        >
-          <span className="w-28 shrink-0 font-mono text-sm">{item.time}</span>
+      <FocusRecovery>
+        <ol className="flex flex-col gap-2">
+          {column.items.map((item) => (
+            <li
+              key={item.key}
+              id={`row-${item.key}`}
+              data-focus-home
+              tabIndex={-1}
+              className={`flex flex-wrap items-baseline gap-x-3 rounded-md border px-4 py-3 ${
+                item.kind === "appointment"
+                  ? "border-zinc-300 dark:border-zinc-700"
+                  : "border-dashed border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
+              }`}
+            >
+              <span className="w-28 shrink-0 font-mono text-sm">
+                {item.time}
+              </span>
 
-          {item.href ? (
-            <Link href={item.href} className="font-medium underline underline-offset-4" aria-label={item.label}>
-              {item.title}
-            </Link>
-          ) : (
-            <span className="font-medium">{item.title}</span>
-          )}
+              {item.href ? (
+                <Link
+                  href={item.href}
+                  className="font-medium underline underline-offset-4"
+                  aria-label={item.label}
+                >
+                  {item.title}
+                </Link>
+              ) : (
+                <span className="font-medium">{item.title}</span>
+              )}
 
-          {item.detail ? <span className="text-sm text-zinc-600 dark:text-zinc-400">{item.detail}</span> : null}
+              {item.detail ? (
+                <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                  {item.detail}
+                </span>
+              ) : null}
 
-          {item.isOverride ? (
-            <span className="rounded-sm border border-zinc-400 px-1 text-[10px] uppercase tracking-wide">override</span>
-          ) : null}
+              {item.isOverride ? (
+                <span className="rounded-sm border border-zinc-400 px-1 text-[10px] uppercase tracking-wide">
+                  override
+                </span>
+              ) : null}
 
-          {/* Status as a WORD, not only a colour — this list is what a stylist
+              {/* Status as a WORD, not only a colour — this list is what a stylist
               reads in bright sunlight on a phone. */}
-          {item.status ? <span className="ml-auto text-sm">{STATUS_TEXT[item.status]}</span> : null}
+              {item.status ? (
+                <span className="ml-auto text-sm">
+                  {STATUS_TEXT[item.status]}
+                </span>
+              ) : null}
 
-          {/* A-035. The stylist's own list has room for the whole set, so it
+              {/* A-035. The stylist's own list has room for the whole set, so it
               gets it: check in, start, finish, no-show, one tap each and no
               page to leave. */}
-          {item.appointmentId && item.status && item.available?.length ? (
-            <StatusActions
-              appointmentId={item.appointmentId}
-              status={item.status}
-              moves={item.available}
-              className="flex w-full flex-wrap items-center gap-2 text-sm"
-              buttonClassName="rounded-md border border-zinc-400 px-3 py-1.5 font-medium disabled:opacity-60 dark:border-zinc-600"
-            />
-          ) : null}
+              {item.appointmentId && item.status && item.available?.length ? (
+                <StatusActions
+                  appointmentId={item.appointmentId}
+                  status={item.status}
+                  moves={item.available}
+                  className="flex w-full flex-wrap items-center gap-2 text-sm"
+                  buttonClassName="rounded-md border border-zinc-400 px-3 py-1.5 font-medium disabled:opacity-60 dark:border-zinc-600"
+                />
+              ) : null}
 
-          {/* A-099 — THE THIRD READER OF THE SAME FACT, and the one holding the
+              {/* A-099 — THE THIRD READER OF THE SAME FACT, and the one holding the
               phone. This list has no z-order to lose a client behind, so the
               defect arrives here in its other form: two clients at ten print as
               two ordinary rows one under the other, which is the shape of a
               queue. Dana walking to the backwash needs to know they are both
               hers at once. */}
-          {/* A-102 — "NOBODY CAME; PUT THE REST BACK", ON THE SCREEN THAT
+              {/* A-102 — "NOBODY CAME; PUT THE REST BACK", ON THE SCREEN THAT
               MARKED THE NO-SHOW. `ON_THE_CHIP` puts `no_show` in this list's
               move set, so the desk marks it here in one tap — and A-069's
               release panel is on `/staff/appointments/[id]` alone, so until now
@@ -134,55 +172,73 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
               NOT ON THE GRID CHIP: A-035 counted the space and a chip has room
               for exactly one button, and a clipped button is worse than an
               absent one. This list has a whole row. */}
-          {item.releasable && item.appointmentId ? (
-            <ReleaseButton
-              appointmentId={item.appointmentId}
-              label="Nobody came — put the rest of the time back"
-              className="w-full"
-            />
-          ) : null}
+              {item.releasable && item.appointmentId ? (
+                <ReleaseButton
+                  appointmentId={item.appointmentId}
+                  label="Nobody came — put the rest of the time back"
+                  className="w-full"
+                />
+              ) : null}
 
-          {item.concurrent ? (
-            <p className="w-full text-sm font-medium">⇄ At the same time as {item.concurrent}</p>
-          ) : null}
+              {item.concurrent ? (
+                <p className="w-full text-sm font-medium">
+                  ⇄ At the same time as {item.concurrent}
+                </p>
+              ) : null}
 
-          {item.projected ? (
-            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
-              Running behind — likely {item.projected}
-            </p>
-          ) : null}
+              {item.projected ? (
+                <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Running behind — likely {item.projected}
+                </p>
+              ) : null}
 
-          {/* A-149 (C8) — the colour row shows its worked blocks, same words
+              {/* A-149 (C8) — the colour row shows its worked blocks, same words
               as the print sheet: the "processing" gap a couple of rows down
               already says WHEN it is free, this says where the developing
               hour sits inside the visit itself. */}
-          {item.workedBlocks ? (
-            <p className="w-full text-sm text-zinc-600 dark:text-zinc-400">Worked {item.workedBlocks.join(' · ')}</p>
-          ) : null}
+              {item.workedBlocks ? (
+                <p className="w-full text-sm text-zinc-600 dark:text-zinc-400">
+                  Worked {item.workedBlocks.join(" · ")}
+                </p>
+              ) : null}
 
-          {item.pinnedNote ? (
-            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.pinnedNote}</p>
-          ) : null}
-          {/* A-070. Quieter than the pinned note and marked differently: one is
+              {item.pinnedNote ? (
+                <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
+                  ⚑ {item.pinnedNote}
+                </p>
+              ) : null}
+              {/* A-070. Quieter than the pinned note and marked differently: one is
               a safety line about HER, this is about today. */}
-          {item.visitNote ? (
-            <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">✎ {item.visitNote}</p>
-          ) : null}
-          {item.missed ? (
-            <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">⚑ {item.missed.sentence}</p>
-          ) : null}
-          {/* A-150 (C9). What happened to her today, and who did it. */}
-          {item.changed ? <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">↻ {item.changed.sentence}</p> : null}
+              {item.visitNote ? (
+                <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">
+                  ✎ {item.visitNote}
+                </p>
+              ) : null}
+              {item.missed ? (
+                <p className="w-full text-sm font-medium text-amber-900 dark:text-amber-200">
+                  ⚑ {item.missed.sentence}
+                </p>
+              ) : null}
+              {/* A-150 (C9). What happened to her today, and who did it. */}
+              {item.changed ? (
+                <p className="w-full text-sm text-zinc-700 dark:text-zinc-300">
+                  ↻ {item.changed.sentence}
+                </p>
+              ) : null}
 
-          {/* A-070's whole point: writing it here rather than three taps and a
+              {/* A-070's whole point: writing it here rather than three taps and a
               page load away, which is where it lived and therefore did not get
               written. Only on appointments — a break has nothing to note. */}
-          {item.appointmentId ? (
-            <QuickNote appointmentId={item.appointmentId} notes={item.visitNote ?? ''} />
-          ) : null}
-        </li>
-      ))}
-    </ol>
+              {item.appointmentId ? (
+                <QuickNote
+                  appointmentId={item.appointmentId}
+                  notes={item.visitNote ?? ""}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </FocusRecovery>
     </div>
   );
 }
@@ -190,12 +246,12 @@ export function ProviderDay({ column, day }: { column: GridColumn; day: string }
 /** Staff wording, not D-10's customer lexicon: this is a staff surface and
  *  "no-show" is the word the front desk and the reports both use. */
 const STATUS_TEXT = {
-  booked: 'Booked',
-  confirmed: 'Confirmed',
-  checked_in: 'Checked in',
-  in_progress: 'In progress',
-  completed: 'Completed',
-  no_show: 'No-show',
-  cancelled: 'Cancelled',
-  cancelled_late: 'Cancelled late',
+  booked: "Booked",
+  confirmed: "Confirmed",
+  checked_in: "Checked in",
+  in_progress: "In progress",
+  completed: "Completed",
+  no_show: "No-show",
+  cancelled: "Cancelled",
+  cancelled_late: "Cancelled late",
 } as const;

@@ -6511,3 +6511,26 @@ rather than a region in `Shell`: one source of truth, nothing to keep in sync.
 **What it left behind.** The `status-controls.tsx` ReleasePanel keeps its
 commented `return null`. The first `npm test` run showed 10 transient db
 failures that did not reproduce (second run 1853 passed) — cause not found.
+
+
+## A-155 — E3: focus recovery only when focus was lost (D-76)
+
+**What it built.**
+- **`components/focus-recovery.tsx`**: `useFocusRecovery` records the focused
+  element and a "home" id; after any render, if that element is disconnected
+  AND focus is on `<body>`, focus goes home. `FocusRecovery` wraps the
+  server-rendered list for the same behaviour.
+- **`DayGrid`** uses the hook (home = the column heading); the `columns[0]`
+  fallback and the "any body focus is lost" test are gone. **`ProviderDay`**
+  rows carry `id` + `data-focus-home` + `tabIndex=-1` and sit in `FocusRecovery`.
+- **Guard** (`day-grid.spec.ts`): focus on `<body>` across a 16 s refresh
+  (fake clock) is not moved.
+
+**What it decided.** One shared hook rather than a second copy of the effect
+in the list. The hook runs after every render (no deps): the check is two
+property reads, and the server-rendered list has no model to depend on.
+
+**What it left behind.** The list-side recovery has no e2e of its own (the
+shared hook is exercised by the grid's check-in spec). The first `npm test`
+run had 106 hook timeouts while a killed earlier run was still alive; the
+clean re-run was 1853 passed.

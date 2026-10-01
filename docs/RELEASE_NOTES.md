@@ -5111,6 +5111,14 @@ duplicate-record matches are announced, and a cancelled or finished booking
 offers "Book again". A test now fails the build if a spoken-result element can
 be removed along with its result.
 
+## A-155 — the screen no longer moves your place unless it lost it
+
+After a refresh removed the button a keyboard user had just pressed, focus
+jumped to the first column — and it also jumped there for someone who had not
+focused anything. Now focus moves only when the thing that held it is gone, and
+returns to the nearest stable spot (that column's heading, or that visit's row
+on the stylist's list). A test pins that an idle page is left alone.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

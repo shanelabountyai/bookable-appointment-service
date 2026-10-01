@@ -301,6 +301,20 @@ test.describe('the staff day grid (A-016)', () => {
     expect(activeId).toMatch(/^column-heading-/);
   });
 
+  /** A-155 guard — focus that was never lost is never moved. */
+  test('a refresh does not move focus that was on <body>', async ({ page }) => {
+    await page.clock.install();
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}`);
+    await expect(page.getByRole('button', { name: 'Check in' })).toBeVisible();
+
+    const refresh = page.waitForResponse((r) => r.url().includes('_rsc='));
+    await page.clock.fastForward(16_000);
+    await refresh;
+
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  });
+
   test('the button is the NEXT step, never a hardcoded one', async ({ page }) => {
     await seedAppointment({
       start: '2026-06-09T10:00:00-05:00',

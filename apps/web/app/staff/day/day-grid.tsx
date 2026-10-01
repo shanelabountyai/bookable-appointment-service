@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useEffect, useRef } from 'react';
-import { laneStyle } from '@/lib/day/lanes';
-import { PX_PER_MINUTE } from '@/lib/day/scale';
-import type { GridColumn, GridItem, GridModel } from '@/lib/day/view-model';
-import { hasDayToRunLate } from '@/lib/day/run-late';
-import { AppointmentChip, CHIP_SHELL } from './appointment-chip';
-import { ColumnControls } from './column-controls';
-import { PrintDrift } from './print-drift';
-import { useAutoRefresh } from '@/components/auto-refresh';
+import Link from "next/link";
+import { laneStyle } from "@/lib/day/lanes";
+import { PX_PER_MINUTE } from "@/lib/day/scale";
+import type { GridColumn, GridItem, GridModel } from "@/lib/day/view-model";
+import { hasDayToRunLate } from "@/lib/day/run-late";
+import { AppointmentChip, CHIP_SHELL } from "./appointment-chip";
+import { ColumnControls } from "./column-controls";
+import { PrintDrift } from "./print-drift";
+import { useAutoRefresh } from "@/components/auto-refresh";
+import { useFocusRecovery } from "@/components/focus-recovery";
 
 /**
  * The day grid (A-016, Goal 3).
@@ -37,7 +37,13 @@ import { useAutoRefresh } from '@/components/auto-refresh';
 const headingId = (providerId: string) => `column-heading-${providerId}`;
 const nowId = (providerId: string) => `now-line-${providerId}`;
 
-export function DayGrid({ model, live = true }: { model: GridModel; live?: boolean }) {
+export function DayGrid({
+  model,
+  live = true,
+}: {
+  model: GridModel;
+  live?: boolean;
+}) {
   // `live` is off in the gallery only (A-090). Four grids on `/staff/design`
   // each holding a 15-second `router.refresh()` would reload the workbench
   // under whoever is reading it, and the fixtures cannot change anyway.
@@ -45,24 +51,13 @@ export function DayGrid({ model, live = true }: { model: GridModel; live?: boole
 
   const height = model.totalMinutes * PX_PER_MINUTE;
 
-  // A-148 — a checked-in chip can lose its button on the next refresh (§7
-  // took the move away), which unmounts whatever had focus and the browser
-  // drops it to `<body>`. Track which column the desk was last in so a lost
-  // focus lands on that column's heading rather than nowhere; there is no
-  // element to ask "what was focused" once it is gone, so this has to be
-  // recorded on the way in, not looked up on the way out.
-  const lastFocusedProviderId = useRef<string | null>(null);
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (document.activeElement !== document.body) return;
-    const fallback = model.columns[0]?.providerId;
-    const targetId = lastFocusedProviderId.current ?? fallback;
-    if (targetId) document.getElementById(headingId(targetId))?.focus();
-  }, [model]);
+  // A-148/A-155 — a checked-in chip can lose its button on refresh; recover to
+  // that column's heading, but only if focus was actually lost.
+  const onFocusCapture = useFocusRecovery((el) => {
+    const id =
+      el.closest<HTMLElement>("[data-provider-id]")?.dataset.providerId;
+    return id ? headingId(id) : null;
+  });
 
   return (
     /**
@@ -96,13 +91,13 @@ export function DayGrid({ model, live = true }: { model: GridModel; live?: boole
     // nothing focusable and a keyboard cannot scroll it.
     <div
       tabIndex={0}
-      onFocusCapture={(event) => {
-        const column = (event.target as HTMLElement).closest<HTMLElement>('[data-provider-id]');
-        if (column) lastFocusedProviderId.current = column.dataset.providerId ?? null;
-      }}
+      onFocusCapture={onFocusCapture}
       className="grid grid-flow-col auto-cols-[minmax(13rem,1fr)] grid-rows-[auto_auto] gap-x-2 overflow-x-auto"
     >
-      <div className="row-span-2 grid w-14 shrink-0 grid-rows-subgrid" aria-hidden="true">
+      <div
+        className="row-span-2 grid w-14 shrink-0 grid-rows-subgrid"
+        aria-hidden="true"
+      >
         {/* Row one: the gutter has no chrome of its own and takes whatever
             height the tallest column's does. */}
         <div />
@@ -126,13 +121,26 @@ export function DayGrid({ model, live = true }: { model: GridModel; live?: boole
       </div>
 
       {model.columns.map((column) => (
-        <Column key={column.providerId} column={column} model={model} height={height} />
+        <Column
+          key={column.providerId}
+          column={column}
+          model={model}
+          height={height}
+        />
       ))}
     </div>
   );
 }
 
-function Column({ column, model, height }: { column: GridColumn; model: GridModel; height: number }) {
+function Column({
+  column,
+  model,
+  height,
+}: {
+  column: GridColumn;
+  model: GridModel;
+  height: number;
+}) {
   /*
    * A-107 — TWO QUESTIONS, ONE BOOLEAN. `offRoster` answers "may I seat
    * somebody NEW here?" and was being read as "is she in the building?".
@@ -172,34 +180,43 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
       data-provider-id={column.providerId}
       className="row-span-2 grid grid-rows-subgrid"
       style={lanes > 1 ? { gridColumn: `span ${lanes}` } : undefined}
-      aria-label={`${column.providerName}${column.offRoster ? ', off the roster, still has clients booked' : ''}${column.closed ? ', not working today' : ''}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ''}`}
+      aria-label={`${column.providerName}${column.offRoster ? ", off the roster, still has clients booked" : ""}${column.closed ? ", not working today" : ""}${column.runningLateMinutes ? `, running ${column.runningLateMinutes} minutes behind` : ""}`}
     >
       {/* ROW ONE — everything above the day. Wrapped, so that however much of
           it a column happens to have, its box below still starts where every
           other column's does. */}
       <div>
-      {/* A-148 — `tabIndex={-1}` and an id, so a lost focus (the refresh
+        {/* A-148 — `tabIndex={-1}` and an id, so a lost focus (the refresh
           effect above) or "jump to now" (below) has somewhere programmatic
           to land; neither puts the heading in the ordinary tab order. */}
-      <h2 id={headingId(column.providerId)} tabIndex={-1} className="text-sm font-semibold">
-        {column.providerName}
-        {column.closed ? <span className="ml-2 font-normal text-ink-muted">off today</span> : null}
-        {/* A-098 — SHE IS HERE BECAUSE HER CLIENTS ARE. The column renders
+        <h2
+          id={headingId(column.providerId)}
+          tabIndex={-1}
+          className="text-sm font-semibold"
+        >
+          {column.providerName}
+          {column.closed ? (
+            <span className="ml-2 font-normal text-ink-muted">off today</span>
+          ) : null}
+          {/* A-098 — SHE IS HERE BECAUSE HER CLIENTS ARE. The column renders
             until her last appointment ends (`day-view.ts`, the same rule
             `room.ts` gives a retired chair) and the desk has to be told which
             of the two kinds of column it is looking at: a stylist who is
             simply free this afternoon, or one who is not coming back. The
             second sentence is the actionable one, so it carries the link to
             the screen that does something about it. */}
-        {column.offRoster ? (
-          <span className="ml-2 font-normal text-ink-muted">
-            off the roster —{' '}
-            <Link href={`/staff/conflicts?day=${model.day}`} className="underline underline-offset-4">
-              still booked
-            </Link>
-          </span>
-        ) : (
-          /* A-042 — the way INTO the booking panel that does not depend on
+          {column.offRoster ? (
+            <span className="ml-2 font-normal text-ink-muted">
+              off the roster —{" "}
+              <Link
+                href={`/staff/conflicts?day=${model.day}`}
+                className="underline underline-offset-4"
+              >
+                still booked
+              </Link>
+            </span>
+          ) : (
+            /* A-042 — the way INTO the booking panel that does not depend on
              there being a gap. Until this link, the only per-stylist door was
              a gap chip, so a fully booked column could not be booked into at
              all and BOOK-05's override was unreachable from any screen. No
@@ -208,45 +225,45 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
              provider with `active: true` and would land on a panel with her
              name missing from its own heading and no time it could ever
              offer. */
-          <Link
-            href={`/staff/book?provider=${column.providerId}&day=${model.day}`}
-            className="ml-2 font-normal text-ink-muted underline underline-offset-4"
-          >
-            Book with {column.providerName}
-          </Link>
-        )}
-      </h2>
-      <PrintDrift column={column} />
+            <Link
+              href={`/staff/book?provider=${column.providerId}&day=${model.day}`}
+              className="ml-2 font-normal text-ink-muted underline underline-offset-4"
+            >
+              Book with {column.providerName}
+            </Link>
+          )}
+        </h2>
+        <PrintDrift column={column} />
 
-      {/* A-148 — a long day off the top of the viewport otherwise takes a
+        {/* A-148 — a long day off the top of the viewport otherwise takes a
           scroll-and-hunt to find where "now" is drawn; this jumps straight to
           it and leaves focus there. Only on the day that HAS a now-line. */}
-      {model.nowTop !== null ? (
-        <button
-          type="button"
-          onClick={() => {
-            const line = document.getElementById(nowId(column.providerId));
-            line?.scrollIntoView({ block: 'center' });
-            line?.focus();
-          }}
-          className="ml-2 font-normal text-ink-muted underline underline-offset-4"
-        >
-          Jump to now
-        </button>
-      ) : null}
+        {model.nowTop !== null ? (
+          <button
+            type="button"
+            onClick={() => {
+              const line = document.getElementById(nowId(column.providerId));
+              line?.scrollIntoView({ block: "center" });
+              line?.focus();
+            }}
+            className="ml-2 font-normal text-ink-muted underline underline-offset-4"
+          >
+            Jump to now
+          </button>
+        ) : null}
 
-      {/* Nothing to be late for: no clients, no delta, and not open. */}
-      {controls ? (
-        <ColumnControls
-          providerId={column.providerId}
-          providerName={column.providerName}
-          day={model.day}
-          runningLateMinutes={column.runningLateMinutes}
-          runningLateBy={column.runningLateBy}
-          calls={column.calls}
-          pushFrom={column.pushFrom}
-        />
-      ) : null}
+        {/* Nothing to be late for: no clients, no delta, and not open. */}
+        {controls ? (
+          <ColumnControls
+            providerId={column.providerId}
+            providerName={column.providerName}
+            day={model.day}
+            runningLateMinutes={column.runningLateMinutes}
+            runningLateBy={column.runningLateBy}
+            calls={column.calls}
+            pushFrom={column.pushFrom}
+          />
+        ) : null}
       </div>
 
       {/* ROW TWO — the day itself, on the shared axis. */}
@@ -266,7 +283,10 @@ function Column({ column, model, height }: { column: GridColumn; model: GridMode
             // not with a fill — see the token header), so a band relying on the
             // fill alone would simply vanish on the tablet under the window.
             className="absolute inset-x-0 border-y border-line-hairline bg-ground-sunken"
-            style={{ top: window.top * PX_PER_MINUTE, height: window.minutes * PX_PER_MINUTE }}
+            style={{
+              top: window.top * PX_PER_MINUTE,
+              height: window.minutes * PX_PER_MINUTE,
+            }}
           />
         ))}
 
@@ -322,7 +342,8 @@ function Item({ item }: { item: GridItem }) {
   // A-090 — the appointment chip is its own component, drawn as a full state
   // matrix on `/staff/design`. Everything else on the grid is a band of time
   // with a label on it and has no states to speak of.
-  if (item.kind === 'appointment') return <AppointmentChip item={item} style={style} />;
+  if (item.kind === "appointment")
+    return <AppointmentChip item={item} style={style} />;
 
   // A-121 — A GAP IS NEVER DRAWN PAST ITS OWN END. The floor above made a
   // 5-minute gap 18px tall, and because gaps paint `z-10` (A-030, below) its
@@ -332,10 +353,17 @@ function Item({ item }: { item: GridItem }) {
   // text, and keeps the link and its accessible name, so it is still one Tab
   // stop and still says "5 min free, …". No padding and no border: in
   // `border-box` both are a minimum height, and would push it back over the chip.
-  if (item.kind === 'gap' && item.href && drawn < MIN_LABELLED_PX) {
+  if (item.kind === "gap" && item.href && drawn < MIN_LABELLED_PX) {
     return (
-      <li className={`absolute inset-x-1 z-10 ${HATCH}`} style={{ ...style, height: drawn }}>
-        <Link href={item.href} className="block h-full" aria-label={item.label} />
+      <li
+        className={`absolute inset-x-1 z-10 ${HATCH}`}
+        style={{ ...style, height: drawn }}
+      >
+        <Link
+          href={item.href}
+          className="block h-full"
+          aria-label={item.label}
+        />
       </li>
     );
   }
@@ -343,7 +371,9 @@ function Item({ item }: { item: GridItem }) {
   const body = (
     <>
       <span className="font-medium">{item.title}</span>
-      {item.detail ? <span className="ml-1 text-ink-muted">{item.detail}</span> : null}
+      {item.detail ? (
+        <span className="ml-1 text-ink-muted">{item.detail}</span>
+      ) : null}
     </>
   );
 
@@ -352,7 +382,10 @@ function Item({ item }: { item: GridItem }) {
     // time is real bookable provider time — so gaps paint above appointment
     // chips rather than under them. Without this the one gap the desk most
     // wants to click is the one hidden behind the colour.
-    <li className={`${CHIP_SHELL} py-1 ${item.kind === 'gap' ? 'z-10 ' : ''}${DECORATION[item.kind]}`} style={style}>
+    <li
+      className={`${CHIP_SHELL} py-1 ${item.kind === "gap" ? "z-10 " : ""}${DECORATION[item.kind]}`}
+      style={style}
+    >
       {/* A-017 gave gaps somewhere to go, so they are links now. Breaks and
           absences stay plain text: there is nothing to do with a lunch break,
           and a focusable element that does nothing when activated is worse
@@ -381,10 +414,10 @@ const MIN_LABELLED_PX = 18;
 /** The sub-floor gap: the dashed edge's colour as diagonal lines, so it still
  *  reads as "free, and a control" without the border it has no room for. */
 const HATCH =
-  'bg-[repeating-linear-gradient(135deg,var(--line-control)_0_1px,transparent_1px_5px)] hover:bg-ground-sunken';
+  "bg-[repeating-linear-gradient(135deg,var(--line-control)_0_1px,transparent_1px_5px)] hover:bg-ground-sunken";
 
-const DECORATION: Record<Exclude<GridItem['kind'], 'appointment'>, string> = {
-  gap: 'border border-dashed border-line-control text-ink-muted hover:bg-ground-sunken',
-  break: 'bg-ground-sunken text-ink-muted',
-  absence: 'bg-ground-sunken text-ink-secondary',
+const DECORATION: Record<Exclude<GridItem["kind"], "appointment">, string> = {
+  gap: "border border-dashed border-line-control text-ink-muted hover:bg-ground-sunken",
+  break: "bg-ground-sunken text-ink-muted",
+  absence: "bg-ground-sunken text-ink-secondary",
 };
