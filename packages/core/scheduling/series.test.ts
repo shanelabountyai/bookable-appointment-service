@@ -157,11 +157,35 @@ describe('unbookedOccurrences (A-152)', () => {
   it('names the ordinals the rule asked for that have no row, with their days', () => {
     const rule = { anchorDay: calendarDay('2026-06-09'), intervalWeeks: 4, requested: 5 };
     // A cancelled occurrence still has a row (ordinal 2 here), so it is not missing.
-    expect(unbookedOccurrences(rule, [0, 2, null])).toEqual([
+    expect(unbookedOccurrences(rule, [0, 2, null], OWED_ALL)).toEqual([
       { ordinal: 1, day: '2026-07-07' },
       { ordinal: 3, day: '2026-09-01' },
       { ordinal: 4, day: '2026-09-29' },
     ]);
-    expect(unbookedOccurrences(rule, [0, 1, 2, 3, 4])).toEqual([]);
+    expect(unbookedOccurrences(rule, [0, 1, 2, 3, 4], OWED_ALL)).toEqual([]);
+  });
+
+  // A-153 (E1): each line is a "Book this week" link, so only weeks still owed.
+  const rule = { anchorDay: calendarDay('2026-06-09'), intervalWeeks: 4, requested: 5 };
+  const missingDays = (still: Parameters<typeof unbookedOccurrences>[2]) =>
+    unbookedOccurrences(rule, [0], still).map((week) => week.day);
+
+  it('hides a day already gone, and keeps today', () => {
+    expect(missingDays({ ...OWED_ALL, today: calendarDay('2026-08-04') })).toEqual(['2026-08-04', '2026-09-01', '2026-09-29']);
+  });
+
+  it('hides the weeks on and after the day the series was ended', () => {
+    expect(missingDays({ ...OWED_ALL, endedOn: calendarDay('2026-09-01') })).toEqual(['2026-07-07', '2026-08-04']);
+  });
+
+  it('hides a day she already has an appointment on', () => {
+    expect(missingDays({ ...OWED_ALL, clientBusyDays: [calendarDay('2026-08-04')] })).toEqual([
+      '2026-07-07',
+      '2026-09-01',
+      '2026-09-29',
+    ]);
   });
 });
+
+/** Nothing filtered: before the anchor, never ended, no other bookings. */
+const OWED_ALL = { today: calendarDay('2026-01-01'), endedOn: null, clientBusyDays: [] };

@@ -20,6 +20,7 @@ import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from './book';
 import { endSeriesHere } from './end-series';
 import { mergeClients } from '../clients';
+import { reassignAppointment } from '../availability/reassign';
 import { SeriesExtendRefused, createSeries, extendSeries, listSeriesEnding, listSeriesOccurrences } from './series';
 
 const prisma = new PrismaClient();
@@ -203,6 +204,31 @@ describe('extendSeries — the same rule, the next weeks', () => {
 
     // And it leaves the list: nothing ahead of it now ends inside six weeks.
     expect(await ending(6)).toEqual([]);
+  });
+
+  it('repeats the stylist she sees NOW — a reassign moves occurrences, never the rule (A-153)', async () => {
+    const { seriesId } = await series();
+    const occurrences = await listSeriesOccurrences(prisma, seriesId);
+    // Dana left; the desk moved Ada's last booked week to Priya.
+    await reassignAppointment(prisma, {
+      businessId,
+      appointmentId: occurrences[2]!.id,
+      toProviderId: otherProviderId,
+      actor: ACTOR,
+      notify: false,
+    });
+
+    // The row offering "Extend" names the person the extend will book.
+    expect((await ending(6)).map((row) => row.providerName)).toEqual(['Priya']);
+
+    const result = await extendSeries(prisma, { businessId, seriesId, count: 2, expectedRequested: 3, now: MID_JULY, actor: ACTOR });
+
+    expect(result.booked).toBe(2);
+    const added = await prisma.appointment.findMany({
+      where: { seriesId, seriesOrdinal: { gte: 3 } },
+      select: { providerId: true },
+    });
+    expect(added.map((row) => row.providerId)).toEqual([otherProviderId, otherProviderId]);
   });
 
   it('books partially and names the week it could not', async () => {

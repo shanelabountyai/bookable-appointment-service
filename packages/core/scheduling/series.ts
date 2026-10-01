@@ -133,17 +133,29 @@ export function bookableInstant(occurrence: PlannedOccurrence): Instant | null {
  * occurrence still EXISTS (its row is the record she cancelled), so it is not
  * here; these are the weeks `createSeries` or `extendSeries` skipped, which
  * the desk was told about once, in a summary that is gone.
+ *
+ * A-153 (E1) — and only the ones still OWED. Each line is a "Book this week"
+ * button, so a week that cannot be booked is a lie with a link on it: a day
+ * already gone, a week after the series was ended (D-39 — nobody owes her
+ * that), and a day she already has an appointment on (the desk booked her
+ * from the day view, which carries no series, so the rule cannot see it).
+ * `still` is REQUIRED, not defaulted: a caller that forgot it would compile
+ * and print every week the rule ever missed.
  */
 export function unbookedOccurrences(
   rule: { anchorDay: CalendarDay; intervalWeeks: number; requested: number },
   existingOrdinals: Iterable<number | null>,
+  still: { today: CalendarDay; endedOn: CalendarDay | null; clientBusyDays: Iterable<CalendarDay> },
 ): { ordinal: number; day: CalendarDay }[] {
   const existing = new Set(existingOrdinals);
+  const busy = new Set(still.clientBusyDays);
   const missing: { ordinal: number; day: CalendarDay }[] = [];
   for (let ordinal = 0; ordinal < rule.requested; ordinal++) {
-    if (!existing.has(ordinal)) {
-      missing.push({ ordinal, day: addDays(rule.anchorDay, ordinal * rule.intervalWeeks * DAYS_PER_WEEK) });
-    }
+    if (existing.has(ordinal)) continue;
+    const day = addDays(rule.anchorDay, ordinal * rule.intervalWeeks * DAYS_PER_WEEK);
+    // Days are `YYYY-MM-DD`, so string order is calendar order.
+    if (day < still.today || (still.endedOn !== null && day >= still.endedOn) || busy.has(day)) continue;
+    missing.push({ ordinal, day });
   }
   return missing;
 }

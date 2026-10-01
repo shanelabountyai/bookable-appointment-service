@@ -5087,6 +5087,21 @@ it. A series the desk ended on purpose looked exactly like one that ran
 out, so the end is now recorded where it happens. And merging two client
 records left the series pointing at the discarded one.
 
+## A-153 — extending a standing appointment books the stylist she sees now
+
+When a stylist leaves, the desk moves her clients' standing appointments to
+someone else. Extending one of those series then quietly booked the next
+weeks back with the stylist who had left, because the series remembered who
+it was set up with, not who the client sees now. The list showed the old
+name too. Both now read the client's latest booked visit, through one shared
+query, so the name on the row is the name on the new weeks.
+
+The "never booked" weeks on the appointment screen only show weeks that can
+still be booked: not ones already gone, not ones after the series was ended,
+and not a day she is already booked some other way. And the result of an
+extension no longer disappears with the row it removes from the list. It
+sits above the list and takes the keyboard focus.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

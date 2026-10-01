@@ -251,6 +251,22 @@ export class SeriesExtendRefused extends Error {
   }
 }
 
+/**
+ * A-153 (E1) — THE VISIT TO REPEAT: her latest occurrence still in the book.
+ * Its services AND its provider, because the desk may have changed either
+ * since the series began — a reassign moves occurrences, never the rule's
+ * `providerId`, so the rule's own column is the stylist she USED to see.
+ *
+ * One question, asked by BOTH the list that offers "Extend" and the extend
+ * that books it, so the name on the row is the name on the new weeks.
+ * Active only: a cancelled last week is a visit she is not coming to.
+ */
+const LATEST_OCCURRENCE = {
+  where: { status: { in: [...ACTIVE_STATUSES] } },
+  orderBy: [{ startAt: 'desc' }, { id: 'asc' }],
+  take: 1,
+} satisfies Prisma.AppointmentFindManyArgs;
+
 export async function extendSeries(
   prisma: PrismaClient,
   input: { businessId: string; seriesId: string; count: number; expectedRequested: number; now: Date; actor: Actor },
@@ -263,22 +279,21 @@ export async function extendSeries(
       intervalWeeks: true,
       requested: true,
       endedAt: true,
-      providerId: true,
       clientId: true,
       business: { select: { timezone: true } },
-      // The visit to repeat is the LATEST one the rule asked for — the desk
-      // may have changed her services on an occurrence since the series began.
       appointments: {
-        orderBy: [{ seriesOrdinal: 'desc' }, { startAt: 'desc' }],
-        take: 1,
-        select: { lines: { orderBy: { ordinal: 'asc' }, select: { serviceId: true } } },
+        ...LATEST_OCCURRENCE,
+        select: { providerId: true, lines: { orderBy: { ordinal: 'asc' }, select: { serviceId: true } } },
       },
     },
   });
   if (!series) throw new SeriesExtendRefused('That standing appointment no longer exists.');
   if (series.endedAt) throw new SeriesExtendRefused('This series was ended. Set up a new one from the booking screen.');
-  const serviceIds = series.appointments[0]?.lines.map((line) => line.serviceId) ?? [];
-  if (serviceIds.length === 0) throw new SeriesExtendRefused('Nothing was ever booked on this series to repeat.');
+  const latest = series.appointments[0];
+  const serviceIds = latest?.lines.map((line) => line.serviceId) ?? [];
+  if (!latest || serviceIds.length === 0) {
+    throw new SeriesExtendRefused('Nothing on this series is still booked to repeat.');
+  }
 
   // Pure, and it throws InvalidSeries before anything is written. Planned from
   // the day the next ordinal falls on, so the 104 ceiling is per extension.
@@ -307,7 +322,7 @@ export async function extendSeries(
     prisma,
     {
       businessId: input.businessId,
-      providerId: series.providerId,
+      providerId: latest.providerId,
       clientId: series.clientId,
       serviceIds,
       now: input.now,
@@ -383,13 +398,11 @@ export async function listSeriesEnding(
       wallTime: true,
       requested: true,
       client: { select: { name: true, phone: true } },
-      provider: { select: { displayName: true } },
       appointments: {
-        where: { status: active },
-        orderBy: { startAt: 'desc' },
-        take: 1,
+        ...LATEST_OCCURRENCE,
         select: {
           startAt: true,
+          provider: { select: { displayName: true } },
           lines: { orderBy: { ordinal: 'asc' }, select: { service: { select: { name: true } } } },
         },
       },
@@ -404,7 +417,7 @@ export async function listSeriesEnding(
         clientId: row.clientId!,
         name: row.client!.name,
         phone: row.client!.phone,
-        providerName: row.provider.displayName,
+        providerName: last.provider.displayName,
         intervalWeeks: row.intervalWeeks,
         wallTime: row.wallTime.trim(),
         requested: row.requested,

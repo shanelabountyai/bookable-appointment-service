@@ -123,6 +123,8 @@ export async function endSeries(_previous: SeriesEndState, formData: FormData): 
 
 export interface SeriesExtendState {
   ok?: boolean;
+  /** A-153: whose series — the result sits above the list, not in her row. */
+  about?: string;
   message?: string;
   series?: SeriesSummary;
 }
@@ -139,6 +141,7 @@ export async function extendSeriesAction(_previous: SeriesExtendState, formData:
   const seriesId = String(formData.get('seriesId') ?? '');
   const count = Number(formData.get('count'));
   const expectedRequested = Number(formData.get('requested'));
+  const about = String(formData.get('about') ?? '') || undefined;
   if (!Number.isInteger(expectedRequested)) return { ok: false, message: 'Reload the list and try again.' };
 
   let result;
@@ -152,7 +155,7 @@ export async function extendSeriesAction(_previous: SeriesExtendState, formData:
       actor: staffActor(staff.id),
     });
   } catch (error) {
-    if (error instanceof InvalidSeries || error instanceof SeriesExtendRefused) return { ok: false, message: error.message };
+    if (error instanceof InvalidSeries || error instanceof SeriesExtendRefused) return { ok: false, about, message: error.message };
     throw error;
   }
 
@@ -160,6 +163,7 @@ export async function extendSeriesAction(_previous: SeriesExtendState, formData:
   revalidatePath('/staff/day');
   return {
     ok: true,
+    about,
     message:
       result.booked === count
         ? `Booked ${count} more.`

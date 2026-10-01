@@ -6445,3 +6445,43 @@ claim per lens was checked against the code before writing (§2), and all held.
 **What it left behind.** N1–N7 are recorded candidates; C13, C14 (PIN) and C15
 stay candidates from review 30. The check-in race test is now a row (A-161).
 The project closes after Phase 23 (D-76).
+
+## A-153 — E1: series extend and "never booked" tell the truth (D-75, D-76)
+
+Commit `PENDING`.
+
+**What it built.**
+- **`LATEST_OCCURRENCE`** (`packages/db/booking/series.ts`): her latest
+  ACTIVE occurrence, one query shape spread into both `extendSeries` and
+  `listSeriesEnding`. The extend now books that occurrence's provider as well
+  as its services; the list row prints the same provider. Before, both read
+  `AppointmentSeries.providerId`, which a reassign never rewrites, so a
+  series moved off a stylist who left was extended back onto her.
+- **`unbookedOccurrences` takes a required `still`** (`today`, `endedOn`,
+  `clientBusyDays`) and drops past days, weeks on/after the day the series
+  was ended, and days the client already has an active appointment. Required,
+  not defaulted, so a caller cannot compile and print every missed week.
+- **`ExtendList`** (`apps/web/app/staff/series/extend-list.tsx`, was
+  `extend-form.tsx`): one `useActionState` for the whole list, its result
+  ABOVE the `<ul>`, focused on success. A successful extend is what removes
+  the row, so the A-152 result unmounted itself with the focused button.
+- **Guards.** A db test reassigns the latest occurrence to Priya and asserts
+  the list row and both new occurrences say Priya. Three core tests, one per
+  hidden-week rule. The e2e extends by eight (enough to leave the list),
+  asserts the result, the empty state and focus, and runs axe on the page
+  both populated and after (both schemes via the A-096 helper).
+
+**What it decided.**
+- **Latest ACTIVE, not latest by ordinal.** The list already meant "last one
+  booked" as active; the extend meant any status. One question for both, so
+  the name on the row is the name on the new weeks.
+- **Wall time stays the rule's.** "If cheap" in the row: a one-off move of the
+  last visit is commoner for time than for stylist, and reading it from the
+  occurrence would make that move permanent.
+- **The fuller fix (series and ordinal through "Book this week") is not done.**
+  The busy-day filter covers the case it exists for.
+
+**What it left behind.** `AppointmentSeries.providerId` is still the rule's
+original stylist; nothing reads it for booking now. All Extend buttons show
+pending during any one extend.
+

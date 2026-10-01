@@ -6,6 +6,7 @@ import { listSeriesOccurrences } from '@bookable/db/booking';
 import { reliabilityFor } from '@bookable/db/clients';
 import { freedSpanNow } from '@bookable/db/day';
 import {
+  ACTIVE_STATUSES,
   type AppointmentStatus,
   SLOT_FREEING_STATUSES,
   availableTransitions,
@@ -15,7 +16,7 @@ import {
   staffCancellationStatus,
   unbookedOccurrences,
 } from '@bookable/core/scheduling';
-import { calendarDay, fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { calendarDay, fromDate, instant, startOfDay, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 import { releaseWords } from '@/lib/appointments/release-words';
@@ -162,10 +163,29 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   // others" is one question asked in front of a client, and a second route
   // for four rows is a route to keep in step with this one.
   const siblings = detail.series ? await listSeriesOccurrences(prisma, detail.series.id) : [];
+  // A-153 (E1): only the weeks still owed — not gone, not after it was
+  // ended, not a day she is already booked on (from the day view, no series).
+  const clientBusy =
+    detail.series && detail.clientId
+      ? await prisma.appointment.findMany({
+          where: {
+            businessId: staff.businessId,
+            clientId: detail.clientId,
+            status: { in: [...ACTIVE_STATUSES] },
+            startAt: { gte: toDate(startOfDay(toLabel(fromDate(now), zone).day, zone)) },
+          },
+          select: { startAt: true },
+        })
+      : [];
   const unbooked = detail.series
     ? unbookedOccurrences(
         { ...detail.series, anchorDay: calendarDay(detail.series.anchorDay) },
         siblings.map((sibling) => sibling.seriesOrdinal),
+        {
+          today: toLabel(fromDate(now), zone).day,
+          endedOn: detail.series.endedAt ? toLabel(fromDate(detail.series.endedAt), zone).day : null,
+          clientBusyDays: clientBusy.map((row) => toLabel(fromDate(row.startAt), zone).day),
+        },
       )
     : [];
 

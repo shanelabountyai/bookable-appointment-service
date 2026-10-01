@@ -1352,21 +1352,26 @@ test.describe('series ending (A-152)', () => {
     await expect(items.first()).toContainText('every week at 10:00');
     await expectNoAxeViolations(page);
 
-    await page.getByLabel('How many more').fill('2');
+    // A-153 (E1): eight more weeks is what takes her OFF the list — the
+    // result must outlive her row, and take the focus its button had.
+    await page.getByLabel('How many more').fill('8');
     await page.getByRole('button', { name: 'Extend Mrs Kerr' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Booked 2 more.' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'booked' })).toHaveCount(2);
+    const status = page.getByRole('status').filter({ hasText: 'Mrs Kerr: Booked 8 more.' });
+    await expect(status).toBeVisible();
+    await expect(page.getByText('No standing appointment runs out in the next 6 weeks.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'booked' })).toHaveCount(8);
+    await expect(page.locator('main div[tabindex="-1"]').filter({ has: status })).toBeFocused();
+    await expectNoAxeViolations(page);
 
     const prisma = new PrismaClient();
     try {
       const occurrences = await prisma.appointment.findMany({ where: { seriesId }, orderBy: { startAt: 'asc' } });
-      expect(occurrences.map((o) => o.seriesOrdinal)).toEqual([0, 2, 3, 4]);
-      expect(occurrences.slice(2).map((o) => o.startDay)).toEqual([
-        addDays(calendarDay(DAY), 21),
-        addDays(calendarDay(DAY), 28),
-      ]);
+      expect(occurrences.map((o) => o.seriesOrdinal)).toEqual([0, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(occurrences.slice(2).map((o) => o.startDay)).toEqual(
+        [21, 28, 35, 42, 49, 56, 63, 70].map((days) => addDays(calendarDay(DAY), days)),
+      );
       expect(new Set(occurrences.map((o) => o.startWallTime))).toEqual(new Set(['10:00']));
-      expect((await prisma.appointmentSeries.findUniqueOrThrow({ where: { id: seriesId } })).requested).toBe(5);
+      expect((await prisma.appointmentSeries.findUniqueOrThrow({ where: { id: seriesId } })).requested).toBe(11);
     } finally {
       await prisma.$disconnect();
     }

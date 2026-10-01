@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input } from '@/components/ui/field';
 import { PhoneLink } from '@/components/ui/phone-link';
 import { readableInstant } from '@/lib/customer-format';
-import { ExtendForm } from './extend-form';
+import { ExtendList } from './extend-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,17 +56,16 @@ export default async function SeriesEndingPage({ searchParams }: PageProps<'/sta
         <Button type="submit">Show</Button>
       </form>
 
-      {rows.length === 0 ? (
-        <EmptyState>No standing appointment runs out in the next {weeks} weeks.</EmptyState>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {rows.map((row) => {
-            const name = row.name ?? 'No name';
-            return (
-              <li
-                key={row.seriesId}
-                className="flex flex-col gap-2 rounded-control border border-line-hairline bg-ground-raised p-4 text-body"
-              >
+      <ExtendList
+        empty={<EmptyState>No standing appointment runs out in the next {weeks} weeks.</EmptyState>}
+        rows={rows.map((row) => {
+          const name = row.name ?? 'No name';
+          return {
+            seriesId: row.seriesId,
+            requested: row.requested,
+            about: name,
+            body: (
+              <>
                 <Link href={`/staff/clients/${row.clientId}`} className="self-start font-medium underline underline-offset-4">
                   {name}
                 </Link>
@@ -80,17 +79,11 @@ export default async function SeriesEndingPage({ searchParams }: PageProps<'/sta
                 ) : (
                   <span className="text-caption text-ink-muted">No number on the record</span>
                 )}
-                <ExtendForm
-                  seriesId={row.seriesId}
-                  requested={row.requested}
-                  defaultCount={Math.min(row.requested, 104)}
-                  about={name}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+              </>
+            ),
+          };
+        })}
+      />
     </main>
   );
 }
