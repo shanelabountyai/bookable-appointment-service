@@ -6485,3 +6485,29 @@ Commit `ec37952`.
 original stylist; nothing reads it for booking now. All Extend buttons show
 pending during any one extend.
 
+
+## A-154 — E2: results that remove themselves (D-76)
+
+**What it built.**
+- **`StatusActions`** never `return null`s: a finished move leaves the form
+  (class `contents` when no buttons) so its live region survives and says the
+  result.
+- **Contact-save match** is announced by an always-mounted `role="status"`
+  cue, worded unlike the visible sentence (no text query finds two).
+- **Manage page**: the plain-language status line is itself a `role="status"`
+  that stays mounted across `revalidatePath`, so cancel and confirm are said
+  even though the form that held their message unmounts. "Book again" (→
+  `/book`) on completed / no-show / cancelled.
+- **Guard** (`aria-live.test.ts`): also matches `role="status"`/`"alert"`, and
+  flags `return null` in the function that renders a live region unless the
+  line above says `// live-region-ok: <why>`. It found two more real ones
+  (booking-flow error alert, notes-form conflict alert), now always mounted
+  with `empty:hidden`.
+
+**What it decided.** Whole-panel gates are allowed only with the written
+comment, not an allowlist. The outcome is said by the page's own status line
+rather than a region in `Shell`: one source of truth, nothing to keep in sync.
+
+**What it left behind.** The `status-controls.tsx` ReleasePanel keeps its
+commented `return null`. The first `npm test` run showed 10 transient db
+failures that did not reproduce (second run 1853 passed) — cause not found.

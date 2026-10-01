@@ -50,19 +50,23 @@ export function NotesForm({
       </label>
       <p className="text-sm text-ink-muted">Shown on every appointment for this client. Formula, allergies, anything that must not be missed.</p>
       {lastChangedBy ? <p className="text-xs text-ink-muted">Last changed by {lastChangedBy}.</p> : null}
-      {state.conflict ? (
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30"
-        >
+      {/* A-154 (E2): the alert exists before the conflict does; `empty:hidden`
+          keeps it from drawing a box until there is something in it. */}
+      <div
+        role="alert"
+        className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm empty:hidden dark:border-amber-900 dark:bg-amber-950/30"
+      >
+        {state.conflict ? (
+          <>
           <p>
             Someone changed this note{state.conflict.currentAuthor ? ` (${state.conflict.currentAuthor})` : ''} while
             you had it open. Your save was not applied. What&rsquo;s on file now:
           </p>
           <p className="whitespace-pre-wrap rounded-md bg-white/60 p-2 dark:bg-black/20">{state.conflict.currentText || '(cleared)'}</p>
           <p>Copy what you still need into the box below, then save again to keep it.</p>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </div>
       <textarea
         id="notes"
         name="notes"

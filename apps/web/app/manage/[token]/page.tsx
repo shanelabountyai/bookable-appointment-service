@@ -15,6 +15,7 @@
  *    a script enumerating tokens get the identical sentence.
  */
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { prisma } from '@bookable/db';
 import { type AppointmentStatus, canReschedule, possibleTransitionsFrom } from '@bookable/core/scheduling';
 import { worstCutoff } from '@bookable/core/settings';
@@ -105,7 +106,20 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
         <Row label="Where">{appointment.business.name}</Row>
       </dl>
 
-      <p className="text-zinc-600 dark:text-zinc-400">{PLAIN_LANGUAGE[status]}</p>
+      {/* A-154 (E2): cancel and confirm both end by `revalidatePath`, which
+          unmounts the form that held their own message — so the outcome is
+          announced HERE, by the line the page rewrites. This element is
+          unconditional and stays mounted across the re-render; only its text
+          changes, which is the one thing a live region announces. */}
+      <p role="status" className="text-zinc-600 dark:text-zinc-400">
+        {PLAIN_LANGUAGE[status]}
+      </p>
+
+      {TERMINAL_STATUSES.has(status) ? (
+        <Link href="/book" className="self-start text-sm underline underline-offset-4">
+          Book again
+        </Link>
+      ) : null}
 
       {/* APPT-02's loop: an affordance, asked of the same table the write path
           asks, same reasoning as the reschedule/cancel affordances below. */}
@@ -133,6 +147,8 @@ export default async function ManagePage({ params }: PageProps<'/manage/[token]'
     </Shell>
   );
 }
+
+const TERMINAL_STATUSES: ReadonlySet<AppointmentStatus> = new Set(['completed', 'no_show', 'cancelled', 'cancelled_late']);
 
 /**
  * D-10's lexicon, in the one place a status becomes a sentence.

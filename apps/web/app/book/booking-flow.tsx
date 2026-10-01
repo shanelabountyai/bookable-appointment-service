@@ -520,11 +520,12 @@ export function BookingFlow({ services }: { services: Service[] }) {
             {(control) => <Input {...control} name="email" type="email" autoComplete="email" defaultValue={details.email} />}
           </Field>
 
-          {result && !result.ok && result.message && (
-            <p role="alert" className="text-body font-medium text-danger-ink">
-              {result.message}
-            </p>
-          )}
+          {/* A-154 (E2): unconditional, only the text is conditional — an alert
+              that mounts with its words already inside is the late-mount shape.
+              `empty:hidden` keeps the quiet paragraph out of the column's gap. */}
+          <p role="alert" className="text-body font-medium text-danger-ink empty:hidden">
+            {result && !result.ok && result.message ? result.message : ''}
+          </p>
 
           {/* The button she came here to press is full width and first in the
               column, with Back beneath it — reversed from the desk's row, and

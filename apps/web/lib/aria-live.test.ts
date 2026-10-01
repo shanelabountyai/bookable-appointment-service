@@ -128,14 +128,70 @@ function isConditionallyMounted(element: ts.Node): boolean {
   }
 }
 
+/** A-154 (E2): `role="status"` and `role="alert"` ARE live regions, so they
+ *  mount-late exactly as `aria-live` does. */
+function isAriaLiveTag(el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): boolean {
+  return el.attributes.properties.some(
+    (p) =>
+      ts.isJsxAttribute(p) &&
+      ts.isIdentifier(p.name) &&
+      (p.name.text === 'aria-live' ||
+        (p.name.text === 'role' &&
+          !!p.initializer &&
+          ts.isStringLiteral(p.initializer) &&
+          (p.initializer.text === 'status' || p.initializer.text === 'alert'))),
+  );
+}
+
+function enclosingFunction(node: ts.Node): ts.Node | undefined {
+  for (let n = node.parent; n; n = n.parent) if (ts.isFunctionLike(n)) return n;
+  return undefined;
+}
+
+/**
+ * A-154 (E2): a component that holds a live region and can `return null`
+ * unmounts the region with its own result — a successful action re-renders it
+ * with nothing left to show, and the outcome goes unsaid (StatusActions'
+ * `if (moves.length === 0) return null`). Only a `return null` in the SAME
+ * function that renders the region counts; a nested callback's is its own.
+ *
+ * A whole-panel gate — the panel does not apply to this render at all, not an
+ * async result removing itself — is the one shape allowed, and it has to say
+ * so on the line above: `// live-region-ok: <why>`. A bare allowlist would
+ * rot; a comment has to be written by somebody who read this.
+ */
+function returnNullOffenders(file: string, source: ts.SourceFile): string[] {
+  const holders = new Set<ts.Node>();
+  const visitTags = (node: ts.Node): void => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && isAriaLiveTag(node)) {
+      const fn = enclosingFunction(node);
+      if (fn) holders.add(fn);
+    }
+    ts.forEachChild(node, visitTags);
+  };
+  visitTags(source);
+
+  const hits: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isReturnStatement(node) && node.expression?.kind === ts.SyntaxKind.NullKeyword) {
+      const fn = enclosingFunction(node);
+      if (fn && holders.has(fn)) {
+        const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+        const above = source.text.split('\n')[line - 1] ?? '';
+        if (!/live-region-ok:/.test(above)) hits.push(`${relative(REPO_ROOT, file)}:${line + 1} (return null)`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return hits;
+}
+
 function ariaLiveOffenders(file: string): string[] {
   const text = readFileSync(file, 'utf8');
   const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   const hits: string[] = [];
-
-  const isAriaLiveTag = (el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): boolean =>
-    el.attributes.properties.some((p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === 'aria-live');
 
   const visit = (node: ts.Node): void => {
     if (ts.isJsxSelfClosingElement(node) && isAriaLiveTag(node) && isConditionallyMounted(node)) {
@@ -149,7 +205,7 @@ function ariaLiveOffenders(file: string): string[] {
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return hits;
+  return [...hits, ...returnNullOffenders(file, source)];
 }
 
 describe('an aria-live element is never conditionally mounted', () => {
@@ -176,6 +232,8 @@ describe('an aria-live element is never conditionally mounted', () => {
       'export const FieldsErrorSlot = ({ error }: any) =>',
       '  error === undefined ? null : <p aria-live="polite">{error}</p>;',
       '',
+      "export const RoleBug = ({ state }: any) => (state.message ? <p role=\"status\">{state.message}</p> : null);",
+      '',
       'export const Correct = ({ state }: any) => <p aria-live="polite">{state.message ?? \'\'}</p>;',
       '',
       '// A whole panel that does not apply to this render (`pushFrom` null),',
@@ -187,15 +245,27 @@ describe('an aria-live element is never conditionally mounted', () => {
     ].join('\n');
     const source = ts.createSourceFile(probe, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const found: string[] = [];
-    const isAriaLiveTag = (el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): boolean =>
-      el.attributes.properties.some((p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === 'aria-live');
     const visit = (node: ts.Node): void => {
       if (ts.isJsxSelfClosingElement(node) && isAriaLiveTag(node) && isConditionallyMounted(node)) found.push('self-closing');
       if (ts.isJsxOpeningElement(node) && isAriaLiveTag(node) && isConditionallyMounted(node.parent)) found.push('opening');
       ts.forEachChild(node, visit);
     };
     visit(source);
-    expect(found).toEqual(['opening', 'opening']);
+    expect(found).toEqual(['opening', 'opening', 'opening']);
+    // ...and the early-return half of the guard.
+    const early = [
+      "export function Gone({ moves }: any) {",
+      '  if (moves.length === 0) return null;',
+      '  return <p aria-live="polite" />;',
+      '}',
+      'export function Allowed({ off }: any) {',
+      '  // live-region-ok: the whole panel does not apply',
+      '  if (off) return null;',
+      '  return <p aria-live="polite" />;',
+      '}',
+    ].join('\n');
+    const earlySource = ts.createSourceFile(probe, early, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    expect(returnNullOffenders(probe, earlySource)).toHaveLength(1);
   });
 
   it('has no conditionally-mounted aria-live element anywhere', () => {

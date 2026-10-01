@@ -45,10 +45,13 @@ export function StatusActions({
 }) {
   const [state, action, pending] = useActionState(changeStatus, initial);
 
-  if (moves.length === 0) return null;
-
+  // A-154 (E2): NEVER `return null` here. A successful move re-renders this
+  // with the buttons gone (finished, checked out), and a component that
+  // unmounts takes its live region — and the result being announced — with it.
+  // Only the buttons go; the form stays so the region survives. `contents`
+  // keeps an empty form from adding a box of its own to the caller's layout.
   return (
-    <form action={action} className={className}>
+    <form action={action} className={moves.length === 0 ? 'contents' : className}>
       <input type="hidden" name="appointmentId" value={appointmentId} />
       {/* A-027's optimistic lock: the status the screen SHOWED. If somebody
           else moved it meanwhile the write is refused and says who got there

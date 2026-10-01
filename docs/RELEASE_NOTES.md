@@ -5102,6 +5102,15 @@ and not a day she is already booked some other way. And the result of an
 extension no longer disappears with the row it removes from the list. It
 sits above the list and takes the keyboard focus.
 
+## A-154 — results are announced even when the screen removes them
+
+When a button's result removes the button itself (a visit finished, a booking
+cancelled), the message used to disappear with it and a screen-reader user
+heard nothing. The status line now stays on screen and speaks the outcome,
+duplicate-record matches are announced, and a cancelled or finished booking
+offers "Book again". A test now fails the build if a spoken-result element can
+be removed along with its result.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

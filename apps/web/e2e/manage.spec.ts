@@ -144,6 +144,10 @@ test.describe('the manage link (A-013)', () => {
     // asserting it would be a race against a re-render.
     await expect(page.getByText('This appointment is cancelled.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancel this appointment' })).toHaveCount(0);
+    // A-154 (E2): the outcome is said by a live region that survived the
+    // re-render (the form's own message did not), and a dead end has a way on.
+    await expect(page.getByRole('status').filter({ hasText: 'This appointment is cancelled.' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Book again' })).toHaveAttribute('href', '/book');
 
     // MULTI-USE. A single-use token would 404 here, and the customer who wants
     // to check she really did cancel would call the salon instead.

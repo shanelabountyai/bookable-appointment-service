@@ -173,6 +173,7 @@ function ReleasePanel({
 }) {
   const [state, action, pending] = useActionState(releaseTime, initial);
 
+  // live-region-ok: nothing to give back for this appointment at all — the panel does not apply, no result is being removed.
   if (release === null) return null;
   if ('releasedLabel' in release) {
     // The SETTLED state carries the pointer, not the toast. `revalidatePath`

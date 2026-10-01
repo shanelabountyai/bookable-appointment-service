@@ -60,6 +60,15 @@ export function ContactForm({ clientId, name, phone, email }: { clientId: string
         </div>
       </form>
 
+      {/* A-154 (E2): the match panel mounts with its text already inside, which
+          a screen reader never announces — so a short cue is said here (worded unlike the visible
+          sentence, so no text query finds two), in a region that exists before the match does. */}
+      <p role="status" className="sr-only">
+        {state.contactMatch
+          ? `Not saved: this looks like ${state.contactMatch.name ?? 'another record'}. A merge button follows.`
+          : ''}
+      </p>
+
       {state.contactMatch ? (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
           <p>
