@@ -6426,3 +6426,22 @@ Commit `e003405`.
   about 42) time out at the 10s hook and then deadlock on the overlapping
   TRUNCATE. With `--hookTimeout=120000` they pass, so this is the environment
   and not the code.
+
+## Five-lens review at the Phase 22 close: every bundle shipped, and each one's next step was missed
+
+**What it produced.** `docs/reviews/31-five-lens-review-phase-22-close.md`, D-76,
+OQ-26, and Phase 23 in the backlog: A-153..A-161. No product code changed. The
+five agents ran read-only and in parallel at `b946407`; no server, no database.
+
+**The finding.** Every C1–C11 bundle does what it asked. The defects are in what
+each one did next. A-152's extend books the series' ORIGINAL provider, because
+`AppointmentSeries.providerId` is never rewritten after a reassignment. Its
+result, A-151's rebook and A-144's cancel all unmount the thing that should
+announce them. A-148's focus recovery fires on every 15 s refresh for anyone
+whose focus is on `<body>`. A-150's `CHANGE_TYPES` carries a comment warning
+that every writer must be listed, and it omits two existing ones. One headline
+claim per lens was checked against the code before writing (§2), and all held.
+
+**What it left behind.** N1–N7 are recorded candidates; C13, C14 (PIN) and C15
+stay candidates from review 30. The check-in race test is now a row (A-161).
+The project closes after Phase 23 (D-76).

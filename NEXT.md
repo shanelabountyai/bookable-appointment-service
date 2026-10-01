@@ -1,13 +1,8 @@
 # Next
 
-**The backlog is empty: A-152 (C11, series ending, D-75) closed Phase 22.**
-Pick up: the Phase 22 close. Walk the phase the way earlier closes did (operator
-review / demo checkpoint), then scope what comes next. The first candidate row
-is the flaky check-in race test below.
-
-Needs a backlog row: `packages/db/appointments/transition.test.ts` › "lets
-exactly one of two simultaneous check-ins win" is not barrier-based and fails
-under load (2/6 on 2026-09-28). See A-143's PROGRESS entry.
+**Phase 23 is scheduled (D-76): A-153..A-161, from `docs/reviews/31-five-lens-review-phase-22-close.md`.**
+Pick up: **A-153 (E1) — series extend and "never booked" tell the truth.**
+The project closes after Phase 23. A-160 (C12) needs OQ-26 answered first.
 
 Known ceiling, not an item yet: the public side resolves its business with
 `findFirstOrThrow()`/`findFirst()` and no `where`. `salon()` (used by A-144
@@ -18,7 +13,8 @@ Known ceiling (D-74): a salon cancel from the appointment panel is not flagged,
 so it never reaches /staff/owed.
 
 Known ceiling (D-73): "changed since print" does not count a row moved OFF a
-column or cancelled after the print.
+column or cancelled after the print. (Review 31 N1 adds: nor a services or
+client change in place — a candidate, not scheduled.)
 
 Known ceilings (D-75): no seeded series, so `/staff/series` is empty in the
 demo until one is booked. Series ended before A-152 carry no `endedAt`.
