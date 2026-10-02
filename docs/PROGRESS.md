@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## A-159 — C16: the stylists page stops promising a name (D-76)
 
-Commit `PENDING`.
+Commit `da9865c`.
 
 **What it built.** Each card on `/stylists` reads "Book an appointment" instead
 of "Book with {name}", with "Ask for {name} on the next step." beneath it. The
