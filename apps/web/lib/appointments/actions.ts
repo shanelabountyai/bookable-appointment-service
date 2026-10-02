@@ -18,6 +18,7 @@ import {
   releaseNoShowTime,
   setAppointmentNotes,
   transitionAppointment,
+  undoStatusMove,
   unreleaseNoShowTime,
 } from '@bookable/db/appointments';
 import { NoResourceFree, SlotTaken } from '@bookable/db/booking';
@@ -109,6 +110,38 @@ export async function changeStatus(_previous: DetailState, formData: FormData): 
   revalidatePath('/staff/day');
   revalidatePath('/staff/call-down');
   return { ok: true, message: 'Done, and recorded.' };
+}
+
+/**
+ * A-160 (D-77) — ONE STEP BACK FROM A MIS-TAPPED CHECK IN, START OR FINISH.
+ *
+ * No `to` and no reason: the server reads the destination off the log, and
+ * ten minutes is an oops rather than a correction (APPT-06 keeps its reason).
+ */
+export async function undoStatus(_previous: DetailState, formData: FormData): Promise<DetailState> {
+  const staff = await requireStaff();
+  const appointmentId = String(formData.get('appointmentId') ?? '');
+  const expectedFrom = String(formData.get('expectedFrom') ?? '') as AppointmentStatus;
+
+  try {
+    await undoStatusMove(prisma, {
+      businessId: staff.businessId,
+      appointmentId,
+      actor: staffActor(staff.id),
+      now: new Date(),
+      expectedFrom: expectedFrom || undefined,
+    });
+  } catch (error) {
+    if (error instanceof AppointmentMovedFirst) {
+      return { ok: false, message: `Somebody else moved it since — it is ${error.actual.replace('_', ' ')} now. Reload to see it.` };
+    }
+    if (error instanceof TransitionRefused) return { ok: false, message: refusalWording(error) };
+    throw error;
+  }
+
+  revalidatePath(`/staff/appointments/${appointmentId}`);
+  revalidatePath('/staff/day');
+  return { ok: true, message: 'Undone, and recorded.' };
 }
 
 /**
@@ -229,6 +262,10 @@ function refusalWording(error: TransitionRefused): string {
       return 'That is not something the front desk can do.';
     case 'same-status':
       return 'It is already that.';
+    case 'undo-window-closed':
+      return 'Too late to undo — that is ten minutes. Correct it with a reason instead.';
+    case 'nothing-to-undo':
+      return 'There is nothing left to undo here.';
     default:
       return `That move is not allowed from ${error.from.replace('_', ' ')}.`;
   }

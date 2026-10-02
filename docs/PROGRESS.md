@@ -6570,6 +6570,42 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## A-160 — C12: undo a mis-tapped forward status move (D-77)
+
+Commit `PENDING`.
+
+**What it built.** `canUndo` in `core/scheduling/transitions.ts` sits beside
+the §7 table. It takes the last status move from the log and allows an undo
+when the actor is staff, that move was an ordinary `→ checked_in` /
+`→ in_progress` / `→ completed`, it is still the row's status, and it is no
+more than ten minutes old. `undoStatusMove` in
+`db/appointments/transition.ts` writes it. It is conditional on the status
+(same optimistic lock), clears the one timestamp that tap stamped, and logs a
+`status_corrected` with `undo: true`, `undid` and the cleared value.
+`lastStatusMove` is shared by the write and the panel, so the button and the
+write ask about the same row. The appointment panel shows
+"Finished by Front desk · 14:02 · Undo", and the log reads "Undone by … — back
+from completed to in progress."
+
+**What it decided.** D-77 (OQ-26, as proposed). Status events now carry
+`at: now` in their payload. The window counts from the injected clock rather
+than `createdAt`, so tests can freeze it. Rows written before this have no `at`
+and are never undoable, and they are hours old anyway. No new event type: an
+undo IS a correction, so `EVENT_TYPES`, `owed.ts` and the reports needed no
+edit. No range moves: every status on either side is active, so the constraint
+and chair holds are untouched. Clearing `endedAt` is what takes a wrong Finish
+out of the D-64 cascade, which derives from the row.
+
+**What it left behind.** The undo is on the panel only. The day chip still has
+no undo; its link opens the panel. The panel's label is computed at render, so
+a page left open past ten minutes still shows the button, and the server
+refuses in words ("Too late to undo — that is ten minutes."). Tests: 4 core
+cases (window boundary at exactly 10:00 and +1 ms, actor, four
+nothing-to-undo reasons), 6 database cases (Finish → back in the chair with
+only `endedAt` cleared, confirmed-not-booked, window, one-step, customer
+refused, stale screen), and 1 e2e on the panel walking check in → start →
+finish → undo, with axe while the undo is showing.
+
 ## A-159 — C16: the stylists page stops promising a name (D-76)
 
 Commit `da9865c`.

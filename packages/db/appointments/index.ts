@@ -73,6 +73,9 @@ export {
   TransitionRefused,
   type TransitionInput,
   type TransitionResult,
+  type UndoInput,
+  lastStatusMove,
   transitionAppointment,
+  undoStatusMove,
 } from './transition';
 export { type OwedRebook, listOwedRebooks } from './owed';

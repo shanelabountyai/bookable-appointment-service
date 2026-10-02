@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@bookable/db';
-import { loadAppointmentDetail, releasableAt, releasePieces } from '@bookable/db/appointments';
+import { lastStatusMove, loadAppointmentDetail, releasableAt, releasePieces } from '@bookable/db/appointments';
 import { listSeriesOccurrences } from '@bookable/db/booking';
 import { reliabilityFor } from '@bookable/db/clients';
 import { freedSpanNow } from '@bookable/db/day';
@@ -12,6 +12,7 @@ import {
   availableTransitions,
   canCancel,
   canChangeServices,
+  canUndo,
   canReschedule,
   staffCancellationStatus,
   unbookedOccurrences,
@@ -21,7 +22,7 @@ import { requireStaff } from '@/lib/auth/session';
 import { readableDay, readableInstant } from '@/lib/customer-format';
 import { releaseWords } from '@/lib/appointments/release-words';
 import { freedSlotHref } from '@/lib/waitlist/freed-link';
-import { TEMPLATE_WORDS, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
+import { TEMPLATE_WORDS, actorWord, deliveryWord, toReadableEvent } from '@/lib/appointments/event-language';
 import { STATUS_WORDS } from '@/lib/day/view-model';
 import { flagSentence } from '@/components/client-flag';
 import { moveProviderChoices } from '@/lib/appointments/reschedule-actions';
@@ -34,6 +35,9 @@ import { VisitNote } from './visit-note';
 import { PhoneLink } from '@/components/ui/phone-link';
 
 export const dynamic = 'force-dynamic';
+
+/** What the undoable tap is called once it has been made. */
+const TAPPED: Record<string, string> = { checked_in: 'Checked in', in_progress: 'Started', completed: 'Finished' };
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -119,6 +123,14 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
   const moves = available.filter((to) => !(SLOT_FREEING_STATUSES as readonly string[]).includes(to));
 
   const events = detail.events.map((event) => toReadableEvent(event, zone));
+
+  // A-160 (D-77). The last tap, named, while it can still be taken back —
+  // asked of the same `canUndo` the write asks, about the same log row.
+  const last = lastStatusMove(detail.events);
+  const undo =
+    last && canUndo(status, last, { actor: 'staff', now: fromDate(now) }).allowed
+      ? `${TAPPED[last.to]} by ${actorWord('staff', detail.events.find((e) => e.id === last.eventId)?.actorName ?? null)} · ${toLabel(last.at, zone).time}`
+      : null;
 
   // CLIENT-04 on the surface where the desk decides what to do about her —
   // marking this one a no-show is one button away, and knowing it is her third
@@ -475,6 +487,7 @@ export default async function AppointmentPage({ params }: PageProps<'/staff/appo
         status={status}
         available={moves}
         cancelAs={cancelAs}
+        undo={undo}
         release={await releaseOffer(staff.businessId, detail, business.timezone)}
       />
 

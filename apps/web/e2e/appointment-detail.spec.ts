@@ -277,6 +277,39 @@ test.describe('the appointment detail panel (A-027)', () => {
     }
   });
 
+  /**
+   * A-160 (D-77) — "Finished by Sam · 11:02 · Undo". A wrong Finish stamps
+   * `endedAt`, which seeds the running-late cascade (D-64); the undo names who
+   * tapped, takes her back to the chair and clears the end it stamped.
+   */
+  test('undoes a mis-tapped Finish, names who tapped it, and only once', async ({ page }) => {
+    const appointment = await bookOne();
+    await page.goto(`/staff/appointments/${appointment.id}`);
+
+    await page.getByRole('button', { name: 'Check in' }).click();
+    await expect(page.getByText(/^Checked in by Front desk · \d/)).toBeVisible();
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect(page.getByText(/^Started by Front desk · \d/)).toBeVisible();
+    await page.getByRole('button', { name: 'Finish', exact: true }).click();
+    await expect(page.getByText(/^Finished by Front desk · \d/)).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.getByText('Undone by Front desk — back from completed to in progress.')).toBeVisible();
+    // One step: the undo is a correction, and is not offered again.
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
+
+    const prisma = new PrismaClient();
+    try {
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(row.status).toBe('in_progress');
+      expect(row.endedAt).toBeNull();
+      expect(row.startedAt).not.toBeNull();
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   /** The table decides, not the screen: a no-show before the start is always
    *  a mis-tap, and the refusal comes back in words. */
   test('refuses a no-show before the appointment has started, and explains', async ({ page }) => {

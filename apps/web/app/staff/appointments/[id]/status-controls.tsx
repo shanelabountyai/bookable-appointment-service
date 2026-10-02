@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { type AppointmentStatus, SLOT_FREEING_STATUSES } from '@bookable/core/scheduling';
-import { type DetailState, changeStatus, releaseTime, unreleaseTime } from '@/lib/appointments/actions';
+import { type DetailState, changeStatus, releaseTime, undoStatus, unreleaseTime } from '@/lib/appointments/actions';
 import { STATUS_ACTION_LABELS } from '@/app/staff/day/status-actions';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
@@ -40,6 +40,7 @@ export function StatusControls({
   status,
   available,
   cancelAs,
+  undo = null,
   release,
 }: {
   appointmentId: string;
@@ -52,6 +53,9 @@ export function StatusControls({
    *  when no cancellation is on the table at all. Advisory: the write path
    *  derives it again from the same arithmetic and never trusts this. */
   cancelAs: 'cancelled' | 'cancelled_late' | null;
+  /** A-160 (D-77). "Finished by Sam · 11:02" while that tap can still be
+   *  undone; null otherwise. The server decided — this only draws it. */
+  undo?: string | null;
 }) {
   const [state, action, pending] = useActionState(changeStatus, initial);
 
@@ -68,6 +72,7 @@ export function StatusControls({
   if (available.length === 0 && !cancelAs) {
     return (
       <div className="flex flex-col gap-3">
+        <UndoPanel appointmentId={appointmentId} status={status} undo={undo} />
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
           Nothing more to do with this one — {status.replace('_', ' ')} is where it ends.
         </p>
@@ -78,6 +83,7 @@ export function StatusControls({
 
   return (
     <div className="flex flex-col gap-3">
+      <UndoPanel appointmentId={appointmentId} status={status} undo={undo} />
       <form action={action} className="flex flex-col gap-3 rounded-md border border-zinc-300 p-4 dark:border-zinc-700">
       <input type="hidden" name="appointmentId" value={appointmentId} />
       {/* The status the screen SHOWED. If somebody else moved it meanwhile,
@@ -246,6 +252,39 @@ function UnreleasePanel({ appointmentId }: { appointmentId: string }) {
         {pending ? 'Putting it back…' : 'They’re here after all — put the time back on the book'}
       </Button>
       <p aria-live="polite" className="text-zinc-700 dark:text-zinc-300">
+        {state.message ?? ''}
+      </p>
+    </form>
+  );
+}
+
+/**
+ * A-160 (D-77) — "Finished by Sam · 11:02 · Undo".
+ *
+ * Its own form and its own action: the destination comes from the log on the
+ * server, so this posts no `to` at all. Rendered until the window closes or
+ * the undo lands; the failure message stays here because a refused undo does
+ * not change the status and nothing else will say why.
+ */
+function UndoPanel({ appointmentId, status, undo }: { appointmentId: string; status: AppointmentStatus; undo: string | null }) {
+  const [state, action, pending] = useActionState(undoStatus, initial);
+
+  // live-region-ok: nothing to undo — no result is being removed; a refusal keeps the panel, because the server state did not change.
+  if (undo === null && !state.message) return null;
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2 text-sm">
+      <input type="hidden" name="appointmentId" value={appointmentId} />
+      <input type="hidden" name="expectedFrom" value={status} />
+      {undo ? (
+        <>
+          <span>{undo}</span>
+          <span aria-hidden="true">·</span>
+          <Button type="submit" pending={pending}>
+            Undo
+          </Button>
+        </>
+      ) : null}
+      <p aria-live="polite" className="basis-full text-zinc-700 dark:text-zinc-300">
         {state.message ?? ''}
       </p>
     </form>

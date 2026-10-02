@@ -20,7 +20,7 @@ import { saveStaffMember } from '../auth';
 import { reliabilityFor } from '../clients';
 import { loadAppointmentDetail } from './detail';
 import { SlotTaken } from '../booking/errors';
-import { AppointmentMovedFirst, TransitionRefused, transitionAppointment } from './transition';
+import { AppointmentMovedFirst, TransitionRefused, transitionAppointment, undoStatusMove } from './transition';
 
 const prisma = new PrismaClient();
 const STAFF_ROW = { createdByActor: 'staff' as const, actorRef: 'staff-1' };
@@ -1119,5 +1119,72 @@ describe('A-116 — reinstating into the chair somebody else took', () => {
       reasons: ['overlaps-booking'],
     });
     expect((await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).status).toBe('cancelled');
+  });
+});
+
+describe('A-160 (D-77) — undoing a mis-tapped forward move', () => {
+  const TAP = at('2026-06-09T10:40:00-05:00');
+  const NINE_MIN_LATER = at('2026-06-09T10:49:00-05:00');
+  const ELEVEN_MIN_LATER = at('2026-06-09T10:51:00-05:00');
+
+  const walk = async (...steps: ('confirmed' | 'checked_in' | 'in_progress' | 'completed')[]) => {
+    const appointment = await book();
+    for (const to of steps) {
+      await transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to, actor: STAFF, now: TAP });
+    }
+    return appointment.id;
+  };
+
+  it('puts a wrong Finish back in the chair and clears only the end it stamped', async () => {
+    const id = await walk('checked_in', 'in_progress', 'completed');
+    const result = await undoStatusMove(prisma, { businessId, appointmentId: id, actor: staffActor('staff-2'), now: NINE_MIN_LATER, expectedFrom: 'completed' });
+
+    expect(result).toEqual({ id, from: 'completed', to: 'in_progress', isCorrection: true });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id } });
+    expect(row.status).toBe('in_progress');
+    expect(row.endedAt).toBeNull();
+    expect(row.checkedInAt).toEqual(TAP);
+    expect(row.startedAt).toEqual(TAP);
+
+    const undo = (await prisma.appointmentEvent.findMany({ where: { appointmentId: id }, orderBy: { createdAt: 'asc' } })).at(-1)!;
+    expect(undo).toMatchObject({ type: 'status_corrected', actorRef: 'staff-2' });
+    expect(undo.payload).toMatchObject({ from: 'completed', to: 'in_progress', undo: true, clearedEndedAt: TAP.toISOString() });
+  });
+
+  it('goes back to where the tap came FROM — confirmed, not booked', async () => {
+    const id = await walk('confirmed', 'checked_in');
+    await undoStatusMove(prisma, { businessId, appointmentId: id, actor: STAFF, now: NINE_MIN_LATER });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id } });
+    expect(row.status).toBe('confirmed');
+    expect(row.checkedInAt).toBeNull();
+    expect(row.confirmedAt).toEqual(TAP);
+  });
+
+  it('is refused after ten minutes, and writes nothing', async () => {
+    const id = await walk('checked_in');
+    const err = await undoStatusMove(prisma, { businessId, appointmentId: id, actor: STAFF, now: ELEVEN_MIN_LATER }).catch((e) => e);
+    expect(err).toBeInstanceOf(TransitionRefused);
+    expect(err.refusal).toBe('undo-window-closed');
+    expect((await prisma.appointment.findUniqueOrThrow({ where: { id } })).status).toBe('checked_in');
+  });
+
+  it('is one step: the undo cannot itself be undone', async () => {
+    const id = await walk('checked_in', 'in_progress');
+    await undoStatusMove(prisma, { businessId, appointmentId: id, actor: STAFF, now: NINE_MIN_LATER });
+    const err = await undoStatusMove(prisma, { businessId, appointmentId: id, actor: STAFF, now: NINE_MIN_LATER }).catch((e) => e);
+    expect(err.refusal).toBe('nothing-to-undo');
+    expect((await prisma.appointment.findUniqueOrThrow({ where: { id } })).status).toBe('checked_in');
+  });
+
+  it('is refused for a customer link', async () => {
+    const id = await walk('checked_in');
+    const err = await undoStatusMove(prisma, { businessId, appointmentId: id, actor: CUSTOMER, now: NINE_MIN_LATER }).catch((e) => e);
+    expect(err.refusal).toBe('actor-not-permitted');
+  });
+
+  it('says somebody got there first when the screen is stale', async () => {
+    const id = await walk('checked_in', 'in_progress');
+    const err = await undoStatusMove(prisma, { businessId, appointmentId: id, actor: STAFF, now: NINE_MIN_LATER, expectedFrom: 'checked_in' }).catch((e) => e);
+    expect(err).toBeInstanceOf(AppointmentMovedFirst);
   });
 });

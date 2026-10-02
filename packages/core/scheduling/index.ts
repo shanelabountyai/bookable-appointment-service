@@ -19,6 +19,11 @@ export {
 export { type ComposedVisit, InvalidVisit, type VisitLine, composeVisit, isSingleService } from './visit';
 export {
   CORRECTION_WINDOW_MS,
+  UNDO_WINDOW_MS,
+  type LastStatusMove,
+  type UndoDecision,
+  type UndoRefusal,
+  canUndo,
   VISIT_MEASUREMENT_GRACE_MS,
   type RescheduleDecision,
   type TransitionContext,

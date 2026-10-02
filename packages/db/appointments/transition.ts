@@ -18,12 +18,14 @@ import {
   type AppointmentStatus,
   type TransitionRefusal,
   SLOT_FREEING_STATUSES,
+  type LastStatusMove,
   canTransition,
+  canUndo,
   isCorrection,
   isVisitMeasurable,
   staffCancellationStatus,
 } from '../../core/scheduling';
-import { fromDate } from '../../core/time';
+import { fromDate, instantFromIso } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
 import type { Actor } from '../../core/auth';
 import { NoResourceFree, SlotTaken } from '../booking/errors';
@@ -348,6 +350,10 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
         payload: {
           from,
           to,
+          // A-160 (D-77). The injected clock, not `createdAt`: the undo window
+          // counts from the tap, and a test that freezes `now` must be able to
+          // freeze that too.
+          at: input.now.toISOString(),
           // A-060: "we called this one on time, and the machine would not
           // have." The only record that the classification was a human's, so
           // the owner's drill-down can count them and name who.
@@ -440,6 +446,119 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
     }
 
     return { id: appointment.id, from, to, isCorrection: correction };
+  });
+}
+
+/** The log rows a status move writes. */
+const STATUS_EVENT_TYPES = ['status_changed', 'status_corrected'];
+
+/**
+ * A-160 (D-77) — THE LAST STATUS MOVE, read off the log.
+ *
+ * Shared by the undo below and the panel that offers it, so the button and the
+ * write ask `canUndo` about the same row. `events` may be in any order; rows
+ * without `at` predate this item and are well outside the window anyway.
+ */
+export function lastStatusMove(
+  events: readonly { id: string; type: string; actorRef: string | null; payload: unknown; createdAt: Date }[],
+): (LastStatusMove & { eventId: string; actorRef: string | null }) | null {
+  const last = events
+    .filter((e) => STATUS_EVENT_TYPES.includes(e.type))
+    .reduce<(typeof events)[number] | null>((a, e) => (!a || e.createdAt >= a.createdAt ? e : a), null);
+  const payload = (last?.payload ?? {}) as { from?: AppointmentStatus; to?: AppointmentStatus; at?: string };
+  if (!last || !payload.from || !payload.to || !payload.at) return null;
+  return {
+    eventId: last.id,
+    actorRef: last.actorRef,
+    from: payload.from,
+    to: payload.to,
+    at: instantFromIso(payload.at),
+    correction: last.type === 'status_corrected',
+  };
+}
+
+/** The column each undoable tap stamps (`timestampsFor` below). */
+const STAMPED_BY = { checked_in: 'checkedInAt', in_progress: 'startedAt', completed: 'endedAt' } as const;
+
+export interface UndoInput {
+  businessId: string;
+  appointmentId: string;
+  actor: Actor;
+  now: Date;
+  /** The status the screen showed — the same optimistic lock as a transition. */
+  expectedFrom?: AppointmentStatus;
+}
+
+/**
+ * A-160 (D-77) — ONE STEP BACK, and the timestamp that tap set goes with it.
+ *
+ * Its own function rather than a `to` on `transitionAppointment`: the
+ * destination comes from the log, not from the caller, and the table above
+ * has no edge back to `booked` from `checked_in` for good reason. Written as
+ * `status_corrected` with `undo: true`, so it reads as "we got this wrong" and
+ * — being a correction — cannot itself be undone.
+ *
+ * No range moves: every status on either side is active (D-7), so the
+ * constraint, the chair hold and the busy set are untouched. Clearing
+ * `endedAt` is what takes a wrong Finish out of the D-64 cascade, which reads
+ * the row and needs no telling.
+ */
+export async function undoStatusMove(db: Db, input: UndoInput): Promise<TransitionResult> {
+  return db.$transaction(async (tx) => {
+    const appointment = await tx.appointment.findFirstOrThrow({
+      where: { id: input.appointmentId, businessId: input.businessId },
+      select: {
+        id: true,
+        businessId: true,
+        status: true,
+        checkedInAt: true,
+        startedAt: true,
+        endedAt: true,
+        events: {
+          where: { type: { in: STATUS_EVENT_TYPES } },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { id: true, type: true, actorRef: true, payload: true, createdAt: true },
+        },
+      },
+    });
+
+    const from = appointment.status;
+    if (input.expectedFrom && input.expectedFrom !== from) throw new AppointmentMovedFirst(input.expectedFrom, from);
+
+    const last = lastStatusMove(appointment.events);
+    const decision = canUndo(from, last, { actor: input.actor.type, now: fromDate(input.now) });
+    if (!decision.allowed) throw new TransitionRefused(from, last?.from ?? from, decision.refusal);
+
+    const column = STAMPED_BY[from as keyof typeof STAMPED_BY];
+    const written = await tx.appointment.updateMany({
+      where: { id: appointment.id, status: from },
+      data: { status: decision.to, [column]: null },
+    });
+    if (written.count === 0) {
+      const actual = await tx.appointment.findUniqueOrThrow({ where: { id: appointment.id }, select: { status: true } });
+      throw new AppointmentMovedFirst(from, actual.status);
+    }
+
+    await tx.appointmentEvent.create({
+      data: {
+        businessId: appointment.businessId,
+        appointmentId: appointment.id,
+        type: 'status_corrected',
+        actor: input.actor.type,
+        actorRef: input.actor.ref,
+        payload: {
+          from,
+          to: decision.to,
+          at: input.now.toISOString(),
+          undo: true,
+          undid: last!.eventId,
+          [`cleared${column[0]!.toUpperCase()}${column.slice(1)}`]: appointment[column]?.toISOString() ?? null,
+        } satisfies Prisma.InputJsonValue,
+      },
+    });
+
+    return { id: appointment.id, from, to: decision.to, isCorrection: true };
   });
 }
 

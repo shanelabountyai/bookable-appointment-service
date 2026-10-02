@@ -17,7 +17,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CORRECTION_WINDOW_MS,
+  UNDO_WINDOW_MS,
   type TransitionContext,
+  canUndo,
   canReschedule,
   availableTransitions,
   canTransition,
@@ -587,5 +589,46 @@ describe('is `now` still a measurement of the visit?', () => {
     expect(isVisitMeasurable(ctx(END + VISIT_MEASUREMENT_GRACE_MS))).toBe(true);
     expect(isVisitMeasurable(ctx(END + VISIT_MEASUREMENT_GRACE_MS + 1))).toBe(false);
     expect(isVisitMeasurable(ctx(END + 3 * 24 * 60 * 60_000))).toBe(false); // Monday
+  });
+});
+
+describe('A-160 (D-77) — undoing a mis-tapped forward move', () => {
+  const at = instant(1_800_000_000_000);
+  const staff = { actor: 'staff' as const, now: instant(at + 60_000) };
+  const finish = { from: 'in_progress' as const, to: 'completed' as const, at, correction: false };
+
+  it('takes the last forward tap back to where IT came from', () => {
+    expect(canUndo('completed', finish, staff)).toEqual({ allowed: true, to: 'in_progress' });
+    expect(canUndo('checked_in', { ...finish, from: 'confirmed', to: 'checked_in' }, staff)).toEqual({
+      allowed: true,
+      to: 'confirmed',
+    });
+  });
+
+  it('is open for exactly ten minutes', () => {
+    expect(canUndo('completed', finish, { ...staff, now: instant(at + UNDO_WINDOW_MS) }).allowed).toBe(true);
+    expect(canUndo('completed', finish, { ...staff, now: instant(at + UNDO_WINDOW_MS + 1) })).toEqual({
+      allowed: false,
+      refusal: 'undo-window-closed',
+    });
+  });
+
+  it('is staff only', () => {
+    expect(canUndo('completed', finish, { ...staff, actor: 'customer_token' })).toEqual({
+      allowed: false,
+      refusal: 'actor-not-permitted',
+    });
+  });
+
+  it('refuses for the RIGHT reason when there is nothing to take back', () => {
+    const nothing = { allowed: false, refusal: 'nothing-to-undo' };
+    expect(canUndo('completed', null, staff)).toEqual(nothing);
+    // One step: the undo is a correction, and a correction is never undone.
+    expect(canUndo('in_progress', { from: 'completed', to: 'in_progress', at, correction: true }, staff)).toEqual(nothing);
+    // The log's last move is not the status on the row — somebody moved it since.
+    expect(canUndo('no_show', finish, staff)).toEqual(nothing);
+    // Not a forward tap on the chip.
+    expect(canUndo('confirmed', { from: 'booked', to: 'confirmed', at, correction: false }, staff)).toEqual(nothing);
+    expect(canUndo('cancelled', { from: 'booked', to: 'cancelled', at, correction: false }, staff)).toEqual(nothing);
   });
 });

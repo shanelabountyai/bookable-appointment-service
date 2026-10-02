@@ -5137,6 +5137,19 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## A-160 — a mis-tapped Finish can be taken back
+
+Check in, Start and Finish sit a thumb-width apart. A wrong Finish used to
+stamp an end time that the running-late projection then built the whole
+column's afternoon on, and nothing on screen said who had tapped it. For ten
+minutes after a forward tap, the appointment now says
+"Finished by Sam · 11:02 · Undo". The undo goes back to wherever that tap came
+from (the log knows whether she had confirmed), clears only the timestamp that
+tap set, and records who undid it. It works once, because an undo is itself a
+correction. After ten minutes the existing correction with a reason is the
+only way back. The rule is one pure function beside the transition table, and
+the button and the database write both ask it about the same log row.
+
 ## A-159 — the stylists page no longer promises a stylist it cannot pick
 
 Each stylist's button used to say "Book with Tess" and then open the ordinary

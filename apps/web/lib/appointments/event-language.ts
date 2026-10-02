@@ -122,6 +122,8 @@ function sentenceFor(type: EventType, payload: Record<string, unknown>, who: str
     case 'status_changed':
       return `Changed from ${word(payload.from)} to ${word(payload.to)} by ${who}.`;
     case 'status_corrected':
+      // A-160 (D-77). One type, two sentences — an undo IS a correction.
+      if (payload.undo === true) return `Undone by ${who} — back from ${word(payload.from)} to ${word(payload.to)}.`;
       return `Corrected from ${word(payload.from)} to ${word(payload.to)} by ${who}.`;
     case 'rescheduled':
       return `Moved from ${clock(payload.from, zone)} to ${clock(payload.to, zone)} by ${who}.`;

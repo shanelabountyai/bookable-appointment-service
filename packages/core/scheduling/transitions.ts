@@ -73,7 +73,11 @@ export type TransitionRefusal =
   | 'inside-cancellation-cutoff'
   | 'outside-cancellation-cutoff'
   | 'correction-window-closed'
-  | 'reason-required';
+  | 'reason-required'
+  // A-160 (D-77) — `canUndo`'s, kept in this union so one refusal type
+  // reaches the screen whichever door the desk used.
+  | 'nothing-to-undo'
+  | 'undo-window-closed';
 
 export type TransitionDecision =
   | { allowed: true; isCorrection: boolean }
@@ -398,4 +402,54 @@ export function canCancel(from: AppointmentStatus, context: TransitionContext): 
     canTransition(from, 'cancelled', context).allowed ||
     canTransition(from, 'cancelled_late', context).allowed
   );
+}
+
+/**
+ * A-160 (D-77) — UNDOING A MIS-TAPPED FORWARD MOVE.
+ *
+ * Check in, Start and Finish sit a thumb-width from each other on a chip,
+ * and the stylist and the operator both ranked a wrong tap first: a wrong
+ * Finish stamps `endedAt`, which seeds the D-64 cascade, and D-73 keeps status
+ * taps off the change marker, so nothing on the day names who did it.
+ *
+ * NOT AN EDGE IN THE TABLE ABOVE, deliberately. "Back" from `checked_in` is
+ * `booked` or `confirmed` depending on where it came from, and a static edge
+ * would have to pick one. The answer is in the log, so the caller hands over
+ * the last status move and this decides whether it may be taken back.
+ *
+ * Ten minutes and no reason: this is an oops, caught while the client is still
+ * in the building. Anything older is APPT-06's correction, with its reason box.
+ * ONE step: the undo is itself the last move, and it is a correction, so it
+ * cannot be undone in turn.
+ */
+export const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
+/** The forward taps an undo may take back — the three that stamp a visit
+ *  timestamp. `confirmed` is the client's act, not a tap on the chip. */
+const UNDOABLE: readonly AppointmentStatus[] = ['checked_in', 'in_progress', 'completed'];
+
+/** The last status move in the log, as the caller found it. */
+export interface LastStatusMove {
+  from: AppointmentStatus;
+  to: AppointmentStatus;
+  at: Instant;
+  /** A `status_corrected` row: a correction — an undo included — is never undone. */
+  correction: boolean;
+}
+
+export type UndoRefusal = Extract<TransitionRefusal, 'actor-not-permitted' | 'nothing-to-undo' | 'undo-window-closed'>;
+
+export type UndoDecision = { allowed: true; to: AppointmentStatus } | { allowed: false; refusal: UndoRefusal };
+
+export function canUndo(
+  status: AppointmentStatus,
+  last: LastStatusMove | null,
+  context: Pick<TransitionContext, 'actor' | 'now'>,
+): UndoDecision {
+  if (context.actor !== 'staff') return { allowed: false, refusal: 'actor-not-permitted' };
+  if (!last || last.correction || last.to !== status || !UNDOABLE.includes(last.to)) {
+    return { allowed: false, refusal: 'nothing-to-undo' };
+  }
+  if (context.now - last.at > UNDO_WINDOW_MS) return { allowed: false, refusal: 'undo-window-closed' };
+  return { allowed: true, to: last.from };
 }
