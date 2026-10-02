@@ -467,7 +467,16 @@ function toColumn(
       // grid and the print sheet, with no gap row of its own, cannot draw at
       // all.
       const workedBlocks =
-        appointment.blocks.length > 1 ? appointment.blocks.map((b) => f.range(b.start, b.end)) : undefined;
+        appointment.blocks.length > 1
+          ? appointment.blocks.map((b, i, all) =>
+              // A-156 (E4): blocks carry the buffered envelope at their outer
+              // edges; the worked time is the body, so clamp to startAt/endAt.
+              f.range(
+                i === 0 ? toDate(instant(Math.max(fromDate(b.start), fromDate(appointment.startAt)))) : b.start,
+                i === all.length - 1 ? toDate(instant(Math.min(fromDate(b.end), fromDate(appointment.endAt)))) : b.end,
+              ),
+            )
+          : undefined;
       return {
         key: `appointment-${appointment.id}`,
         kind: 'appointment' as const,

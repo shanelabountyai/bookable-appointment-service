@@ -5119,6 +5119,14 @@ focused anything. Now focus moves only when the thing that held it is gone, and
 returns to the nearest stable spot (that column's heading, or that visit's row
 on the stylist's list). A test pins that an idle page is left alone.
 
+## A-156 — a colour's worked time no longer includes its buffers
+
+The stylist's list, the grid chip and the printed sheet said a colour was
+worked `09:50–10:45 · 11:25–12:20`, but the client's visit is 10:00–12:00: the
+outer blocks carried the buffer minutes around the visit. The first block now
+starts at the visit's start and the last ends at its end. The test asserts both
+edges of both blocks, because the end alone passed against the bug.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

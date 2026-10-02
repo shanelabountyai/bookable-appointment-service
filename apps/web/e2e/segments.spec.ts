@@ -206,10 +206,10 @@ test.describe('segmented durations (A-029, A-030)', () => {
     }
 
     await page.goto(`/staff/day?day=${DAY}&provider=${danaId}`);
-    await expect(page.getByText('Worked 09:50–10:45 · 11:25–12:20')).toBeVisible();
+    await expect(page.getByText('Worked 10:00–10:45 · 11:25–12:00')).toBeVisible();
 
     await page.goto(`/staff/day?day=${DAY}&provider=${danaId}&sheet=1`);
-    await expect(page.getByText('Worked 09:50–10:45 · 11:25–12:20')).toBeVisible();
+    await expect(page.getByText('Worked 10:00–10:45 · 11:25–12:00')).toBeVisible();
   });
 
   // SEG-04/SEG-05, the operator's own acceptance scenario, through the UI: the

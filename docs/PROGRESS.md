@@ -6534,3 +6534,17 @@ property reads, and the server-rendered list has no model to depend on.
 shared hook is exercised by the grid's check-in spec). The first `npm test`
 run had 106 hook timeouts while a killed earlier run was still alive; the
 clean re-run was 1853 passed.
+
+## A-156 — E4: worked blocks print the worked time (D-76)
+
+**What it built.** `lib/day/view-model.ts` clamps the first worked block's
+start to `startAt` and the last block's end to `endAt` (via `fromDate`/`toDate`,
+as the lint bans `new Date(n)` too). `segments.spec.ts` now asserts
+`Worked 10:00–10:45 · 11:25–12:00` on the list and the print sheet.
+
+**What it decided.** Clamp at the view model, the one place all three readers
+(list, chip, sheet) take `workedBlocks` from; the grid geometry still draws the
+envelope, which is correct for occupancy.
+
+**What it left behind.** The `worked …` phrase in the chip's accessible label
+(`view-model.ts` ~line 556) reads the same clamped array, so it follows.
