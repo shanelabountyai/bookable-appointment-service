@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## A-158 — E6 + E7: /book Back clears the refusal; note saves lock the client (D-76)
 
-Commit `PENDING`.
+Commit `614bcc1`.
 
 **What it built.** `saveClientNotes` opens its transaction with
 `SELECT … FROM "Client" … FOR UPDATE` instead of a plain `findFirst`, so two
