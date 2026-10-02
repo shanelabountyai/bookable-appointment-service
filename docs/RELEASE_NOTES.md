@@ -5137,6 +5137,13 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## A-159 — the stylists page no longer promises a stylist it cannot pick
+
+Each stylist's button used to say "Book with Tess" and then open the ordinary
+booking flow with nobody chosen. The client found out on the next screen. The
+button now says "Book an appointment", and the line under it tells her to ask
+for Tess on the next step. The words now match what the link does.
+
 ## A-158 — two desks cannot both save the client note; Back forgets the refusal
 
 If two people saved a client's pinned note at the same moment, both used to get

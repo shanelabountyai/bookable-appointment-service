@@ -6570,6 +6570,25 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## A-159 — C16: the stylists page stops promising a name (D-76)
+
+Commit `PENDING`.
+
+**What it built.** Each card on `/stylists` reads "Book an appointment" instead
+of "Book with {name}", with "Ask for {name} on the next step." beneath it. The
+link still goes to `/book` with nothing chosen.
+
+**What it decided.** Prefill stays deleted (A-054); only the copy changes, as
+review 31 asked. The staff day grid's "Book with {name}" is untouched, because
+that link really does open the booking panel on that column.
+
+**What it left behind.** `site.spec.ts`'s Tess card test asserts the CTA, the
+"Ask for Tess" line, and no `Book with` link anywhere on the page. The local
+unit run was stopped partway: three other projects were running suites at the
+same time and memory was at 19%, so push-column tests timed out with nothing
+in common with this change. Lint, typecheck and `site.spec.ts` (9/9) passed
+locally; CI ran the full gate.
+
 ## A-158 — E6 + E7: /book Back clears the refusal; note saves lock the client (D-76)
 
 Commit `614bcc1`.

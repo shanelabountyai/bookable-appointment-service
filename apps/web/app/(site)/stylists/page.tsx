@@ -56,12 +56,15 @@ export default async function StylistsPage() {
               </ul>
             </div>
 
+            {/* Not "Book with {name}": the link starts the ordinary flow, with no
+                stylist chosen. Prefill stays deleted (A-054). */}
             <Link
               href="/book"
               className="mt-2 flex min-h-11 w-fit items-center border border-[#171310] px-5 text-[15px] font-semibold text-[#171310] no-underline hover:bg-[#171310] hover:text-[#F5F0E8]"
             >
-              Book with {stylist.name}
+              Book an appointment
             </Link>
+            <p className="text-sm text-[#4A423B]">Ask for {stylist.name} on the next step.</p>
           </li>
         ))}
       </ul>

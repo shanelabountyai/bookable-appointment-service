@@ -72,6 +72,11 @@ test('a stylist is listed with the services she is actually qualified for', asyn
     await expect(card.getByText(name, { exact: true })).toBeVisible();
   }
   await expect(card.getByText('Colour', { exact: true })).toHaveCount(0);
+
+  // A-159: the link starts the ordinary flow, so it must not promise Tess.
+  await expect(card.getByRole('link', { name: 'Book an appointment' })).toHaveAttribute('href', '/book');
+  await expect(card.getByText('Ask for Tess on the next step.')).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Book with/ })).toHaveCount(0);
 });
 
 test('the visit page shows the real week, closed days included', async ({ page }) => {
