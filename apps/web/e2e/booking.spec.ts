@@ -122,6 +122,41 @@ test.describe('customer booking flow (A-010)', () => {
   });
 
   /**
+   * A-158 (review 31 E6). A refusal with no `alternatives` keeps her on the
+   * details screen. Back used to leave `result` set, so the time list read the
+   * refusal as "why you are back here" — on screen and in the live region —
+   * about a time she had not been refused. The chosen time is also told to a
+   * screen reader now (`aria-pressed`), not only drawn.
+   */
+  test('Back after a refusal shows the time list without the refusal', async ({ page }) => {
+    const ip = '203.0.113.10';
+    await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
+    const prisma = new PrismaClient();
+    try {
+      const now = new Date();
+      await prisma.rateLimitCounter.create({ data: { key: `book:${ip}`, windowStart: now, count: 10, updatedAt: now } });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    await reachTheTimeList(page);
+    const label = ((await firstOption(page).textContent()) ?? '').trim();
+    await firstOption(page).click();
+    await page.getByLabel('Your name').fill('Flood Bot');
+    await page.getByLabel('Phone').fill('(512) 555-0199');
+    await page.getByRole('button', { name: 'Confirm appointment' }).click();
+    const refusal = /can’t take more bookings from this connection/;
+    await expect(page.getByText(refusal)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByRole('group')).toContainText('What time on');
+    await expect(page.getByText(refusal)).toHaveCount(0);
+    await expect(firstOption(page)).toHaveAttribute('aria-pressed', 'true');
+    await expect(firstOption(page)).toContainText(label.split(/\s+/)[0]!);
+    await expect(page.locator('fieldset ul > li > button[aria-pressed="true"]')).toHaveCount(1);
+  });
+
+  /**
    * A-141 — the per-BUSINESS cap: many addresses, each under its own limit,
    * together meet a ceiling counted from the book. The 99 extra rows are
    * clones of one real online booking (cancelled, so the exclusion constraint

@@ -6570,3 +6570,29 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## A-158 — E6 + E7: /book Back clears the refusal; note saves lock the client (D-76)
+
+Commit `PENDING`.
+
+**What it built.** `saveClientNotes` opens its transaction with
+`SELECT … FROM "Client" … FOR UPDATE` instead of a plain `findFirst`, so two
+saves from the same base in the same instant run one after the other. The
+second one reads the first one's version and is refused as stale. On `/book`,
+the details-step Back now clears `result`, and every time button carries
+`aria-pressed`.
+
+**What it decided.** The lock is on the client row, not on the latest version.
+A first-ever note has no version row to lock, and that is the `baseVersionId:
+null` race. The /book fix clears the result at Back instead of narrowing
+`lostRace` to `result.alternatives` (review 31 offered both). Every other way
+onto the time list already clears it, so Back was the only one left over.
+
+**What it left behind.** A barrier test in `clients.test.ts` follows
+`attach-client.test.ts`: a holder takes the client lock, and the test waits for
+two `pg_locks` waiters before committing. With the lock removed, both saves
+pass the check and then queue on the later `updateMany`, so the test fails with
+two wins. It passed 6/6 with the fix. The e2e "Back after a refusal" uses the
+booking-limit refusal, the one that stays on the details screen with a message.
+With the Back fix reverted it fails with 2 matches (the visible line and the
+live region).
+

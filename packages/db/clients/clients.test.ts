@@ -5,6 +5,7 @@
  * her teenage daughter sharing one phone number. Every lookup here has to
  * return both of them, and nothing may quietly decide they are one person.
  */
+import { Client as PgClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { instantFromIso, toDate } from '../../core/time';
 import { staffActor } from '../../core/auth';
@@ -247,6 +248,48 @@ describe('CLIENT-03 — the pinned note', () => {
       if (!retry.ok) throw new Error('unreachable');
       expect(retry.version.id).not.toBe(original.id);
       expect((await findClient(prisma, businessId, mumId))?.notes).toBe('Allergic to PPD. Also prefers the 2pm chair.');
+    });
+
+    /** A-158 (review 31 E7). Two desks save from the same base in the same
+     *  instant. Without the row lock both read the same `latest`, both pass
+     *  the stale check and both write — the second note silently replaces
+     *  the first. A holder takes the client's lock first so the two saves
+     *  provably queue on it (`pg_locks.granted = false` is the edge, as in
+     *  `attach-client.test.ts`); without the fix they queue on the later
+     *  `updateMany` instead, AFTER both have passed, and both succeed. */
+    it('lets exactly one of two simultaneous saves from the same base win', async () => {
+      const base = await note(mumId, 'Allergic to PPD.');
+      const save = (text: string) =>
+        saveClientNotes(prisma, { businessId, clientId: mumId, text, baseVersionId: base.id, actor: STAFF });
+
+      const holder = new PgClient({ connectionString: process.env.DATABASE_URL });
+      await holder.connect();
+      let results: Awaited<ReturnType<typeof save>>[];
+      try {
+        await holder.query('BEGIN');
+        await holder.query('SELECT 1 FROM "Client" WHERE id = $1 FOR UPDATE', [mumId]);
+        const pending = Promise.all([save('Allergic to PPD. Desk A.'), save('Allergic to PPD. Desk B.')]);
+        for (;;) {
+          const { rows } = await holder.query<{ n: string }>(
+            `SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('tuple','transactionid') AND NOT granted`,
+          );
+          if (Number(rows[0]?.n ?? 0) >= 2) break;
+        }
+        await holder.query('COMMIT');
+        results = await pending;
+      } finally {
+        await holder.end();
+      }
+
+      const won = results.filter((r) => r.ok);
+      const lost = results.filter((r) => !r.ok);
+      expect(won).toHaveLength(1);
+      expect(lost).toHaveLength(1);
+      if (won[0]!.ok !== true || lost[0]!.ok || lost[0]!.reason !== 'stale') throw new Error('expected one win, one stale');
+      // The refusal hands back the winner's version — what is actually on file.
+      expect(lost[0]!.current?.id).toBe(won[0]!.version.id);
+      expect(await prisma.clientNoteVersion.count({ where: { clientId: mumId } })).toBe(2);
+      expect((await findClient(prisma, businessId, mumId))?.notes).toBe(won[0]!.version.text);
     });
   });
 });

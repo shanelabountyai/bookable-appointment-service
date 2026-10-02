@@ -242,7 +242,14 @@ export async function saveClientNotes(
     // Scoped the same way D-66's sink fix scopes every other write: a wrong
     // businessId must write NOTHING, not a version row under the wrong tenant
     // followed by a client update that then quietly affects zero rows.
-    const client = await tx.client.findFirst({ where: { id: args.clientId, businessId: args.businessId }, select: { id: true } });
+    //
+    // FOR UPDATE (A-158, review 31 E7): the stale check below is a read, and
+    // under READ COMMITTED two saves in the same instant both read the same
+    // `latest`, both pass, and the second silently overwrites the first. The
+    // client row lock serialises them, so the second reads the first's
+    // version and is refused as stale.
+    const [client] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Client" WHERE id = ${args.clientId} AND "businessId" = ${args.businessId} FOR UPDATE`;
     if (!client) return { ok: false, reason: 'not-found' };
 
     const latest = await tx.clientNoteVersion.findFirst({

@@ -5137,6 +5137,17 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## A-158 — two desks cannot both save the client note; Back forgets the refusal
+
+If two people saved a client's pinned note at the same moment, both used to get
+past the "someone changed this" check. The second save then silently replaced
+the first, which is how an allergy line goes missing. The save now locks the
+client record first, so the second person is refused and shown what is now on
+file. A test holds the lock and makes both saves wait, which proves the
+ordering instead of hoping for it. On the public booking page, going Back after
+a refusal no longer shows that refusal on the time list. The chosen time is also
+now announced to screen readers as selected.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

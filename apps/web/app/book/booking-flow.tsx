@@ -151,7 +151,8 @@ export function BookingFlow({ services }: { services: Service[] }) {
 
   /** A-143 — why she is back on the time list. Only the `alternatives` branch
    *  lands there with a refusal in hand; every other way onto this step clears
-   *  `result` first, so this cannot outlive the list it explains. */
+   *  `result` first (the details-step Back too, since A-158), so this cannot
+   *  outlive the list it explains. */
   const lostRace = step === 'time' && result && !result.ok ? result.message : undefined;
 
   /** Announced politely whenever the list of times changes (BOOK-01).
@@ -421,6 +422,7 @@ export function BookingFlow({ services }: { services: Service[] }) {
                   <button
                     type="button"
                     className={cn(card, 'items-center px-2 text-center', time?.at === t.at && selected)}
+                    aria-pressed={time?.at === t.at}
                     onClick={() => {
                       setTime(t);
                       // A-143. A refusal answers the time it was about; kept,
@@ -535,7 +537,16 @@ export function BookingFlow({ services }: { services: Service[] }) {
             <Button type="submit" variant="primary" className="w-full sm:w-auto" pending={pending}>
               {pending ? 'Confirming…' : 'Confirm appointment'}
             </Button>
-            <BackButton onClick={() => setStep('time')} disabled={pending} />
+            {/* A-158 (E6): Back clears the refusal too — kept, a field
+                error's message landed on the time list as "why you are
+                back here", which it is not. */}
+            <BackButton
+              onClick={() => {
+                setResult(null);
+                setStep('time');
+              }}
+              disabled={pending}
+            />
           </div>
         </form>
       )}
