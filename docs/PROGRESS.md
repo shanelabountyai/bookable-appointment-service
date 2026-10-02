@@ -6551,6 +6551,8 @@ envelope, which is correct for occupancy.
 
 ## A-157 — E5: owed rebook does not open on the absent provider's day (D-76)
 
+Commit `e559d39`.
+
 **What it built.** `listOwedRebooks` returns `rebookWithAnyone`, true when the
 search opens on her original day (that day is today or later). `/staff/owed`'s
 Rebook link then sends `provider=any`, not the stylist the salon cancelled her
