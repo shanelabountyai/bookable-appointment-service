@@ -1,7 +1,7 @@
 # Next
 
-**Phase 23 is scheduled (D-76): A-153..A-161.** Pick up: **A-160** (next row in Phase 23) — needs OQ-26 answered first. A-159 shipped (`da9865c`).
-The project closes after Phase 23. A-160 (C12) needs OQ-26 answered first.
+**Phase 23 is scheduled (D-76): A-153..A-161.** Pick up: **A-161** (barrier-based check-in race test, S) — the last row in Phase 23. A-160 shipped (`51d7ca0`, D-77).
+The project closes after Phase 23: then the closure checklist (DEMO.md refresh, brief, posts, cost review).
 
 Known ceiling, not an item yet: the public side resolves its business with
 `findFirstOrThrow()`/`findFirst()` and no `where`. `salon()` (used by A-144
@@ -23,3 +23,5 @@ Before any demo: `./scripts/refresh-hosted-demo.sh`.
 Known ceiling (A-153): `AppointmentSeries.providerId` stays the rule's
 ORIGINAL stylist; extend and the list read the latest active occurrence.
 All Extend buttons on /staff/series show pending during any one extend.
+
+Known ceiling (D-77): the undo is on the appointment panel only, not the day chip.

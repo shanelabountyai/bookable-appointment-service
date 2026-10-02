@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## A-160 — C12: undo a mis-tapped forward status move (D-77)
 
-Commit `PENDING`.
+Commit `51d7ca0`.
 
 **What it built.** `canUndo` in `core/scheduling/transitions.ts` sits beside
 the §7 table. It takes the last status move from the log and allows an undo
