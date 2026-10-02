@@ -6548,3 +6548,23 @@ envelope, which is correct for occupancy.
 
 **What it left behind.** The `worked …` phrase in the chip's accessible label
 (`view-model.ts` ~line 556) reads the same clamped array, so it follows.
+
+## A-157 — E5: owed rebook does not open on the absent provider's day (D-76)
+
+**What it built.** `listOwedRebooks` returns `rebookWithAnyone`, true when the
+search opens on her original day (that day is today or later). `/staff/owed`'s
+Rebook link then sends `provider=any`, not the stylist the salon cancelled her
+for. `/staff/book` now loads the "anyone" times on the server when it opens
+prefilled, plus open days if there are none, the same way `initialSlots` already
+worked for a named provider.
+
+**What it decided.** The boundary is `>=`, not `>`: a cancel for later today is
+still the stylist's absent day. Once the day has passed, her own stylist on a
+later day is the first ask, so the link names them again.
+
+**What it left behind.** The server-side "anyone" load also fixes the waitlist's
+`provider=any` link (A-098). Before it, a prefilled panel's first render said
+"Nobody can take that on …" without having asked. `conflicts.spec.ts` now
+asserts `provider=any`, that no offered row names Dana, and that a time is
+listed when the page arrives.
+

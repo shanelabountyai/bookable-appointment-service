@@ -7,7 +7,7 @@ import { requireStaff } from '@/lib/auth/session';
 import { readableDay } from '@/lib/customer-format';
 import { flagSentence } from '@/components/client-flag';
 import { EmptyState } from '@/components/ui/empty-state';
-import { staffSlotsFor } from '@/lib/booking/staff-actions';
+import { anyoneTimesFor, staffOpenDays, staffSlotsFor } from '@/lib/booking/staff-actions';
 import { BookingPanel } from './booking-panel';
 
 export const dynamic = 'force-dynamic';
@@ -115,6 +115,17 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
       // made the server-rendered list stricter than the write.
       ? await staffSlotsFor(provider.id, prefillServiceIds, day, prefillClient?.id || null)
       : [];
+  // A-157 — the same for "anyone". The owed list and the waitlist both open
+  // this mode prefilled, and without it the panel's first paint said "Nobody
+  // can take that" about a question nobody had asked yet.
+  const initialAnyoneTimes =
+    !walkIn && anyone && prefillServiceIds.length > 0
+      ? await anyoneTimesFor(prefillServiceIds, day, prefillClient?.id || null)
+      : [];
+  const initialOpenDays =
+    !walkIn && anyone && prefillServiceIds.length > 0 && initialAnyoneTimes.length === 0
+      ? await staffOpenDays(prefillServiceIds, day, null, prefillClient?.id || null)
+      : null;
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
@@ -176,6 +187,8 @@ export default async function StaffBookPage({ searchParams }: PageProps<'/staff/
           initialServiceIds={prefillServiceIds}
           initialClient={prefillClient}
           initialSlots={initialSlots}
+          initialAnyoneTimes={initialAnyoneTimes}
+          initialOpenDays={initialOpenDays}
           waitlistEntryId={waitlistEntryId}
         />
       )}

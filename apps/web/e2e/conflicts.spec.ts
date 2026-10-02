@@ -399,13 +399,22 @@ test.describe('owed a rebook (A-151)', () => {
     await expect(items.nth(1)).toContainText('Client 2');
     await expect(items.nth(0)).toContainText('Dana off sick');
 
-    // One tap into staff booking, prefilled with the same visit.
+    // One tap into staff booking, prefilled with the same visit — on her own
+    // day, with ANYONE (A-157). Dana is off all of it, so a link naming her
+    // opened on an empty column by construction.
     await page.getByRole('link', { name: 'Rebook Client 1' }).click();
     await expect(page).toHaveURL(/\/staff\/book\?/);
     const url = new URL(page.url());
     expect(url.searchParams.get('day')).toBe(DAY);
+    expect(url.searchParams.get('provider')).toBe('any');
     expect(url.searchParams.get('client')).toBe(clientId!);
     expect(url.searchParams.getAll('services')).toHaveLength(1);
+    // And the times are THERE on arrival — loaded with the page, not a
+    // refusal about a question nobody had asked yet.
+    const offered = page.getByRole('group', { name: 'What time? (anyone)' }).getByRole('button', { name: / with / });
+    await expect(offered.first()).toBeVisible();
+    await expect(offered.filter({ hasText: 'with Dana' })).toHaveCount(0);
+    await expect(page.getByText(/Nobody can take that on/)).toHaveCount(0);
   });
 
   test('remembers who has been rung, and passes axe', async ({ page }) => {

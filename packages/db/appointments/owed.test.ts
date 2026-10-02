@@ -112,8 +112,10 @@ describe('who is owed', () => {
       serviceNames: ['Colour', 'Cut'],
       reason: 'Dana off sick',
       startDay: '2026-06-16',
-      // Her own day is still ahead, so the search starts on it.
+      // Her own day is still ahead, so the search starts on it — with anyone,
+      // because her stylist is why it was cancelled (A-157).
       rebookFromDay: '2026-06-16',
+      rebookWithAnyone: true,
     });
   });
 
@@ -125,6 +127,17 @@ describe('who is owed', () => {
 
     expect(row?.startDay).toBe('2026-06-10');
     expect(row?.rebookFromDay).toBe('2026-06-13');
+    // A later day is her own stylist's to offer first.
+    expect(row?.rebookWithAnyone).toBe(false);
+  });
+
+  it('still asks with anyone when her original day is TODAY — the stylist is off today too', async () => {
+    const appointment = await visit({ startAt: at('2026-06-13T19:00:00-05:00') });
+    await salonCancel(appointment.id, at('2026-06-13T09:00:00-05:00'));
+
+    const [row] = await list();
+
+    expect(row).toMatchObject({ startDay: '2026-06-13', rebookFromDay: '2026-06-13', rebookWithAnyone: true });
   });
 
   it('is one row per client — her latest salon cancel — however many there were', async () => {

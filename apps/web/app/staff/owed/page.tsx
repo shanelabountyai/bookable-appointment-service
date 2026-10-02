@@ -81,15 +81,16 @@ export default async function OwedPage() {
                 )}
 
                 {/* The same visit, every service in order (VISIT-01), with the
-                    same stylist and the client attached — the client page's
-                    Rebook link, pointed at the cancelled visit instead of the
-                    last kept one. */}
+                    client attached — the client page's Rebook link, pointed at
+                    the cancelled visit instead of the last kept one. A-157:
+                    with ANYONE while it opens on her original day, the one
+                    day her stylist is known not to be working. */}
                 <LinkButton
                   href={{
                     pathname: '/staff/book',
                     query: {
                       services: row.serviceIds,
-                      provider: row.providerId,
+                      provider: row.rebookWithAnyone ? 'any' : row.providerId,
                       day: row.rebookFromDay,
                       client: row.clientId,
                     },

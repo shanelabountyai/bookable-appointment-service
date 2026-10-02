@@ -5127,6 +5127,16 @@ outer blocks carried the buffer minutes around the visit. The first block now
 starts at the visit's start and the last ends at its end. The test asserts both
 edges of both blocks, because the end alone passed against the bug.
 
+## A-157 — the owed list rebooks with whoever is free that day
+
+When the salon cancels a client because her stylist is off sick, the "owed a
+rebook" list's Rebook button used to open on that same stylist's empty day. It
+now opens with anyone free that day, so the desk can offer the original time
+with someone else. Once the day has passed, it goes back to her own stylist.
+The booking page also loads those times before it shows the page. It used to
+show "Nobody can take that" before it had checked, and the waitlist's links
+have the same fix.
+
 ## Project closure artifacts
 
 - **Demo script:** `docs/DEMO.md`. Every command in it was run once against a fresh `bookable_demo` database on 2026-09-23.

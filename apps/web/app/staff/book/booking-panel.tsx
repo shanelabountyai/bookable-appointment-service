@@ -56,6 +56,8 @@ export function BookingPanel({
   initialServiceIds = [],
   initialClient = null,
   initialSlots = [],
+  initialAnyoneTimes = [],
+  initialOpenDays = null,
   waitlistEntryId = null,
 }: {
   day: string;
@@ -74,6 +76,9 @@ export function BookingPanel({
   /** Offered times for the prefilled combination, computed server-side so a
    *  rebook renders with its list already there. */
   initialSlots?: GridTime[];
+  /** A-157 — the same, for "anyone" mode; open days only when that is empty. */
+  initialAnyoneTimes?: AnyoneChoice[];
+  initialOpenDays?: string[] | null;
   /** A-125/D-61 — the waitlist entry this booking closes, from the match
    *  row's Book link. The write ignores it unless it is still active and
    *  belongs to the client actually booked. */
@@ -91,7 +96,7 @@ export function BookingPanel({
   // one question and two would let the screen show a stale half of it.
   const [answer, setAnswer] = useState<WalkInAnswer | null>(null);
   // A-056: one row per TIME, each naming who she would get.
-  const [anyoneTimes, setAnyoneTimes] = useState<AnyoneChoice[]>([]);
+  const [anyoneTimes, setAnyoneTimes] = useState<AnyoneChoice[]>(initialAnyoneTimes);
   /**
    * A-106 — the answer to "when CAN you fit me in?", for the two refusals on
    * this panel: "Nobody can take that on Thursday" and "She is not working
@@ -102,7 +107,7 @@ export function BookingPanel({
    * question — the same reasoning A-103 wrote down for `answer`, and two
    * would let the anyone arm show the named stylist's days.
    */
-  const [openDays, setOpenDays] = useState<string[] | null>(null);
+  const [openDays, setOpenDays] = useState<string[] | null>(initialOpenDays);
   const [pick, setPick] = useState<{ providerId: string; at: string; label: string } | null>(null);
   const [loadingOptions, startLoadingOptions] = useTransition();
   const [slots, setSlots] = useState<GridTime[]>(initialSlots);

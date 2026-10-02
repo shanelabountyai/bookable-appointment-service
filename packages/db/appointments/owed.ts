@@ -56,6 +56,11 @@ export interface OwedRebook {
   /** Where the staff booking search starts: her original day, or today if
    *  that has passed. Never a day the salon cannot sell. */
   rebookFromDay: string;
+  /** A-157 (E5) — rebook with ANYONE when the search opens on her original
+   *  day. The salon cancelled because her stylist cannot work it, so opening
+   *  on that stylist's column offers an empty day by construction. Once the
+   *  day has passed, her own stylist on a later day is the right first ask. */
+  rebookWithAnyone: boolean;
 }
 
 export async function listOwedRebooks(
@@ -172,6 +177,7 @@ export async function listOwedRebooks(
         cancelledAt,
         reason,
         rebookFromDay: startDay > today ? startDay : (today as string),
+        rebookWithAnyone: startDay >= today,
       };
     });
 
