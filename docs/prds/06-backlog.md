@@ -392,7 +392,7 @@ Multi-**provider** chains → real Resend/Twilio adapters behind the existing se
 | 160 | ✅ A-158 | **E6 + E7. /book and the note save.** Clear `result` on the details-step Back; `aria-pressed` on time buttons. `saveClientNotes` takes `SELECT … FOR UPDATE` on the client first. **Guard:** an e2e for Back after a refusal; a barrier-based test of two simultaneous note saves. | A-143, A-146; D-72, D-76 | XS–S | — | 23 |
 | 161 | ✅ A-159 | **C16. "Book with *name*" copy.** The CTA reads "Book an appointment", and the line below says "Ask for {name} on the next step." Prefill stays deleted (A-054). | A-054; D-76 | XS | — | 23 |
 | 162 | ✅ A-160 | **C12 (D-77). Undo a mis-tapped forward status move.** Amends §7's transition table. The undo names who made the tap and clears the timestamp it set, so a wrong Finish stops seeding the D-64 cascade. | APPT-06, §7, D-46, D-53, D-64; D-76 | M | — | 23 |
-| 163 | ⬜ A-161 | **Barrier-based check-in race test.** `packages/db/appointments/transition.test.ts` › "lets exactly one of two simultaneous check-ins win" is not barrier-based and failed 2/6 under load on 2026-09-28 (A-143's PROGRESS entry). Rewrite to spec §4.5. | A-143; D-76 | S | — | 23 |
+| 163 | ✅ A-161 | **Barrier-based check-in race test.** `packages/db/appointments/transition.test.ts` › "lets exactly one of two simultaneous check-ins win" is not barrier-based and failed 2/6 under load on 2026-09-28 (A-143's PROGRESS entry). Rewrite to spec §4.5. | A-143; D-76 | S | — | 23 |
 
 
 

@@ -5,13 +5,12 @@
  * her teenage daughter sharing one phone number. Every lookup here has to
  * return both of them, and nothing may quietly decide they are one person.
  */
-import { Client as PgClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { instantFromIso, toDate } from '../../core/time';
 import { staffActor } from '../../core/auth';
 import { DEFAULT_REBOOK_INTERVAL_DAYS } from '../../core/clients';
 import { PrismaClient } from '../generated/client/index.js';
-import { resetDatabase } from '../testing';
+import { behindRowLock, resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
 import { transitionAppointment } from '../appointments';
@@ -262,24 +261,9 @@ describe('CLIENT-03 — the pinned note', () => {
       const save = (text: string) =>
         saveClientNotes(prisma, { businessId, clientId: mumId, text, baseVersionId: base.id, actor: STAFF });
 
-      const holder = new PgClient({ connectionString: process.env.DATABASE_URL });
-      await holder.connect();
-      let results: Awaited<ReturnType<typeof save>>[];
-      try {
-        await holder.query('BEGIN');
-        await holder.query('SELECT 1 FROM "Client" WHERE id = $1 FOR UPDATE', [mumId]);
-        const pending = Promise.all([save('Allergic to PPD. Desk A.'), save('Allergic to PPD. Desk B.')]);
-        for (;;) {
-          const { rows } = await holder.query<{ n: string }>(
-            `SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('tuple','transactionid') AND NOT granted`,
-          );
-          if (Number(rows[0]?.n ?? 0) >= 2) break;
-        }
-        await holder.query('COMMIT');
-        results = await pending;
-      } finally {
-        await holder.end();
-      }
+      const results = await behindRowLock('Client', mumId, 2, () =>
+        Promise.all([save('Allergic to PPD. Desk A.'), save('Allergic to PPD. Desk B.')]),
+      );
 
       const won = results.filter((r) => r.ok);
       const lost = results.filter((r) => !r.ok);

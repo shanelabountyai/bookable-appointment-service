@@ -13,12 +13,11 @@
  * `clientId` would leave one body in two of four chairs — the exact defect
  * A-063 exists to prevent, arriving through the door this item opens.
  */
-import { Client as PgClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { staffActor } from '../../core/auth';
 import { instantFromIso, toDate } from '../../core/time';
 import { PrismaClient } from '../generated/client/index.js';
-import { resetDatabase } from '../testing';
+import { behindRowLock, resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { NoResourceFree, bookAppointment } from '../booking';
 import { clientReliability } from '../clients';
@@ -135,25 +134,6 @@ const book = (over: Record<string, unknown> = {}) =>
 const set = (appointmentId: string, clientId: string | null, reason: string | null = null) =>
   setAppointmentClient(prisma, { businessId, appointmentId, clientId, actor: STAFF, reason });
 
-/**
- * Blocks until `count` transactions are waiting on a row lock held elsewhere.
- *
- * `pg_locks.granted = false` IS the happens-before edge, exactly as in
- * `reschedule.test.ts` — the only difference is the lock type, because this
- * file's guard is the conditional `UPDATE` itself rather than an advisory lock
- * it takes first. Polling a real database condition, never a timer: a `sleep`
- * here would reintroduce the flakiness the barrier exists to remove, and
- * CLAUDE.md is explicit that a flaky race test is a broken race test.
- */
-async function waitForRowLockWaiters(client: PgClient, count: number): Promise<void> {
-  for (;;) {
-    const { rows } = await client.query<{ n: string }>(
-      `SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('tuple','transactionid') AND NOT granted`,
-    );
-    if (Number(rows[0]?.n ?? 0) >= count) return;
-  }
-}
-
 const eventsOf = (appointmentId: string) =>
   prisma.appointmentEvent.findMany({ where: { appointmentId, type: 'client_changed' } });
 
@@ -251,26 +231,13 @@ describe('the walk-in who rebooks at the till (BOOK-04)', () => {
   it('refuses the second of two desks naming the same walk-in', async () => {
     const appointment = await book();
 
-    const holder = new PgClient({ connectionString: process.env.DATABASE_URL });
-    await holder.connect();
-
-    let results: PromiseSettledResult<unknown>[];
-    try {
-      await holder.query('BEGIN');
-      // Both calls will read the null client freely (MVCC) and then queue
-      // behind this on their `UPDATE`. Without it they simply run in
-      // sequence and the second one legitimately succeeds as a CHANGE — which
-      // is right, and is not the race being asserted.
-      await holder.query('SELECT 1 FROM "Appointment" WHERE id = $1 FOR UPDATE', [appointment.id]);
-
-      const pending = Promise.allSettled([set(appointment.id, sarahId), set(appointment.id, otherSarahId)]);
-      await waitForRowLockWaiters(holder, 2);
-      await holder.query('COMMIT');
-
-      results = await pending;
-    } finally {
-      await holder.end();
-    }
+    // Both calls will read the null client freely (MVCC) and then queue
+    // behind the lock on their `UPDATE`. Without it they simply run in
+    // sequence and the second one legitimately succeeds as a CHANGE — which
+    // is right, and is not the race being asserted.
+    const results = await behindRowLock('Appointment', appointment.id, 2, () =>
+      Promise.allSettled([set(appointment.id, sarahId), set(appointment.id, otherSarahId)]),
+    );
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.find((r) => r.status === 'rejected')?.reason).toBeInstanceOf(ClientAlreadyChanged);

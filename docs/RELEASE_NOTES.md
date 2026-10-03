@@ -5137,6 +5137,17 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## A-161 — the check-in race test now forces the race it tests
+
+Two people at the front desk tapping Check in at once must produce one
+check-in and one log entry. The test for that used to fire both calls and
+hope they overlapped. Under load they often didn't, and the test failed for a
+reason that wasn't a bug. It now holds the row lock until Postgres reports
+both writes waiting on it, then lets go. Both writers have read the same state
+by that point, so the test runs the same interleaving every time. With the
+guard removed it fails. Two other race tests had their own copy of the same
+barrier and now share this one.
+
 ## A-160 — a mis-tapped Finish can be taken back
 
 Check in, Start and Finish sit a thumb-width apart. A wrong Finish used to

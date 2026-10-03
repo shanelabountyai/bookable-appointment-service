@@ -1,7 +1,9 @@
 # Next
 
-**Phase 23 is scheduled (D-76): A-153..A-161.** Pick up: **A-161** (barrier-based check-in race test, S) — the last row in Phase 23. A-160 shipped (`51d7ca0`, D-77).
-The project closes after Phase 23: then the closure checklist (DEMO.md refresh, brief, posts, cost review).
+**The backlog is empty. Phase 23 closed with A-161.** Pick up: **project closure**
+(global CLAUDE.md, *Definition of done*). The four deliverables: `docs/DEMO.md` refresh
+(run every command in it), the exec brief (`exec-brief` skill), the LinkedIn posts in
+the Ledger, and the cost review. Record every artifact URL in `docs/RELEASE_NOTES.md`.
 
 Known ceiling, not an item yet: the public side resolves its business with
 `findFirstOrThrow()`/`findFirst()` and no `where`. `salon()` (used by A-144

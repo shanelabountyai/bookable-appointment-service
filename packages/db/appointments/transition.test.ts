@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { instantFromIso, toDate } from '../../core/time';
 import { customerTokenActor, staffActor } from '../../core/auth';
 import { PrismaClient } from '../generated/client/index.js';
-import { resetDatabase } from '../testing';
+import { behindRowLock, resetDatabase } from '../testing';
 import { createWeeklyWindow } from '../availability';
 import { bookAppointment } from '../booking';
 import { computeDaySlots } from '../scheduling';
@@ -401,7 +401,14 @@ describe('two people at the front desk', () => {
     const attempt = () =>
       transitionAppointment(prisma, { businessId, appointmentId: appointment.id, to: 'checked_in', actor: STAFF, now: TEN_AM });
 
-    const results = await Promise.allSettled([attempt(), attempt()]);
+    // A-161 (spec §4.5). Both read `booked` and both reach the conditional
+    // `UPDATE` before either writes — enforced, not sampled. The bare
+    // `Promise.allSettled` this replaces usually ran them in sequence, so the
+    // loser was refused by the transition table (checked_in → checked_in) or
+    // by the guard depending on scheduling, and failed 2/6 under load.
+    const results = await behindRowLock('Appointment', appointment.id, 2, () =>
+      Promise.allSettled([attempt(), attempt()]),
+    );
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
 
     const loser = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;

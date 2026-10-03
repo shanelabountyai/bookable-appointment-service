@@ -6570,6 +6570,33 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## A-161 — barrier-based check-in race test (D-76)
+
+Commit `PENDING`.
+
+**What it built.** "lets exactly one of two simultaneous check-ins win" now
+runs behind `behindRowLock` (`packages/db/testing/row-lock.ts`). The helper
+takes the appointment's row lock on its own connection, starts both
+check-ins, and releases the lock only once `pg_locks` shows both queued on
+it. Both have read `booked` by then, so the loser is always refused by the
+conditional `UPDATE`'s guard (`AppointmentMovedFirst`). Under load it used to
+start after the winner committed and was refused by the transition table
+instead (`TransitionRefused`), which is what failed 2/6 on 2026-09-28. The
+same hand-rolled barrier lived in `attach-client.test.ts` and
+`clients.test.ts`, and both now call the helper (−41 lines).
+
+**What it decided.** Nothing new. Spec §4.5's principle (specify the
+interleaving, don't sample it) with `pg_locks.granted = false` as the edge,
+as the sibling tests already did. The `pg_locks` count is database-wide, and
+that is sound only because `fileParallelism: false`. The helper's header says
+so.
+
+**What it left behind.** Proof: 15 consecutive runs of the three files were
+green, and with `status: from` removed from the guard the test fails, so it
+can still catch the bug. `reschedule.test.ts` keeps its own advisory-lock
+waiter on purpose: it waits on a different lock type with a key filter, and
+it is not this shape.
+
 ## A-160 — C12: undo a mis-tapped forward status move (D-77)
 
 Commit `51d7ca0`.
