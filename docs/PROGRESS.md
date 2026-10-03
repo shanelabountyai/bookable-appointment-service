@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## A-161 — barrier-based check-in race test (D-76)
 
-Commit `PENDING`.
+Commit `a4fcb75`.
 
 **What it built.** "lets exactly one of two simultaneous check-ins win" now
 runs behind `behindRowLock` (`packages/db/testing/row-lock.ts`). The helper
