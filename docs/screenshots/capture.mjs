@@ -80,6 +80,12 @@ await page.waitForLoadState('networkidle');
 // Tomorrow is the dense day: the override lane, the PPD note, the flags.
 await page.getByRole('link', { name: /Next/ }).first().click();
 await page.waitForURL(/day=/);
+await page.waitForLoadState('networkidle');
+// The salon is closed Sundays: walk on to the next day with anyone working.
+for (let i = 0; i < 2 && (await page.getByText('off today').count()) === 4; i++) {
+  await page.getByRole('link', { name: /Next/ }).first().click();
+  await page.waitForLoadState('networkidle');
+}
 await shot('06-day-tomorrow');
 
 const ppd = page.locator('a[href^="/staff/appointments/"]').filter({ hasText: 'Tom Byrne' }).first();

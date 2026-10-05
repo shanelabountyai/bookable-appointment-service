@@ -1,6 +1,6 @@
 # Bookable — demo script
 
-Every command below was run once against a fresh database on 2026-09-23 (seed 20 s, build ~1 min, all 19 staff routes answered 200 after sign-in, the running-late scene was set and cleared live). Anything you see on screen that differs from this file, the file is wrong — fix it.
+Every command below was run once against a fresh database on 2026-10-03 (seed and build ~10 min on a loaded laptop, the public pages and all 12 staff routes below answered 200 after sign-in, the running-late scene was set and cleared live, the 13 screenshots were retaken). Anything you see on screen that differs from this file, the file is wrong — fix it.
 
 **What this is:** appointment scheduling for a sample 4-chair salon, "Shear Genius" (Dana, Priya, Marcus, Tess). Time zone America/Chicago. Everything is synthetic.
 
@@ -35,7 +35,7 @@ npx dotenv -e .env.local -- npm run start -w apps/web      # serves on :3300
 
 `<user>` is whatever your local `DATABASE_URL` in `.env.test` uses (`grep DATABASE_URL .env.test`). Exporting `DATABASE_URL` first matters: `dotenv` never overrides a variable that is already set, so this is what points the app at `bookable_demo` and not `bookable_dev`.
 
-**The seed prints** `4 providers, 8 services, ~719 appointments, 13 clients … 3 on the waitlist … 1 double-booked by override`. If the waitlist or override counts are 0, the seed did not run in full — re-create the database.
+**The seed prints** `4 providers, 8 services, ~780 appointments, 13 clients … 3 on the waitlist … 1 double-booked by override`. The appointment count moves a little with each seed date. If the waitlist or override counts are 0, the seed did not run in full — re-create the database.
 
 ### Accounts and where each credential lives
 
@@ -66,9 +66,9 @@ Use the owner account. Lands on `/staff/day`, today's grid: four columns, one ch
 
 ![Today's day grid](screenshots/04-day-today.png)
 
-### 3. The day grid — `/staff/day`, then `?day=2026-09-24` (Thursday)
-Thursday is the dense day. Point at:
-- **Tom Byrne, 10:00** — `⚑ Allergic to PPD — patch test before any colour.` The note travels with the client onto every chip.
+### 3. The day grid — `/staff/day`, then the next day the salon is open
+The salon is closed Sunday and Monday (the grid reads "off today" in every column), so from a weekend press **Next** until it fills — Tuesday if you seeded on a Saturday. That is the dense day. Point at:
+- **Tom Byrne** — `⚑ Allergic to PPD — patch test before any colour.` The note travels with the client onto every chip.
 - **Dev Iyer, 09:00** — `⚑ OVR` / `OVERRIDE`: a double-booking the desk chose on purpose, drawn in its own lane beside Leo Dunn. The database constraint is never lied to (a zero-width blocked range plus the remembered original), and the grid still shows the true collision.
 - **Nadia Rahman, 11:00 / Jordan Fairweather-Okonkwo, 09:00 (Tess)** — `⚑ 1 late cancel`. Dev Iyer also carries `⚑ 1 no-show`. **Say:** the flag is the half the desk acts on, and a test compares `scrollWidth` with `clientWidth` because a clipped line passes every other assertion.
 
@@ -97,13 +97,13 @@ Dev Iyer, Nadia Rahman, Tom Byrne waiting, with acceptable providers, date windo
 ![Waitlist](screenshots/09-waitlist.png)
 
 ### 7. Call-down — `/staff/call-down`
-Tomorrow's unconfirmed bookings (34 of 36 still to ring). Buttons: **No answer / Left a message / Confirmed**. **Say:** marking a call sends nothing; it records that a person picked up the phone. A no-show tomorrow is nobody's default.
+The next day's unconfirmed bookings (most still to ring; **empty on a Saturday seed, because tomorrow is Sunday** — use `?day=` on a weekday, or demo this one Monday–Thursday). Buttons: **No answer / Left a message / Confirmed**. **Say:** marking a call sends nothing; it records that a person picked up the phone. A no-show tomorrow is nobody's default.
 
 
 ![Call-down](screenshots/10-call-down.png)
 
 ### 8. Still open — `/staff/unfinished`
-128 past appointments nobody closed out, with **Came / Didn't come** and the dollar figure the week's numbers cannot see.
+About 145 past appointments (last 21 days) nobody closed out, with **Came / Didn't come** and the dollar figure the week's numbers cannot see.
 
 
 ![Still open](screenshots/11-unfinished.png)
@@ -115,7 +115,10 @@ Bookings, cancellations, no-shows by provider, worked vs booked utilization. Dri
 ![Dashboard and lapsed clients](screenshots/12-dashboard.png)
 ![Dashboard and lapsed clients](screenshots/13-lapsed.png)
 
-### 10. The reminder job — from a terminal
+### 10. The desk lists added since the first script — `/staff/owed`, `/staff/series`, `/staff/conflicts`
+**Owed visits** lists clients the salon cancelled on (D-74; empty until one is cancelled from the conflicts screen). **Series ending** lists standing bookings about to run out, with **Extend** (D-75; the seed has no series, so it is empty until one is booked). On any appointment panel, a forward tap (check in, start, finish) shows **Undo** for ten minutes (D-77). **Say:** an undo is a correction with the name of who made it.
+
+### 11. The reminder job — from a terminal
 ```bash
 C=$(grep '^CRON_SECRET=' .env.local | cut -d= -f2-)
 curl -s -H "Authorization: Bearer $C" localhost:3300/api/jobs/reminders   # 200, JSON counts
@@ -123,7 +126,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:3300/api/jobs/reminders  # 40
 ```
 Returns `{"reminders":{"due":…},"dispatch":{…}}`. **Say:** the route refuses to run open, same reasoning as `SESSION_SECRET`.
 
-### 11. The rules underneath (optional, if the audience is technical)
+### 12. The rules underneath (optional, if the audience is technical)
 - `docs/prds/07-decisions.md` overrides the PRDs; nothing settled is re-opened.
 - The no-overlap invariant is a Postgres exclusion constraint (SQLSTATE `23P01`), not application code.
 - CI runs the suite under `TZ=UTC` and `TZ=Pacific/Kiritimati` and expects identical results.
@@ -149,6 +152,7 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 | Hosted grid is empty | The hosted book is more than about ten days old | `./scripts/refresh-hosted-demo.sh` |
 | Hosted site keeps asking for a password | That's the shared demo gate, not staff sign-in | Any username + `DEMO_ACCESS_PASSWORD` from `.env.production.local` |
 | `EADDRINUSE :3300` | A previous server is still up | `lsof -ti :3300 \| xargs kill` |
+| Call-down or day view looks empty on a weekend | The salon is closed Sunday and Monday; "tomorrow" has no bookings | Press **Next** on the day view, or open `?day=` for a weekday |
 | Running-late panel shows nothing to project | Dana has no appointments later today | Demo on a weekday before ~17:00 |
 | Walk-in refused for ~15 min after a claim is cleared | See concession 2 below | Tap **Back on time** |
 | Tess's column is cut off on a laptop screen | The grid scrolls sideways inside its own box, and the page itself doesn't | Scroll the grid, or pick one stylist with the filter buttons |
@@ -166,7 +170,7 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 8. **Waitlist matching is oldest-first**, and **D-54 widens a column on heavy cancellation days.** Both open since Phase 15; not built.
 9. **Deliberately not built:** holds, automated offers (OQ-4), a staleness alarm, a per-client stored delay.
 10. **A demo deployment, not production.** The hosted copy has no backups, monitoring or on-call, and sits behind one shared password. There is no real client data; every name, phone number and dollar figure is synthetic.
-11. **Reminders:** two of the seeded reminders are left by the skipped band on purpose — the never-reminded screen is not empty on a fresh install.
+11. **Reminders:** one of the seeded reminders is left by the skipped band on purpose — the never-reminded screen is not empty on a fresh install.
 
 ## Reset
 
