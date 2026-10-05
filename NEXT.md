@@ -1,29 +1,13 @@
 # Next
 
-**The backlog is empty. Phase 23 closed with A-161.** Pick up: **project closure**
-(global CLAUDE.md, *Definition of done*). The four deliverables: `docs/DEMO.md` refresh
-(run every command in it), the exec brief (`exec-brief` skill), the LinkedIn posts in
-the Ledger, and the cost review. Record every artifact URL in `docs/RELEASE_NOTES.md`.
+**Project closed 2026-10-05.** Nothing is queued. All four closure deliverables exist:
+DEMO.md (re-run 2026-10-03), exec brief (version 3, https://claude.ai/artifact/AUve67hviR4hkQ6AH9t6nq),
+LinkedIn drafts 49-53 in the Ledger (written at the first closure; no new ones this pass),
+cost review (D-78).
 
-Known ceiling, not an item yet: the public side resolves its business with
-`findFirstOrThrow()`/`findFirst()` and no `where`. `salon()` (used by A-144
-for the manage-page phone) is another caller of the same assumption. Replace
-before a second business exists.
+**Open once:** deploy the daily cron — trigger the `main-manual` hook (D-71) so `vercel.json`
+reaches production, then re-measure Neon (`neonctl projects get bold-base-98485145 --org-id org-morning-smoke-06224724`).
 
-Known ceiling (D-74): a salon cancel from the appointment panel is not flagged,
-so it never reaches /staff/owed.
+**Before any demo:** `migrate:deploy` against the Neon demo DB if migrations landed since the last deploy, THEN `./scripts/refresh-hosted-demo.sh` (the refresh empties the book before copying, so a stale schema leaves it empty). Salon is closed Sun/Mon: demo from Tuesday.
 
-Known ceiling (D-73): "changed since print" does not count a row moved OFF a
-column or cancelled after the print. (Review 31 N1 adds: nor a services or
-client change in place — a candidate, not scheduled.)
-
-Known ceilings (D-75): no seeded series, so `/staff/series` is empty in the
-demo until one is booked. Series ended before A-152 carry no `endedAt`.
-
-Before any demo: `./scripts/refresh-hosted-demo.sh`.
-
-Known ceiling (A-153): `AppointmentSeries.providerId` stays the rule's
-ORIGINAL stylist; extend and the list read the latest active occurrence.
-All Extend buttons on /staff/series show pending during any one extend.
-
-Known ceiling (D-77): the undo is on the appointment panel only, not the day chip.
+Known ceilings are recorded in docs/prds/07-decisions.md (D-73..D-77) and review 31.
