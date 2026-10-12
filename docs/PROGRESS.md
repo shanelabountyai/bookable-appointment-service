@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-011 + M-012 + M-013 — `prepare_reschedule`, `prepare_cancel`, `prepare_status_change`, `prepare_waitlist_entry`; race and parity (MCP PRD §7, §8, §9.5–9.6)
 
-Commit `__SHA__`.
+Commit `6f60503`.
 
 **What it built.** Four more `WriteAction`s, all through `commit_proposal`.
 `prepare_reschedule(appointment_id, start, provider_id?)`: `canReschedule`
