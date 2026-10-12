@@ -75,6 +75,7 @@ const TABLES = [
   'Resource',
   'ResourceType',
   'Provider',
+  'McpToken',
   'StaffUser',
   'Business',
   // Infrastructure, no foreign keys — but a counter left at its limit by one

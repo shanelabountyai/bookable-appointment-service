@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import { listAiAccess } from '@/lib/auth/mcp-token-actions';
 import { listPeople } from '@/lib/auth/people-actions';
+import { AiAccess } from './ai-access';
 import { PeopleList } from './people-list';
 
 export default async function PeoplePage() {
-  const { people, canSetPins, canSetCredentials } = await listPeople();
+  const [{ people, canSetPins, canSetCredentials }, tokens] = await Promise.all([listPeople(), listAiAccess()]);
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-8">
@@ -23,6 +25,8 @@ export default async function PeoplePage() {
         </p>
       </div>
       <PeopleList people={people} canSetPins={canSetPins} canSetCredentials={canSetCredentials} />
+      {/* M-002: owner only — `listAiAccess` returns null for anybody else, and the actions refuse regardless. */}
+      {tokens ? <AiAccess people={people} tokens={tokens} /> : null}
     </main>
   );
 }

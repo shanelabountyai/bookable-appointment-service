@@ -5137,6 +5137,17 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-002 — a credential for the assistant, issued to a person
+
+An owner can now hand an AI assistant access on behalf of one named staff
+member, from the same screen that manages sign-ins and PINs. The token is
+shown once and never again: the database keeps only its hash. Revoke it, or
+take the person off the roster, and it stops working on the very next call —
+there is no "act as" and no shared desk token, because nobody shares an AI
+client login the way four people share a terminal. The browser test proves
+the token on the screen is the real credential by resolving it through the
+same function the server will use, and that it never reappears in the page.
+
 ## M-001 — Bookable grows an MCP server
 
 The salon's booking rules can now be reached by an AI assistant acting for a

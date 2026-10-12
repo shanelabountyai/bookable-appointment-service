@@ -215,6 +215,7 @@ model Business {
   outbox        NotificationOutbox[]
   waitlist      WaitlistEntry[]
   manageTokens  ManageToken[]
+  mcpTokens     McpToken[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -255,10 +256,43 @@ model StaffUser {
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @db.Timestamptz(3)
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mcpTokens McpToken[]
 
   @@unique([businessId, email])
   @@index([businessId])
+}
+
+/// M-002 (MCP PRD §5). A bearer credential for ONE named staff member, used by
+/// an AI client acting for them. One token = one person: the desk PIN (D-33)
+/// exists because four people share a terminal; nobody shares an AI client
+/// login, so there is no "act as" over MCP (OQ-M2). Shown once, stored hashed,
+/// revocable, with a last-used time so the owner can see which are live.
+/// Resolution also requires the StaffUser to be `active`, so taking somebody
+/// off the roster revokes every token they hold on the next call.
+model McpToken {
+  id          String @id @default(cuid())
+  businessId  String
+  staffUserId String
+  /// SHA-256 of the bearer token. The token itself is never stored.
+  tokenHash   String @unique
+  /// What the owner called it ("Sam's laptop"), so revocation has a name.
+  label       String
+  /// The owner who issued it (A-037: every credential names who handed it out).
+  issuedById  String
+
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Restrict, not Cascade: staff are deactivated, never deleted (StaffUser's
+  /// own comment), and a token row outliving its person would be a bug worth a
+  /// loud failure rather than a silent clean-up.
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([staffUserId])
 }
 
 // ─────────────────────────── catalog ───────────────────────────

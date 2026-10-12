@@ -6570,6 +6570,36 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-002 — `McpToken`: hashed, revocable, last-used; owner issues and revokes on /staff/people (MCP PRD §5)
+
+Commit `__SHA__`.
+
+**What it built.** `McpToken` (migration `20261012120000_mcp_token`): one row
+per credential, `tokenHash @unique` (SHA-256, the manage link's hash), `label`,
+`issuedById`, `lastUsedAt`, `revokedAt`; `staffUserId` is `onDelete: Restrict`
+because staff are deactivated, never deleted. `packages/db/mcp/tokens.ts`:
+`issueMcpToken` (refuses a blank label, a person off the roster, or an id from
+another business), `revokeMcpToken` (idempotent, keeps the first time),
+`listMcpTokens`, and `resolveMcpToken` — token → `{tokenId, businessId,
+staffUserId, staffName, role}` or null for unknown, revoked, or a deactivated
+person; touches `lastUsedAt`. The token is `bk_mcp_` + 256 random bits
+base64url, so a leaked one is recognisable in a log. On `/staff/people` an
+owner sees an **AI access** section: issue for an active person with a label,
+the token rendered once in an `<output>`, a list with last-used (worded in the
+salon's zone server-side, never `toLocaleString` in the browser) and Revoke.
+`listAiAccess` returns `null` for non-owners and the section is not drawn;
+`issueAiAccess`/`revokeAiAccess` call `requireOwner` regardless.
+
+**What it decided.** Nothing outside the PRD's defaults (OQ-M2: one token per
+person). `McpToken` is added to `resetDatabase`'s table list.
+
+**What it left behind.** `tokens.test.ts` seeds a SECOND business and asserts
+issue/revoke/list are scoped to one. `ai-access.spec.ts`: the token shown in
+the UI resolves through `resolveMcpToken` to the owner (so the screen hands
+out the real credential), is absent from the page HTML after reload, revoke
+kills it on the next call, and a `staff`-role session has no section. Axe in
+both schemes with a token and a row on screen.
+
 ## M-001 — `apps/mcp` workspace, stdio server, `list_services` end-to-end (MCP PRD)
 
 Commit `a128534`.

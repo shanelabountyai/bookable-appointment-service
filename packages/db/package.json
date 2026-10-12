@@ -24,6 +24,7 @@
     "./clients": "./clients/index.ts",
     "./day": "./day/index.ts",
     "./errors": "./errors.ts",
+    "./mcp": "./mcp/index.ts",
     "./notifications": "./notifications/index.ts",
     "./rate-limit": "./rate-limit.ts",
     "./reports": "./reports/index.ts",
