@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-016 — closure: README for a hiring manager, DEMO.md §13, STATUS.md, the audit line (MCP PRD)
 
-Commit `__SHA__`.
+Commit `87e5786`.
 
 **What it built.** `apps/mcp/README.md` (what it does / how it is built /
 how it is tested / running it / honest limits). `docs/DEMO.md` §13: issue a
