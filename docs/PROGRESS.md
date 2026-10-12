@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-006 — `get_day`, `get_appointment` with `allowed_actions` (MCP PRD §7)
 
-Commit `__SHA__`.
+Commit `42be9f1`.
 
 **What it built.** `get_day(day, provider_id?)` reads `loadDayView` — the
 grid's own read model — and returns a column per stylist: hours, `closed`,
