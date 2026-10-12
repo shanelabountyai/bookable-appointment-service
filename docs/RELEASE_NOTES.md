@@ -5137,6 +5137,18 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-001 — Bookable grows an MCP server
+
+The salon's booking rules can now be reached by an AI assistant acting for a
+signed-in staff member, starting with one tool: the service list. The design
+rule that matters is in how tools are registered — each one declares which
+roles may see it, and the server builds the tool list per caller. A tool the
+caller's role should not have is simply not there, because a model will call
+anything it can see. Every tool answers with a one-line summary and
+structured data a client can validate, and tests talk to the server through
+a real MCP client over an in-memory transport rather than calling functions
+directly. Spec: `docs/prds/mcp/00-mcp-prd.md`; decisions: `DECISIONS.md`.
+
 ## A-161 — the check-in race test now forces the race it tests
 
 Two people at the front desk tapping Check in at once must produce one

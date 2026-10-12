@@ -1,0 +1,16 @@
+{
+  "name": "@bookable/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing Bookable's desk actions to an AI client on behalf of a signed-in staff member. Spec: docs/prds/mcp/00-mcp-prd.md.",
+  "scripts": {
+    "start": "tsx src/stdio.ts"
+  },
+  "dependencies": {
+    "@bookable/core": "*",
+    "@bookable/db": "*",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "^4.3.6"
+  }
+}

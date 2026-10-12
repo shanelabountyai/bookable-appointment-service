@@ -1,13 +1,15 @@
 import tseslint from 'typescript-eslint';
 import { noAxisCrossingRules } from './eslint-rules/no-axis-crossing.mjs';
 
-// Covers packages/**. apps/web has its own eslint.config.mjs (next lint needs
-// its own plugin wiring) — root `npm run lint` runs both.
+// Covers packages/** and apps/mcp/**. apps/web has its own eslint.config.mjs
+// (next lint needs its own plugin wiring) — root `npm run lint` runs both.
+// apps/mcp gets the full axis-crossing ban: it is where the model's wall-time
+// strings arrive, and every one of them must go through packages/core/time.
 export default tseslint.config(
   {
     ignores: [
       '**/node_modules/**',
-      'apps/**',
+      'apps/web/**',
       'packages/db/prisma/migrations/**',
       // Generated Prisma client — not ours to lint, and gitignored.
       'packages/db/generated/**',
@@ -15,7 +17,7 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
-    files: ['packages/**/*.ts'],
+    files: ['packages/**/*.ts', 'apps/mcp/**/*.ts'],
     rules: {
       ...noAxisCrossingRules,
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
@@ -32,7 +34,7 @@ export default tseslint.config(
     // Temporal at the boundary ONLY (CLAUDE.md, spec §5). The engine core is
     // integer epoch-millis arithmetic — DST-proof by construction and
     // library-free. packages/core/time is the sole exception.
-    files: ['packages/**/*.ts'],
+    files: ['packages/**/*.ts', 'apps/mcp/**/*.ts'],
     ignores: ['packages/core/time/**'],
     rules: {
       'no-restricted-imports': [

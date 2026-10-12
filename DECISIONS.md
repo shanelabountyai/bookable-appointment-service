@@ -1,0 +1,15 @@
+# Decisions — Bookable MCP server (M-track)
+
+Decisions the MCP PRD (`docs/prds/mcp/00-mcp-prd.md`) does not answer, taken
+by the builder with the recommended default and kept here so they can be
+overruled. Bookable's own log is `docs/prds/07-decisions.md`; it still wins
+over anything here that touches the product. Numbered `M-D`.
+
+| # | Question | Decision | Why / restore |
+|---|---|---|---|
+| M-D1 | How is the channel (`desk`/`mcp`) recorded on `AppointmentEvent` (OQ-M1)? | **Optional `channel` on the core `Actor` type, and a `channel` column on `AppointmentEvent` defaulting to `desk`. MCP builds its actor with `channel: 'mcp'`; every existing writer is untouched.** Lands with M-009. | One migration, no reader changes. The alternative — a `channel` parameter on every domain function — is a signature change in a dozen places for one caller. |
+| M-D2 | Where does the M-track log its decisions? | **This file, at the repo root**, cross-referenced from `07-decisions.md` when a decision touches the product (M-D1 will). | The brief asked for `DECISIONS.md`; the product's log keeps its D-numbers unbroken. |
+| M-D3 | What is the gate per step? | **lint + typecheck + unit suite + `next build` before every commit. The full e2e sweep only on steps that change `apps/web` (M-002, M-014) and once at the end.** Push after each step and watch CI. | The MCP server is never rendered by the web app; a 9-minute browser sweep per step would test nothing it changed. CLAUDE.md's gate stays the rule for anything touching `apps/web`. |
+| M-D4 | Hand-roll JSON-RPC or take the SDK? | **`@modelcontextprotocol/sdk` (pinned 1.32.1) + `zod` 4.** | Hand-rolling is more code and gets the capability negotiation subtly wrong. First new runtime dependency since the scaffold; it lives only in `apps/mcp`. |
+| M-D5 | Does `list_services` show prices to `staff`, given D-36 (owner is the only role that sees money)? | **Yes.** The desk booking panel (`/staff/book`) already shows every stylist the price list; D-36's "money" is the dashboard and reports. | MCP mirrors the desk, not a stricter version of it. `get_week_report` stays owner-only. |
+| M-D6 | How does M-001 run before tokens exist (M-002/M-003)? | **`BOOKABLE_MCP_STAFF_ID` env var, resolved with `findStaffById`, marked M-001 ONLY in `context.ts`.** M-003 deletes it. | A staff id is not a credential; it is removed the moment a credential exists, not left as a fallback. |

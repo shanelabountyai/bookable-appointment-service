@@ -131,8 +131,8 @@ Domain errors (`BookingRejected(field, message)`, `SlotTaken`, transition refusa
 
 | Item | What | Size | Milestone |
 |---|---|---|---|
-| M-000 | Commit this PRD; answer §11 | S | 1 Foundation |
-| M-001 | `apps/mcp` workspace, SDK pinned, stdio server with `list_services` end-to-end | S | 1 |
+| ✅ M-000 | Commit this PRD; answer §11 (defaults taken; see `DECISIONS.md` M-D1..M-D6) | S | 1 Foundation |
+| ✅ M-001 | `apps/mcp` workspace, SDK pinned, stdio server with `list_services` end-to-end | S | 1 |
 | M-002 | `McpToken` (hashed, revocable, last-used) + owner issue/revoke on the staff page | M | 1 |
 | M-003 | Token → actor/business/role context; role-built `tools/list`; tenancy + revocation tests | M | 1 |
 | M-004 | Error envelope + domain-error mapping + wall-time parsing (§6) | M | 1 |

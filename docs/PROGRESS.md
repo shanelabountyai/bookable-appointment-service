@@ -6570,6 +6570,35 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-001 — `apps/mcp` workspace, stdio server, `list_services` end-to-end (MCP PRD)
+
+Commit `__SHA__`.
+
+**What it built.** A third workspace, `apps/mcp`, on `@modelcontextprotocol/sdk`
+1.32.1 + zod 4. `createBookableServer(ctx, deps)` builds an `McpServer` for ONE
+caller and registers only the tools whose `roles` include the caller's role,
+so an owner-only tool is absent from `tools/list` rather than refused (PRD §5).
+Every tool is a `ToolDef` (`tools/define.ts`): name, roles, description, zod
+input/output shapes, annotations, and a handler that gets `deps.now()` instead
+of the clock. `stdio.ts` is the entry a Claude Desktop/Code config launches;
+it writes diagnostics to stderr only, since stdout is the protocol channel.
+`list_services` returns active services with `duration_minutes`, `price_cents`
+and `bookable_online`. Root `tsconfig`, `vitest` and `eslint` now cover
+`apps/mcp` — including the full axis-crossing ban, because this is where the
+model's wall-time strings arrive.
+
+**What it decided.** `DECISIONS.md` (repo root) opens with M-D1..M-D6: the
+channel goes on the `Actor` type (M-D1), gate per step (M-D3), SDK over
+hand-rolled JSON-RPC (M-D4), prices visible to staff as on the desk (M-D5),
+and a dev-only `BOOKABLE_MCP_STAFF_ID` resolver that M-003 deletes (M-D6).
+
+**What it left behind.** `server.test.ts` drives a real `Client` over
+`InMemoryTransport` (`testing/connect.ts`), so the assertions are what a
+client sees — listing, annotations, schema-validated `structuredContent`.
+Smoke-tested over stdio against the seeded test DB: `initialize` then
+`tools/call list_services` returned 8 services. Pricing for the role split
+and the error envelope are M-003/M-004.
+
 ## A-161 — barrier-based check-in race test (D-76)
 
 Commit `a4fcb75`.

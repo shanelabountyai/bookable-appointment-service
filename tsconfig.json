@@ -13,6 +13,6 @@
     "types": ["vitest/globals"],
     "noEmit": true
   },
-  "include": ["packages/**/*.ts"],
+  "include": ["packages/**/*.ts", "apps/mcp/**/*.ts"],
   "exclude": ["node_modules"]
 }
