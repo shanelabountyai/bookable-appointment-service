@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-015 — model eval harness and scenarios (MCP PRD §9.7)
 
-Commit `__SHA__`.
+Commit `cb9cb07`.
 
 **What it built.** `apps/mcp/eval/`: `model.ts` (a `Model` interface;
 `ClaudeModel` on `@anthropic-ai/sdk` with the manual tool-use loop's shapes;
