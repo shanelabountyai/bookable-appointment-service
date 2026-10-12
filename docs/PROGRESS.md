@@ -6570,6 +6570,38 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-004 — error envelope, domain-error mapping, wall-time parsing, rate limit (MCP PRD §5, §6)
+
+Commit `__SHA__`.
+
+**What it built.** `errors.ts`: the §6 envelope plus `mapDomainError` — ONE
+module turning `packages/db` errors into codes: `SlotTaken`/`NoResourceFree`
+→ `SLOT_TAKEN`; `SlotNotOffered` by its reasons (all hours-ish →
+`OUTSIDE_HOURS`, any booking/buffer/chair overlap → `SLOT_TAKEN`, a DST
+reason → `AMBIGUOUS_TIME`); `BookingRejected('serviceIds', not qualified)`
+and `'toProviderId'` → `NOT_QUALIFIED` → `list_providers`;
+`TransitionRefused`/`RescheduleRefused` → `INVALID_TRANSITION` →
+`get_appointment`; `AppointmentMovedFirst`/`AppointmentAlreadyMoved` →
+`PROPOSAL_STALE`; unknown-id rejections → `NOT_FOUND` with the tool that
+hands out that kind of id; anything else → `INVALID_ARGUMENT` with its field;
+not ours → rethrown. `ToolFailure` lets a handler throw an envelope. `time.ts`:
+`parseDay`, `parseInstant` (wall time in the salon's zone or ISO with offset;
+gap and overlap refused naming both readings as ISO), `timeOut` → `{label,
+iso}` with the zone abbreviation only on an ambiguous label (FB-5). The
+server wraps every call: refresh → role → `consumeRateLimit`
+(`mcp:read:<token>` 60/min, `mcp:commit:<token>` 10/min, keyed off
+`readOnlyHint`) → handler → `mapDomainError`.
+
+**What it decided.** M-D8.
+
+**What it left behind.** `errors.test.ts`: one test per code, built from the
+real error classes; `OUTSIDE_HOURS` cannot swallow an overlap. `time.test.ts`
+uses the spec's verified instants: 2026-03-08 02:30 names 01:30 −06:00 and
+03:30 −05:00; 2026-11-01 01:30 names 01:30 −05:00 (CDT) and 01:30 −06:00
+(CST). `server.test.ts`: the 61st read in a minute is `RATE_LIMITED` with
+`retry_after_s: 60` and a second token is unaffected. `retry_after_s` is the
+whole window, not the remainder — conservative on purpose.
+
 ## M-003 — token → context; role-built `tools/list`; tenancy and revocation tests (MCP PRD §5, §9.1–9.3)
 
 Commit `61a9d50`.

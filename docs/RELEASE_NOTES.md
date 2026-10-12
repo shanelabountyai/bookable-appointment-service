@@ -5137,6 +5137,20 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-004 — errors a model can act on, and times that cannot be misread
+
+A model retries. An error it cannot read becomes a loop or a confident wrong
+answer, so every refusal now comes back in one shape: a code, a sentence to
+show the human, the argument to change, and the tool to call next. The
+mapping from the booking engine's own errors lives in one file with a test
+per code, including the subtle split between "the stylist is not working
+then" and "she is working but the chair is taken" — because one overlapping
+booking inside an otherwise-closed hour must never read as a scheduling
+problem. Times are the project's oldest trap: a model sends "01:30" on the
+night the clocks go back and that names two different moments. The server
+refuses, names both as timestamps with their offsets, and asks the model to
+send one back — it never guesses, because guessing books a time nobody chose.
+
 ## M-003 — the token is checked on every call, and every tool is tenancy-tested by construction
 
 Two things a model-facing server gets wrong by default. First, a chat

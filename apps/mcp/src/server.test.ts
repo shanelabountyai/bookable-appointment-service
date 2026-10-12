@@ -8,6 +8,7 @@ import { revokeMcpToken } from '@bookable/db/mcp';
 import { resetDatabase } from '@bookable/db/testing';
 import { instantFromIso, toDate } from '@bookable/core/time';
 import { contextForToken } from './context';
+import { READS_PER_MINUTE } from './server';
 import { connectAs, connectWithToken, errorOf } from './testing/connect';
 import { seedTwoSalons, type Salon } from './testing/two-salons';
 import { TOOLS } from './tools';
@@ -114,5 +115,27 @@ describe('the credential is re-checked on every call (PRD §9.3)', () => {
     await revokeMcpToken(prisma, { businessId: a.businessId, id: ctx!.tokenId, now: NOW });
     expect(await contextForToken(prisma, token, NOW)).toBeNull();
     await expect(connectWithToken(token, deps)).rejects.toThrow(/did not resolve/);
+  });
+});
+
+describe('rate limit (PRD §5: per token, per minute)', () => {
+  it(`the ${READS_PER_MINUTE + 1}th read in a minute is RATE_LIMITED with retry_after_s, and another token is unaffected`, async () => {
+    const first = await asStaff();
+    const second = await asOwner();
+    try {
+      for (let i = 0; i < READS_PER_MINUTE; i++) {
+        expect(errorOf(await first.client.callTool({ name: 'list_services', arguments: {} }))).toBeNull();
+      }
+      const refused = await first.client.callTool({ name: 'list_services', arguments: {} });
+      expect(errorOf(refused)).toEqual({
+        error: 'RATE_LIMITED',
+        message: 'Too many calls for this token. Wait 60 seconds and try again.',
+        retry_after_s: 60,
+      });
+      expect(errorOf(await second.client.callTool({ name: 'list_services', arguments: {} }))).toBeNull();
+    } finally {
+      await first.close();
+      await second.close();
+    }
   });
 });
