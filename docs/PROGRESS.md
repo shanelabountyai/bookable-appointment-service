@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-004 — error envelope, domain-error mapping, wall-time parsing, rate limit (MCP PRD §5, §6)
 
-Commit `__SHA__`.
+Commit `5a18a36`.
 
 **What it built.** `errors.ts`: the §6 envelope plus `mapDomainError` — ONE
 module turning `packages/db` errors into codes: `SlotTaken`/`NoResourceFree`
