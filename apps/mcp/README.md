@@ -65,5 +65,5 @@ npm run eval
 
 - The server cannot prove a human read the summary. The human gate is the client's approval prompt on `commit_proposal` (`destructiveHint: true`). What the server guarantees is narrower and real: what commits is what was previewed, by the person who previewed it, once, re-validated.
 - Authentication is a static bearer token. Claude Code sends one; the hosted Claude apps accept one only as an organisation-level credential, otherwise they want OAuth. OAuth is a later item, not a half-built one.
-- The Claude eval has been built and dry-run, not run: it spends API credit and that is the owner's call. The scripted path proves the harness; it does not prove the model.
+- The Claude eval has been run once (2026-10-12, `claude-opus-5-5`): 9/9 for $0.47 total. One run on one model is a baseline, not a guarantee; re-run it when the tools or scenarios change.
 - Rate limits are per token (60 reads, 10 commits a minute) and `retry_after_s` is the whole window, not the remainder — conservative on purpose.

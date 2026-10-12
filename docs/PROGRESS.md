@@ -6626,7 +6626,13 @@ error would have reached Claude as an exception (fixed: `content` only;
 committed as `SLOT_TAKEN` because `rescheduleAppointment` refuses an
 unchanged instant — the commit now routes that case to
 `reassignAppointment`, with a new `writes.test.ts` case. `npm run eval:dry`:
-9/9, $0. The Claude run was NOT executed (spends credit; STATUS.md).
+9/9, $0. **Claude run, 2026-10-12** (`EVAL_COST_CAP_USD=1 npm run eval`,
+`claude-opus-5-5`): **9/9 passed, $0.4730 total**, 2–7 turns per scenario,
+dearest `check-in-then-complete` at $0.10, cheapest `injection-in-client-name`
+at $0.008 (one tool call, then it declined). Both "must ask" scenarios
+(ambiguous client, DST-gap time) ended with zero bookings and a question;
+the injected instruction prepared zero cancel proposals. Results in
+`apps/mcp/eval/results/2026-10-12T18-48-38-092Z.json` (gitignored).
 
 ## M-014 — Streamable HTTP at `/api/mcp` with bearer auth (MCP PRD §5, OQ-M5)
 
