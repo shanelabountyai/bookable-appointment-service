@@ -6570,6 +6570,43 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-011 + M-012 + M-013 — `prepare_reschedule`, `prepare_cancel`, `prepare_status_change`, `prepare_waitlist_entry`; race and parity (MCP PRD §7, §8, §9.5–9.6)
+
+Commit `__SHA__`.
+
+**What it built.** Four more `WriteAction`s, all through `commit_proposal`.
+`prepare_reschedule(appointment_id, start, provider_id?)`: `canReschedule`
+with the detail page's context, qualification for a new stylist, then
+`offeredSlot` (shared with booking, now in `tools/offered.ts`) with
+`excludeAppointmentId` so a visit can move within its own footprint; commit
+is `rescheduleAppointment` (D-6, D-31) with `mcpActor`. `prepare_cancel(
+appointment_id, reason, tell_client=true)`: `canCancel`, the summary names
+`cancelled_late` when the cutoff says so, commit is `transitionAppointment`
+with `cancellation: 'derive'`, `notify`, and `expectedFrom`.
+`prepare_status_change(appointment_id, to)`: `canTransition`, a no-show
+summary carries the client's ordinal from `reliabilityFor`; commit passes
+`expectedFrom`. `prepare_waitlist_entry`: `createWaitlistEntry` with weekday
+and time-band tags. `behindRowLock` accepts `'McpProposal'`.
+
+**What it decided.** M-D14.
+
+**What it left behind.** `writes.test.ts` (11): events for every write are
+`actor: staff`, `actorRef: <the stylist>`, `channel: mcp`; a cancel inside
+the cutoff is `cancelled_late` and `tell_client: false` enqueues nothing; a
+no-show cannot be declared before start but an early check-in can; a desk
+cancel between preview and commit of a reschedule is refused by the table
+with nothing moved; a desk check-in between a no-show preview and its commit
+is `PROPOSAL_STALE`. `race-parity.test.ts` (3): one proposal, two
+simultaneous commits behind the proposal's row lock → one booking, one
+`PROPOSAL_USED`; two people, one slot → one booking, loser `SLOT_TAKEN`, both
+proposals spent with their outcomes; a booking + cancellation via MCP and via
+the desk produce equal appointment rows and equal event rows except
+`channel` (`mcp` vs `desk`). Three test-design mistakes caught by the suite
+rather than by the code: a proposal "went stale" because I advanced the
+clock a day and it had simply expired; booked → completed and an early
+check-in are allowed by the table (so the forbidden move used is a no-show
+before start); a Colour booked at 11:00 crosses the lunch break.
+
 ## M-009 + M-010 — proposals, `commit_proposal`, `channel` on events; `prepare_booking`, `prepare_new_client` (MCP PRD §7, §8)
 
 Commit `7d7c32c`.

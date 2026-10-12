@@ -11,13 +11,16 @@ import { listServicesTool } from './list-services';
 import { listWaitlistTool } from './list-waitlist';
 import { bookingAction } from './prepare-booking';
 import { newClientAction } from './prepare-new-client';
+import { rescheduleAction } from './prepare-reschedule';
+import { cancelAction, statusChangeAction } from './prepare-status';
+import { waitlistAction } from './prepare-waitlist';
 import { prepareTool } from './proposals';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a heterogeneous list; each entry is fully typed where it is defined
 export type AnyToolDef = ToolDef<any, any>;
 
 /** Every write the server can make. Each becomes a `prepare_*` tool; `commit_proposal` runs them. */
-export const WRITE_ACTIONS: readonly AnyWriteAction[] = [bookingAction, newClientAction];
+export const WRITE_ACTIONS: readonly AnyWriteAction[] = [bookingAction, newClientAction, rescheduleAction, cancelAction, statusChangeAction, waitlistAction];
 
 /** Every tool the server knows. Listing per role happens in server.ts. */
 export const TOOLS: readonly AnyToolDef[] = [

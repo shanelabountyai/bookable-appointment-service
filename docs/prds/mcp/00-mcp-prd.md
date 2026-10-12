@@ -142,9 +142,9 @@ Domain errors (`BookingRejected(field, message)`, `SlotTaken`, transition refusa
 | ✅ M-008 | `get_week_report` (owner only) | S | 2 |
 | ✅ M-009 | `McpProposal` + `commit_proposal` + `channel` on events (OQ-M1) | L | 3 Writes |
 | ✅ M-010 | `prepare_booking`, `prepare_new_client` | M | 3 |
-| M-011 | `prepare_reschedule`, `prepare_cancel` | M | 3 |
-| M-012 | `prepare_status_change`, `prepare_waitlist_entry` | M | 3 |
-| M-013 | Barrier-based prepare→commit race test; parity test | M | 3 |
+| ✅ M-011 | `prepare_reschedule`, `prepare_cancel` | M | 3 |
+| ✅ M-012 | `prepare_status_change`, `prepare_waitlist_entry` | M | 3 |
+| ✅ M-013 | Barrier-based prepare→commit race test; parity test | M | 3 |
 | M-014 | Streamable HTTP at `/api/mcp` with bearer auth; connect from Claude | M | 4 Hosted + eval |
 | M-015 | Model eval harness + scenarios (§9.7) | M | 4 |
 | M-016 | DEMO.md (Claude Desktop walkthrough), WRITEUP.md, exec brief, posts | M | 4 Closure |

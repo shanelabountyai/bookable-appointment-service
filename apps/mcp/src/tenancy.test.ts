@@ -51,6 +51,13 @@ const PROBES: Record<string, Probe[]> = {
   ],
   prepare_new_client: [{ kind: 'none', why: 'takes a name and a phone; the phone lookup is scoped to the business in prepare' }],
   commit_proposal: [{ kind: 'args', args: (a) => ({ proposal_id: a.proposalId }) }],
+  prepare_reschedule: [{ kind: 'args', args: (a) => ({ appointment_id: a.appointmentId, start: '2026-06-12 10:00' }) }],
+  prepare_cancel: [{ kind: 'args', args: (a) => ({ appointment_id: a.appointmentId, reason: 'probe' }) }],
+  prepare_status_change: [{ kind: 'args', args: (a) => ({ appointment_id: a.appointmentId, to: 'checked_in' }) }],
+  prepare_waitlist_entry: [
+    { kind: 'args', args: (a, b) => ({ client_id: a.clientId, service_ids: b.serviceIds, from_day: '2026-06-15', to_day: '2026-06-19' }) },
+    { kind: 'args', args: (a, b) => ({ client_id: b.clientId, service_ids: a.serviceIds.slice(0, 1), from_day: '2026-06-15', to_day: '2026-06-19' }) },
+  ],
   find_open_times: [
     { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]], provider_id: 'any', from_day: '2026-06-10', to_day: '2026-06-10' }) },
     { kind: 'args', args: (a, b) => ({ service_ids: b.serviceIds, provider_id: a.providerIds[0], from_day: '2026-06-10', to_day: '2026-06-10' }) },

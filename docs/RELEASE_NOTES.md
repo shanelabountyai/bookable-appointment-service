@@ -5137,6 +5137,23 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-011–M-013 — move, cancel, check in, waitlist; and the two proofs
+
+The remaining desk actions reach the assistant through the same
+preview-then-commit door: move a visit (to another stylist if she is
+qualified, never as an override), cancel it (the machine decides whether it
+counts as late, and says so before anyone agrees; the client is told unless
+the human says otherwise), mark it arrived, in the chair, finished or a
+no-show, or put someone on the waitlist. Each commit carries the status it
+previewed, so a tap at the front desk in the meantime makes the assistant's
+action a refusal rather than an overwrite. Two proofs close the milestone. A
+race test holds a proposal's database row until two commits are provably
+waiting on it, then lets go: exactly one books, the other is told the
+proposal was already used. And a parity test makes the same booking and
+cancellation once through the assistant and once at the desk, and requires
+the stored rows and event history to be identical except for the one column
+that says which door was used.
+
 ## M-009 + M-010 — the assistant can book, and every booking says so
 
 The first writes, built around one rule: nothing is written on the model's

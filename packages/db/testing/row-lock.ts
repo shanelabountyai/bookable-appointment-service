@@ -16,7 +16,7 @@
 import { Client as PgClient } from 'pg';
 
 export async function behindRowLock<T>(
-  table: 'Appointment' | 'Client',
+  table: 'Appointment' | 'Client' | 'McpProposal',
   id: string,
   waiters: number,
   run: () => Promise<T>,

@@ -10,14 +10,14 @@
  * the event and `mcp` in its channel.
  */
 import { mcpActor } from '@bookable/core/auth';
-import { type Instant, instant, toDate, toLabel } from '@bookable/core/time';
-import { SlotNotOffered, bookAppointment } from '@bookable/db/booking';
+import { instant, toDate } from '@bookable/core/time';
+import { bookAppointment } from '@bookable/db/booking';
 import { qualifiedForVisit } from '@bookable/db/qualification';
-import { buildSlotQuery, computeSlotsIn } from '@bookable/db/scheduling';
 import { z } from 'zod';
 import { ToolFailure } from '../errors';
 import { parseInstant, timeOut } from '../time';
 import { clientOf, providerOf, servicesOf } from './ids';
+import { offeredSlot } from './offered';
 import { defineWrite } from './proposals';
 
 export interface BookingCanonical {
@@ -65,7 +65,16 @@ export const bookingAction = defineWrite({
       });
     }
 
-    const slot = await offeredSlot(deps, ctx.businessId, provider.id, args.service_ids, client.id, start, ctx.timezone);
+    const slot = await offeredSlot({
+      prisma: db,
+      now: deps.now(),
+      businessId: ctx.businessId,
+      providerId: provider.id,
+      serviceIds: args.service_ids,
+      holderKey: client.id,
+      start,
+      zone: ctx.timezone,
+    });
     const canonical: BookingCanonical = {
       client_id: client.id,
       provider_id: provider.id,
@@ -103,26 +112,3 @@ export const bookingAction = defineWrite({
     };
   },
 });
-
-/** The engine's answer for this exact instant, or its reasons for refusing — never a guess. */
-async function offeredSlot(
-  deps: { prisma: Parameters<typeof buildSlotQuery>[0]; now: () => Date },
-  businessId: string,
-  providerId: string,
-  serviceIds: string[],
-  holderKey: string,
-  start: Instant,
-  zone: Parameters<typeof toLabel>[1],
-) {
-  const day = toLabel(start, zone).day;
-  const built = await buildSlotQuery(deps.prisma, { businessId, providerId, serviceIds, day, now: deps.now(), audience: 'staff', holderKey });
-  const result = computeSlotsIn(built, { explain: true });
-  const slot = result.slots.find((s) => s.start === start);
-  if (slot) return slot;
-  const excluded = result.excluded.find((e) => e.candidateStart === start);
-  if (excluded) throw new SlotNotOffered(excluded.reasons, [...result.slots]);
-  // The engine only enumerates candidates inside working windows and on the grid, so an
-  // instant it never considered is either outside hours or between grid points.
-  const inWindow = result.meta.windowInstants.some((w) => start >= w.start && start < w.end);
-  throw new SlotNotOffered([inWindow ? 'not-on-the-grid' : 'outside-working-window'], [...result.slots]);
-}
