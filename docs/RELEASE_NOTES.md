@@ -5137,6 +5137,20 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-016 — the write-up, the walkthrough, and the one line that makes it trustworthy
+
+The MCP track closes with three documents and one sentence. The README in
+`apps/mcp/` is written for someone deciding whether the engineering is sound:
+what an assistant can and cannot do at the desk, the three rules the server is
+built on (a credential checked on every call; tools that validate their own
+ids and schemas; writes that preview, then commit exactly what was previewed),
+how it is tested, and what it does not claim. The demo script gains a section
+that connects Claude Code to the running salon in two commands. `STATUS.md`
+hands over what is done, what was deliberately left, and the five steps that
+are the owner's to take. And on the appointment history, a booking made by an
+assistant now reads "Booked by Sam **via the assistant**" — the stored fact
+the whole track was built to make true.
+
 ## M-015 — an eval that grades the database, and what it found before it ran
 
 The last engineering piece is a harness that puts the server in front of a

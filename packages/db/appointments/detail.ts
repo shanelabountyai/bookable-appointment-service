@@ -26,6 +26,8 @@ export interface AppointmentEventRow {
   type: string;
   actor: string;
   actorRef: string | null;
+  /** M-009: desk | manage_link | mcp | system — the door the change came through. */
+  channel: string;
   /**
    * A-037: the person behind `actorRef`, when it is a staff id that still
    * resolves. Null for a customer token, for `system`, and for a staff id
@@ -198,7 +200,7 @@ export async function loadAppointmentDetail(
       // how you mistake a correction for the thing it corrected.
       events: {
         orderBy: { createdAt: 'asc' },
-        select: { id: true, type: true, actor: true, actorRef: true, reason: true, payload: true, createdAt: true },
+        select: { id: true, type: true, actor: true, actorRef: true, channel: true, reason: true, payload: true, createdAt: true },
       },
       // Operator R-4's "was she actually told?" — the one indexed lookup the
       // `NotificationOutbox.appointmentId` column exists for. The dedupe key

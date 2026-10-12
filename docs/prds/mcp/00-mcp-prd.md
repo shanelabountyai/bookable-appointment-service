@@ -2,7 +2,7 @@
 
 **What:** an MCP server that exposes the shipped Bookable salon app as tools an AI client (Claude Desktop, Claude Code, claude.ai) can call on behalf of a signed-in staff member.
 **Builder:** Solo, in Claude Code · first AI-track build · item prefix **`M-`** (Bookable's own items stay `A-`).
-**Status:** v0.1 draft — 2026-10-02. Owner answers to §11 amend this file.
+**Status:** v0.1 draft — 2026-10-02; **built 2026-10-12** (M-000..M-016 ✅ below; decisions in `DECISIONS.md`; handoff in `STATUS.md`). Owner answers to §11 amend this file.
 **Lives in:** this monorepo as `apps/mcp`, calling `packages/db` domain functions directly. **Not** the web app's server actions (they take `FormData` and a cookie session).
 **Learning objectives:** tool design (names, schemas, descriptions), errors a model can recover from, scoped auth so the model only ever sees what its caller may, and different rules for read and write tools.
 
@@ -147,7 +147,7 @@ Domain errors (`BookingRejected(field, message)`, `SlotTaken`, transition refusa
 | ✅ M-013 | Barrier-based prepare→commit race test; parity test | M | 3 |
 | ✅ M-014 | Streamable HTTP at `/api/mcp` with bearer auth; connect from Claude (OQ-M5 verified — M-D15) | M | 4 Hosted + eval |
 | ✅ M-015 | Model eval harness + scenarios (§9.7) — built and dry-run; the Claude run is the owner's (M-D17) | M | 4 |
-| M-016 | DEMO.md (Claude Desktop walkthrough), WRITEUP.md, exec brief, posts | M | 4 Closure |
+| ✅ M-016 | DEMO.md §13 (Claude Code walkthrough), `apps/mcp/README.md`, `STATUS.md`; exec brief + posts are the owner's hand steps (M-D18) | M | 4 Closure |
 
 Demo checkpoints: after M-004 (a tool call works end-to-end from Claude Desktop), after M-008 (Claude answers "who's in this afternoon and when is Dana free?"), after M-013 (the sick-stylist script).
 

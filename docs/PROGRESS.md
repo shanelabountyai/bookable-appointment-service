@@ -6570,6 +6570,29 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-016 — closure: README for a hiring manager, DEMO.md §13, STATUS.md, the audit line (MCP PRD)
+
+Commit `__SHA__`.
+
+**What it built.** `apps/mcp/README.md` (what it does / how it is built /
+how it is tested / running it / honest limits). `docs/DEMO.md` §13: issue a
+token, `claude mcp add` over stdio and over HTTP, the line to look for, the
+revoke; a ninth concession. `STATUS.md`: done, not done, open decisions, and
+the five hand steps. `NEXT.md` rewritten. `AppointmentEventRow.channel` is
+selected and `toReadableEvent` renders "… via the assistant" for `channel:
+mcp` — the PRD's trust line, on the staff detail page.
+`e2e/mcp-audit-line.spec.ts` books once with `mcpActor` and once with
+`staffActor` and asserts the phrase appears on the first page only. Root
+README points at the MCP README and PRD.
+
+**What it decided.** M-D18.
+
+**What it left behind.** The hand steps in `STATUS.md`: connect a client,
+run the Claude eval (credit), deploy (two migrations behind on Neon), the
+brief and the posts. The `.mcp.json`/`claude mcp add` commands in DEMO.md
+were checked against the current Claude Code docs (2026-10-12) but not
+executed here — `claude mcp add` writes to the user's own config.
+
 ## M-015 — model eval harness and scenarios (MCP PRD §9.7)
 
 Commit `cb9cb07`.

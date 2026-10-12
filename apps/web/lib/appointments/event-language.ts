@@ -89,7 +89,9 @@ export function toReadableEvent(event: AppointmentEventRow, zone: ZoneId): Reada
   const label = toLabel(fromDate(event.createdAt), zone);
   // A-037: the name if the log knows one. "Changed to checked in by Priya" is
   // the answer; "by the front desk" was four people and a shrug.
-  const who = actorWord(event.actor, event.actorName) ?? event.actor;
+  // M-016 (MCP PRD §5): the same person, through an AI client, reads
+  // "by Sam via the assistant" — the channel is a stored fact (D-79), not a guess.
+  const who = `${actorWord(event.actor, event.actorName) ?? event.actor}${event.channel === 'mcp' ? ' via the assistant' : ''}`;
   const payload = (event.payload ?? {}) as Record<string, unknown>;
 
   return {

@@ -45,6 +45,7 @@ npx dotenv -e .env.local -- npm run start -w apps/web      # serves on :3300
 | Session signing key | `SESSION_SECRET` | `.env.local` (app refuses to handle sessions without it) |
 | Reminder-job bearer | `CRON_SECRET` | `.env.local` |
 | Clients | no accounts — public booking and `/manage/<token>` links | — |
+| MCP token (the assistant) | issued on `/staff/people` → **AI access**, shown once | the database holds only its hash; revoke there, or take the person off the roster |
 
 Check the env vars exist before you start: `grep -c '^SESSION_SECRET=' .env.local` and `grep -c '^CRON_SECRET=' .env.local` must each print `1`.
 
@@ -131,6 +132,20 @@ Returns `{"reminders":{"due":…},"dispatch":{…}}`. **Say:** the route refuses
 - The no-overlap invariant is a Postgres exclusion constraint (SQLSTATE `23P01`), not application code.
 - CI runs the suite under `TZ=UTC` and `TZ=Pacific/Kiritimati` and expects identical results.
 
+### 13. The assistant — Claude Code at the desk (optional, ~3 min)
+Sign in as the owner, open `/staff/people`, and under **AI access** issue a token for yourself (label it). Copy it — it is shown once. Then, from the repo root:
+```bash
+claude mcp add --env BOOKABLE_MCP_TOKEN=<paste> --env DATABASE_URL="$(grep '^DATABASE_URL=' .env.local | cut -d= -f2-)" --transport stdio bookable -- npx tsx apps/mcp/src/stdio.ts
+claude mcp list                                              # bookable … ✔ Connected
+```
+In Claude Code ask: *"Who is in with Dana tomorrow, and when is she free for a cut?"* then *"Book Maria Gomez the 10 o'clock."* — it previews a one-line summary, and Claude Code asks you before `commit_proposal` runs. Open the appointment: the history reads **"Booked by &lt;you&gt; via the assistant"**. Revoke the token on `/staff/people` and ask again: the next call is refused.
+
+Over HTTP against this very server instead (same token):
+```bash
+claude mcp add --transport http bookable-http http://localhost:3300/api/mcp --header "Authorization: Bearer <paste>"
+```
+**Say:** every write goes through the same functions the desk uses — the exclusion constraint, the transition table, the cutoff — and the only new fact in the database is *which door* the change came through. **Concede first:** the model eval (`npm run eval`) was built and dry-run on a scripted stand-in; the live run spends API credit and is a step you take, not one that has been taken.
+
 ## Screenshots
 
 Thirteen shots in `docs/screenshots/`, taken from this same seeded book at 1440×900 (@2x, light scheme). To retake them after a re-seed, with the server up:
@@ -168,6 +183,7 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 6. **The engine interval and the column badge both read the *reduced* delta** (A-133; D-22, D-43).
 7. **A gap client's block is not checked against a colour's projected second block** — needs a delta larger than the gap; bounded by D-62 (A-134).
 8. **Waitlist matching is oldest-first**, and **D-54 widens a column on heavy cancellation days.** Both open since Phase 15; not built.
+9. **The MCP server's model eval has not been run against Claude** — only its scripted dry run (9/9). And the hosted Claude apps need OAuth for a custom connector; Claude Code is the HTTP client today (`DECISIONS.md` M-D15, M-D17).
 9. **Deliberately not built:** holds, automated offers (OQ-4), a staleness alarm, a per-client stored delay.
 10. **A demo deployment, not production.** The hosted copy has no backups, monitoring or on-call, and sits behind one shared password. There is no real client data; every name, phone number and dollar figure is synthetic.
 11. **Reminders:** one of the seeded reminders is left by the skipped band on purpose — the never-reminded screen is not empty on a fresh install.

@@ -18,6 +18,7 @@ Appointment scheduling for a service business. Third learning build in the idiom
 | `packages/core/scheduling/types.ts` | The engine's type contract (branded time axes, SlotQuery/SlotResult) |
 | `packages/core/scheduling/slot-engine.test.ts` | ~35 failing tests — the TDD red state A-008 builds against |
 | `.claude/agents/salon-operator.md` | Milestone-review agent (the rental-operator pattern) |
+| `apps/mcp/README.md` · `docs/prds/mcp/00-mcp-prd.md` | **The MCP server** (AI track, M-000..M-016): the desk's actions as tools for Claude, preview-then-commit, per-person tokens — and the write-up for a hiring manager |
 
 ## First commands
 
