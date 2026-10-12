@@ -5137,6 +5137,19 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-014 — the server reachable from anywhere, one token per person
+
+The same server now answers over HTTP at `/api/mcp`, inside the deployed web
+app, so Claude Code can connect from any machine with one line of
+configuration and the token an owner issued. The route is stateless — each
+request is its own short-lived server — because that is the only promise a
+serverless function can keep, and because the credential is re-checked on
+every call anyway. The question the PRD left open (will the AI clients send a
+plain bearer token, or insist on OAuth?) was answered from the current docs
+rather than assumed: Claude Code sends it; the hosted Claude apps accept one
+only as an organisation-level credential, so OAuth stays on the list for
+later rather than being half-built now.
+
 ## M-011–M-013 — move, cancel, check in, waitlist; and the two proofs
 
 The remaining desk actions reach the assistant through the same

@@ -15,7 +15,10 @@
 // This carries its own authentication and must stay reachable without the
 // shared password: the reminder job requires CRON_SECRET as a bearer token,
 // which is what Vercel Cron sends. Gating it behind Basic would stop the cron.
-const EXEMPT = ['/api/jobs/reminders'];
+// Routes with their OWN authentication: the reminder job's CRON_SECRET bearer, and the
+// MCP endpoint's per-person bearer token (M-014). Gating either would break the only
+// client that reaches it — Vercel Cron, an AI client — with a Basic challenge it cannot answer.
+const EXEMPT = ['/api/jobs/reminders', '/api/mcp'];
 
 /** Length-checked constant-time compare. Edge-safe: no Node APIs. */
 function safeEqual(a: string, b: string): boolean {

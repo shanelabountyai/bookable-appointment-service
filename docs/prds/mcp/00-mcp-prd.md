@@ -145,7 +145,7 @@ Domain errors (`BookingRejected(field, message)`, `SlotTaken`, transition refusa
 | ✅ M-011 | `prepare_reschedule`, `prepare_cancel` | M | 3 |
 | ✅ M-012 | `prepare_status_change`, `prepare_waitlist_entry` | M | 3 |
 | ✅ M-013 | Barrier-based prepare→commit race test; parity test | M | 3 |
-| M-014 | Streamable HTTP at `/api/mcp` with bearer auth; connect from Claude | M | 4 Hosted + eval |
+| ✅ M-014 | Streamable HTTP at `/api/mcp` with bearer auth; connect from Claude (OQ-M5 verified — M-D15) | M | 4 Hosted + eval |
 | M-015 | Model eval harness + scenarios (§9.7) | M | 4 |
 | M-016 | DEMO.md (Claude Desktop walkthrough), WRITEUP.md, exec brief, posts | M | 4 Closure |
 
@@ -159,4 +159,4 @@ Demo checkpoints: after M-004 (a tool call works end-to-end from Claude Desktop)
 | OQ-M2 | One token per person, or a shared desk token with "act as"? | **One per person.** The desk PIN (D-33) exists because people share a terminal; nobody shares an AI client login. |
 | OQ-M3 | Expose client notes? | **No** in v1 (§3). |
 | OQ-M4 | Start before Bookable Phase 23 closes? | **No.** Finish A-160 (needs OQ-26) and A-161 first; both touch `packages/db/appointments`, which M-009 also touches. |
-| OQ-M5 | Can the target clients send a static bearer token over HTTP, or do they require OAuth? | **Verify at M-014** against current client docs. If OAuth is required, M-014 splits into a stdio-bridge demo now and an OAuth item later. |
+| ~~OQ-M5~~ **ANSWERED → M-D15** | Can the target clients send a static bearer token over HTTP, or do they require OAuth? | Claude Code: yes (`--header`). claude.ai/Desktop connectors: only as an org-level credential, else OAuth. Bearer ships for Claude Code; OAuth is a later item. |

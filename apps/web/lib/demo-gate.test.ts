@@ -39,6 +39,14 @@ describe('demoChallenge', () => {
     expect(demoChallenge('/api/jobs/reminders', null, PASSWORD)).toBeNull();
   });
 
+  // M-014: the MCP endpoint authenticates with its own bearer token, which an AI
+  // client sends in the same Authorization header the Basic gate would read.
+  it('leaves /api/mcp to its bearer token', () => {
+    expect(demoChallenge('/api/mcp', 'Bearer bk_mcp_x', PASSWORD)).toBeNull();
+    expect(demoChallenge('/api/mcp', null, PASSWORD)).toBeNull();
+    expect(demoChallenge('/api/mcpx', null, PASSWORD)?.status).toBe(401);
+  });
+
   // An exemption is an exact path, never a prefix: a sibling route under
   // /api/jobs must not inherit it.
   it('does not exempt a path that merely starts with the exempt one', () => {

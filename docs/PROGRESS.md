@@ -6570,6 +6570,34 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-014 — Streamable HTTP at `/api/mcp` with bearer auth (MCP PRD §5, OQ-M5)
+
+Commit `__SHA__`.
+
+**What it built.** `apps/mcp/src/http.ts`: `handleMcpRequest(request, deps)`
+takes a web-standard `Request`, reads `Authorization: Bearer`, resolves the
+token (401 + `WWW-Authenticate: Bearer` otherwise), builds a per-request
+server with the usual per-call refresh, and hands it to the SDK's
+`WebStandardStreamableHTTPServerTransport` — stateless, JSON responses. `apps/mcp`
+now has `exports` (`src/index.ts`), `apps/web` depends on `@bookable/mcp`
+(transpiled), and `app/api/mcp/route.ts` is POST/GET/DELETE →
+`handleMcpRequest`. The demo gate exempts `/api/mcp` (the bearer shares the
+header the Basic gate reads).
+
+**What it decided.** M-D15 answers OQ-M5.
+
+**What it left behind.** `http.test.ts`: a real `StreamableHTTPClientTransport`
+with `fetch` pointed at the handler — list + call for a valid token,
+`lastUsedAt` touched per request, 401 with the challenge for no token,
+revocation bites mid-session as a 401, four malformed headers are 401 not 500.
+`demo-gate.test.ts` covers the exemption and that `/api/mcpx` is still gated.
+`e2e/mcp-http.spec.ts`: against the production build, `initialize` and
+`tools/list` over HTTP with an owner's token (incl. `get_week_report`), and
+401 bare — proving the Next bundle can run the server with Prisma. One
+friction: the SDK types `sessionId?: string | undefined`, which
+`exactOptionalPropertyTypes` reads as a different shape from `Transport`; one
+cast in the test, one omitted key in the handler.
+
 ## M-011 + M-012 + M-013 — `prepare_reschedule`, `prepare_cancel`, `prepare_status_change`, `prepare_waitlist_entry`; race and parity (MCP PRD §7, §8, §9.5–9.6)
 
 Commit `6f60503`.

@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   // The workspace packages ship TypeScript SOURCE, not a build output — there
   // is no compile step for them, which is what keeps `packages/core` directly
   // runnable by vitest and readable by tsc. Next has to transpile them itself.
-  transpilePackages: ["@bookable/core", "@bookable/db"],
+  transpilePackages: ["@bookable/core", "@bookable/db", "@bookable/mcp"],
 
   // A-013. The manage link's authority IS its URL (D-5), so the URL must not
   // travel. `Referer` carries the full path to anything the page ever links or
