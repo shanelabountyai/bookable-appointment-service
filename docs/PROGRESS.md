@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-003 — token → context; role-built `tools/list`; tenancy and revocation tests (MCP PRD §5, §9.1–9.3)
 
-Commit `__SHA__`.
+Commit `61a9d50`.
 
 **What it built.** `contextForToken` replaces M-001's staff-id resolver
 (M-D6, deleted): `resolveMcpToken` → `{businessId, staffUserId, staffName,
