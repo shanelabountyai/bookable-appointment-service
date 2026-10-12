@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-001 — `apps/mcp` workspace, stdio server, `list_services` end-to-end (MCP PRD)
 
-Commit `__SHA__`.
+Commit `a128534`.
 
 **What it built.** A third workspace, `apps/mcp`, on `@modelcontextprotocol/sdk`
 1.32.1 + zod 4. `createBookableServer(ctx, deps)` builds an `McpServer` for ONE
