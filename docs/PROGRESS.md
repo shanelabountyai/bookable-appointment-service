@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-007 + M-008 — `find_client`, `get_client_history`, `list_waitlist`, owner-only `get_week_report` (MCP PRD §7)
 
-Commit `__SHA__`.
+Commit `4a2797e`.
 
 **What it built.** `find_client(query)`: `searchClients` (name or digits),
 capped at 5 with `truncated`, each match carrying id, name, `phone_last4`
