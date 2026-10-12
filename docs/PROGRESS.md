@@ -6570,6 +6570,39 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-003 — token → context; role-built `tools/list`; tenancy and revocation tests (MCP PRD §5, §9.1–9.3)
+
+Commit `__SHA__`.
+
+**What it built.** `contextForToken` replaces M-001's staff-id resolver
+(M-D6, deleted): `resolveMcpToken` → `{businessId, staffUserId, staffName,
+role, timezone, tokenId}`. `createBookableServer` now takes a `Credential`
+— the context the token resolved to at connect, which decides the listing,
+plus a `refresh(now)` that resolves the SAME token again before every call.
+Revoked or deactivated → `UNAUTHORIZED`; role demoted since the listing →
+`FORBIDDEN` (M-D7). `errors.ts` opens the §6 envelope (`error`, `message`,
+`field?`, `next?`, `retry_after_s?`), returned as `isError` with the payload
+in both `content` and `structuredContent`. `stdio.ts` reads
+`BOOKABLE_MCP_TOKEN`.
+
+**What it decided.** M-D7. The listing is built once per connection (the
+protocol has no per-call listing), so the per-call check is what makes the
+role split real for a long-lived session.
+
+**What it left behind.** `testing/two-salons.ts` seeds two businesses, each
+with an owner and a stylist, for every MCP test. `server.test.ts`: listing
+per role equals `TOOLS` filtered by role (grows with every tool); a token
+revoked mid-session and a person deactivated mid-session each fail on the
+very next call; a revoked token cannot connect. `tenancy.test.ts` is a
+harness, not a test of one tool: `PROBES` must name every entry in `TOOLS`
+(the first test fails otherwise), and each probe runs with salon B's token
+against salon A's ids — `args` probes expect `NOT_FOUND` with no hint the id
+exists elsewhere, `leaks` probes check every returned id against every A id.
+Each later tool adds one line. Gate note: one full-suite run had
+`running-late.test.ts` (4 tests, 5 s timeouts) and the two density-seed
+hooks (120 s) time out; all three files passed in isolation (111/111) and
+nothing in this item touches them — load, not code.
+
 ## M-002 — `McpToken`: hashed, revocable, last-used; owner issues and revokes on /staff/people (MCP PRD §5)
 
 Commit `cdfeb53`.

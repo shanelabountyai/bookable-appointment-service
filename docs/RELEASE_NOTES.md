@@ -5137,6 +5137,18 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-003 — the token is checked on every call, and every tool is tenancy-tested by construction
+
+Two things a model-facing server gets wrong by default. First, a chat
+session stays connected for hours, so a credential checked once at connect
+outlives its revocation — this server resolves the token again before every
+call, and a revoked token or an off-boarded person is refused on the next
+request, not the next morning. Second, "a token for salon B can never see
+salon A" is easy to assert for one tool and forget for the eleventh, so the
+tenancy test is a registry: every tool must have a probe or the suite fails
+before it runs, and each probe is driven with the other salon's token against
+this salon's ids. Adding a tool means adding one line, and forgetting is loud.
+
 ## M-002 — a credential for the assistant, issued to a person
 
 An owner can now hand an AI assistant access on behalf of one named staff
