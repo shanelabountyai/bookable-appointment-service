@@ -5,7 +5,7 @@
 **Hand steps, in order (all yours — they publish or deploy):**
 1. Connect Claude Code to the server (stdio or HTTP) and try it — `STATUS.md` §1–2.
 2. Deploy via the `main-manual` hook after `migrate:deploy` against Neon (two new migrations), then `./scripts/refresh-hosted-demo.sh`.
-3. Exec brief + LinkedIn drafts for the M-track from `docs/RELEASE_NOTES.md`.
+3. ~~Exec brief + LinkedIn drafts~~ — done 2026-10-12: https://claude.ai/artifact/MKSe6REdWCNFeH2bLFjemo and Ledger posts 109–113 (`docs/RELEASE_NOTES.md` › Project closure artifacts). Review the five drafts before any goes out.
 
 **Before any demo:** `migrate:deploy` against the Neon demo DB if migrations landed since the last deploy, THEN `./scripts/refresh-hosted-demo.sh`. Salon is closed Sun/Mon: demo from Tuesday.
 

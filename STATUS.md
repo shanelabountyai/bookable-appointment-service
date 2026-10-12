@@ -14,7 +14,7 @@ Built 2026-10-12 against `docs/prds/mcp/00-mcp-prd.md`. Every backlog item M-000
 
 - **OAuth for claude.ai / Claude Desktop custom connectors.** They accept a static bearer only as an organisation-level credential (Team/Enterprise). Claude Code connects today over HTTP with `--header`; Desktop connects over stdio locally. OAuth is a later item (M-D15).
 - **Not deployed.** No production deploy was triggered (the brief said not to). The hosted demo at appt.labintelligence.co is one migration behind (`20261012120000_mcp_token`, `20261012130000_event_channel_mcp_proposal`) until the next manual deploy — run `migrate:deploy` against Neon first, per `NEXT.md`'s standing note.
-- **Exec brief and LinkedIn drafts** for the M-track were not produced (they publish artifacts; the brief asked for no external writes). The material is in `docs/RELEASE_NOTES.md` M-001..M-016 — the *Defects found* paragraphs are the posts.
+- ~~Exec brief and LinkedIn drafts~~ **Done 2026-10-12:** *Bookable Assistant in Brief* at https://claude.ai/artifact/MKSe6REdWCNFeH2bLFjemo (private until shared) and Ledger posts 109–113. Recorded in `docs/RELEASE_NOTES.md` › Project closure artifacts.
 - **Client notes over MCP** (OQ-M3), **overrides, pushes, releases, merges, settings** — out of scope by the PRD (§3), not omissions.
 
 ## Open decisions
@@ -39,4 +39,4 @@ None blocking. Everything the spec left open was taken with the recommended defa
    ```
    Results land in `apps/mcp/eval/results/<timestamp>.json` (gitignored). Baseline 2026-10-12: 9/9, $0.47. Record each run in `docs/PROGRESS.md` under M-015.
 4. **Deploy, when you choose to** — trigger the `main-manual` hook (D-71), after `migrate:deploy` against the Neon demo DB; then `./scripts/refresh-hosted-demo.sh`. Set nothing new in Vercel: the MCP route needs no env var beyond what the app already has.
-5. **Closure artifacts** (per your definition of done): the exec brief (`/exec-brief`, matching the Bookable brief) and the LinkedIn drafts into the Ledger — both from `docs/RELEASE_NOTES.md` M-001..M-016.
+5. ~~Closure artifacts~~ — done 2026-10-12 (see *Not done* above). Share the brief from its Share menu when you want it forwardable; it links nothing private.
