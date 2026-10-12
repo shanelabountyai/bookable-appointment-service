@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-014 — Streamable HTTP at `/api/mcp` with bearer auth (MCP PRD §5, OQ-M5)
 
-Commit `__SHA__`.
+Commit `0c3b498`.
 
 **What it built.** `apps/mcp/src/http.ts`: `handleMcpRequest(request, deps)`
 takes a web-standard `Request`, reads `Authorization: Bearer`, resolves the
