@@ -5137,6 +5137,19 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-007 + M-008 — clients, the waitlist, and the owner's week
+
+The assistant can find a client, read her history, and see who is waiting —
+with the privacy rules written into the tools rather than left to the model's
+judgment: the last four digits of a phone and never the number, no notes on
+any client answer, no email. Each answer is tested by searching its raw JSON
+for the secret values and finding nothing. The owner's weekly report is
+scoped by role at the protocol level: a stylist's token does not see the tool
+in the list, and a direct call is refused with "tool not found" before any
+code of ours runs. One bug surfaced by the output schema itself: a number I
+had declared an integer was a fraction, and the server refused its own answer
+until the schema told the truth.
+
 ## M-006 — the day sheet and one visit, with "what can I do with it"
 
 An assistant can now read the day the way the desk sees it — a column per

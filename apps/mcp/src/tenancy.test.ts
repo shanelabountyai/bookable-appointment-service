@@ -38,6 +38,10 @@ const PROBES: Record<string, Probe[]> = {
     { kind: 'args', args: (a) => ({ day: '2026-06-10', provider_id: a.providerIds[0] }) },
   ],
   get_appointment: [{ kind: 'args', args: (a) => ({ appointment_id: a.appointmentId }) }],
+  find_client: [{ kind: 'leaks', args: { query: 'Alex' }, ids: (data) => (data as { clients: { id: string }[] }).clients.map((c) => c.id) }],
+  get_client_history: [{ kind: 'args', args: (a) => ({ client_id: a.clientId }) }],
+  list_waitlist: [{ kind: 'leaks', ids: (data) => (data as { entries: { entry_id: string; client_id: string }[] }).entries.flatMap((e) => [e.entry_id, e.client_id]) }],
+  get_week_report: [{ kind: 'leaks', args: { week_of: '2026-06-10' }, ids: (data) => (data as { utilization: { provider_id: string }[] }).utilization.map((u) => u.provider_id) }],
   find_open_times: [
     { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]], provider_id: 'any', from_day: '2026-06-10', to_day: '2026-06-10' }) },
     { kind: 'args', args: (a, b) => ({ service_ids: b.serviceIds, provider_id: a.providerIds[0], from_day: '2026-06-10', to_day: '2026-06-10' }) },
@@ -66,7 +70,7 @@ describe('tenancy', () => {
   it.each(Object.entries(PROBES))('%s: a salon-B token sees nothing of salon A', async (name, probes) => {
     const { client, close } = await connectAs(prisma, { businessId: b.businessId, staffUserId: b.ownerId, issuedById: b.ownerId }, deps);
     try {
-      const aIds = new Set([a.businessId, a.ownerId, a.staffId, ...a.serviceIds, ...a.providerIds]);
+      const aIds = new Set([a.businessId, a.ownerId, a.staffId, a.appointmentId, a.clientId, ...a.serviceIds, ...a.providerIds]);
       for (const probe of probes) {
         if (probe.kind === 'args') {
           const result = await client.callTool({ name, arguments: probe.args(a, b) });

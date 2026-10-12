@@ -10,6 +10,7 @@ import type { PrismaClient } from '@bookable/db';
 import { seedStaffUser } from '@bookable/db/auth';
 import { bookAppointment } from '@bookable/db/booking';
 import { seedSetup } from '@bookable/db/settings';
+import { createWaitlistEntry } from '@bookable/db/waitlist';
 
 export interface Salon {
   businessId: string;
@@ -19,6 +20,8 @@ export interface Salon {
   providerIds: string[];
   /** One booked appointment, Thu 2026-06-11 09:00 local (a day no availability test touches), so id-taking tools have something to be refused on. */
   appointmentId: string;
+  /** One client ("Alex …"), on the waitlist for the week after, for the same reason. */
+  clientId: string;
 }
 
 const WED_0900 = toDate(instantFromIso('2026-06-11T14:00:00Z'));
@@ -59,6 +62,13 @@ export async function seedTwoSalons(prisma: PrismaClient): Promise<{ a: Salon; b
   const apptA = await book(ownerA.businessId, setupA.providerIds[0]!, setupA.serviceIds[0]!, ownerA.staffUserId);
   const apptB = await book(bizB.id, providerB.id, serviceB.id, ownerB.staffUserId);
 
+  const clientA = await prisma.client.create({ data: { businessId: ownerA.businessId, name: 'Alex Stone', phone: '+13125550100' }, select: { id: true } });
+  const clientB = await prisma.client.create({ data: { businessId: bizB.id, name: 'Alex Baker', phone: '+17735550100' }, select: { id: true } });
+  const wait = (businessId: string, clientId: string, serviceId: string) =>
+    createWaitlistEntry(prisma, { businessId, clientId, serviceIds: [serviceId], providerIds: [], fromDay: '2026-06-15', toDay: '2026-06-19', dayParts: [] });
+  await wait(ownerA.businessId, clientA.id, setupA.serviceIds[0]!);
+  await wait(bizB.id, clientB.id, serviceB.id);
+
   return {
     a: {
       businessId: ownerA.businessId,
@@ -67,6 +77,7 @@ export async function seedTwoSalons(prisma: PrismaClient): Promise<{ a: Salon; b
       serviceIds: setupA.serviceIds,
       providerIds: setupA.providerIds,
       appointmentId: apptA.id,
+      clientId: clientA.id,
     },
     b: {
       businessId: bizB.id,
@@ -75,6 +86,7 @@ export async function seedTwoSalons(prisma: PrismaClient): Promise<{ a: Salon; b
       serviceIds: [serviceB.id],
       providerIds: [providerB.id],
       appointmentId: apptB.id,
+      clientId: clientB.id,
     },
   };
 }

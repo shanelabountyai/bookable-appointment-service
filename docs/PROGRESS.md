@@ -6570,6 +6570,33 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-007 + M-008 — `find_client`, `get_client_history`, `list_waitlist`, owner-only `get_week_report` (MCP PRD §7)
+
+Commit `__SHA__`.
+
+**What it built.** `find_client(query)`: `searchClients` (name or digits),
+capped at 5 with `truncated`, each match carrying id, name, `phone_last4`
+and `reliability {no_shows, late_cancels, desk_only}` from
+`clientReliability` — never the number, email or notes.
+`get_client_history(client_id)`: `clientHistory` split into `upcoming`
+(soonest first) and `past` (newest first) around `now`, same client shape.
+`list_waitlist(day?)`: active entries, filtered to those whose range
+includes `day`; no phone. `get_week_report(week_of)`: `roles: ['owner']`,
+`dashboardSummary` with both utilization fractions (M-D11). Every "today" is
+the salon's calendar day from `now`, via `toLabel`.
+
+**What it decided.** M-D11.
+
+**What it left behind.** `reads.test.ts`: JSON of every client-bearing
+answer is asserted not to contain the phone, the note or the email; the cap
+test makes 7 "Ann Example"s; a no-show last week shows in `reliability`; a
+stylist's token does not list `get_week_report` AND a direct call is refused
+by the protocol with no envelope of ours. `two-salons` grew a client and a
+waitlist entry per salon so the leak probes have rows to compare. Found while
+wiring: `ProviderUtilization.booked` is a fraction, not minutes — the output
+schema's `int()` caught it at the SDK's output validation, which is the
+first time that layer has earned its keep here.
+
 ## M-006 — `get_day`, `get_appointment` with `allowed_actions` (MCP PRD §7)
 
 Commit `42be9f1`.
