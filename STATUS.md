@@ -13,7 +13,7 @@ Built 2026-10-12 against `docs/prds/mcp/00-mcp-prd.md`. Every backlog item M-000
 ## Not done (deliberately)
 
 - **OAuth for claude.ai / Claude Desktop custom connectors.** They accept a static bearer only as an organisation-level credential (Team/Enterprise). Claude Code connects today over HTTP with `--header`; Desktop connects over stdio locally. OAuth is a later item (M-D15).
-- **Not deployed.** No production deploy was triggered (the brief said not to). The hosted demo at appt.labintelligence.co is one migration behind (`20261012120000_mcp_token`, `20261012130000_event_channel_mcp_proposal`) until the next manual deploy — run `migrate:deploy` against Neon first, per `NEXT.md`'s standing note.
+- ~~Not deployed~~ **Deployed 2026-10-12** (owner's go): `migrate:deploy` applied `20261012120000_mcp_token` and `20261012130000_event_channel_mcp_proposal` to Neon, the `main-manual` hook built `123fc7c` (Ready, 37 s), and `refresh-hosted-demo.sh` replaced the book (646 appointments; derived tables identical). Proof the new code is live: `POST https://appt.labintelligence.co/api/mcp` answers `401` with `WWW-Authenticate: Bearer realm="bookable-mcp"`, which only the MCP route sends. Hosted tokens: sign in on the hosted `/staff/people` (the refresh recreated the owner login) and issue one there.
 - ~~Exec brief and LinkedIn drafts~~ **Done 2026-10-12:** *Bookable Assistant in Brief* at https://claude.ai/artifact/MKSe6REdWCNFeH2bLFjemo (private until shared) and Ledger posts 109–113. Recorded in `docs/RELEASE_NOTES.md` › Project closure artifacts.
 - **Client notes over MCP** (OQ-M3), **overrides, pushes, releases, merges, settings** — out of scope by the PRD (§3), not omissions.
 
