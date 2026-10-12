@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-005 — `list_providers`, `find_open_times` (MCP PRD §7)
 
-Commit `__SHA__`.
+Commit `1b2c50a`.
 
 **What it built.** `tools/ids.ts`: `servicesOf` / `providerOf` / `clientOf`
 check every id against THIS business (active rows only) and throw
