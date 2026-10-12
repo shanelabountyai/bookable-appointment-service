@@ -6570,6 +6570,34 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-006 — `get_day`, `get_appointment` with `allowed_actions` (MCP PRD §7)
+
+Commit `__SHA__`.
+
+**What it built.** `get_day(day, provider_id?)` reads `loadDayView` — the
+grid's own read model — and returns a column per stylist: hours, `closed`,
+`running_late_minutes`, and appointments in instant order with time, status,
+client id + name, services, `late_minutes`, `is_override`. No phone, no notes.
+`get_appointment(appointment_id)` reads `loadAppointmentDetail` and adds
+`allowed_actions`, asked of `availableTransitions`, `canCancel` /
+`staffCancellationStatus` and `canReschedule` with the detail page's context
+line for line; each action names the tool that performs it. History is the
+event log (`type`, `by`, `reason`, `at`), the booking note travels, client
+notes and phone do not (M-D10). Unknown id → `NOT_FOUND` → `get_day`.
+
+**What it decided.** M-D10.
+
+**What it left behind.** `day.test.ts`: a running-late claim shows on the
+column and on the visit's `late_minutes`; the JSON of both tools is asserted
+NOT to contain the client's phone, her note, or (for `get_day`) the booking
+note; the EQUALITY test recomputes `allowed_actions` from the transition
+module with the same context and walks the visit booked → checked_in →
+in_progress → completed, requiring agreement at each. `two-salons` now books
+one appointment per salon (Thu, a day no availability test uses) so id-taking
+probes have a real foreign id; salon B grew hours and a qualification so its
+book can take one. `get_day` has a leak probe and an args probe;
+`get_appointment` an args probe.
+
 ## M-005 — `list_providers`, `find_open_times` (MCP PRD §7)
 
 Commit `1b2c50a`.

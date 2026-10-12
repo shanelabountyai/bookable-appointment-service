@@ -137,7 +137,7 @@ Domain errors (`BookingRejected(field, message)`, `SlotTaken`, transition refusa
 | ✅ M-003 | Token → actor/business/role context; role-built `tools/list`; tenancy + revocation tests | M | 1 |
 | ✅ M-004 | Error envelope + domain-error mapping + wall-time parsing (§6) + per-token rate limit (§5) | M | 1 |
 | ✅ M-005 | `list_providers`, `find_open_times` | M | 2 Reads |
-| M-006 | `get_day`, `get_appointment` with `allowed_actions` | M | 2 |
+| ✅ M-006 | `get_day`, `get_appointment` with `allowed_actions` | M | 2 |
 | M-007 | `find_client`, `get_client_history`, `list_waitlist` (PII rules) | M | 2 |
 | M-008 | `get_week_report` (owner only) | S | 2 |
 | M-009 | `McpProposal` + `commit_proposal` + `channel` on events (OQ-M1) | L | 3 Writes |

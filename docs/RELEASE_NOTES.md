@@ -5137,6 +5137,18 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-006 — the day sheet and one visit, with "what can I do with it"
+
+An assistant can now read the day the way the desk sees it — a column per
+stylist, who is running late, each visit's time and status — and open one
+appointment in full. The useful part is `allowed_actions`: instead of leaving
+the model to guess from a status word, the server asks the same transition
+table the buttons on the staff screen ask, with the same clock and cutoff, and
+returns the moves that are legal right now with the tool that performs each.
+A test walks a visit from booked to finished and checks that list against the
+table at every step. Phone numbers and client notes are never in these
+answers; the booking note is, because the desk wrote it for this visit.
+
 ## M-005 — the assistant sees the same open times the desk does
 
 Two read tools: who can do a visit, and when. The second reuses the booking

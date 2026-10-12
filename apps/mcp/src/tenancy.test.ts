@@ -33,6 +33,11 @@ const PROBES: Record<string, Probe[]> = {
     { kind: 'leaks', ids: (data) => (data as { providers: { id: string; service_ids: string[] }[] }).providers.flatMap((p) => [p.id, ...p.service_ids]) },
     { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]] }) },
   ],
+  get_day: [
+    { kind: 'leaks', args: { day: '2026-06-10' }, ids: (data) => (data as { columns: { provider_id: string }[] }).columns.map((c) => c.provider_id) },
+    { kind: 'args', args: (a) => ({ day: '2026-06-10', provider_id: a.providerIds[0] }) },
+  ],
+  get_appointment: [{ kind: 'args', args: (a) => ({ appointment_id: a.appointmentId }) }],
   find_open_times: [
     { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]], provider_id: 'any', from_day: '2026-06-10', to_day: '2026-06-10' }) },
     { kind: 'args', args: (a, b) => ({ service_ids: b.serviceIds, provider_id: a.providerIds[0], from_day: '2026-06-10', to_day: '2026-06-10' }) },
