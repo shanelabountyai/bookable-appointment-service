@@ -5,9 +5,12 @@
   "type": "module",
   "description": "MCP server exposing Bookable's desk actions to an AI client on behalf of a signed-in staff member. Spec: docs/prds/mcp/00-mcp-prd.md.",
   "scripts": {
-    "start": "tsx src/stdio.ts"
+    "start": "tsx src/stdio.ts",
+    "eval": "tsx eval/run.ts",
+    "eval:dry": "EVAL_DRY_RUN=1 tsx eval/run.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@bookable/core": "*",
     "@bookable/db": "*",
     "@modelcontextprotocol/sdk": "1.32.1",

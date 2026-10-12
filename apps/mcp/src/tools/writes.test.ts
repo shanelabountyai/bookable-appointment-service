@@ -90,6 +90,18 @@ describe('prepare_reschedule', () => {
     expect(moved).toMatchObject({ actor: 'staff', actorRef: a.staffId, channel: 'mcp' });
   });
 
+  it('same time, different stylist, is a REASSIGNMENT — the sick-stylist move — and the event names the mcp channel', async () => {
+    const { proposal, result } = await prepareAndCommit('prepare_reschedule', { appointment_id: appt, start: '2026-06-10 10:00', provider_id: priya });
+    expect(proposal.summary).toBe('Move Maria Gomez — Cut from Dana to Priya, Wed 10 Jun, 10:00 am (same time).');
+    expect(result).toMatchObject({ appointment_id: appt, provider_id: priya, from: { iso: '2026-06-10T10:00:00-05:00' }, to: { iso: '2026-06-10T10:00:00-05:00' } });
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appt } });
+    expect(row.providerId).toBe(priya);
+    expect(row.startAt).toEqual(toDate(instantFromIso('2026-06-10T15:00:00Z')));
+    const ev = (await events(appt)).at(-1)!;
+    expect(ev).toMatchObject({ actor: 'staff', actorRef: a.staffId, channel: 'mcp' });
+    expect(ev.type).toMatch(/provider|reassign/);
+  });
+
   it('same stylist, time inside its own footprint, is allowed (the visit is not its own clash)', async () => {
     const { result } = await prepareAndCommit('prepare_reschedule', { appointment_id: appt, start: '2026-06-10 10:15' });
     expect(result).toMatchObject({ provider_id: dana, to: { iso: '2026-06-10T10:15:00-05:00' } });

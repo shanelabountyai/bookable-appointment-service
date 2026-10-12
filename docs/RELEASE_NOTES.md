@@ -5137,6 +5137,24 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-015 — an eval that grades the database, and what it found before it ran
+
+The last engineering piece is a harness that puts the server in front of a
+model and grades what ended up in the database — not what the transcript
+says. Nine scripted desk situations: book a named client, recover when the
+time was just taken, refuse to double-book when told "exactly 10", move a
+sick stylist's clients, check in and finish, two clients with the same first
+name, a time on the night the clocks jump, a client whose name contains an
+instruction, a cancellation with a reason. A stand-in model replays each
+scenario's ideal path so the harness and every grader run in CI for free, and
+three deliberately wrong paths prove a pass means something. The real run
+against Claude costs money and is left to the owner, with a per-scenario cap.
+Building it paid for itself twice before a single API call: the stand-in
+client validated our error messages against each tool's output schema the way
+Claude's clients do, and rejected every one of them; and the "sick stylist"
+scenario found that moving a client to another stylist at the same time went
+through the wrong door and was refused. Both fixed, both now tested.
+
 ## M-014 — the server reachable from anywhere, one token per person
 
 The same server now answers over HTTP at `/api/mcp`, inside the deployed web

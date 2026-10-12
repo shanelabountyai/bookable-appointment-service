@@ -54,11 +54,17 @@ export class ToolFailure extends Error {
   }
 }
 
+/**
+ * The envelope travels in `content` as JSON text and NOT in `structuredContent`:
+ * a client that has seen `tools/list` validates `structuredContent` against the
+ * tool's OUTPUT schema, error or not, and refuses the whole result when it does
+ * not match (found by the eval harness, M-015 — Claude's clients validate). An
+ * `isError` result has no structured payload by the protocol's own rules.
+ */
 export function toolError(err: ToolError): CallToolResult {
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify(err) }],
-    structuredContent: { ...err },
   };
 }
 

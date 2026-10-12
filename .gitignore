@@ -11,3 +11,4 @@ playwright-report/
 packages/db/generated/
 .env*.local
 .env.production*
+apps/mcp/eval/results/

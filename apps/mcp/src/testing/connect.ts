@@ -50,13 +50,19 @@ export async function connectAs(
 export type CallResult = Awaited<ReturnType<Client['callTool']>>;
 
 /**
- * Structured error payload of a failed call, or null if the call succeeded. An
- * error with NO structured payload came from the SDK itself (schema validation,
- * unknown tool) and is surfaced as `{ error: 'SDK', message }` so an assertion
- * failure shows the reason instead of `undefined`.
+ * The §6 envelope of a failed call (parsed from its JSON text content), or null
+ * if the call succeeded. An error whose text is not our envelope came from the
+ * SDK itself (schema validation, unknown tool) and is surfaced as
+ * `{ error: 'SDK', message }` so an assertion failure shows the reason.
  */
 export function errorOf(result: CallResult): Record<string, unknown> | null {
   if (!result.isError) return null;
-  if (result.structuredContent) return result.structuredContent as Record<string, unknown>;
-  return { error: 'SDK', message: (result.content as { text?: string }[]).map((c) => c.text ?? '').join('\n') };
+  const text = (result.content as { text?: string }[]).map((c) => c.text ?? '').join('\n');
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    if (typeof parsed.error === 'string') return parsed;
+  } catch {
+    // not ours
+  }
+  return { error: 'SDK', message: text };
 }

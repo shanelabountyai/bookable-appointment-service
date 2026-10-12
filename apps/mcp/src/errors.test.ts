@@ -112,15 +112,16 @@ describe('envelopes', () => {
   it('RATE_LIMITED carries retry_after_s and no next', () => {
     const r = rateLimited(60);
     expect(r.isError).toBe(true);
-    expect(r.structuredContent).toEqual({
+    expect(JSON.parse((r.content[0] as { text: string }).text)).toEqual({
       error: 'RATE_LIMITED',
       message: 'Too many calls for this token. Wait 60 seconds and try again.',
       retry_after_s: 60,
     });
   });
 
-  it('toolError puts the same payload in content and structuredContent', () => {
+  it('toolError puts the envelope in content as JSON and leaves structuredContent EMPTY — a validating client checks it against the output schema', () => {
     const r = toolError({ error: 'NOT_FOUND', message: 'm', field: 'f' });
-    expect(JSON.parse((r.content[0] as { text: string }).text)).toEqual(r.structuredContent);
+    expect(JSON.parse((r.content[0] as { text: string }).text)).toEqual({ error: 'NOT_FOUND', message: 'm', field: 'f' });
+    expect(r).not.toHaveProperty('structuredContent');
   });
 });

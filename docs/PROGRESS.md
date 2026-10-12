@@ -6570,6 +6570,41 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-015 — model eval harness and scenarios (MCP PRD §9.7)
+
+Commit `__SHA__`.
+
+**What it built.** `apps/mcp/eval/`: `model.ts` (a `Model` interface;
+`ClaudeModel` on `@anthropic-ai/sdk` with the manual tool-use loop's shapes;
+`ScriptedModel` replaying a scenario's ideal tool path, reading the previous
+`tool_result` off the conversation as a model would; a pricing table and
+`costUsd`), `harness.ts` (`runScenario`: reset the TEST database, seed, token,
+in-memory MCP client, `tools/list` → Anthropic tools, the loop with cost and
+turn caps, then `grade(prisma)`), `scenarios.ts` (nine: book a named client;
+recover from SLOT_TAKEN; refuse to double-book; sick stylist → move her
+clients; check-in → complete; ambiguous client; DST-gap time; an instruction
+inside a client's name; cancel with a reason — each with a database grader
+and a scripted ideal path), `run.ts` (`npm run eval:dry` / `npm run eval`,
+`EVAL_ONLY`, `EVAL_COST_CAP_USD`, results JSON). `@anthropic-ai/sdk` added to
+`apps/mcp`.
+
+**What it decided.** M-D16, M-D17.
+
+**What it left behind.** `harness.test.ts` (14): every scenario passes on
+its scripted path in exactly `script.length + 1` turns; three wrong paths
+FAIL their grader (wrong stylist; obeying the injected instruction; guessing
+between two Marias); the cost cap stops a never-ending model after two turns
+at $0.84 against a $0.50 cap; prices check against the table. **Two defects
+found by the dry run, neither visible to 100+ unit tests:** (1) the §6
+envelope lived in `structuredContent`, and a client that has seen
+`tools/list` validates that against the output schema and throws — every
+error would have reached Claude as an exception (fixed: `content` only;
+`errorOf` in the harness parses it); (2) a same-time move to another stylist
+committed as `SLOT_TAKEN` because `rescheduleAppointment` refuses an
+unchanged instant — the commit now routes that case to
+`reassignAppointment`, with a new `writes.test.ts` case. `npm run eval:dry`:
+9/9, $0. The Claude run was NOT executed (spends credit; STATUS.md).
+
 ## M-014 — Streamable HTTP at `/api/mcp` with bearer auth (MCP PRD §5, OQ-M5)
 
 Commit `0c3b498`.

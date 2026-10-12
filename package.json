@@ -2,8 +2,10 @@
   "name": "bookable",
   "version": "0.0.1",
   "private": true,
-  "engines": { "node": ">=24" },
-  "description": "Appointment scheduling for a service business — Claude Code learning build #3. Start with docs/START-HERE.md.",
+  "engines": {
+    "node": ">=24"
+  },
+  "description": "Appointment scheduling for a service business \u2014 Claude Code learning build #3. Start with docs/START-HERE.md.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -35,7 +37,9 @@
     "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
     "postinstall": "npm run db:generate",
     "db:seed:test": "dotenv -e .env.test -e .env.local -- tsx packages/db/seed.ts",
-    "db:seed:dev": "dotenv -e .env.local -- tsx packages/db/seed.ts"
+    "db:seed:dev": "dotenv -e .env.local -- tsx packages/db/seed.ts",
+    "eval:dry": "dotenv -e .env.test -e .env.local -- npm run eval:dry -w apps/mcp",
+    "eval": "dotenv -e .env.test -e .env.local -- npm run eval -w apps/mcp"
   },
   "devDependencies": {
     "@types/pg": "^8.21.0",

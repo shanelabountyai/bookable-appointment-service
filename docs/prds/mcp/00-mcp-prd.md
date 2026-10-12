@@ -146,7 +146,7 @@ Domain errors (`BookingRejected(field, message)`, `SlotTaken`, transition refusa
 | ✅ M-012 | `prepare_status_change`, `prepare_waitlist_entry` | M | 3 |
 | ✅ M-013 | Barrier-based prepare→commit race test; parity test | M | 3 |
 | ✅ M-014 | Streamable HTTP at `/api/mcp` with bearer auth; connect from Claude (OQ-M5 verified — M-D15) | M | 4 Hosted + eval |
-| M-015 | Model eval harness + scenarios (§9.7) | M | 4 |
+| ✅ M-015 | Model eval harness + scenarios (§9.7) — built and dry-run; the Claude run is the owner's (M-D17) | M | 4 |
 | M-016 | DEMO.md (Claude Desktop walkthrough), WRITEUP.md, exec brief, posts | M | 4 Closure |
 
 Demo checkpoints: after M-004 (a tool call works end-to-end from Claude Desktop), after M-008 (Claude answers "who's in this afternoon and when is Dana free?"), after M-013 (the sick-stylist script).
