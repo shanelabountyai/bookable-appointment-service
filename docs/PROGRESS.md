@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-009 + M-010 — proposals, `commit_proposal`, `channel` on events; `prepare_booking`, `prepare_new_client` (MCP PRD §7, §8)
 
-Commit `__SHA__`.
+Commit `7d7c32c`.
 
 **What it built.** Migration `20261012130000_event_channel_mcp_proposal`:
 `EventChannel` enum + `AppointmentEvent.channel` (default `desk`, backfilled
