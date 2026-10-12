@@ -44,7 +44,7 @@ import {
 } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { BookingRejected, NoResourceFree, SlotNotOffered, SlotTaken } from '../booking/errors';
 import { chairForMove, resourceTypeName } from '../booking/resources';
 import { qualifiedForVisit } from '../qualification';
@@ -232,6 +232,7 @@ export async function rescheduleAppointment(
               appointmentId: appointment.id,
               type: 'provider_changed',
               actor: input.actor.type,
+              channel: channelOf(input.actor),
               actorRef: input.actor.ref,
               reason: input.reason?.trim() || null,
               payload: {
@@ -258,6 +259,7 @@ export async function rescheduleAppointment(
             // event IS the history (D-6), which is why the log is append-only.
             type: 'rescheduled',
             actor: input.actor.type,
+            channel: channelOf(input.actor),
             actorRef: input.actor.ref,
             reason: input.reason?.trim() || null,
             payload: {

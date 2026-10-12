@@ -1,4 +1,4 @@
-export { type Actor, type ActorType, customerTokenActor, staffActor, systemActor } from './actor';
+export { type Actor, type ActorType, type Channel, channelOf, customerTokenActor, mcpActor, staffActor, systemActor } from './actor';
 export {
   MANAGE_TOKEN_GRACE_MS,
   type MintedManageToken,

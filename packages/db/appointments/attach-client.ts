@@ -53,7 +53,7 @@
  * saying "your appointment has changed" would be false on every arm. A test
  * asserts the outbox does not move.
  */
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import { NoResourceFree } from '../booking/errors';
 import { chairForMove, chairHeldByHolder, resourceTypeName } from '../booking/resources';
@@ -180,6 +180,7 @@ export async function setAppointmentClient(
         // three rows in every list that reads the log, for one write.
         type: 'client_changed',
         actor: input.actor.type,
+        channel: channelOf(input.actor),
         actorRef: input.actor.ref,
         reason: input.reason?.trim() || null,
         payload: {

@@ -27,7 +27,7 @@ import {
 } from '../../core/scheduling';
 import { fromDate, instantFromIso } from '../../core/time';
 import { worstCutoff } from '../../core/settings';
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { NoResourceFree, SlotTaken } from '../booking/errors';
 import { chairForMove, resourceTypeName } from '../booking/resources';
 import { isSlotTakenError } from '../errors';
@@ -345,6 +345,7 @@ async function runTransition(db: Db, input: TransitionInput): Promise<Transition
         // them differently (APPT-07).
         type: correction ? 'status_corrected' : 'status_changed',
         actor: input.actor.type,
+        channel: channelOf(input.actor),
         actorRef: input.actor.ref,
         reason: input.reason?.trim() || null,
         payload: {
@@ -546,6 +547,7 @@ export async function undoStatusMove(db: Db, input: UndoInput): Promise<Transiti
         appointmentId: appointment.id,
         type: 'status_corrected',
         actor: input.actor.type,
+        channel: channelOf(input.actor),
         actorRef: input.actor.ref,
         payload: {
           from,

@@ -16,7 +16,7 @@
  * desk wants "three moved, six could not" rather than an all-or-nothing that
  * fails because of one awkward 2pm.
  */
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
 import { isSlotTakenError } from '../errors';
 import { enqueueNotification } from '../notifications';
@@ -119,6 +119,7 @@ export async function reassignAppointment(
           // APPT-07 names "provider change" as its own kind of event.
           type: 'provider_changed',
           actor: args.actor.type,
+          channel: channelOf(args.actor),
           actorRef: args.actor.ref,
           reason: args.reason?.trim() || null,
           payload: {

@@ -28,7 +28,7 @@
  * event log rather than from ranges — so the event below is what puts the
  * released span on it (A-067's fourth source).
  */
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { fitsFreedSpan } from '../../core/settings';
 import { fromDate, instant, toDate, toLabel, zoneId } from '../../core/time';
 import { type FreeRun, freeRunsFor, pickFreedSpan } from '../day/free-runs';
@@ -249,6 +249,7 @@ export async function releaseNoShowTime(
           appointmentId: appointment.id,
           type: 'time_released',
           actor: input.actor.type,
+          channel: channelOf(input.actor),
           actorRef: input.actor.ref,
           reason: input.reason?.trim() || null,
           payload: {
@@ -357,6 +358,7 @@ export async function unreleaseNoShowTime(
           // the log for one column going back to where it was.
           type: 'time_released',
           actor: input.actor.type,
+          channel: channelOf(input.actor),
           actorRef: input.actor.ref,
           reason: input.reason?.trim() || null,
           payload: {

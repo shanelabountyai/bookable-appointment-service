@@ -75,6 +75,7 @@ const TABLES = [
   'Resource',
   'ResourceType',
   'Provider',
+  'McpProposal',
   'McpToken',
   'StaffUser',
   'Business',

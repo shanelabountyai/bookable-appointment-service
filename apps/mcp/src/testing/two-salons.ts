@@ -10,6 +10,7 @@ import type { PrismaClient } from '@bookable/db';
 import { seedStaffUser } from '@bookable/db/auth';
 import { bookAppointment } from '@bookable/db/booking';
 import { seedSetup } from '@bookable/db/settings';
+import { createProposal } from '@bookable/db/mcp';
 import { createWaitlistEntry } from '@bookable/db/waitlist';
 
 export interface Salon {
@@ -22,6 +23,8 @@ export interface Salon {
   appointmentId: string;
   /** One client ("Alex …"), on the waitlist for the week after, for the same reason. */
   clientId: string;
+  /** One unused proposal by the owner, so commit_proposal has a foreign id to be refused on. */
+  proposalId: string;
 }
 
 const WED_0900 = toDate(instantFromIso('2026-06-11T14:00:00Z'));
@@ -69,6 +72,11 @@ export async function seedTwoSalons(prisma: PrismaClient): Promise<{ a: Salon; b
   await wait(ownerA.businessId, clientA.id, setupA.serviceIds[0]!);
   await wait(bizB.id, clientB.id, serviceB.id);
 
+  const propose = (businessId: string, staffUserId: string) =>
+    createProposal(prisma, { businessId, staffUserId, tokenId: 'seed', action: 'prepare_new_client', args: { name: 'Seed', phone: '+13125550199' }, summary: 'Add client Seed.', now: SEED_NOW });
+  const propA = await propose(ownerA.businessId, ownerA.staffUserId);
+  const propB = await propose(bizB.id, ownerB.staffUserId);
+
   return {
     a: {
       businessId: ownerA.businessId,
@@ -78,6 +86,7 @@ export async function seedTwoSalons(prisma: PrismaClient): Promise<{ a: Salon; b
       providerIds: setupA.providerIds,
       appointmentId: apptA.id,
       clientId: clientA.id,
+      proposalId: propA.id,
     },
     b: {
       businessId: bizB.id,
@@ -87,6 +96,7 @@ export async function seedTwoSalons(prisma: PrismaClient): Promise<{ a: Salon; b
       providerIds: [providerB.id],
       appointmentId: apptB.id,
       clientId: clientB.id,
+      proposalId: propB.id,
     },
   };
 }

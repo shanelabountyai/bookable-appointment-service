@@ -5137,6 +5137,23 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-009 + M-010 — the assistant can book, and every booking says so
+
+The first writes, built around one rule: nothing is written on the model's
+say-so alone. A `prepare_*` tool runs every check the real write would run —
+is the stylist qualified, is the time still free for this client, does it
+exist on the clock — and stores a proposal with a one-line sentence for the
+human. `commit_proposal` then runs the real booking function with exactly the
+stored arguments, once, within ten minutes, by the person who previewed it.
+If the time was taken in between, the commit is refused with the specific
+reason and nothing is written. Every event the assistant writes carries the
+staff member's name and a new `channel` column reading `mcp`, so the history
+says "booked by Sam via the assistant" as a stored fact. Thirteen places write
+events; a test reads the source to make sure none forgot. Two bugs found
+before anyone saw them: the database reorders JSON keys, which broke the
+proposal hash until it was computed over sorted keys; and a time outside
+working hours was reported as "taken" because the engine never considers it.
+
 ## M-007 + M-008 — clients, the waitlist, and the owner's week
 
 The assistant can find a client, read her history, and see who is waiting —

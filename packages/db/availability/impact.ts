@@ -14,7 +14,7 @@
  * overlapping absence changes, so the second person in on Saturday morning
  * does not re-ring three clients somebody already sorted.
  */
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { ACTIVE_STATUSES, resolveWindow, wallTime } from '../../core/scheduling';
 import { type ZoneId, calendarDay, fromDate, weekdayOf } from '../../core/time';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -291,6 +291,7 @@ export async function recordHoursStranding(
       appointmentId: conflict.id,
       type: 'hours_changed_underneath',
       actor: args.actor.type,
+      channel: channelOf(args.actor),
       actorRef: args.actor.ref,
       payload: { change: args.change } satisfies Prisma.InputJsonValue,
     })),
@@ -485,6 +486,7 @@ export async function acknowledgeConflict(
       appointmentId: args.appointmentId,
       type: 'conflict_acknowledged',
       actor: args.actor.type,
+      channel: channelOf(args.actor),
       actorRef: args.actor.ref,
       reason: args.reason.trim() || null,
     },

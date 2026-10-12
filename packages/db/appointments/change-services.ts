@@ -43,7 +43,7 @@ import {
 } from '../../core/scheduling';
 import { effectiveDurationMinutes, effectivePriceCents, visitPattern } from '../../core/settings';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { BookingRejected, NoResourceFree, SlotNotOffered, SlotTaken } from '../booking/errors';
 import { chairForMove, findFreeResource, requiredResourceTypeId, resourceTypeName } from '../booking/resources';
 import { isSlotTakenError } from '../errors';
@@ -307,6 +307,7 @@ export async function changeVisitServices(
             appointmentId: appointment.id,
             type: 'services_changed',
             actor: input.actor.type,
+            channel: channelOf(input.actor),
             actorRef: input.actor.ref,
             reason: input.reason?.trim() || null,
             payload: {

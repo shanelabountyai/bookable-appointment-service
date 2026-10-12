@@ -29,7 +29,7 @@
  * the message the client got said "running behind". All three are fixed here
  * and in the control that drives it.
  */
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { ACTIVE_STATUSES, PUSHABLE_STATUSES, resolveWindow, wallTime } from '../../core/scheduling';
 import { type ZoneId, calendarDay, fromDate, instant, toDate, toLabel, weekdayOf } from '../../core/time';
 import { resolveDayWindows } from '../availability';
@@ -740,6 +740,7 @@ export async function pushColumn(
           appointmentId: appointment.id,
           type: 'column_pushed',
           actor: args.actor.type,
+          channel: channelOf(args.actor),
           actorRef: args.actor.ref,
           reason: args.reason?.trim() || null,
           payload: {

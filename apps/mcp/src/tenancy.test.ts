@@ -24,7 +24,9 @@ const deps = { prisma, now: () => NOW };
 
 type Probe =
   | { kind: 'args'; args: (a: Salon, b: Salon) => Record<string, unknown> }
-  | { kind: 'leaks'; args?: Record<string, unknown>; ids: (data: unknown) => string[] };
+  | { kind: 'leaks'; args?: Record<string, unknown>; ids: (data: unknown) => string[] }
+  /** The tool takes no ids and lists nothing — say so explicitly rather than leaving it off the registry. */
+  | { kind: 'none'; why: string };
 
 /** One entry per tool. Adding a tool without a probe fails `every tool has a probe`. */
 const PROBES: Record<string, Probe[]> = {
@@ -42,6 +44,13 @@ const PROBES: Record<string, Probe[]> = {
   get_client_history: [{ kind: 'args', args: (a) => ({ client_id: a.clientId }) }],
   list_waitlist: [{ kind: 'leaks', ids: (data) => (data as { entries: { entry_id: string; client_id: string }[] }).entries.flatMap((e) => [e.entry_id, e.client_id]) }],
   get_week_report: [{ kind: 'leaks', args: { week_of: '2026-06-10' }, ids: (data) => (data as { utilization: { provider_id: string }[] }).utilization.map((u) => u.provider_id) }],
+  prepare_booking: [
+    { kind: 'args', args: (a, b) => ({ client_id: a.clientId, service_ids: b.serviceIds, provider_id: b.providerIds[0], start: '2026-06-12 10:00' }) },
+    { kind: 'args', args: (a, b) => ({ client_id: b.clientId, service_ids: a.serviceIds.slice(0, 1), provider_id: b.providerIds[0], start: '2026-06-12 10:00' }) },
+    { kind: 'args', args: (a, b) => ({ client_id: b.clientId, service_ids: b.serviceIds, provider_id: a.providerIds[0], start: '2026-06-12 10:00' }) },
+  ],
+  prepare_new_client: [{ kind: 'none', why: 'takes a name and a phone; the phone lookup is scoped to the business in prepare' }],
+  commit_proposal: [{ kind: 'args', args: (a) => ({ proposal_id: a.proposalId }) }],
   find_open_times: [
     { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]], provider_id: 'any', from_day: '2026-06-10', to_day: '2026-06-10' }) },
     { kind: 'args', args: (a, b) => ({ service_ids: b.serviceIds, provider_id: a.providerIds[0], from_day: '2026-06-10', to_day: '2026-06-10' }) },
@@ -70,8 +79,9 @@ describe('tenancy', () => {
   it.each(Object.entries(PROBES))('%s: a salon-B token sees nothing of salon A', async (name, probes) => {
     const { client, close } = await connectAs(prisma, { businessId: b.businessId, staffUserId: b.ownerId, issuedById: b.ownerId }, deps);
     try {
-      const aIds = new Set([a.businessId, a.ownerId, a.staffId, a.appointmentId, a.clientId, ...a.serviceIds, ...a.providerIds]);
+      const aIds = new Set([a.businessId, a.ownerId, a.staffId, a.appointmentId, a.clientId, a.proposalId, ...a.serviceIds, ...a.providerIds]);
       for (const probe of probes) {
+        if (probe.kind === 'none') continue;
         if (probe.kind === 'args') {
           const result = await client.callTool({ name, arguments: probe.args(a, b) });
           expect(errorOf(result), JSON.stringify(probe.args(a, b))).toMatchObject({ error: 'NOT_FOUND' });

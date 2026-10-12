@@ -25,7 +25,7 @@
  *     an overlap: closed day, break, lead time, horizon.
  */
 import { randomUUID } from 'node:crypto';
-import type { Actor } from '../../core/auth';
+import { type Actor, channelOf } from '../../core/auth';
 import { type Slot, type VisitLine, composeVisit } from '../../core/scheduling';
 import { type ZoneId, fromDate, instant, toDate, toLabel } from '../../core/time';
 import { effectivePriceCents, effectiveDurationMinutes, visitPattern } from '../../core/settings';
@@ -483,6 +483,7 @@ async function writeAppointment(
           businessId: input.businessId,
           type: isOverride ? 'override_booked' : 'booked',
           actor: input.actor.type,
+          channel: channelOf(input.actor),
           actorRef: input.actor.ref,
           reason: isOverride ? (input.overrideReason ?? null) : null,
           payload: {

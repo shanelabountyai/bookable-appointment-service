@@ -108,6 +108,16 @@ enum StaffRole {
   staff
 }
 
+/// M-009 (MCP PRD OQ-M1): how the actor reached the system. Mirrors
+/// `Channel` in packages/core/auth — `channelOf` is the one place that maps an
+/// actor to one of these.
+enum EventChannel {
+  desk
+  manage_link
+  mcp
+  system
+}
+
 enum NotificationChannel {
   email
   sms
@@ -216,6 +226,7 @@ model Business {
   waitlist      WaitlistEntry[]
   manageTokens  ManageToken[]
   mcpTokens     McpToken[]
+  mcpProposals  McpProposal[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -256,8 +267,9 @@ model StaffUser {
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @db.Timestamptz(3)
 
-  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  mcpTokens McpToken[]
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mcpTokens    McpToken[]
+  mcpProposals McpProposal[]
 
   @@unique([businessId, email])
   @@index([businessId])
@@ -292,6 +304,39 @@ model McpToken {
   staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Restrict)
 
   @@index([businessId])
+  @@index([staffUserId])
+}
+
+/// M-009 (MCP PRD §8). Preview-then-commit: a `prepare_*` tool runs every
+/// check the commit will run WITHOUT writing, and stores what it would do here.
+/// `commit_proposal` re-loads the row, checks owner/business/expiry/unused,
+/// and runs the real domain function with the STORED args — it never accepts
+/// new ones. The claim is one `UPDATE … WHERE usedAt IS NULL RETURNING`, the
+/// outbox's "a database fact rather than a hope" (A-048). `outcome` keeps what
+/// the commit did, success or refusal, so the audit reads end to end.
+model McpProposal {
+  id          String @id @default(cuid())
+  businessId  String
+  staffUserId String
+  tokenId     String
+  /// e.g. "prepare_booking". The tool that made it is the only one that may run it.
+  action      String
+  /// Canonical args, exactly what the domain function will be called with.
+  args        Json
+  /// SHA-256 of the canonical args; what commits is byte-for-byte what was previewed.
+  argsHash    String
+  /// The sentence shown to the human.
+  summary     String
+
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  outcome   Json?
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Restrict)
+
+  @@index([businessId, createdAt])
   @@index([staffUserId])
 }
 
@@ -1030,6 +1075,9 @@ model AppointmentEvent {
   actor     Actor
   /// Which staff user / token acted, when identifiable.
   actorRef  String?
+  /// M-009: desk | manage_link | mcp | system. "Booked by Sam via Claude" needs
+  /// this to be a column, not an inference from `actor`.
+  channel   EventChannel @default(desk)
   reason    String?
   /// Both sides of a reschedule live here (D-6) — the row survives, so history
   /// is in the log rather than in a dead row.

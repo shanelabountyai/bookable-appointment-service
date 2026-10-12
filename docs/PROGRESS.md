@@ -6570,6 +6570,53 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-009 + M-010 — proposals, `commit_proposal`, `channel` on events; `prepare_booking`, `prepare_new_client` (MCP PRD §7, §8)
+
+Commit `__SHA__`.
+
+**What it built.** Migration `20261012130000_event_channel_mcp_proposal`:
+`EventChannel` enum + `AppointmentEvent.channel` (default `desk`, backfilled
+`manage_link`/`system` from `actor`), and `McpProposal` (`action`, `args`
+JSON, `argsHash`, `summary`, `expiresAt`, `usedAt`, `outcome`). Core
+`Actor` gains optional `channel`; `channelOf(actor)` is the one mapping;
+`mcpActor(staffUserId)` is a staff actor on the `mcp` channel. All THIRTEEN
+`appointmentEvent.create` sites stamp `channel: channelOf(x.actor)`, and
+`packages/db/event-channel.test.ts` scans the source to prove it (and pins
+the count). `packages/db/mcp/proposals.ts`: `createProposal` (10-minute TTL
+on the instant axis), `claimProposal` — ONE `updateMany … WHERE usedAt IS
+NULL AND expiresAt > now AND businessId AND staffUserId`, then the refusal
+reason read from the row (`not-found` covers unknown, other business, other
+person) — and `recordOutcome`. `apps/mcp/tools/proposals.ts`: a `WriteAction`
+is `prepare` (every check, no write, canonical args + sentence) and `commit`
+(the real domain function with the STORED args); `prepareTool(action)`
+generates the `prepare_*` tool and `commitProposalTool(actions)` the one
+`destructiveHint` tool. `prepare_booking` asks the engine for the exact
+instant (`buildSlotQuery` + `computeSlotsIn({explain:true})`, client as
+holder) and throws `SlotNotOffered` with the engine's reasons — or
+`outside-working-window` / `not-on-the-grid` when the engine never
+considered the instant; commit is `bookAppointment` with `mcpActor`,
+`audience: 'staff'`, `idempotencyKey: mcp:<proposalId>`.
+`prepare_new_client` refuses a known phone with `AMBIGUOUS_CLIENT` (M-D13).
+
+**What it decided.** M-D12, M-D13; D-79 cross-references M-D1.
+
+**What it left behind.** `proposals.test.ts`: preview writes nothing and
+the sentence is exact; the committed event is `actor: staff, actorRef: <the
+stylist>, channel: mcp`; second commit → `PROPOSAL_USED`; +10:01 →
+`PROPOSAL_EXPIRED`; another person's proposal → `NOT_FOUND` with no hint;
+STALE (slot taken between preview and commit) → `SLOT_TAKEN`, nothing
+written, claim stands; the preview refuses taken / outside hours / Sunday /
+wrong stylist / DST overlap / unknown ids and leaves no proposal row;
+`commit_proposal` is the only destructive tool. Two defects found by the
+tests: `jsonb` reorders keys so the first hash design refused its own rows
+(now `canonicalJson`), and an instant the engine never enumerated (07:00,
+Sunday) came back `SLOT_TAKEN` with no reasons until the window check was
+added. The barrier-based prepare→commit race and the desk-vs-MCP parity test
+are M-013. `errorOf` in the test harness now surfaces SDK-level errors as
+`{error:'SDK', message}` instead of `undefined`. Not yet done: the staff
+detail page does not render "via Claude" for `channel: mcp` events — one line
+in `event-language.ts`, scheduled with the final e2e run (M-D3).
+
 ## M-007 + M-008 — `find_client`, `get_client_history`, `list_waitlist`, owner-only `get_week_report` (MCP PRD §7)
 
 Commit `4a2797e`.
