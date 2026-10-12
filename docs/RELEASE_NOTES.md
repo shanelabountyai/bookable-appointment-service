@@ -5137,6 +5137,19 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## M-005 — the assistant sees the same open times the desk does
+
+Two read tools: who can do a visit, and when. The second reuses the booking
+engine exactly as the staff booking screen calls it — staff rules, the
+client's chair threaded through — because an offer computed any other way is
+one the booking step may later refuse. The proof is a single test that asks
+the question both ways: once per stylist, once as "anyone", and requires the
+answers to be the same set of instants, with the "anyone" path's "how many
+are free" matching the count of columns that offer each time. That test
+failed on first run and corrected my model of the code, which is what it is
+for. On the night the clocks go back, 1:30 am is offered twice, each with its
+offset, as it should be.
+
 ## M-004 — errors a model can act on, and times that cannot be misread
 
 A model retries. An error it cannot read becomes a loop or a confident wrong

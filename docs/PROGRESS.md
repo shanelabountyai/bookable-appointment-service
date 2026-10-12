@@ -6570,6 +6570,40 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## M-005 — `list_providers`, `find_open_times` (MCP PRD §7)
+
+Commit `__SHA__`.
+
+**What it built.** `tools/ids.ts`: `servicesOf` / `providerOf` / `clientOf`
+check every id against THIS business (active rows only) and throw
+`NOT_FOUND` naming the tool that hands out that kind of id — one place, used
+by every later tool. `list_providers(service_ids?)`: active stylists with the
+active services each can do; with `service_ids`, only those qualified for the
+WHOLE visit (`providersForVisit`). `find_open_times(service_ids,
+provider_id|"any", from_day, to_day ≤ 14, part_of_day?, client_id?)`: the
+named path is `computeDaySlots`, the "any" path is `anyProviderTimes`, both
+`audience: 'staff'` with the client as `holderKey` — the same two calls
+`/staff/book` makes. Days walk the calendar axis (`addDays`); output is
+grouped by day then stylist, each time `{label, iso}`, plus `free_count` on
+the "any" path. `part_of_day` filters by `tagsFor`'s band.
+`@bookable/db/qualification` is now an export.
+
+**What it decided.** M-D9. A stylist who cannot do the visit is
+`NOT_QUALIFIED` → `list_providers` before any engine call.
+
+**What it left behind.** `availability.test.ts`. The EQUALITY test is the
+one CLAUDE.md asks for: "any" lists each instant once under a stylist whose
+own column offers it; the union of every named column equals the "any" set;
+and `free_count` equals the number of named columns offering that instant. It
+failed first — I had assumed "any" returned every stylist's times and it
+returns the desk's assignment per instant, which is the better answer and is
+what the description now says. Also found by the test: a 45-minute Cut's last
+start is 16:15 against a 17:00 close — the after-buffer may run past close.
+Fall-back day: 01:30 is offered twice as `01:30:00-05:00 CDT` and
+`01:30:00-06:00 CST` (FB-1/FB-4). Tenancy probes now take a list per tool;
+`find_open_times` has two (A's service with "any"; B's service with A's
+stylist).
+
 ## M-004 — error envelope, domain-error mapping, wall-time parsing, rate limit (MCP PRD §5, §6)
 
 Commit `5a18a36`.

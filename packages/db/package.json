@@ -26,6 +26,7 @@
     "./errors": "./errors.ts",
     "./mcp": "./mcp/index.ts",
     "./notifications": "./notifications/index.ts",
+    "./qualification": "./qualification.ts",
     "./rate-limit": "./rate-limit.ts",
     "./reports": "./reports/index.ts",
     "./scheduling": "./scheduling/index.ts",

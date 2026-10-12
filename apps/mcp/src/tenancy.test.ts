@@ -23,15 +23,20 @@ const NOW = toDate(instantFromIso('2026-06-09T14:00:00Z'));
 const deps = { prisma, now: () => NOW };
 
 type Probe =
-  | { kind: 'args'; args: (a: Salon) => Record<string, unknown> }
+  | { kind: 'args'; args: (a: Salon, b: Salon) => Record<string, unknown> }
   | { kind: 'leaks'; args?: Record<string, unknown>; ids: (data: unknown) => string[] };
 
 /** One entry per tool. Adding a tool without a probe fails `every tool has a probe`. */
-const PROBES: Record<string, Probe> = {
-  list_services: {
-    kind: 'leaks',
-    ids: (data) => (data as { services: { id: string }[] }).services.map((s) => s.id),
-  },
+const PROBES: Record<string, Probe[]> = {
+  list_services: [{ kind: 'leaks', ids: (data) => (data as { services: { id: string }[] }).services.map((s) => s.id) }],
+  list_providers: [
+    { kind: 'leaks', ids: (data) => (data as { providers: { id: string; service_ids: string[] }[] }).providers.flatMap((p) => [p.id, ...p.service_ids]) },
+    { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]] }) },
+  ],
+  find_open_times: [
+    { kind: 'args', args: (a) => ({ service_ids: [a.serviceIds[0]], provider_id: 'any', from_day: '2026-06-10', to_day: '2026-06-10' }) },
+    { kind: 'args', args: (a, b) => ({ service_ids: b.serviceIds, provider_id: a.providerIds[0], from_day: '2026-06-10', to_day: '2026-06-10' }) },
+  ],
 };
 
 let a: Salon;
@@ -53,20 +58,22 @@ describe('tenancy', () => {
     expect(Object.keys(PROBES).sort()).toEqual(TOOLS.map((t) => t.name).sort());
   });
 
-  it.each(Object.entries(PROBES))('%s: a salon-B token sees nothing of salon A', async (name, probe) => {
+  it.each(Object.entries(PROBES))('%s: a salon-B token sees nothing of salon A', async (name, probes) => {
     const { client, close } = await connectAs(prisma, { businessId: b.businessId, staffUserId: b.ownerId, issuedById: b.ownerId }, deps);
     try {
       const aIds = new Set([a.businessId, a.ownerId, a.staffId, ...a.serviceIds, ...a.providerIds]);
-      if (probe.kind === 'args') {
-        const result = await client.callTool({ name, arguments: probe.args(a) });
-        expect(errorOf(result)).toMatchObject({ error: 'NOT_FOUND' });
-        expect(JSON.stringify(result)).not.toMatch(/another|other business|elsewhere/i);
-      } else {
-        const result = await client.callTool({ name, arguments: probe.args ?? {} });
-        expect(errorOf(result)).toBeNull();
-        const ids = probe.ids(result.structuredContent);
-        expect(ids.filter((id) => aIds.has(id))).toEqual([]);
-        expect(ids.length).toBeGreaterThan(0);
+      for (const probe of probes) {
+        if (probe.kind === 'args') {
+          const result = await client.callTool({ name, arguments: probe.args(a, b) });
+          expect(errorOf(result), JSON.stringify(probe.args(a, b))).toMatchObject({ error: 'NOT_FOUND' });
+          expect(JSON.stringify(result)).not.toMatch(/another|other business|elsewhere/i);
+        } else {
+          const result = await client.callTool({ name, arguments: probe.args ?? {} });
+          expect(errorOf(result)).toBeNull();
+          const ids = probe.ids(result.structuredContent);
+          expect(ids.filter((id) => aIds.has(id))).toEqual([]);
+          expect(ids.length).toBeGreaterThan(0);
+        }
       }
     } finally {
       await close();
