@@ -6572,7 +6572,7 @@ listed when the page arrives.
 
 ## M-002 — `McpToken`: hashed, revocable, last-used; owner issues and revokes on /staff/people (MCP PRD §5)
 
-Commit `__SHA__`.
+Commit `cdfeb53`.
 
 **What it built.** `McpToken` (migration `20261012120000_mcp_token`): one row
 per credential, `tokenHash @unique` (SHA-256, the manage link's hash), `label`,
