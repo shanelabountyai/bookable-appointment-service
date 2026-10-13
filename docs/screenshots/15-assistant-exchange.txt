@@ -1,0 +1,18 @@
+$ EVAL_ONLY=recover-from-slot-taken npm run eval:dry
+# "Book Maria Gomez a Cut with Dana tomorrow at 10am. If 10 is gone, the next free time with Dana that morning is fine."
+# Tool calls: the scripted stand-in model replaying the ideal path. Responses: the real server, cut at 160 characters by the harness log.
+
+[recover-from-slot-taken] turn 1 stop=tool_use cost=$0.0000
+  find_client({"query":"Maria"}) → ok {"clients":[{"id":"cmv66xg8t006vrdw6s5ghr05m","name":"Maria Gomez","phone_last4":"0142","reliability":{"no_shows":0,"late_cancels":0,"desk_only":false}}],"trunc
+[recover-from-slot-taken] turn 2 stop=tool_use cost=$0.0000
+  prepare_booking({"client_id":"cmv66xg8t006vrdw6s5ghr05m","service_ids":["cmv66xg3p000mrdw6a2exuol9"],"provider_id":"cmv66xg3i0004rdw6r9qqqwz9","start":"2026-06-10 10:00"}) → ERROR "{\"error\":\"SLOT_TAKEN\",\"message\":\"that time is not free (overlaps-booking).\",\"field\":\"start\",\"next\":{\"tool\":\"find_open_times\",\"why\":\"pick a
+[recover-from-slot-taken] turn 3 stop=tool_use cost=$0.0000
+  find_open_times({"service_ids":["cmv66xg3p000mrdw6a2exuol9"],"provider_id":"cmv66xg3i0004rdw6r9qqqwz9","from_day":"2026-06-10","to_day":"2026-06-10","part_of_day":"morning"}) → ok {"days":[{"day":"2026-06-10","label":"Wed 10 Jun","providers":[{"provider_id":"cmv66xg3i0004rdw6r9qqqwz9","name":"Dana","times":[{"label":"Wed 10 Jun, 9:00 am",
+[recover-from-slot-taken] turn 4 stop=tool_use cost=$0.0000
+  prepare_booking({"client_id":"cmv66xg8t006vrdw6s5ghr05m","service_ids":["cmv66xg3p000mrdw6a2exuol9"],"provider_id":"cmv66xg3i0004rdw6r9qqqwz9","start":"2026-06-10 11:00"}) → ok {"proposal_id":"cmv66xgck0078rdw6bdum0vml","summary":"Book Maria Gomez — Cut with Dana, Wed 10 Jun, 11:00 am–11:45 am.","expires":{"label":"Tue 9 Jun, 9:10 am",
+[recover-from-slot-taken] turn 5 stop=tool_use cost=$0.0000
+  commit_proposal({"proposal_id":"cmv66xgck0078rdw6bdum0vml"}) → ok {"action":"prepare_booking","summary":"Book Maria Gomez — Cut with Dana, Wed 10 Jun, 11:00 am–11:45 am.","committed_at":{"label":"Tue 9 Jun, 9:00 am","iso":"202
+[recover-from-slot-taken] turn 6 stop=end_turn cost=$0.0000
+
+PASS  recover-from-slot-taken      turns=6 tools=5 $0.0000 end_turn  booked with Dana at 2026-06-10T16:00:00.000Z
+1/1 passed, $0.0000 total (scripted model)

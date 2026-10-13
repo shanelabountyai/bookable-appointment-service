@@ -12,7 +12,7 @@
  * then cleared, so a second run starts from the same book as the first.
  */
 import { chromium } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 const BASE = process.env.BASE ?? 'http://localhost:3300';
 const OUT = process.argv[2] ?? 'docs/screenshots';
@@ -70,12 +70,16 @@ await shot('04-day-today');
 // Running late: set, shoot, clear. The panel's own sentence is the point —
 // "Setting the delta changes no times and sends nothing."
 const late = page.locator('form').filter({ hasText: 'Behind by' }).first();
-await late.locator('input[name=minutes]').fill('15');
-await late.getByRole('button', { name: 'Set' }).click();
-await page.getByRole('button', { name: /Back on time/ }).first().waitFor();
-await shot('05-running-late');
-await page.getByRole('button', { name: /Back on time/ }).first().click();
-await page.waitForLoadState('networkidle');
+if (await late.count()) {
+  await late.locator('input[name=minutes]').fill('15');
+  await late.getByRole('button', { name: 'Set' }).click();
+  await page.getByRole('button', { name: /Back on time/ }).first().waitFor();
+  await shot('05-running-late');
+  await page.getByRole('button', { name: /Back on time/ }).first().click();
+  await page.waitForLoadState('networkidle');
+} else {
+  console.log('05-running-late skipped: nobody is working today (the salon is closed Sun/Mon)');
+}
 
 // Tomorrow is the dense day: the override lane, the PPD note, the flags.
 await page.getByRole('link', { name: /Next/ }).first().click();
@@ -108,5 +112,25 @@ for (const [name, path] of [
   await go(path);
   await shot(name);
 }
+
+// The assistant's door (M-002). The list only: a token is shown once, at issue,
+// and never belongs in a picture.
+await go('/staff/people');
+await page.getByRole('heading', { name: 'AI access' }).waitFor();
+await shot('14-ai-access', { fullPage: true });
+
+// The assistant in use: 15-assistant-exchange.txt is the harness's own log of
+// one scenario (its first line is the command that made it), drawn as-is.
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const log = readFileSync(new URL('./15-assistant-exchange.txt', import.meta.url), 'utf8');
+await page.setViewportSize({ width: 1100, height: 600 });
+await page.setContent(
+  `<style>body{margin:0}</style><h1 hidden>assistant exchange</h1><pre style="margin:0;padding:28px;background:#16181d;color:#d7dae0;font:13px/1.6 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all">${esc(log)
+    .replace(/^([$#].*)$/gm, '<span style="color:#8b93a1">$1</span>')
+    .replace(/→ ok/g, '→ <span style="color:#7fc98f">ok</span>')
+    .replace(/→ ERROR/g, '→ <span style="color:#e8a15c">ERROR</span>')
+    .replace(/^(PASS.*)$/gm, '<span style="color:#7fc98f">$1</span>')}</pre>`,
+);
+await shot('15-assistant-exchange', { fullPage: true });
 
 await browser.close();

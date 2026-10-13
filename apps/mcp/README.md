@@ -61,6 +61,8 @@ npm run eval:dry
 npm run eval
 ```
 
+**What it looks like:** [the owner's token list](../../docs/screenshots/14-ai-access.png) and [one exchange](../../docs/screenshots/15-assistant-exchange.png) — a 10am that is taken, refused with its next step, then proposed and committed at 11. The exchange is the scripted model against the real server.
+
 ## Honest limits
 
 - The server cannot prove a human read the summary. The human gate is the client's approval prompt on `commit_proposal` (`destructiveHint: true`). What the server guarantees is narrower and real: what commits is what was previewed, by the person who previewed it, once, re-validated.

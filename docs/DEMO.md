@@ -144,11 +144,13 @@ Over HTTP against this very server instead (same token):
 ```bash
 claude mcp add --transport http bookable-http http://localhost:3300/api/mcp --header "Authorization: Bearer <paste>"
 ```
-**Say:** every write goes through the same functions the desk uses — the exclusion constraint, the transition table, the cutoff — and the only new fact in the database is *which door* the change came through. **Concede first:** the model eval (`npm run eval`) was built and dry-run on a scripted stand-in; the live run spends API credit and is a step you take, not one that has been taken.
+**Say:** every write goes through the same functions the desk uses — the exclusion constraint, the transition table, the cutoff — and the only new fact in the database is *which door* the change came through. **Concede first:** the model eval (`npm run eval`) has been run against Claude once (2026-10-12, `claude-opus-5-5`: 9/9 for $0.47). One run on one model is a baseline, not a guarantee.
+
+Pictures if the live connection will not co-operate: `docs/screenshots/14-ai-access.png` (the token list) and `15-assistant-exchange.png` (one refused-then-recovered booking, propose then commit).
 
 ## Screenshots
 
-Thirteen shots in `docs/screenshots/`, taken from this same seeded book at 1440×900 (@2x, light scheme). To retake them after a re-seed, with the server up:
+Fifteen shots in `docs/screenshots/`, taken from this same seeded book at 1440×900 (@2x, light scheme). Shot 15 is not a screen: it is `15-assistant-exchange.txt` drawn as a terminal — the eval harness's own log of one scenario, the scripted stand-in model calling the real server (regenerate the text with the command on its first line). On a day the salon is closed (Sun/Mon) the running-late shot is skipped; retake from Tuesday. To retake them after a re-seed, with the server up:
 
 ```bash
 node docs/screenshots/capture.mjs docs/screenshots
@@ -183,7 +185,7 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 6. **The engine interval and the column badge both read the *reduced* delta** (A-133; D-22, D-43).
 7. **A gap client's block is not checked against a colour's projected second block** — needs a delta larger than the gap; bounded by D-62 (A-134).
 8. **Waitlist matching is oldest-first**, and **D-54 widens a column on heavy cancellation days.** Both open since Phase 15; not built.
-9. **The MCP server's model eval has not been run against Claude** — only its scripted dry run (9/9). And the hosted Claude apps need OAuth for a custom connector; Claude Code is the HTTP client today (`DECISIONS.md` M-D15, M-D17).
+9. **The MCP server's model eval has been run against Claude once** (2026-10-12, `claude-opus-5-5`, 9/9) — a baseline on one model, not a guarantee. And the hosted Claude apps need OAuth for a custom connector; Claude Code is the HTTP client today (`DECISIONS.md` M-D15, M-D17).
 9. **Deliberately not built:** holds, automated offers (OQ-4), a staleness alarm, a per-client stored delay.
 10. **A demo deployment, not production.** The hosted copy has no backups, monitoring or on-call, and sits behind one shared password. There is no real client data; every name, phone number and dollar figure is synthetic.
 11. **Reminders:** one of the seeded reminders is left by the skipped band on purpose — the never-reminded screen is not empty on a fresh install.
