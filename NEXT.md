@@ -5,7 +5,7 @@
 **Hand steps, in order (all yours — they publish or deploy):**
 1. ~~Connect Claude Code to the server~~ — done 2026-10-12 over stdio against `bookable_dev` (owner password reset to the demo value first; the book's clients are Alice Hall … Tom Byrne, not the eval's Maria Gomez). HTTP variant untried.
 2. ~~Deploy~~ — done 2026-10-12: Neon migrated, hook deploy Ready, hosted book refreshed. To use the assistant against the hosted demo: issue a token on `https://appt.labintelligence.co/staff/people`, then `claude mcp add --transport http bookable-hosted https://appt.labintelligence.co/api/mcp --header "Authorization: Bearer <token>"`.
-3. ~~Exec brief + LinkedIn drafts~~ — done 2026-10-12: https://claude.ai/artifact/MKSe6REdWCNFeH2bLFjemo and Ledger posts 109–113 (`docs/RELEASE_NOTES.md` › Project closure artifacts). Review the five drafts before any goes out.
+3. ~~Exec brief + LinkedIn drafts~~ — done 2026-10-12: https://claude.ai/artifact/MKSe6REdWCNFeH2bLFjemo and Ledger posts 109–113 (`docs/RELEASE_NOTES.md` › Project closure artifacts). Drafts reviewed and approved 2026-10-12 (112's opener tightened, 113's spelling Americanised); they still need images before posting.
 
 **Before any demo:** `migrate:deploy` against the Neon demo DB if migrations landed since the last deploy, THEN `./scripts/refresh-hosted-demo.sh`. Salon is closed Sun/Mon: demo from Tuesday.
 
