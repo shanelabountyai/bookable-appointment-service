@@ -1,5 +1,7 @@
 # Next
 
+**STATUS: CLOSED / DELIVERED (2026-10-12).** Code, demo script, exec briefs, LinkedIn drafts, cost review and screenshots are all done and recorded. Nothing below needs a session. The only work left is outside the repo: images for Ledger posts 49–53 and 109–113, set aside by the owner.
+
 **Bookable is closed (2026-10-05). The MCP track (M-000..M-016) is built and gated (2026-10-12). The Claude eval ran 2026-10-12: 9/9, $0.47.** `STATUS.md` is the handoff: done / not done / your hand steps. Nothing is queued for a session.
 
 **Hand steps, in order (all yours — they publish or deploy):**

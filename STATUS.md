@@ -1,5 +1,7 @@
 # STATUS — Bookable MCP server (M-track)
 
+**CLOSED / DELIVERED 2026-10-12.** Built, gated, deployed, evaluated (9/9), and every closure artifact recorded. Screenshots 14–15 in `docs/screenshots/` show the token list and one assistant exchange.
+
 Built 2026-10-12 against `docs/prds/mcp/00-mcp-prd.md`. Every backlog item M-000..M-016 is ✅ in that file's §10. Decisions taken along the way: `DECISIONS.md` (M-D1..M-D18). Per-item build notes: `docs/PROGRESS.md` (M-001..M-016). Portfolio notes: `docs/RELEASE_NOTES.md`. The README for a hiring manager: `apps/mcp/README.md`.
 
 ## Done
