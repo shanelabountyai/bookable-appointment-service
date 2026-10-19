@@ -1,0 +1,79 @@
+name: Nightly
+
+# Runs the unit suite (both time zones) and the MCP eval harness with its
+# scripted model every night, and fails the run on any regression. No model is
+# called and no secret is used: `eval:dry` is the free, deterministic half of
+# the eval (apps/mcp/eval/run.ts); the paid `npm run eval` stays manual.
+# A failed scheduled run emails you if your GitHub notification settings say
+# so; see docs/CI-CLAUDE.md. Existing CI (ci.yml) is unchanged.
+
+on:
+  schedule:
+    - cron: '23 8 * * *' # 08:23 UTC daily
+  workflow_dispatch:
+  # Self-test: a pull request that edits this file runs it once.
+  pull_request:
+    paths:
+      - '.github/workflows/nightly.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci
+  DIRECT_URL: postgresql://postgres:postgres@localhost:5432/bookable_ci
+  # Throwaway values, same reasoning as ci.yml: they sign nothing that
+  # outlives the job.
+  SESSION_SECRET: ci-only-session-secret-not-used-anywhere-real
+  CRON_SECRET: ci-only-cron-secret-not-used-anywhere-real
+
+jobs:
+  tests-and-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create the database and apply migrations from scratch
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE bookable_ci;"
+          npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+
+      - name: Unit suite — TZ=UTC
+        run: npm test
+        env:
+          TZ: UTC
+
+      - name: Unit suite — TZ=Pacific/Kiritimati
+        run: npm test
+        env:
+          TZ: Pacific/Kiritimati
+
+      # Exits 1 if any scenario fails, 2 if the harness itself breaks.
+      - name: MCP eval, scripted model (no API calls)
+        run: npm run eval:dry
