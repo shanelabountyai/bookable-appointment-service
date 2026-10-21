@@ -6570,6 +6570,16 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## W-002 — problem+json, one error mapper, zod validation, per-key rate limit, Basic-gate exemption (API PRD §5, §6)
+
+**What it built.** `apps/web/lib/api/http.ts` — the one shape every `/api/v1` route is written in: bearer → key (401 + `WWW-Authenticate: Bearer`) → scope (403 naming the scope) → per-key rate limit through `consumeRateLimit` (`api:<scope>:<keyId>`, 120 reads / 20 writes a minute, 429 + `Retry-After`) → handler, with every thrown value mapped once; `Cache-Control: no-store` on every answer (§6.7); `parseWith(zod)` turning issues into `errors[]`; `bodyOf` refusing malformed JSON as VALIDATION. `problem.ts` — RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`, `code`, `next: { endpoint, why }`, and `errors[]`/`alternatives`/`matches` where they apply; domain errors classified by the MCP server's own `mapDomainError` and re-spoken for HTTP (W-D12). `time.ts` — wall time in the salon's zone or ISO-with-offset in, `{at, local:{date,time,zone}}` out, through MCP's parsers (DST gap/overlap → `AMBIGUOUS_TIME` naming both readings). Route adapter `api(spec, handler, request, context)` keeps route files to two lines. The demo Basic gate exempts `/api/v1` and everything under it, and nothing that merely starts with the letters (`/api/v1x` stays gated). `zod` added to `apps/web` (already hoisted for `apps/mcp`; lockfile edited by hand to keep npm 11's format).
+
+**What it decided.** W-D12 (one classifier; `CONFLICT` for a row that moved mid-request), W-D13 (409 = state conflict, 422 = never succeeds as sent).
+
+**Tests.** `http.test.ts`: one test per §6 code asserting status, code and `next`, with the domain codes provoked through the REAL domain (a real booking refused by the engine, a Sunday asked of `offeredSlot`, a real transition refused by the table, a real `expectedFrom` mismatch, real DST instants for both ambiguity kinds); scopes both ways; revocation of one key leaves the other working; the business comes from the key even when a `businessId` is smuggled in; the rate limit's window, per-scope and per-key budgets; `Cache-Control` on success and on a problem; a non-domain error is a 500, never an envelope. `demo-gate.test.ts`: the prefix exemption.
+
+**What it left behind.** `IDEMPOTENCY_*` and `PRECONDITION_FAILED` are asserted here as envelopes and provoked for real by W-006/W-007, as noted in the test's name.
+
 ## W-001 — `ApiKey`, bearer resolution, `EventChannel.api`, `/staff/integrations` (API PRD §5)
 
 Built 2026-10-20 (unattended, branch `w-track`). Includes W-000 (the §11 defaults as `DECISIONS.md` W-D1..W-D11).

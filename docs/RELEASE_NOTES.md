@@ -5137,6 +5137,21 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-002 — errors a program can act on
+
+A person reads an error message; a program branches on it. Every `/api/v1`
+failure is now an RFC 9457 problem document with a stable `code` from the
+same vocabulary the MCP server speaks, and a `next` that names the endpoint
+which fixes it — `SLOT_TAKEN` points at availability, `NOT_FOUND` at the list
+that hands out that kind of id. The classification of domain errors is NOT
+written twice: the API asks the MCP module's mapper and only re-speaks the
+answer for HTTP, so the day a new refusal is taught to one door, both doors
+know it. Each code has a test that provokes it through the real domain, not
+by constructing the error — which is what makes the mapping a contract rather
+than a hope. Keys are rate-limited per scope, the bearer travels in the same
+header the demo's Basic gate uses so the API is exempt from it by prefix, and
+every response says `no-store`.
+
 ## W-001 — a key for a system, not a person
 
 Bookable's three doors so far — the desk, the client's link, the assistant —
