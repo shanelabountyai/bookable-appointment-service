@@ -6570,6 +6570,20 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## W-001 — `ApiKey`, bearer resolution, `EventChannel.api`, `/staff/integrations` (API PRD §5)
+
+Built 2026-10-20 (unattended, branch `w-track`). Includes W-000 (the §11 defaults as `DECISIONS.md` W-D1..W-D11).
+
+**What it built.** Migration `20261020120000_api_key`: `ApiKey` (`label`, `keyHash` SHA-256, `scopes ApiScope[]` of `read | write | prices | contacts`, `issuedById`, `lastUsedAt`, `revokedAt`) and `EventChannel` + `api`. `packages/db/api/keys.ts`: `issueApiKey` (owner-only, active, scopes validated and canonicalised, a key needs `read` or `write`; `prices`/`contacts` only widen a read), `revokeApiKey` (business-scoped, idempotent, keeps the first time), `listApiKeys`, `resolveApiKey` (malformed / unknown / revoked → null; touches `lastUsedAt`), `apiKeyLabels`. `packages/core/auth`: `apiActor(keyId)` = `{ type: 'staff', ref: keyId, channel: 'api' }`. `apps/web/lib/api/auth.ts`: `Authorization: Bearer` → key → business + scopes + the salon's zone, on every request. Readers of `actorRef` taught the channel: the detail page's `withActorNames` resolves an `api` row to its KEY's label, never a roster name, and the event log reads "Booked by HubSpot sync via the API"; the day grid's change mark says "API". `/staff/integrations` (owner-only by `requireOwner`, linked from Setup for owners only): issue with label + scope checkboxes, the key shown once, revoke per row.
+
+**What it decided.** W-D1 (revised: the PRD's `system` actor would have made every API cancel and status move refused by the transition table — so `staff`-typed with `channel: api`; D-80 in `07-decisions.md`), W-D2..W-D7 (PRD defaults), W-D8 (`waitUntil` spike deferred to the owner), W-D9 (how the gate was run on this machine), W-D10 (code lives in `apps/web/lib/api`), W-D11 (W- items are ticked in the PRD's §10, as the M-track was).
+
+**Tests.** `packages/db/api/keys.test.ts` (hash only, scope rules, owner-only issue, revoke scoped/idempotent/touching no other key or MCP token, a key outlives its issuer's deactivation, labels resolve revoked keys, list order live-first); `event-channel.test.ts` (`apiActor` → `api`, and the core `Channel` union equals the Prisma `EventChannel` enum — a new channel is never one edit); `apps/web/lib/api/auth.test.ts`; `e2e/integrations.spec.ts` (issue once + axe both schemes, label refusal, revoke, stylist redirected and link absent, the audit line on an API booking vs a desk one).
+
+**The local gate on this machine (W-D9), and its baseline.** Unmodified `main` (`cdc473a`) under the stand-in: lint ✔, typecheck ✔, unit TZ=UTC 1987 passed / 4 failed / 1 skipped of 1992, TZ=Pacific/Kiritimati 1980 / 11 / 1 of 1992, e2e 376 / 376 passed (`--list` total 376). Every baseline failure is in two files and is the WASM-engine driver adapter, not the product: `constraint.test.ts` › *isSlotTakenError recognises a DEFERRED violation through PRISMA* (the adapter hangs on a commit-time failure in an interactive transaction) and `density-seed.test.ts` › *determinism and safety* (its re-seed under the adapter; 3 tests under UTC, 10 under Kiritimati, all in that one describe). Each W- item's gate = no baseline-passing test fails, every new test passes, e2e reconciles with `--list`.
+
+**What it left behind.** Endpoints, delivery log and replay join the page with W-009/W-011. The 13-writer source scan needed no change: every writer already stamps `channelOf(actor)`, and `apiActor` sets the channel. One trap found and fixed on the way: `orderBy revokedAt asc` puts NULLs LAST in Postgres, so "live keys first" needs `nulls: 'first'` — the MCP token list has the same ordering and the same (cosmetic) bug, left alone as out of scope.
+
 ## M-016 — closure: README for a hiring manager, DEMO.md §13, STATUS.md, the audit line (MCP PRD)
 
 Commit `87e5786`.

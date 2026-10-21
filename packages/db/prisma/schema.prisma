@@ -116,6 +116,18 @@ enum EventChannel {
   manage_link
   mcp
   system
+  /// W-001 (API PRD §5, W-D1): an integration's write through /api/v1, by an `ApiKey`.
+  api
+}
+
+/// W-001 (API PRD §5). What an `ApiKey` may do. `read` gates every GET, `write`
+/// every POST; `prices` adds money to the service list (W-D2, D-36); `contacts`
+/// adds full phone and email to one client's detail (§6.8).
+enum ApiScope {
+  read
+  write
+  prices
+  contacts
 }
 
 enum NotificationChannel {
@@ -227,6 +239,7 @@ model Business {
   manageTokens  ManageToken[]
   mcpTokens     McpToken[]
   mcpProposals  McpProposal[]
+  apiKeys       ApiKey[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -270,6 +283,9 @@ model StaffUser {
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   mcpTokens    McpToken[]
   mcpProposals McpProposal[]
+  /// W-001: the keys this owner issued. A key belongs to an integration, not
+  /// to this person — deactivating them does not revoke it (§5).
+  apiKeysIssued ApiKey[]
 
   @@unique([businessId, email])
   @@index([businessId])
@@ -305,6 +321,34 @@ model McpToken {
 
   @@index([businessId])
   @@index([staffUserId])
+}
+
+/// W-001 (API PRD §5). A bearer credential for an INTEGRATION — a CRM sync, an
+/// n8n flow — not a person. Issued and revoked by an owner on
+/// /staff/integrations; shown once, stored as its SHA-256 (D-5's pattern).
+/// The business comes from HERE on every request, never from a parameter.
+/// Revoking a key touches nothing else: no person, no other key.
+model ApiKey {
+  id         String     @id @default(cuid())
+  businessId String
+  /// What the owner called it ("HubSpot sync"). Rendered in the audit line.
+  label      String
+  /// SHA-256 of the bearer (`bk_api_…`). The key itself is never stored.
+  keyHash    String     @unique
+  scopes     ApiScope[]
+  /// The owner who issued it (A-037: every credential names who handed it out).
+  issuedById String
+
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Restrict: staff are deactivated, never deleted.
+  issuedBy StaffUser @relation(fields: [issuedById], references: [id], onDelete: Restrict)
+
+
+  @@index([businessId])
 }
 
 /// M-009 (MCP PRD §8). Preview-then-commit: a `prepare_*` tool runs every

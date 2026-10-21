@@ -2,7 +2,7 @@
 
 **What:** a versioned, key-authenticated HTTP API over the shipped Bookable salon app, plus signed outbound webhooks so another system (a CRM, a payroll sheet, an n8n flow) learns about bookings as they happen without polling.
 **Builder:** Solo, in Claude Code · item prefix **`W-`** (Bookable's own items stay `A-`, the MCP track's `M-`).
-**Status:** v0.1 draft — 2026-10-20. Nothing is built. Owner answers to §11 amend this file; `DECISIONS.md` (`W-D…` rows) outranks it once decisions are taken.
+**Status:** v0.1 draft — 2026-10-20; **building on branch `w-track` (✅ items in §10; decisions in `DECISIONS.md` W-D1..).** Owner answers to §11 amend this file; `DECISIONS.md` (`W-D…` rows) outranks it once decisions are taken.
 **Lives in:** this monorepo. Routes under `apps/web/app/api/v1/**` and `apps/web/app/api/jobs/webhooks`; a new `packages/api` only if the route handlers grow past one module per resource (default: no new package). Domain calls go to `packages/db` functions directly, exactly as `apps/mcp` does — never the web app's server actions.
 **Card:** "NEW: a public API with idempotent writes, and outbound webhooks delivered at-least-once with signatures, retries and replay — which no other project on the log covers."
 **Learning objectives:** API contract design (versioning, pagination, errors, idempotency), credential design for a *system* rather than a person, and the outbox-to-webhook pipeline: at-least-once delivery, HMAC signatures, backoff, dead-lettering, replay, and what "ordered" can honestly mean.
@@ -155,8 +155,8 @@ What changes when the caller is a system, not a person:
 
 | Item | What | Size | Milestone |
 |---|---|---|---|
-| W-000 | Commit this PRD; answer §11 (or take defaults into `DECISIONS.md` as `W-D1..`); `waitUntil` spike on a preview | S | 1 Foundation |
-| W-001 | `ApiKey` model + migration; owner issue/revoke on `/staff/integrations`; bearer resolution; `EventChannel.api` + `channelOf` + source-scan test | M | 1 |
+| ✅ W-000 | Commit this PRD; answer §11 (or take defaults into `DECISIONS.md` as `W-D1..`); `waitUntil` spike on a preview | S | 1 Foundation |
+| ✅ W-001 | `ApiKey` model + migration; owner issue/revoke on `/staff/integrations`; bearer resolution; `EventChannel.api` + `channelOf` + source-scan test | M | 1 |
 | W-002 | Problem+json envelope, shared domain-error mapping, zod request validation, per-key rate limit, Basic-gate exemption | M | 1 |
 | W-003 | `GET /v1/services`, `/providers`, `/availability` (via `computeSlotsIn`), with the equality test | M | 2 Reads |
 | W-004 | `GET /v1/days/{day}`, `/appointments`, `/appointments/{id}` (+ `allowedActions`, `version`), cursor pagination helper | M | 2 |

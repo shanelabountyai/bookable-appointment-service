@@ -5137,6 +5137,26 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-001 — a key for a system, not a person
+
+Bookable's three doors so far — the desk, the client's link, the assistant —
+all authenticate a person. W-001 adds the credential for something that is
+not one: an `ApiKey` an owner issues to "HubSpot sync" with exactly the
+scopes it needs (`read`, `write`, and two that only widen a read: `prices`
+and `contacts`). It is shown once and stored as a hash, the business comes
+from the key and never from a parameter, and revoking it stops that system
+on its next request without touching any person or any other key.
+
+The interesting decision was the actor. The PRD's default recorded an
+integration as the `system` actor; reading the transition table showed that
+`system` is the cron, and the cron is not allowed to cancel or check anybody
+in — so every API write but a booking would have been refused. Rather than
+widen the product's permission table, an integration acts with the desk's
+rules and its own channel (`api`), and every reader that turns an actor into
+a name was taught that an `api` row names a KEY: the history reads "Booked by
+HubSpot sync via the API". A test now pins the code's channel list to the
+database enum, so the next channel cannot be added in one place.
+
 ## M-016 — the write-up, the walkthrough, and the one line that makes it trustworthy
 
 The MCP track closes with three documents and one sentence. The README in

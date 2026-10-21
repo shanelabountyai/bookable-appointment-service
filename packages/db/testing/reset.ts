@@ -77,6 +77,7 @@ const TABLES = [
   'Provider',
   'McpProposal',
   'McpToken',
+  'ApiKey',
   'StaffUser',
   'Business',
   // Infrastructure, no foreign keys — but a counter left at its limit by one
