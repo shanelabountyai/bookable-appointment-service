@@ -6570,6 +6570,16 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## W-005 — `GET /v1/clients?q=`, `/clients/{id}`, `/waitlist` under the PII rules (API PRD §6.8, §7)
+
+**What it built.** `apps/web/lib/api/clients.ts` and three routes. Search (`searchClients`, the desk's folded-name/digits search): at most five, each `{ id, name, phoneLast4, reliability }`, `truncated` when more matched. Detail: name, `phoneLast4`, reliability and `noShowCount`, upcoming (soonest first) and past (newest first) visits with both time forms; the full `phone` and `email` ONLY with the `contacts` scope (absent, not null, without it); notes NEVER (OQ-M3). Waitlist: active entries (`listWaitlistEntries`, lapsed ones excluded as the desk does), `?day=` to keep those whose range includes it; client id + name, never a phone.
+
+**What it decided.** Nothing new; §6.8 and M-D10 applied as written.
+
+**Tests.** `clients.test.ts` — every PII assertion is a SWEEP of the serialized body for the raw digits, the email and the notes (seeded as a prompt-injection string), not a field check, so a leak through a field the test did not think of still fails: search; detail without and with `contacts` (notes absent either way); five-cap + `truncated`; business B's "Alex" never appears; B's client id is `NOT_FOUND` → `GET /v1/clients`; the waitlist's tenancy, day filter and phone sweep.
+
+**What it left behind.** Milestone 2 (reads) complete.
+
 ## W-004 — `GET /v1/days/{day}`, `/appointments`, `/appointments/{id}`, cursor pagination (API PRD §6.4, §7)
 
 **What it built.** `apps/web/lib/api/appointments.ts`. ONE appointment view (`appointmentView`) — both time forms, provider, client id + name only, services, the booking note (as data), `isOverride`, `allowedActions` and `version` — used by the detail and every write's response, and by W-009's snapshot (§8: "what `GET /v1/appointments/{id}` returned at that moment"). `allowedActions` asks `availableTransitions` / `canCancel` + `staffCancellationStatus` / `canReschedule` with the staff detail page's context, line for line (M-D10's rule), each with its endpoint and target status. `version` = the row's `updatedAt`, opaque, also sent as `ETag`. The list: `from`/`to` (instant or wall time, ≤ 62 days), `status=` (comma list, validated against the one status module), `providerId`, keyset cursor on (start of occupied range, id) — `cursor.ts`: `limit` ≤ 100 default 25, `limit+1` fetch, opaque base64url cursor, a junk cursor is VALIDATION, never a restart. The day: `[startOfDay(d), startOfDay(d+1))` in the salon's zone (23/25 h on DST days), every status.

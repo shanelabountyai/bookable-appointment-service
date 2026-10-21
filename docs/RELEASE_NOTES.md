@@ -5137,6 +5137,17 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-005 — clients, and what never leaves
+
+Client search returns a name, the last four digits of the phone and the
+reliability flag the desk needs before booking — never the number, never the
+email, never the pinned notes. The full contact details travel only to a key
+the owner gave the `contacts` scope; the notes travel to nobody, because they
+are the field most likely to carry text written to steer a program. The
+tests do not check fields: they sweep the whole response for the raw digits,
+the address and the notes — seeded as an injection attempt — so a leak
+through a field nobody thought about still fails.
+
 ## W-004 — reading the book without losing the overrides
 
 Three read endpoints and the pagination every list will use. The detail
