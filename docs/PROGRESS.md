@@ -6580,6 +6580,16 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 - `TZ=Pacific/Kiritimati` and e2e were NOT run at baseline (a 475 s unit pass per zone on a loaded machine); both run in the final gate of this session.
 - The W-000 `waitUntil` spike has **no result** in `DECISIONS.md` (W-D8: deferred to the owner, needs a preview deploy). Not run here: this session may not deploy. W-009 is built so the hourly sweep is the carrier (W-D20).
 
+## W-010 — signing + rotation; `scripts/webhook-receiver.ts`; signature tests (API PRD §8 "Signature", §9.9)
+
+**What it built.** Migration `20261021140000_webhook_secret_rotation` (`previousSecret`, `previousSecretExpiresAt`). `rotateWebhookSecret` (business-scoped; the new secret returned once; the old one keeps signing 24 h; one previous kept). The dispatcher signs with every live secret, so a delivery in the overlap carries two `v1=`. `scripts/webhook-receiver.ts` — the REFERENCE receiver, Node standard library only and deliberately not importing the app: raw body, `t=…,v1=…[,v1=…]`, ±300 s, constant-time compare over every (secret, v1) pair, dedupe on the event id, `401` with the reason on a bad signature; `WEBHOOK_SECRET` may be a comma list during a rotation; port `WEBHOOK_RECEIVER_PORT`, default 3310. `scripts/**` added to the root `tsconfig.json` include so the gate typechecks it.
+
+**What it decided.** Nothing new beyond W-D22.
+
+**Tests.** `webhook-signature.test.ts` (9), the SENDER's signer against the independent RECEIVER over real HTTP on localhost: **demo checkpoint 3 as an assertion** — a desk booking, then the same sweep the inline carrier runs, and the receiver prints `VERIFIED #<seq> appointment.booked appointment=<id> …` within 5 s with the delivery `succeeded`; a wrong secret → the receiver's `401 no signature matches` recorded as a failed attempt; **rotation** — during the overlap a receiver holding only the OLD secret and one holding only the NEW one both verify, and after 24 h the header carries one `v1`; a redelivered event is a `duplicate … (attempt 2)` to the receiver, processed once. Pure: genuine accepted; tampered body, wrong secret, missing and malformed header refused; ±360 s refused, exactly 300 s accepted; moving `t` to dodge the window breaks the MAC; two-signature header verifies with either secret. With `webhooks.test.ts`: 25 passed.
+
+**What it left behind.** Demo checkpoint 3 is proven at the function level (the sweep called directly); the `after()` hook firing it from a real desk click in the built app is W-013's e2e. The owner page's "rotate" button is W-011.
+
 ## W-009 — webhook endpoints, deliveries, snapshot capture, the claim, inline + daily sweep, backoff, dead-letter, pause/disable (API PRD §8, §9.8, §9.10, §9.13)
 
 Commit `49fd481`.

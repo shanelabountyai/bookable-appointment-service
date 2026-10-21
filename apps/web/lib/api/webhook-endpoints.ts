@@ -5,6 +5,7 @@
  * happens from now on, not the salon's history. A receiver that wants the
  * past pulls it from `GET /v1/events?since=0` (§8 "Catch-up").
  */
+import { fromDate, instant, toDate } from '@bookable/core/time';
 import type { PrismaClient } from '@bookable/db';
 import type { PublishedType } from './events';
 import { newWebhookSecret } from './webhook-signature';
@@ -48,4 +49,23 @@ export async function createWebhookEndpoint(
     select: { id: true },
   });
   return { id, secret };
+}
+
+/** §8: after a rotation the old secret keeps signing for this long. */
+export const ROTATION_OVERLAP_MS = 24 * 3_600_000;
+
+/**
+ * W-010 — a new secret, returned once. The old one keeps signing until the
+ * overlap ends, so the owner can update the receiver at leisure; rotating
+ * again inside the overlap drops the oldest (only one previous is kept).
+ */
+export async function rotateWebhookSecret(db: PrismaClient, args: { businessId: string; endpointId: string; now: Date }): Promise<{ secret: string }> {
+  const ep = await db.webhookEndpoint.findFirst({ where: { id: args.endpointId, businessId: args.businessId }, select: { secret: true } });
+  if (!ep) throw new WebhookEndpointRejected('url', 'no such endpoint');
+  const secret = newWebhookSecret();
+  await db.webhookEndpoint.update({
+    where: { id: args.endpointId },
+    data: { secret, previousSecret: ep.secret, previousSecretExpiresAt: toDate(instant(fromDate(args.now) + ROTATION_OVERLAP_MS)) },
+  });
+  return { secret };
 }

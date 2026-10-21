@@ -1629,6 +1629,10 @@ model WebhookEndpoint {
   url                  String
   /// Stored, not hashed: the sender re-signs with it (W-D22).
   secret               String
+  /// W-010: the secret before the last rotation, still signing until
+  /// `previousSecretExpiresAt` (24 h) so a receiver can switch without a gap.
+  previousSecret          String?
+  previousSecretExpiresAt DateTime? @db.Timestamptz(3)
   /// Published type names; empty = all.
   eventTypes           String[]
   includeClientContact Boolean               @default(false)

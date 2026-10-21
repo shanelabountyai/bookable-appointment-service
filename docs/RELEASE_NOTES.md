@@ -5137,6 +5137,18 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-010 — a receiver can prove the message is real
+
+Every webhook carries an HMAC signature over the timestamp and the exact
+bytes sent, and a receiver refuses anything older than five minutes, so a
+captured message cannot be replayed later. Rotating the secret never drops a
+delivery: for a day both secrets sign, so the receiver can be updated
+whenever someone gets to it. The repository ships a reference receiver
+written from the specification alone — standard library only, never
+importing the sender — and the tests check one against the other over real
+HTTP, which is what catches the bugs a sender testing itself cannot: the
+encoding nobody wrote down, the header the receiver reads differently.
+
 ## W-009 — telling other systems, without trusting them
 
 When an appointment changes, every registered system is told — and each one

@@ -158,7 +158,8 @@ export async function deliver(deps: WebhookDeps, claimed: Claimed): Promise<'suc
   const ep = await prisma.webhookEndpoint.findUniqueOrThrow({ where: { id: claimed.endpointId }, include: { business: { select: { timezone: true } } } });
   const body = await deliveryBody(prisma, claimed, ep, ep.business.timezone as ZoneId, now);
   const event = JSON.parse(body) as EventBody;
-  const secrets = [ep.secret];
+  // W-010: during a rotation both secrets sign, so a receiver holding either verifies.
+  const secrets = ep.previousSecret && ep.previousSecretExpiresAt && ep.previousSecretExpiresAt > now ? [ep.secret, ep.previousSecret] : [ep.secret];
   const headers = {
     'content-type': 'application/json',
     'user-agent': 'Bookable-Webhooks/1',
