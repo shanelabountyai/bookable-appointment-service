@@ -5137,6 +5137,15 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-014 — a demo anyone can run, and the costs said out loud
+
+The demo script gains a four-minute API and webhook walk, every command run
+once against the production build before it was written down, plus the
+caveats to volunteer: delivery is at-least-once, a retry can wait a day
+because the owner chose not to wake the database hourly, and an API key with
+write access holds the front desk's rights. The status file lists exactly
+what was not done and in what order the owner ships it.
+
 ## W-013 — the whole loop, proven in the shipped build
 
 One end-to-end test drives the real production build the way an integration

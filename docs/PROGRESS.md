@@ -6580,6 +6580,12 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 - `TZ=Pacific/Kiritimati` and e2e were NOT run at baseline (a 475 s unit pass per zone on a loaded machine); both run in the final gate of this session.
 - The W-000 `waitUntil` spike has **no result** in `DECISIONS.md` (W-D8: deferred to the owner, needs a preview deploy). Not run here: this session may not deploy. W-009 is built so the hourly sweep is the carrier (W-D20).
 
+## W-014 — closure docs (API PRD §10) — PARTIAL
+
+**What it built.** `docs/DEMO.md` §14 (the API and webhooks walk; every command run 2026-10-21 against the production build on :3300 — the receiver printed `VERIFIED #1255 appointment.booked …`, the server logged `[webhooks] inline sweep {"queued":1,"succeeded":1,…}`) and a new concession (at-least-once, retries up to a day, `waitUntil` unverified, a write key has desk rights); `STATUS.md` gains a W-track section on top (done / not done / open decisions / hand steps); `RELEASE_NOTES.md` W-008..W-014.
+
+**What it left behind — why the row stays unticked.** The PRD's W-014 includes "cost re-read against D-78 after a week": that needs a deploy (forbidden this session) and a week. It is hand step 6 in `STATUS.md`. The exec brief and posts are the owner's (they publish).
+
 ## W-013 — e2e: the API golden path, webhooks verified, replay, PII sweep, owner page at phone width (API PRD §9)
 
 Commit `3c3d9dd`.

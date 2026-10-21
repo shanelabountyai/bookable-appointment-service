@@ -1,3 +1,36 @@
+# STATUS — Bookable public API + webhooks (W-track)
+
+**BUILT ON A BRANCH, NOT MERGED, NOT DEPLOYED (2026-10-21).** Branch `w-track-wip-snapshot`, draft PR #2. W-000..W-013 ✅ in `docs/prds/api/00-api-webhooks-prd.md` §10; W-014 partial (this file, DEMO §14, release notes done; the one-week cost re-read needs a deploy first). Decisions: `DECISIONS.md` W-D1..W-D23 (D-80, D-81 in `07-decisions.md`). Per-item notes: `docs/PROGRESS.md`. Reviewer guide: `docs/api/README.md`.
+
+## Done
+
+- **Milestones 1–3 (overnight, W-000..W-007).** API keys with scopes, problem+json errors with one mapper shared with MCP, cursor pagination, all reads, idempotent writes (barrier-raced, crash-tested), moves through the desk's own functions, desk-vs-API parity. Re-gated on the native engine on 2026-10-21 (they had only the overnight stand-in): 2077 passed.
+- **Milestone 4 — webhooks (W-008..W-010).** `AppointmentEvent.seq` numbered at COMMIT by a deferred trigger (commit order, gapless, every writer covered); `GET /v1/events?since=`; endpoints and deliveries derived from the log; one-statement claim; backoff, dead-letter at 6, pause at 10, disable on 410; https-only + no private addresses at registration and at send; HMAC signatures with 24 h rotation overlap; `scripts/webhook-receiver.ts`.
+- **Milestone 5–6 (W-011..W-013).** Owner page: endpoints, delivery log with filters, replay (row and from a seq). OpenAPI generated from the zod schemas with a drift test. e2e golden path with the reference receiver, replay at 390 px, PII sweep.
+
+## Not done
+
+- **Not merged, not deployed.** No `migrate:deploy` against Neon, no hook, no refresh: the session brief forbade them. Three migrations wait: `20261021120000_event_seq`, `20261021130000_webhooks`, `20261021140000_webhook_secret_rotation` (plus the overnight `20261020120000_api_key`, `20261020130000_idempotency_record`).
+- **`waitUntil` / `after()` on the Vercel plan is unverified (W-D8).** Proven locally in the production build (e2e + DEMO §14 log line). The daily sweep is the carrier of record if it does not run there.
+- **The one-week Neon re-read (W-014, D-78's method)** — after the deploy.
+- **Exec brief and LinkedIn posts** — owner hand steps (they publish).
+
+## Open decisions
+
+1. **W-D1 — an API key with `write` has the front desk's rights** (cancel, reschedule, status moves, client messages), recorded as `staff`-typed actor with `channel = api`. Keep, or hold integrations below the desk (needs an `integration` actor and transition-table rows)?
+2. **D-81 / W-D23 — retries ride the daily cron** (your cost call). Restore an hourly sweep only if an integration needs retries within the hour.
+
+## Exact steps for you to do by hand (in order, when you choose to ship)
+
+1. Review and merge PR #2 (never merged from a session).
+2. `migrate:deploy` against the Neon demo DB (the five migrations above; `event_seq` backfills history).
+3. Trigger the `main-manual` Deploy Hook (D-71) — nothing new to set in Vercel; `WEBHOOK_ALLOW_PRIVATE` must stay UNSET there.
+4. `./scripts/refresh-hosted-demo.sh`. Demo from Tuesday (salon closed Sun/Mon).
+5. Spike W-D8: book once on the hosted desk with an endpoint registered, and look for `[webhooks] inline sweep` in the function log.
+6. A week later: `neonctl projects get <id> --org-id <org> --output json` → `compute_time_seconds`; compare with 407174 (2026-10-12) and record the delta under D-81.
+
+---
+
 # STATUS — Bookable MCP server (M-track)
 
 **CLOSED / DELIVERED 2026-10-12.** Built, gated, deployed, evaluated (9/9), and every closure artifact recorded. Screenshots 14–15 in `docs/screenshots/` show the token list and one assistant exchange.
