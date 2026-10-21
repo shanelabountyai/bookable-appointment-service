@@ -6582,6 +6582,8 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 
 ## W-013 — e2e: the API golden path, webhooks verified, replay, PII sweep, owner page at phone width (API PRD §9)
 
+Commit `3c3d9dd`.
+
 **What it built.** `apps/web/e2e/api-golden-path.spec.ts`, against the production build at 390 × 844 with the REFERENCE receiver on a real port: the owner registers the endpoint on `/staff/integrations` → a key reads `/v1/availability` (any stylist, the next 12 salon days) → `POST /v1/clients` → `POST /v1/appointments` → the receiver prints `VERIFIED … appointment.booked` **within 15 s with no cron call anywhere (the API adapter's inline `after()` carrier)** → `POST …/reschedule` → `VERIFIED … appointment.rescheduled` with the new start → `GET /v1/events?since=0` lists exactly those two for the appointment → the owner page filtered to `appointment.booked` (axe clean, **no horizontal scroll at 390 px**, `scrollWidth − clientWidth ≤ 0`) → Replay → the receiver logs a duplicate (attempt 1) → **PII sweep**: every webhook body and every API response read contains neither the client's phone digits nor her email (endpoint without contacts, key without `contacts`). With W-011's `integrations.spec.ts` › *webhooks*, the e2e now covers registration, the sweep route, the desk-action carrier and the API carrier.
 
 **What it decided.** Nothing new.
