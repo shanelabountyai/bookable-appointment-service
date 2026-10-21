@@ -112,6 +112,8 @@ export async function api(
   context: { params: Promise<Record<string, string>> } | undefined,
 ): Promise<Response> {
   const { prisma } = await import('@bookable/db');
+  // W-009: a write's events go out inline, after the response (the sweep is the fallback).
+  if (request.method !== 'GET') (await import('../webhooks/kick')).kickWebhooks();
   return handle(spec, handler, request, (await context?.params) ?? {}, { prisma, now: () => new Date() });
 }
 

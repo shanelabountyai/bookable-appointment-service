@@ -17,6 +17,7 @@ import { prisma } from '@bookable/db';
 import { type ManageGrant, verifyManageToken } from '@bookable/db/appointments';
 import { consumeRateLimit } from '@bookable/db/rate-limit';
 import { ipBucket } from './ip-bucket';
+import { kickWebhooks } from '../webhooks/kick';
 
 /**
  * Generous by human standards, useless by scraping ones: a customer opening
@@ -43,6 +44,8 @@ export async function openManageLink(token: string, now: Date): Promise<GateResu
   if (!allowed) return { ok: false, reason: 'too-many' };
 
   const grant = await verifyManageToken(prisma, token, now);
+  // W-009: the client's own cancel/confirm/reschedule all open the link here; on a server action, deliver inline.
+  if (grant && (await headers()).has('next-action')) kickWebhooks();
   return grant ? { ok: true, grant } : { ok: false, reason: 'no-link' };
 }
 

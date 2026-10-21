@@ -11,11 +11,16 @@
  */
 import { prisma } from '@bookable/db';
 import { handleMcpRequest } from '@bookable/mcp';
+import { kickWebhooks } from '@/lib/webhooks/kick';
 
 export const dynamic = 'force-dynamic';
 
 const handle = (request: Request) => handleMcpRequest(request, { prisma, now: () => new Date() });
 
-export const POST = handle;
+export function POST(request: Request) {
+  // W-009: an assistant's commit goes out inline, after the response.
+  kickWebhooks();
+  return handle(request);
+}
 export const GET = handle;
 export const DELETE = handle;

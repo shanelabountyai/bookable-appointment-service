@@ -5137,6 +5137,24 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-009 — telling other systems, without trusting them
+
+When an appointment changes, every registered system is told — and each one
+is treated as unreliable: it will fail, hang, or vanish. Nothing that writes
+an appointment knows webhooks exist; the sender reads the salon's own
+append-only history, so a feature added next year is announced without
+anyone remembering to. A delivery is claimed by one atomic statement, so two
+senders never send it twice — except in the one case the design names out
+loud: a sender that dies mid-send is retried after fifteen minutes, which is
+why every message carries an id the receiver dedupes on. Failures back off
+on a schedule kept in the database rather than in a sleeping process; six
+failures retire a message, ten in a row pause the endpoint, and a "410 Gone"
+switches it off at once. Addresses are checked twice, because a name that was
+safe when registered can later point inside the cloud provider's network. And
+the owner was asked what it may cost: retries ride the existing daily job
+rather than a new hourly one, so the demo database still sleeps between
+visits — the happy path goes out within seconds of the change itself.
+
 ## W-008 — every change gets a number, in the order it really happened
 
 A receiver that was offline for an hour needs to ask "what did I miss since

@@ -243,6 +243,7 @@ model Business {
   idempotencyRecords IdempotencyRecord[]
   eventSeq      BusinessEventSeq?
   eventSnapshots EventSnapshot[]
+  webhookEndpoints WebhookEndpoint[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -1174,6 +1175,7 @@ model AppointmentEvent {
   business    Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   snapshot    EventSnapshot?
+  deliveries  WebhookDelivery[]
 
   @@unique([businessId, seq])
   @@index([appointmentId, createdAt])
@@ -1596,4 +1598,80 @@ model RateLimitCounter {
   count       Int
 
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// ─────────────────────────── outbound webhooks (W-009) ───────────────────────────
+
+enum WebhookEndpointStatus {
+  active
+  /// 10 consecutive failed attempts (§8); the owner resumes it.
+  paused
+  /// The receiver answered 410 Gone.
+  disabled
+}
+
+enum WebhookDeliveryStatus {
+  pending
+  sending
+  succeeded
+  /// Attempted and scheduled again (`nextAttemptAt`).
+  failed
+  /// Six attempts spent (W-D20).
+  dead
+}
+
+/// W-009 (API PRD §8). Registered by the owner; receives every published
+/// event past `cursorSeq`, which starts at the business's sequence when the
+/// endpoint is created — the present, not the history.
+model WebhookEndpoint {
+  id                   String                @id @default(cuid())
+  businessId           String
+  url                  String
+  /// Stored, not hashed: the sender re-signs with it (W-D22).
+  secret               String
+  /// Published type names; empty = all.
+  eventTypes           String[]
+  includeClientContact Boolean               @default(false)
+  status               WebhookEndpointStatus @default(active)
+  consecutiveFailures  Int                   @default(0)
+  disabledAt           DateTime?             @db.Timestamptz(3)
+  disabledReason       String?
+  /// The last `AppointmentEvent.seq` fanned out to this endpoint.
+  cursorSeq            Int                   @default(0)
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(3)
+
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([businessId])
+}
+
+/// W-009. One row per (endpoint, event) — the unique key is what makes a
+/// re-run fan-out harmless. The body is the event's `EventSnapshot` (W-D19).
+model WebhookDelivery {
+  id                  String                @id @default(cuid())
+  endpointId          String
+  eventId             String
+  seq                 Int
+  status              WebhookDeliveryStatus @default(pending)
+  attempts            Int                   @default(0)
+  nextAttemptAt       DateTime?             @db.Timestamptz(3)
+  lastResponseStatus  Int?
+  /// At most 1 KB of what the receiver answered.
+  lastResponseExcerpt String?
+  lastError           String?
+  firstAttemptAt      DateTime?             @db.Timestamptz(3)
+  succeededAt         DateTime?             @db.Timestamptz(3)
+  /// Set by a replay (W-011); travels in the body as `replayed`.
+  replayed            Boolean               @default(false)
+  createdAt           DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime              @default(now()) @db.Timestamptz(3)
+
+  endpoint WebhookEndpoint  @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event    AppointmentEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@unique([endpointId, eventId])
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, seq])
 }
