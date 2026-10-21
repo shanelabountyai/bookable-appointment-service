@@ -6582,6 +6582,8 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 
 ## W-014 — closure docs (API PRD §10) — PARTIAL
 
+Commit `4803938`.
+
 **What it built.** `docs/DEMO.md` §14 (the API and webhooks walk; every command run 2026-10-21 against the production build on :3300 — the receiver printed `VERIFIED #1255 appointment.booked …`, the server logged `[webhooks] inline sweep {"queued":1,"succeeded":1,…}`) and a new concession (at-least-once, retries up to a day, `waitUntil` unverified, a write key has desk rights); `STATUS.md` gains a W-track section on top (done / not done / open decisions / hand steps); `RELEASE_NOTES.md` W-008..W-014.
 
 **What it left behind — why the row stays unticked.** The PRD's W-014 includes "cost re-read against D-78 after a week": that needs a deploy (forbidden this session) and a week. It is hand step 6 in `STATUS.md`. The exec brief and posts are the owner's (they publish).
