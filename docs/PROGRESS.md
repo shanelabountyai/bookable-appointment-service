@@ -6582,6 +6582,8 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 
 ## W-010 — signing + rotation; `scripts/webhook-receiver.ts`; signature tests (API PRD §8 "Signature", §9.9)
 
+Commit `a394ea7`.
+
 **What it built.** Migration `20261021140000_webhook_secret_rotation` (`previousSecret`, `previousSecretExpiresAt`). `rotateWebhookSecret` (business-scoped; the new secret returned once; the old one keeps signing 24 h; one previous kept). The dispatcher signs with every live secret, so a delivery in the overlap carries two `v1=`. `scripts/webhook-receiver.ts` — the REFERENCE receiver, Node standard library only and deliberately not importing the app: raw body, `t=…,v1=…[,v1=…]`, ±300 s, constant-time compare over every (secret, v1) pair, dedupe on the event id, `401` with the reason on a bad signature; `WEBHOOK_SECRET` may be a comma list during a rotation; port `WEBHOOK_RECEIVER_PORT`, default 3310. `scripts/**` added to the root `tsconfig.json` include so the gate typechecks it.
 
 **What it decided.** Nothing new beyond W-D22.
