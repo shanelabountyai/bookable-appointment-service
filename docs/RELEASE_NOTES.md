@@ -5137,6 +5137,21 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-007 — move, cancel and check in, by the desk's rules
+
+The rest of the writes, each through the function the desk calls. Moving an
+appointment to the same time with a different stylist is the desk's
+reassignment, not a reschedule the domain would refuse as "already at that
+time" — so the API routes it, once, rather than leaving every integration to
+discover the distinction. Cancelling lets the domain decide whether it counts
+as late, and tells the client unless asked not to. An integration that read
+an appointment and then writes can send back the `version` it read; it is
+checked under the row's lock, so nothing the desk does can land between the
+check and the write. The proof that "nothing the API writes skips the rules
+the desk follows" is a parity test: a booking and a cancellation made through
+the API and made at the desk leave identical rows, identical events and the
+same messages — except for the channel and the key that did it.
+
 ## W-006 — a retry cannot book twice
 
 A system retries on a timeout, so a write that is not idempotent books the
