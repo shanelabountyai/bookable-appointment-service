@@ -77,6 +77,7 @@ const TABLES = [
   'Provider',
   'McpProposal',
   'McpToken',
+  'IdempotencyRecord',
   'ApiKey',
   'StaffUser',
   'Business',

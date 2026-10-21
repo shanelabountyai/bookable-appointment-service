@@ -5137,6 +5137,24 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-006 — a retry cannot book twice
+
+A system retries on a timeout, so a write that is not idempotent books the
+same client twice. Every API `POST` now carries an `Idempotency-Key`. The
+first request claims it with one atomic insert; the domain write and the
+stored answer then commit in a single transaction, which needed one piece of
+plumbing — the desk's booking function opens its own transaction, so the API
+runs it inside a savepoint of the outer one, without changing a line of it. A
+replay returns the first answer byte for byte; the same key with a different
+body is refused; a duplicate arriving while the first is still running gets
+409 instead of waiting. A refusal is an answer too: "that time was taken"
+replays as "that time was taken", even after the slot frees, because the
+integration believes that write failed. The race is proven with a barrier
+that holds the first request inside its transaction until the second has
+been answered, and the crash with a throw after the write: no appointment,
+no event, no message, and the key works again. Adding a client is now one
+function shared by the desk, the assistant and the API.
+
 ## W-005 — clients, and what never leaves
 
 Client search returns a name, the last four digits of the phone and the

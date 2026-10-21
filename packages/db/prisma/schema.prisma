@@ -240,6 +240,7 @@ model Business {
   mcpTokens     McpToken[]
   mcpProposals  McpProposal[]
   apiKeys       ApiKey[]
+  idempotencyRecords IdempotencyRecord[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -347,8 +348,44 @@ model ApiKey {
   /// Restrict: staff are deactivated, never deleted.
   issuedBy StaffUser @relation(fields: [issuedById], references: [id], onDelete: Restrict)
 
+  idempotencyRecords IdempotencyRecord[]
 
   @@index([businessId])
+}
+
+/// W-006 (API PRD §6.6). Every API `POST` carries an `Idempotency-Key`
+/// (caller-chosen, ≤255 chars, scoped to the API key). The FIRST request with a
+/// key claims it with one `INSERT … ON CONFLICT DO NOTHING RETURNING` (A-048's
+/// outbox pattern) and runs the domain write; the response is stored here in
+/// the SAME transaction as that write, so a crash leaves either nothing or
+/// everything. A replay with the same `requestHash` gets the stored response
+/// byte-for-byte; a different hash is refused (422); a request that arrives
+/// while the first is still running sees `in_progress` (409).
+model IdempotencyRecord {
+  id             String            @id @default(cuid())
+  businessId     String
+  apiKeyId       String
+  idemKey        String
+  /// SHA-256 of method + path + canonical JSON body.
+  requestHash    String
+  status         IdempotencyStatus @default(in_progress)
+  responseStatus Int?
+  /// The exact bytes sent the first time, so a replay is byte-for-byte.
+  responseBody   String?
+  expiresAt      DateTime          @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  apiKey   ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@unique([apiKeyId, idemKey])
+  @@index([expiresAt])
+}
+
+enum IdempotencyStatus {
+  in_progress
+  done
 }
 
 /// M-009 (MCP PRD §8). Preview-then-commit: a `prepare_*` tool runs every

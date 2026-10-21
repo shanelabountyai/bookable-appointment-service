@@ -29,7 +29,7 @@ import {
   walkInAnswer,
 } from '@bookable/db/booking';
 import { computeDaySlots, daysWithAvailability, deskSearchLastDay } from '@bookable/db/scheduling';
-import { clientReliability, searchClients } from '@bookable/db/clients';
+import { clientReliability, createClient, searchClients } from '@bookable/db/clients';
 import { calendarDay, fromDate, instantFromIso, resolve, toDate, toLabel, wallTime, zoneId } from '@bookable/core/time';
 import { InvalidSeries } from '@bookable/core/scheduling';
 import { staffActor } from '@bookable/core/auth';
@@ -138,11 +138,9 @@ export async function createClientForBooking(name: string, phone: string): Promi
   const trimmed = name.trim();
   if (trimmed === '') return null;
 
-  const client = await prisma.client.create({
-    data: { businessId: staff.businessId, name: trimmed, phone: phone.trim() || null },
-    select: { id: true, name: true, phone: true },
-  });
-  return client;
+  // W-006: the ONE client insert desk, MCP and API share (packages/db/clients/create.ts).
+  const client = await createClient(prisma, { businessId: staff.businessId, name: trimmed, phone });
+  return { id: client.id, name: client.name, phone: client.phone };
 }
 
 export interface WalkInChoice {
