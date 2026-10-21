@@ -6598,6 +6598,8 @@ Commit `3c3d9dd`.
 
 **Tests.** The spec above: 1 passed (first run).
 
+**CI found one thing the local gate could not:** the first CI run on the final head failed exactly these two webhook e2e tests (381 passed, 2 failed) — CI builds its own environment, and `WEBHOOK_ALLOW_PRIVATE=1` lived only in the gitignored `.env.test`, so registering the `localhost` receiver was refused and no secret appeared. `.github/workflows/ci.yml` now sets it in the job env with the same test-only comment (W-D21). The local `.env.test` hid it, which is the CLAUDE.md lesson about generated artifacts in a new form: a local gate is not the gate.
+
 **What it left behind.** The manage-link and public-booking carriers are exercised only by code reading here (their hooks are one line each, W-D23); the e2e sweep (`e2e/**`) runs them at the final gate as part of the existing manage/booking specs, which would surface an error thrown by the hook.
 
 ## W-012 — OpenAPI generated from the zod schemas + drift check; `docs/api/README.md` (API PRD §6.9, §9.12)
