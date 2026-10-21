@@ -6582,6 +6582,8 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 
 ## W-012 — OpenAPI generated from the zod schemas + drift check; `docs/api/README.md` (API PRD §6.9, §9.12)
 
+Commit `8ebbd58`.
+
 **What it built.** `apps/web/lib/api/openapi.ts`: an `OPERATIONS` table (method, path, scope, summary) whose query and body schemas are the handlers' own zod schemas (now exported), turned into OpenAPI 3.1 with zod 4's built-in `z.toJSONSchema` (`io: 'input'`) — no new dependency. `Idempotency-Key` on every POST, optional `If-Match` on reschedule/status, bearer security, the problem+json envelope, and in `info.description` the published event types, the NOT-published ones (OQ-W6), delivery semantics, the signature scheme and a CHANGELOG. Served PUBLIC at `GET /api/v1/openapi.json`; committed at `docs/api/openapi.json`; `npm run openapi:write` regenerates. `docs/api/README.md` for a hiring manager: what is worth looking at, get a key, the curl golden path, verify a webhook with the reference receiver, honest limits.
 
 **What it decided.** Responses are described in prose plus the problem envelope, not schema'd: they are TypeScript interfaces, and a hand-written response schema would be a second source that drifts. The drift check is a unit test rather than a new CI step: CI already runs the unit suite, so the workflow is unchanged.
