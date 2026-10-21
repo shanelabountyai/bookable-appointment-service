@@ -6582,6 +6582,8 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 
 ## W-008 — `AppointmentEvent.seq` + lock audit; `GET /v1/events` (API PRD §8, §9.7)
 
+Commit `b3de4d5`.
+
 **What it built.** Migration `20261021120000_event_seq`: `AppointmentEvent.seq` (unique per business), `BusinessEventSeq` (the last number per business), `EventSnapshot` (one body per event), and a DEFERRED constraint trigger that numbers each event at COMMIT from the `BusinessEventSeq` row (`INSERT … ON CONFLICT DO UPDATE … RETURNING`, a row lock held to the end of the commit). The append-only trigger now allows exactly one update — `seq` from NULL, every other column unchanged — and the migration backfills history in `(createdAt, id)` order with the trigger lifted for that one statement. `apps/web/lib/api/events.ts`: the closed map of published types (`booked` → `appointment.booked`, `rescheduled`, `provider_changed` → `reassigned`, `status_changed` → `cancelled` when `to` is a cancellation else `status_changed`, `status_corrected`), a curated `change` per type, `snapshotsFor` (capture once, `skipDuplicates`, read back the winner), `eventBodies` (the webhook body W-009 sends), and `GET /v1/events?since=&cursor=&limit=` with route `app/api/v1/events/route.ts`.
 
 **What it decided.** W-D18 (the lock audit found no business-wide lock on the 13 writer sites; `BusinessEventSeq` locked at commit by a deferred trigger — commit order, gapless, no new deadlock, every writer covered without participating), W-D19 (the snapshot is per EVENT and shared, captured on first read; `change` instead of `previous`).
