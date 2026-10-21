@@ -185,7 +185,7 @@ const statusList = z
   .transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean))
   .pipe(z.array(z.enum(APPOINTMENT_STATUSES)).min(1));
 
-const listQuery = z
+export const listQuery = z
   .object({
     from: z.string(),
     to: z.string(),
@@ -280,7 +280,7 @@ export async function listAppointments({ caller, deps, url }: RequestContext): P
   return json({ data: await summariesFor(deps.prisma, data.map((r) => r.id), zone), nextCursor });
 }
 
-const dayQuery = z.object({ providerId: z.string().min(1).optional() }).strict();
+export const dayQuery = z.object({ providerId: z.string().min(1).optional() }).strict();
 
 /**
  * One salon day: the appointments occupying any part of it, by the same

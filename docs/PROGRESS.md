@@ -6580,6 +6580,16 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 - `TZ=Pacific/Kiritimati` and e2e were NOT run at baseline (a 475 s unit pass per zone on a loaded machine); both run in the final gate of this session.
 - The W-000 `waitUntil` spike has **no result** in `DECISIONS.md` (W-D8: deferred to the owner, needs a preview deploy). Not run here: this session may not deploy. W-009 is built so the hourly sweep is the carrier (W-D20).
 
+## W-012 — OpenAPI generated from the zod schemas + drift check; `docs/api/README.md` (API PRD §6.9, §9.12)
+
+**What it built.** `apps/web/lib/api/openapi.ts`: an `OPERATIONS` table (method, path, scope, summary) whose query and body schemas are the handlers' own zod schemas (now exported), turned into OpenAPI 3.1 with zod 4's built-in `z.toJSONSchema` (`io: 'input'`) — no new dependency. `Idempotency-Key` on every POST, optional `If-Match` on reschedule/status, bearer security, the problem+json envelope, and in `info.description` the published event types, the NOT-published ones (OQ-W6), delivery semantics, the signature scheme and a CHANGELOG. Served PUBLIC at `GET /api/v1/openapi.json`; committed at `docs/api/openapi.json`; `npm run openapi:write` regenerates. `docs/api/README.md` for a hiring manager: what is worth looking at, get a key, the curl golden path, verify a webhook with the reference receiver, honest limits.
+
+**What it decided.** Responses are described in prose plus the problem envelope, not schema'd: they are TypeScript interfaces, and a hand-written response schema would be a second source that drifts. The drift check is a unit test rather than a new CI step: CI already runs the unit suite, so the workflow is unchanged.
+
+**Tests.** `openapi.test.ts` (3): the committed file equals the generated one byte for byte (CI fails on a schema change without `openapi:write`); `OPERATIONS` equals the set of `GET`/`POST` exports found in `app/api/v1/**/route.ts` on disk (a new route without documentation fails); a query schema's fields and the POST idempotency header reach the document.
+
+**What it left behind.** Response bodies are documented by example in the README rather than by schema.
+
 ## W-011 — `/staff/integrations`: endpoints, delivery log, replay (API PRD §7 "Owner UI", §9.11)
 
 Commit `409ed86`.

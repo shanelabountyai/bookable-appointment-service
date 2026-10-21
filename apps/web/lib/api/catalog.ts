@@ -54,7 +54,7 @@ export async function getServices({ caller, deps }: RequestContext): Promise<Res
   return json({ data: services, nextCursor: null });
 }
 
-const providersQuery = z.object({ serviceIds: idList.optional() }).strict();
+export const providersQuery = z.object({ serviceIds: idList.optional() }).strict();
 
 export async function getProviders({ caller, deps, url }: RequestContext): Promise<Response> {
   const q = parseWith(providersQuery, queryOf(url), 'query');
@@ -78,7 +78,7 @@ export async function getProviders({ caller, deps, url }: RequestContext): Promi
   });
 }
 
-const availabilityQuery = z
+export const availabilityQuery = z
   .object({
     serviceIds: idList,
     providerId: z.string().min(1).default('any'),

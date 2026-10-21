@@ -21,7 +21,7 @@ export const CLIENT_SEARCH_LIMIT = 5;
 
 const last4 = (phone: string | null) => (phone ? phone.replace(/\D/g, '').slice(-4) || null : null);
 
-const searchQuery = z.object({ q: z.string().trim().min(1).max(100) }).strict();
+export const searchQuery = z.object({ q: z.string().trim().min(1).max(100) }).strict();
 
 export async function searchClientsHandler({ caller, deps, url, now }: RequestContext): Promise<Response> {
   const q = parseWith(searchQuery, queryOf(url), 'query');
@@ -72,7 +72,7 @@ export async function getClient({ caller, deps, params, now }: RequestContext): 
   });
 }
 
-const waitlistQuery = z.object({ day: z.string().optional() }).strict();
+export const waitlistQuery = z.object({ day: z.string().optional() }).strict();
 
 export async function getWaitlist({ caller, deps, url, now }: RequestContext): Promise<Response> {
   const q = parseWith(waitlistQuery, queryOf(url), 'query');

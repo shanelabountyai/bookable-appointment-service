@@ -75,7 +75,7 @@ async function viewAfter(db: PrismaClient, ctx: RequestContext, id: string) {
   return { status: 200, body: view, headers: { ETag: view!.version } };
 }
 
-const rescheduleBody = z
+export const rescheduleBody = z
   .object({
     start: z.string().min(1),
     /** Omit to keep the same provider. */
@@ -135,7 +135,7 @@ export function postReschedule(hooks: IdempotencyHooks = {}) {
     );
 }
 
-const cancelBody = z
+export const cancelBody = z
   .object({
     reason: z.string().trim().min(1).max(300),
     /** D-32: the client is told unless you say otherwise. */
@@ -167,7 +167,7 @@ export function postCancel(hooks: IdempotencyHooks = {}) {
     );
 }
 
-const statusBody = z.object({ to: z.enum(STATUS_ACTIONS), reason: z.string().trim().min(1).max(300).optional() }).strict();
+export const statusBody = z.object({ to: z.enum(STATUS_ACTIONS), reason: z.string().trim().min(1).max(300).optional() }).strict();
 
 export function postStatus(hooks: IdempotencyHooks = {}) {
   return (ctx: RequestContext) =>
@@ -193,7 +193,7 @@ export function postStatus(hooks: IdempotencyHooks = {}) {
 
 const DAY_PARTS = [...WEEKDAY_TAGS, ...TIME_BAND_TAGS] as [string, ...string[]];
 
-const waitlistBody = z
+export const waitlistBody = z
   .object({
     clientId: z.string().min(1),
     serviceIds: z.array(z.string().min(1)).min(1).max(10),

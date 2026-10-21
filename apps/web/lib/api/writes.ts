@@ -24,7 +24,7 @@ import { clientOf, providerOf, servicesOf } from './ids';
 import { fail } from './problem';
 import { parseInstant } from './time';
 
-const bookBody = z
+export const bookBody = z
   .object({
     clientId: z.string().min(1),
     serviceIds: z.array(z.string().min(1)).min(1).max(10),
@@ -81,7 +81,7 @@ export function postAppointment(hooks: IdempotencyHooks = {}) {
     );
 }
 
-const clientBody = z
+export const clientBody = z
   .object({
     name: z.string().trim().min(1).max(120),
     phone: z.string().trim().min(7).max(32),

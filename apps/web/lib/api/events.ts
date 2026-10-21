@@ -125,7 +125,7 @@ export function publishedEventsAfter(db: PrismaClient, businessId: string, after
   });
 }
 
-const eventsQuery = z
+export const eventsQuery = z
   .object({
     since: z.coerce.number().int().min(0).default(0),
     cursor: z.string().optional(),

@@ -5137,6 +5137,16 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-012 — the contract cannot drift from the code
+
+The API's OpenAPI document is generated from the same validation schemas
+the server checks every request against, and the suite fails if the
+committed copy differs from what the code generates — or if a route exists
+that the document does not describe. The document also says, out loud, which
+kinds of change are deliberately NOT announced to integrations, so an absence
+reads as a decision rather than an omission. A one-page guide walks a
+reviewer from issuing a key to verifying a signed webhook with curl.
+
 ## W-011 — the owner can see every message and send it again
 
 The integrations page now lists each webhook endpoint with whether it is
