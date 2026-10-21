@@ -241,6 +241,8 @@ model Business {
   mcpProposals  McpProposal[]
   apiKeys       ApiKey[]
   idempotencyRecords IdempotencyRecord[]
+  eventSeq      BusinessEventSeq?
+  eventSnapshots EventSnapshot[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -1164,12 +1166,40 @@ model AppointmentEvent {
   /// is in the log rather than in a dead row.
   payload   Json?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
+  /// W-008: per-business, gapless, in COMMIT order. Assigned at commit by a
+  /// deferred trigger (migration `event_seq`), never by application code, so
+  /// it is NULL only inside the writing transaction.
+  seq       Int?
 
   business    Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  snapshot    EventSnapshot?
 
+  @@unique([businessId, seq])
   @@index([appointmentId, createdAt])
   @@index([businessId, createdAt])
+}
+
+/// W-008: the last `AppointmentEvent.seq` handed out per business. Its row
+/// lock, taken at commit, is what serialises the sequence (W-D18).
+model BusinessEventSeq {
+  businessId String @id
+  last       Int
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+/// W-008: what the appointment looked like when the pipeline first saw an
+/// event — one body per event, shared by every endpoint and `/v1/events`, so a
+/// replay sends what was true then (W-D19).
+model EventSnapshot {
+  eventId    String   @id
+  businessId String
+  body       Json
+  capturedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  event    AppointmentEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  business Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
 }
 
 // ─────────────────────────── customer link & notifications ───────────────────────────

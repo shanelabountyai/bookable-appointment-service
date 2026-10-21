@@ -149,7 +149,7 @@ describe('POST /v1/waitlist', () => {
 
 /** Columns that legitimately differ between any two bookings, or carry the API's bookkeeping. */
 const APPOINTMENT_VARIES = new Set(['id', 'createdAt', 'updatedAt', 'idempotencyKey', 'clientId', 'cancelledAt']);
-const EVENT_VARIES = new Set(['id', 'appointmentId', 'createdAt', 'channel', 'actorRef']);
+const EVENT_VARIES = new Set(['id', 'appointmentId', 'createdAt', 'channel', 'actorRef', 'seq']); // seq: the per-business commit order (W-008), different by design
 const strip = (row: Record<string, unknown>, skip: Set<string>) => Object.fromEntries(Object.entries(row).filter(([k]) => !skip.has(k)));
 
 describe('PARITY (§9.5) — the API and the desk write the same rows', () => {

@@ -163,7 +163,7 @@ What changes when the caller is a system, not a person:
 | ✅ W-005 | `GET /v1/clients`, `/clients/{id}` (scope-gated contacts), `/waitlist` | S | 2 |
 | ✅ W-006 | `IdempotencyRecord` + claim; `POST /v1/appointments`, `/clients`; barrier race test; crash test | L | 3 Writes |
 | ✅ W-007 | `POST …/reschedule` (reassign routing, `If-Match`), `/cancel`, `/status`, `/waitlist`; parity test extended | M | 3 |
-| W-008 | `AppointmentEvent.seq` migration + lock audit; `GET /v1/events` | M | 4 Webhooks |
+| ✅ W-008 | `AppointmentEvent.seq` migration + lock audit; `GET /v1/events` | M | 4 Webhooks |
 | W-009 | `WebhookEndpoint`, `WebhookDelivery`, snapshot capture, claim-based dispatcher, inline `waitUntil` + hourly sweep, backoff, dead-letter, pause/disable rules | L | 4 |
 | W-010 | Signing + rotation; `scripts/webhook-receiver.ts`; signature tests | M | 4 |
 | W-011 | `/staff/integrations`: endpoints CRUD, delivery log, replay (row and from-seq) | M | 5 Owner UI |

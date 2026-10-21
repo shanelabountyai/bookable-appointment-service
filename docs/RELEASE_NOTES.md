@@ -5137,6 +5137,23 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-008 — every change gets a number, in the order it really happened
+
+A receiver that was offline for an hour needs to ask "what did I miss since
+change 412?" — which only works if the numbers are handed out in the order
+changes actually became visible. The obvious design numbers an event when it
+is written, and that order is wrong: two desk actions can write in one order
+and commit in the other, so a reader would see 414 before 413 existed and
+skip it forever. Here the number is assigned by the database at the moment of
+commit, from one counter row per salon, so the order is the commit order by
+construction, a rolled-back action leaves no gap, and no code that writes an
+event knows the number exists — including code written next year. The audit
+that preceded it found no lock the writers already shared, and taking the
+counter at commit rather than at insert is also what keeps it from becoming
+a new deadlock. `GET /v1/events?since=412` is the catch-up door, and each
+event's picture of the appointment is captured once and never changes, so a
+replay months later says what was true then.
+
 ## W-007 — move, cancel and check in, by the desk's rules
 
 The rest of the writes, each through the function the desk calls. Moving an
