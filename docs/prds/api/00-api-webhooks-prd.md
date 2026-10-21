@@ -159,7 +159,7 @@ What changes when the caller is a system, not a person:
 | ✅ W-001 | `ApiKey` model + migration; owner issue/revoke on `/staff/integrations`; bearer resolution; `EventChannel.api` + `channelOf` + source-scan test | M | 1 |
 | ✅ W-002 | Problem+json envelope, shared domain-error mapping, zod request validation, per-key rate limit, Basic-gate exemption | M | 1 |
 | ✅ W-003 | `GET /v1/services`, `/providers`, `/availability` (via `computeSlotsIn`), with the equality test | M | 2 Reads |
-| W-004 | `GET /v1/days/{day}`, `/appointments`, `/appointments/{id}` (+ `allowedActions`, `version`), cursor pagination helper | M | 2 |
+| ✅ W-004 | `GET /v1/days/{day}`, `/appointments`, `/appointments/{id}` (+ `allowedActions`, `version`), cursor pagination helper | M | 2 |
 | W-005 | `GET /v1/clients`, `/clients/{id}` (scope-gated contacts), `/waitlist` | S | 2 |
 | W-006 | `IdempotencyRecord` + claim; `POST /v1/appointments`, `/clients`; barrier race test; crash test | L | 3 Writes |
 | W-007 | `POST …/reschedule` (reassign routing, `If-Match`), `/cancel`, `/status`, `/waitlist`; parity test extended | M | 3 |

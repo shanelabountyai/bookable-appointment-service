@@ -5137,6 +5137,21 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-004 — reading the book without losing the overrides
+
+Three read endpoints and the pagination every list will use. The detail
+carries `allowedActions` asked of the same transition table the write path
+asks, so an integration reads what it may do rather than guessing from a
+status name, and a `version` it can send back to refuse a stale write. Lists
+are keyset-paginated — an offset over a book that is being written to skips
+or repeats rows — and the test inserts a booking between pages to prove it.
+The interesting bug was found by the endpoint's own test: "appointments in a
+window" first asked about the blocked range, and a staff override stores a
+zero-width blocked range on purpose so the constraint never refuses a
+knowing decision. Every override silently left the list. The list now asks
+the busy set's question — the time an appointment actually occupies — and a
+visit at 23:30 appears on both of the days it touches.
+
 ## W-003 — the API is offered what the desk is offered
 
 `GET /v1/availability` does not have its own idea of when the salon is free.
