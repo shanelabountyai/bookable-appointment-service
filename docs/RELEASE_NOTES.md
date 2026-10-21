@@ -5137,6 +5137,20 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-003 — the API is offered what the desk is offered
+
+`GET /v1/availability` does not have its own idea of when the salon is free.
+It calls the desk's two offer paths — one for a named stylist, one for
+"anyone" — with the desk's rules and, when the integration says who the visit
+is for, the client as the chair's holder, exactly as the booking panel does.
+The test that proves it is an equality test in a room built to make the two
+answers differ: two chairs, one already held by the client herself, one by a
+stranger. There the anonymous question and the client-aware question
+disagree about 1:45 pm, and the API must agree with the desk for both. The
+fixture also asserts that it still binds, so the day someone "simplifies" the
+room, the test says it has stopped testing anything. Prices travel only to a
+key the owner gave the `prices` scope.
+
 ## W-002 — errors a program can act on
 
 A person reads an error message; a program branches on it. Every `/api/v1`
