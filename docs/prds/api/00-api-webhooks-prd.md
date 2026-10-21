@@ -166,7 +166,7 @@ What changes when the caller is a system, not a person:
 | ✅ W-008 | `AppointmentEvent.seq` migration + lock audit; `GET /v1/events` | M | 4 Webhooks |
 | ✅ W-009 | `WebhookEndpoint`, `WebhookDelivery`, snapshot capture, claim-based dispatcher, inline `waitUntil` + hourly sweep, backoff, dead-letter, pause/disable rules | L | 4 |
 | ✅ W-010 | Signing + rotation; `scripts/webhook-receiver.ts`; signature tests | M | 4 |
-| W-011 | `/staff/integrations`: endpoints CRUD, delivery log, replay (row and from-seq) | M | 5 Owner UI |
+| ✅ W-011 | `/staff/integrations`: endpoints CRUD, delivery log, replay (row and from-seq) | M | 5 Owner UI |
 | W-012 | OpenAPI generation + CI drift check; `docs/api/README.md` for a hiring manager (how to get a key, curl the golden path, verify a webhook) | M | 6 Closure |
 | W-013 | e2e: golden path (key → availability → book → webhook received and verified → reschedule → second webhook → replay), PII sweep, at phone width for the owner page | M | 6 |
 | W-014 | `docs/DEMO.md` §14, `STATUS.md`, `RELEASE_NOTES.md`, cost re-read against D-78 after a week; exec brief + posts are the owner's hand steps | S | 6 |

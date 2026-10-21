@@ -5137,6 +5137,19 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-011 — the owner can see every message and send it again
+
+The integrations page now lists each webhook endpoint with whether it is
+sending, paused or switched off — and why — and a delivery log showing what
+was sent, what came back, and when the next try is due. Any message can be
+sent again with one click; because each event's content was captured when it
+happened, a replay months later says what was true then, marked as a replay,
+rather than whatever the appointment looks like now. A receiver that lost a
+whole stretch can be replayed from a sequence number, including changes from
+before it was connected. The proof that the replay goes out within seconds
+— with no scheduled job involved — runs in the end-to-end suite against the
+real reference receiver.
+
 ## W-010 — a receiver can prove the message is real
 
 Every webhook carries an HMAC signature over the timestamp and the exact

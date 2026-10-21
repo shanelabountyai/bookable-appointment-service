@@ -127,3 +127,68 @@ test('an API booking reads "by HubSpot sync via the API" in the history; a desk 
     await prisma.$disconnect();
   }
 });
+
+/**
+ * W-011 — webhooks on the owner page, against the REFERENCE receiver on a
+ * real port (WEBHOOK_ALLOW_PRIVATE=1 in .env.test, W-D21). The Replay click
+ * also proves the INLINE carrier: the owner's server action passes through
+ * `readDesk`, whose `after()` sweep delivers the replay with no cron call.
+ */
+test('webhooks: register (secret once), deliver, log, replay inline, switch off', async ({ page }) => {
+  const prisma = new PrismaClient();
+  const { startReceiver } = await import('../../../scripts/webhook-receiver');
+  const lines: string[] = [];
+  let secret = '';
+  const secrets: string[] = []; // read per request, so the secret can be added once the page shows it
+  const server = await startReceiver({ port: 0, secrets, log: (l) => lines.push(l) });
+  try {
+    const { businessId, providerIds, serviceIds } = await seedSetup(prisma);
+    const owner = await prisma.staffUser.findFirstOrThrow({ where: { email: STAFF_EMAIL } });
+    const url = `http://localhost:${(server.address() as { port: number }).port}/`;
+
+    await signIn(page);
+    await page.goto('/staff/integrations');
+    const hooks = page.getByRole('region', { name: 'Webhooks' });
+    await expect(hooks.getByText('No endpoints registered.')).toBeVisible();
+    await hooks.getByLabel('URL').fill(url);
+    await hooks.getByRole('button', { name: 'Register endpoint' }).click();
+    await expect(hooks.getByText(/Copy the signing secret now/)).toBeVisible();
+    secret = (await hooks.locator('output').textContent()) ?? '';
+    expect(secret).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
+    secrets.push(secret);
+    await expectNoAxeViolations(page, { tags: null, impacts: SERIOUS });
+
+    // A booking the browser did not make, delivered by the sweep route.
+    await bookAppointment(prisma, {
+      businessId,
+      providerId: providerIds[0]!,
+      serviceIds: [serviceIds[0]!],
+      startAt: toDate(instantFromIso('2099-06-10T15:00:00Z')),
+      now: new Date(),
+      actor: staffActor(owner.id),
+      audience: 'staff',
+    });
+    const res = await page.request.get('/api/jobs/webhooks', { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
+    expect(res.status()).toBe(200);
+    await expect.poll(() => lines.join('\n')).toMatch(/VERIFIED #\d+ appointment\.booked/);
+
+    await page.reload();
+    const log = page.getByRole('region', { name: 'Delivery log' });
+    await expect(log.getByText('appointment.booked', { exact: true })).toBeVisible();
+    await expect(log.getByRole('listitem').getByText('succeeded', { exact: true })).toBeVisible();
+    expect(await page.content()).not.toContain(secret);
+
+    await log.getByRole('button', { name: /Replay delivery #\d+ appointment\.booked/ }).click();
+    await expect(log.getByText('Queued to send again.')).toBeVisible();
+    // No cron call: the action's own after() sweep sends it.
+    await expect.poll(() => lines.join('\n'), { timeout: 15_000 }).toMatch(/duplicate .* \(attempt 1\)/);
+
+    await page.reload();
+    await page.getByRole('region', { name: 'Webhooks' }).getByRole('button', { name: 'Switch off' }).click();
+    await expect(page.getByText('Switched off by the owner.')).toBeVisible();
+    expect((await prisma.webhookEndpoint.findFirstOrThrow()).status).toBe('disabled');
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+    await prisma.$disconnect();
+  }
+});
