@@ -5137,6 +5137,16 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-013 — the whole loop, proven in the shipped build
+
+One end-to-end test drives the real production build the way an integration
+would: it finds an open time, adds a client, books, and moves the booking.
+A separate reference receiver confirms each change arrived signed and
+verified within seconds, with no scheduled job involved. The owner then
+replays a message from a phone-width screen, and finally every byte that left
+the system is searched for the client's phone number and email. Neither may
+appear, because nobody asked for them.
+
 ## W-012 — the contract cannot drift from the code
 
 The API's OpenAPI document is generated from the same validation schemas

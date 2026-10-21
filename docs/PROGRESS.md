@@ -6580,6 +6580,16 @@ W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight sta
 - `TZ=Pacific/Kiritimati` and e2e were NOT run at baseline (a 475 s unit pass per zone on a loaded machine); both run in the final gate of this session.
 - The W-000 `waitUntil` spike has **no result** in `DECISIONS.md` (W-D8: deferred to the owner, needs a preview deploy). Not run here: this session may not deploy. W-009 is built so the hourly sweep is the carrier (W-D20).
 
+## W-013 — e2e: the API golden path, webhooks verified, replay, PII sweep, owner page at phone width (API PRD §9)
+
+**What it built.** `apps/web/e2e/api-golden-path.spec.ts`, against the production build at 390 × 844 with the REFERENCE receiver on a real port: the owner registers the endpoint on `/staff/integrations` → a key reads `/v1/availability` (any stylist, the next 12 salon days) → `POST /v1/clients` → `POST /v1/appointments` → the receiver prints `VERIFIED … appointment.booked` **within 15 s with no cron call anywhere (the API adapter's inline `after()` carrier)** → `POST …/reschedule` → `VERIFIED … appointment.rescheduled` with the new start → `GET /v1/events?since=0` lists exactly those two for the appointment → the owner page filtered to `appointment.booked` (axe clean, **no horizontal scroll at 390 px**, `scrollWidth − clientWidth ≤ 0`) → Replay → the receiver logs a duplicate (attempt 1) → **PII sweep**: every webhook body and every API response read contains neither the client's phone digits nor her email (endpoint without contacts, key without `contacts`). With W-011's `integrations.spec.ts` › *webhooks*, the e2e now covers registration, the sweep route, the desk-action carrier and the API carrier.
+
+**What it decided.** Nothing new.
+
+**Tests.** The spec above: 1 passed (first run).
+
+**What it left behind.** The manage-link and public-booking carriers are exercised only by code reading here (their hooks are one line each, W-D23); the e2e sweep (`e2e/**`) runs them at the final gate as part of the existing manage/booking specs, which would surface an error thrown by the hook.
+
 ## W-012 — OpenAPI generated from the zod schemas + drift check; `docs/api/README.md` (API PRD §6.9, §9.12)
 
 Commit `8ebbd58`.
