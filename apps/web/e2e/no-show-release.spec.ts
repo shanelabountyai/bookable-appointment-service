@@ -20,8 +20,8 @@ import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { type WallTime, fromDate, instant, resolve, toDate, toLabel, zoneId } from '@bookable/core/time';
-import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, test } from './fixtures';
+import { fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, skipInSalonsLastHour, test } from './fixtures';
 
 const MIN = 60_000;
 
@@ -51,6 +51,7 @@ async function noShowRunningNow(): Promise<{ minutes: number; startedAt: string 
   const prisma = new PrismaClient();
   try {
     const business = await prisma.business.findFirstOrThrow();
+    skipInSalonsLastHour(business.timezone);
     const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
     const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
     const client = await prisma.client.create({
@@ -100,21 +101,7 @@ async function noShowRunningNow(): Promise<{ minutes: number; startedAt: string 
 
     // What the desk is offered: from now to the far end of the ENVELOPE, so
     // the after-buffer is in it — that is the span the release actually frees.
-    // CLIPPED AT THE SALON'S MIDNIGHT: `releasePieces` measures on the start's
-    // day (A-124 sells released time on today's list), so a run that starts
-    // after 23:15 offers only today's part. The clock-anchored fixture lands
-    // there whenever CI runs late in the evening; the main-branch run of PR #2
-    // did at 23:22 CDT and read 35 against an expected 45.
-    const zone = zoneId(business.timezone);
-    const envelopeEnd = nowMinute + (35 + service.bufferAfterMinutes) * MIN;
-    const endLabel = toLabel(envelopeEnd as ReturnType<typeof fromDate>, zone);
-    let soldTo = envelopeEnd;
-    if (endLabel.day !== toLabel(nowMinute as ReturnType<typeof fromDate>, zone).day) {
-      const midnight = resolve(endLabel.day, '00:00' as WallTime, zone);
-      if (midnight.kind !== 'unique') throw new Error(`salon midnight on ${endLabel.day} is ${midnight.kind}`);
-      soldTo = midnight.at;
-    }
-    return { minutes: (soldTo - nowMinute) / MIN, startedAt: label.time };
+    return { minutes: 35 + service.bufferAfterMinutes, startedAt: label.time };
   } finally {
     await prisma.$disconnect();
   }

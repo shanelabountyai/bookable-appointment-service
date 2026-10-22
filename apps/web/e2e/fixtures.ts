@@ -30,6 +30,7 @@ import { expect, test as base } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedStaffUser } from '@bookable/db/auth';
 import { resetDatabase } from '@bookable/db/testing';
+import { fromDate, toLabel, zoneId } from '@bookable/core/time';
 
 export const STAFF_EMAIL = 'owner@shear-genius.test';
 
@@ -62,6 +63,20 @@ export async function openAllDay(
       data: { businessId: args.businessId, dateOverrideId: override.id, open: '00:00', close: '23:59' },
     });
   }
+}
+/**
+ * The other half of A-124's premise: a real-clock no-show fixture assumes
+ * there is still SELLABLE time left TODAY. In the salon's last hour there is
+ * not — the freed span runs past `openAllDay`'s 23:59 close, only today's part
+ * is measured, and from 23:45 it is shorter than A-109's sellable floor, so
+ * the freed list is correctly empty. Main's CI after PR #2 ran these at 23:22
+ * and 23:55 CDT and failed both ways. Skip, with the time printed, rather than
+ * assert a premise the clock has made false; call it inside the test, so the
+ * clock is read when the fixture is built, not when the file is collected.
+ */
+export function skipInSalonsLastHour(timezone: string): void {
+  const { time } = toLabel(fromDate(new Date()), zoneId(timezone));
+  base.skip(time >= '23:00', `real-clock fixture: ${time} in ${timezone} leaves under an hour of today to free`);
 }
 export const STAFF_PASSWORD = 'e2e-staff-password';
 
