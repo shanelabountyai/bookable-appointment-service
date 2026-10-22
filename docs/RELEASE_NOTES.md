@@ -5500,6 +5500,16 @@ structured data a client can validate, and tests talk to the server through
 a real MCP client over an in-memory transport rather than calling functions
 directly. Spec: `docs/prds/mcp/00-mcp-prd.md`; decisions: `DECISIONS.md`.
 
+## A-162 — click the time you want on the day grid
+
+Clicking 15:35 in a free afternoon on the staff day view now opens the booking
+screen at 15:30 with that stylist, the way a calendar does. Before, every click
+opened at the start of the free stretch. A band follows the mouse to show where
+the click will land. The engineering point is that the click becomes an exact
+moment in time, not a "date plus clock time". On the night the clocks go back,
+"01:30" happens twice, and the link has to say which one. The keyboard path is
+unchanged: one stop per free stretch.
+
 ## A-161 — the check-in race test now forces the race it tests
 
 Two people at the front desk tapping Check in at once must produce one

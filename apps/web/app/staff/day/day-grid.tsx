@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { laneStyle } from "@/lib/day/lanes";
-import { PX_PER_MINUTE } from "@/lib/day/scale";
+import { CLICK_STEP_MINUTES, PX_PER_MINUTE, bookHrefAt, clickedStartMs } from "@/lib/day/scale";
 import type { GridColumn, GridItem, GridModel } from "@/lib/day/view-model";
 import { hasDayToRunLate } from "@/lib/day/run-late";
 import { AppointmentChip, CHIP_SHELL } from "./appointment-chip";
@@ -390,7 +392,11 @@ function Item({ item }: { item: GridItem }) {
           absences stay plain text: there is nothing to do with a lunch break,
           and a focusable element that does nothing when activated is worse
           than no target at all. */}
-      {item.href ? (
+      {item.href && item.kind === "gap" && item.startMs !== undefined ? (
+        <GapLink item={item} href={item.href} startMs={item.startMs}>
+          {body}
+        </GapLink>
+      ) : item.href ? (
         <Link href={item.href} className="block h-full" aria-label={item.label}>
           {body}
         </Link>
@@ -405,6 +411,50 @@ function Item({ item }: { item: GridItem }) {
         </span>
       )}
     </li>
+  );
+}
+
+/**
+ * A-162 — a free gap books the quarter hour the POINTER is on, the way a
+ * calendar does, not always the gap's first minute. Mouse and touch only: the
+ * keyboard keeps one Tab stop per gap and its href (the gap start), because a
+ * focusable cell per quarter would be sixteen stops through one free
+ * afternoon. The band shows where a click will land before it lands.
+ */
+function GapLink({ item, href, startMs, children }: { item: GridItem; href: string; startMs: number; children: ReactNode }) {
+  const router = useRouter();
+  const [band, setBand] = useState<number | null>(null);
+  // Measured from the CHIP (the `<li>`), whose top edge is the gap's start;
+  // the link sits inside its padding. The band is positioned against it too.
+  const at = (event: { clientY: number; currentTarget: Element }) =>
+    clickedStartMs(startMs, item.minutes, event.clientY - event.currentTarget.parentElement!.getBoundingClientRect().top);
+  return (
+    <Link
+      href={href}
+      className="block h-full"
+      aria-label={item.label}
+      onPointerMove={(event: PointerEvent<HTMLAnchorElement>) => setBand(at(event))}
+      onPointerLeave={() => setBand(null)}
+      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+        // `detail` is 0 for a keyboard activation: leave that to the href.
+        if (event.detail === 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+        event.preventDefault();
+        router.push(bookHrefAt(href, at(event)));
+      }}
+    >
+      {band !== null ? (
+        <span
+          aria-hidden="true"
+          data-testid="gap-click-band"
+          className="pointer-events-none absolute inset-x-0 bg-ground-sunken"
+          style={{
+            top: ((band - startMs) / 60_000) * PX_PER_MINUTE,
+            height: CLICK_STEP_MINUTES * PX_PER_MINUTE,
+          }}
+        />
+      ) : null}
+      <span className="relative">{children}</span>
+    </Link>
   );
 }
 

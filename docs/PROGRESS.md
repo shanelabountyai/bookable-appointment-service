@@ -7125,6 +7125,36 @@ Smoke-tested over stdio against the seeded test DB: `initialize` then
 `tools/call list_services` returned 8 services. Pricing for the role split
 and the error envelope are M-003/M-004.
 
+## A-162 — click a time on the day grid to book it (D-82)
+
+Owner request 2026-10-22, after the close: *"click in a time frame like Outlook
+and open an appointment I can select."* Spec:
+`docs/prds/click-to-book/00-click-to-book-prd.md`.
+
+**What it built.** A free gap on `/staff/day` was already a link to
+`/staff/book`, but it always carried the gap's first instant. A pointer click
+now books the quarter hour under the pointer, and a hover band shows where.
+`clickedStartMs` and `bookHrefAt` (`lib/day/scale.ts`) turn a pixel offset into
+an instant. The pixel offset is a duration on the grid's physical axis added to
+the gap's instant, so no wall time is ever composed on the client (D-4).
+`GapLink` in `day-grid.tsx` uses them; the grid file still has no `Date` in it.
+The booking panel needed no change: it already reads "Starting from … at 15:30"
+and preselects the first bookable time at or after `at`.
+
+**What it decided (D-82).** Snap down to 15 minutes on the epoch and clamp into
+the gap, with the gap's end exclusive. A colour's processing gap is left out
+and still books its start: the first sweep failed `segments.spec.ts` › A-030,
+because a click in the middle of the developing time preselected a slot after
+the colour resumes. Keyboard and modified clicks keep the
+href, which is the gap's start, so each gap is still one Tab stop. The snap is a
+constant, not `business.slotIntervalMinutes`.
+
+**What it left behind.** Unit tests in `scale.test.ts`, including the snap
+across the 2026-03-08 jump. An e2e in `day-grid.spec.ts` › A-162 clicks 15:35
+for real and asserts `at=…T20:30:00.000Z` and the panel heading. The same test
+asserts that Enter on the focused gap still books its start. Before this change
+the click landed on the gap start, so the test fails against it.
+
 ## A-161 — barrier-based check-in race test (D-76)
 
 Commit `a4fcb75`.

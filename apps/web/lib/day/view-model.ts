@@ -158,6 +158,9 @@ export interface GridItem extends Laned {
    */
   releasable?: true;
   href?: string;
+  /** A-162 — a gap's start as epoch ms, so a click lower down the chip can
+   *  book the instant under the pointer rather than the gap's first one. */
+  startMs?: number;
   /** The whole chip as one sentence, for a screen reader and for the
    *  accessible name of the link. */
   label: string;
@@ -449,6 +452,10 @@ function toColumn(
         // waited for. The link carries the INSTANT (D-4), never a wall label:
         // on the day the clocks go back, "01:30" names two of these.
         href: `/staff/book?provider=${column.providerId}&at=${encodeURIComponent(gap.start.toISOString())}&day=${day}`,
+        // A-162 — free time books the quarter clicked; PROCESSING time does
+        // not. Its whole job is "fit something in before the colour resumes",
+        // and a click halfway down would preselect a time after it does.
+        startMs: owner ? undefined : gap.start.getTime(),
         // A-148 (2.5.3) — the accessible name has to LEAD with the visible
         // text, not paraphrase it: a voice-control command that speaks what it
         // sees would miss the link.
