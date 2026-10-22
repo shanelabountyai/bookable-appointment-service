@@ -7127,6 +7127,8 @@ and the error envelope are M-003/M-004.
 
 ## A-162 — click a time on the day grid to book it (D-82)
 
+Commit `fc8a3cc`.
+
 Owner request 2026-10-22, after the close: *"click in a time frame like Outlook
 and open an appointment I can select."* Spec:
 `docs/prds/click-to-book/00-click-to-book-prd.md`.
