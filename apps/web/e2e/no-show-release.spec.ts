@@ -20,7 +20,7 @@ import { expectNoAxeViolations } from './axe';
 import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
-import { fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
+import { type WallTime, fromDate, instant, resolve, toDate, toLabel, zoneId } from '@bookable/core/time';
 import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, test } from './fixtures';
 
 const MIN = 60_000;
@@ -100,7 +100,21 @@ async function noShowRunningNow(): Promise<{ minutes: number; startedAt: string 
 
     // What the desk is offered: from now to the far end of the ENVELOPE, so
     // the after-buffer is in it — that is the span the release actually frees.
-    return { minutes: 35 + service.bufferAfterMinutes, startedAt: label.time };
+    // CLIPPED AT THE SALON'S MIDNIGHT: `releasePieces` measures on the start's
+    // day (A-124 sells released time on today's list), so a run that starts
+    // after 23:15 offers only today's part. The clock-anchored fixture lands
+    // there whenever CI runs late in the evening; the main-branch run of PR #2
+    // did at 23:22 CDT and read 35 against an expected 45.
+    const zone = zoneId(business.timezone);
+    const envelopeEnd = nowMinute + (35 + service.bufferAfterMinutes) * MIN;
+    const endLabel = toLabel(envelopeEnd as ReturnType<typeof fromDate>, zone);
+    let soldTo = envelopeEnd;
+    if (endLabel.day !== toLabel(nowMinute as ReturnType<typeof fromDate>, zone).day) {
+      const midnight = resolve(endLabel.day, '00:00' as WallTime, zone);
+      if (midnight.kind !== 'unique') throw new Error(`salon midnight on ${endLabel.day} is ${midnight.kind}`);
+      soldTo = midnight.at;
+    }
+    return { minutes: (soldTo - nowMinute) / MIN, startedAt: label.time };
   } finally {
     await prisma.$disconnect();
   }
@@ -130,12 +144,15 @@ test.describe('a no-show nobody has given back (A-102)', () => {
     await expect(page).toHaveURL(/\/staff\/opened$/);
 
     await expect(page.getByRole('heading', { name: 'Nobody came — still blocked' })).toBeVisible();
-    await expect(page.getByText(new RegExp(`${startedAt} · ${minutes} min still blocked`))).toBeVisible();
+    // `releasableAt` counts from the PAGE's floored minute, not the fixture's:
+    // a minute that rolls over between the two reads one less. Either is right.
+    const counted = `(${minutes}|${minutes - 1})`;
+    await expect(page.getByText(new RegExp(`${startedAt} · ${counted} min still blocked`))).toBeVisible();
     await expect(page.getByText('Ada Chen never came, and the rest of the slot is still on the book')).toBeVisible();
     // The reason D-44 refused a timer: one more ring before anybody gives it up.
     await expect(page.getByRole('link', { name: '+15125550101' })).toHaveAttribute('href', 'tel:+15125550101');
 
-    await page.getByRole('button', { name: `Put ${minutes} min back on the market` }).click();
+    await page.getByRole('button', { name: new RegExp(`^Put ${counted} min back on the market$`) }).click();
 
     // THE ROW MOVES BETWEEN THE TWO LISTS, which is the whole shape of the
     // screen: the decision is taken, so it stops being a decision and becomes

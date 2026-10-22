@@ -1,6 +1,6 @@
 # Next
 
-**2026-10-21: the W-track (public API + webhooks) is built on branch `w-track-wip-snapshot`, draft PR #2 — not merged, not deployed.** W-000..W-013 ✅, W-014 partial (the one-week Neon re-read waits on a deploy). Read `STATUS.md` (top section) for the hand steps in order, and the two open decisions: W-D1 (a write key has desk rights) and D-81 (retries ride the daily cron, your cost call). Next session: review PR #2's CI result and the PR body; nothing else is queued.
+**2026-10-21: the W-track (public API + webhooks) is MERGED to `main` (PR #2, `2660a7e`) — not deployed.** W-000..W-013 ✅, W-014 partial (the one-week Neon re-read waits on a deploy). W-D1 answered: write keys keep desk rights (W-D24). Nothing is queued for a session. Owner hand steps, in order (PR #2's checklist): `migrate:deploy` the five W migrations against Neon → trigger the `main-manual` Deploy Hook → `./scripts/refresh-hosted-demo.sh` → W-D8 spike (book once with an endpoint registered, look for `[webhooks] inline sweep` in the function log) → a week later, Neon `compute_time_seconds` vs 407174, recorded under D-81.
 
 **STATUS: CLOSED / DELIVERED (2026-10-12).** Code, demo script, exec briefs, LinkedIn drafts, cost review and screenshots are all done and recorded. Nothing below needs a session. The only work left is outside the repo: images for Ledger posts 49–53 and 109–113, set aside by the owner.
 
