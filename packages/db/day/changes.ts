@@ -30,6 +30,8 @@ export interface DayChange {
   at: Date;
   actor: string;
   actorRef: string | null;
+  /** W-001: `api` means `actorRef` is a key id, not a person — say "API", never "Staff". */
+  channel: string;
   /** Where it was before a move or push; null for a booking or a pure
    *  reassignment. */
   fromStartAt: Date | null;
@@ -46,7 +48,7 @@ export interface DayChange {
  * rather than guessed apart by a shared `createdAt` downstream.
  */
 export function toDayChanges(
-  events: { type: string; createdAt: Date; actor: string; actorRef: string | null; payload: unknown }[],
+  events: { type: string; createdAt: Date; actor: string; actorRef: string | null; channel: string; payload: unknown }[],
 ): DayChange[] {
   return events.flatMap((e) => {
     if (!(CHANGE_TYPES as readonly string[]).includes(e.type)) return [];
@@ -59,6 +61,7 @@ export function toDayChanges(
         at: e.createdAt,
         actor: e.actor,
         actorRef: e.actorRef,
+        channel: e.channel,
         fromStartAt: moved && typeof p.from === 'string' ? toDate(instantFromIso(p.from)) : null,
         fromProviderId: typeof p.fromProviderId === 'string' ? p.fromProviderId : null,
       },

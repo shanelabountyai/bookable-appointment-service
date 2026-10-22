@@ -5137,6 +5137,203 @@ The booking page also loads those times before it shows the page. It used to
 show "Nobody can take that" before it had checked, and the waitlist's links
 have the same fix.
 
+## W-014 — a demo anyone can run, and the costs said out loud
+
+The demo script gains a four-minute API and webhook walk, every command run
+once against the production build before it was written down, plus the
+caveats to volunteer: delivery is at-least-once, a retry can wait a day
+because the owner chose not to wake the database hourly, and an API key with
+write access holds the front desk's rights. The status file lists exactly
+what was not done and in what order the owner ships it.
+
+## W-013 — the whole loop, proven in the shipped build
+
+One end-to-end test drives the real production build the way an integration
+would: it finds an open time, adds a client, books, and moves the booking.
+A separate reference receiver confirms each change arrived signed and
+verified within seconds, with no scheduled job involved. The owner then
+replays a message from a phone-width screen, and finally every byte that left
+the system is searched for the client's phone number and email. Neither may
+appear, because nobody asked for them.
+
+## W-012 — the contract cannot drift from the code
+
+The API's OpenAPI document is generated from the same validation schemas
+the server checks every request against, and the suite fails if the
+committed copy differs from what the code generates — or if a route exists
+that the document does not describe. The document also says, out loud, which
+kinds of change are deliberately NOT announced to integrations, so an absence
+reads as a decision rather than an omission. A one-page guide walks a
+reviewer from issuing a key to verifying a signed webhook with curl.
+
+## W-011 — the owner can see every message and send it again
+
+The integrations page now lists each webhook endpoint with whether it is
+sending, paused or switched off — and why — and a delivery log showing what
+was sent, what came back, and when the next try is due. Any message can be
+sent again with one click; because each event's content was captured when it
+happened, a replay months later says what was true then, marked as a replay,
+rather than whatever the appointment looks like now. A receiver that lost a
+whole stretch can be replayed from a sequence number, including changes from
+before it was connected. The proof that the replay goes out within seconds
+— with no scheduled job involved — runs in the end-to-end suite against the
+real reference receiver.
+
+## W-010 — a receiver can prove the message is real
+
+Every webhook carries an HMAC signature over the timestamp and the exact
+bytes sent, and a receiver refuses anything older than five minutes, so a
+captured message cannot be replayed later. Rotating the secret never drops a
+delivery: for a day both secrets sign, so the receiver can be updated
+whenever someone gets to it. The repository ships a reference receiver
+written from the specification alone — standard library only, never
+importing the sender — and the tests check one against the other over real
+HTTP, which is what catches the bugs a sender testing itself cannot: the
+encoding nobody wrote down, the header the receiver reads differently.
+
+## W-009 — telling other systems, without trusting them
+
+When an appointment changes, every registered system is told — and each one
+is treated as unreliable: it will fail, hang, or vanish. Nothing that writes
+an appointment knows webhooks exist; the sender reads the salon's own
+append-only history, so a feature added next year is announced without
+anyone remembering to. A delivery is claimed by one atomic statement, so two
+senders never send it twice — except in the one case the design names out
+loud: a sender that dies mid-send is retried after fifteen minutes, which is
+why every message carries an id the receiver dedupes on. Failures back off
+on a schedule kept in the database rather than in a sleeping process; six
+failures retire a message, ten in a row pause the endpoint, and a "410 Gone"
+switches it off at once. Addresses are checked twice, because a name that was
+safe when registered can later point inside the cloud provider's network. And
+the owner was asked what it may cost: retries ride the existing daily job
+rather than a new hourly one, so the demo database still sleeps between
+visits — the happy path goes out within seconds of the change itself.
+
+## W-008 — every change gets a number, in the order it really happened
+
+A receiver that was offline for an hour needs to ask "what did I miss since
+change 412?" — which only works if the numbers are handed out in the order
+changes actually became visible. The obvious design numbers an event when it
+is written, and that order is wrong: two desk actions can write in one order
+and commit in the other, so a reader would see 414 before 413 existed and
+skip it forever. Here the number is assigned by the database at the moment of
+commit, from one counter row per salon, so the order is the commit order by
+construction, a rolled-back action leaves no gap, and no code that writes an
+event knows the number exists — including code written next year. The audit
+that preceded it found no lock the writers already shared, and taking the
+counter at commit rather than at insert is also what keeps it from becoming
+a new deadlock. `GET /v1/events?since=412` is the catch-up door, and each
+event's picture of the appointment is captured once and never changes, so a
+replay months later says what was true then.
+
+## W-007 — move, cancel and check in, by the desk's rules
+
+The rest of the writes, each through the function the desk calls. Moving an
+appointment to the same time with a different stylist is the desk's
+reassignment, not a reschedule the domain would refuse as "already at that
+time" — so the API routes it, once, rather than leaving every integration to
+discover the distinction. Cancelling lets the domain decide whether it counts
+as late, and tells the client unless asked not to. An integration that read
+an appointment and then writes can send back the `version` it read; it is
+checked under the row's lock, so nothing the desk does can land between the
+check and the write. The proof that "nothing the API writes skips the rules
+the desk follows" is a parity test: a booking and a cancellation made through
+the API and made at the desk leave identical rows, identical events and the
+same messages — except for the channel and the key that did it.
+
+## W-006 — a retry cannot book twice
+
+A system retries on a timeout, so a write that is not idempotent books the
+same client twice. Every API `POST` now carries an `Idempotency-Key`. The
+first request claims it with one atomic insert; the domain write and the
+stored answer then commit in a single transaction, which needed one piece of
+plumbing — the desk's booking function opens its own transaction, so the API
+runs it inside a savepoint of the outer one, without changing a line of it. A
+replay returns the first answer byte for byte; the same key with a different
+body is refused; a duplicate arriving while the first is still running gets
+409 instead of waiting. A refusal is an answer too: "that time was taken"
+replays as "that time was taken", even after the slot frees, because the
+integration believes that write failed. The race is proven with a barrier
+that holds the first request inside its transaction until the second has
+been answered, and the crash with a throw after the write: no appointment,
+no event, no message, and the key works again. Adding a client is now one
+function shared by the desk, the assistant and the API.
+
+## W-005 — clients, and what never leaves
+
+Client search returns a name, the last four digits of the phone and the
+reliability flag the desk needs before booking — never the number, never the
+email, never the pinned notes. The full contact details travel only to a key
+the owner gave the `contacts` scope; the notes travel to nobody, because they
+are the field most likely to carry text written to steer a program. The
+tests do not check fields: they sweep the whole response for the raw digits,
+the address and the notes — seeded as an injection attempt — so a leak
+through a field nobody thought about still fails.
+
+## W-004 — reading the book without losing the overrides
+
+Three read endpoints and the pagination every list will use. The detail
+carries `allowedActions` asked of the same transition table the write path
+asks, so an integration reads what it may do rather than guessing from a
+status name, and a `version` it can send back to refuse a stale write. Lists
+are keyset-paginated — an offset over a book that is being written to skips
+or repeats rows — and the test inserts a booking between pages to prove it.
+The interesting bug was found by the endpoint's own test: "appointments in a
+window" first asked about the blocked range, and a staff override stores a
+zero-width blocked range on purpose so the constraint never refuses a
+knowing decision. Every override silently left the list. The list now asks
+the busy set's question — the time an appointment actually occupies — and a
+visit at 23:30 appears on both of the days it touches.
+
+## W-003 — the API is offered what the desk is offered
+
+`GET /v1/availability` does not have its own idea of when the salon is free.
+It calls the desk's two offer paths — one for a named stylist, one for
+"anyone" — with the desk's rules and, when the integration says who the visit
+is for, the client as the chair's holder, exactly as the booking panel does.
+The test that proves it is an equality test in a room built to make the two
+answers differ: two chairs, one already held by the client herself, one by a
+stranger. There the anonymous question and the client-aware question
+disagree about 1:45 pm, and the API must agree with the desk for both. The
+fixture also asserts that it still binds, so the day someone "simplifies" the
+room, the test says it has stopped testing anything. Prices travel only to a
+key the owner gave the `prices` scope.
+
+## W-002 — errors a program can act on
+
+A person reads an error message; a program branches on it. Every `/api/v1`
+failure is now an RFC 9457 problem document with a stable `code` from the
+same vocabulary the MCP server speaks, and a `next` that names the endpoint
+which fixes it — `SLOT_TAKEN` points at availability, `NOT_FOUND` at the list
+that hands out that kind of id. The classification of domain errors is NOT
+written twice: the API asks the MCP module's mapper and only re-speaks the
+answer for HTTP, so the day a new refusal is taught to one door, both doors
+know it. Each code has a test that provokes it through the real domain, not
+by constructing the error — which is what makes the mapping a contract rather
+than a hope. Keys are rate-limited per scope, the bearer travels in the same
+header the demo's Basic gate uses so the API is exempt from it by prefix, and
+every response says `no-store`.
+
+## W-001 — a key for a system, not a person
+
+Bookable's three doors so far — the desk, the client's link, the assistant —
+all authenticate a person. W-001 adds the credential for something that is
+not one: an `ApiKey` an owner issues to "HubSpot sync" with exactly the
+scopes it needs (`read`, `write`, and two that only widen a read: `prices`
+and `contacts`). It is shown once and stored as a hash, the business comes
+from the key and never from a parameter, and revoking it stops that system
+on its next request without touching any person or any other key.
+
+The interesting decision was the actor. The PRD's default recorded an
+integration as the `system` actor; reading the transition table showed that
+`system` is the cron, and the cron is not allowed to cancel or check anybody
+in — so every API write but a booking would have been refused. Rather than
+widen the product's permission table, an integration acts with the desk's
+rules and its own channel (`api`), and every reader that turns an actor into
+a name was taught that an `api` row names a KEY: the history reads "Booked by
+HubSpot sync via the API". A test now pins the code's channel list to the
+database enum, so the next channel cannot be added in one place.
+
 ## M-016 — the write-up, the walkthrough, and the one line that makes it trustworthy
 
 The MCP track closes with three documents and one sentence. The README in

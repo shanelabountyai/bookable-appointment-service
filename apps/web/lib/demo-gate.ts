@@ -19,6 +19,7 @@
 // MCP endpoint's per-person bearer token (M-014). Gating either would break the only
 // client that reaches it — Vercel Cron, an AI client — with a Basic challenge it cannot answer.
 const EXEMPT = ['/api/jobs/reminders', '/api/mcp'];
+const API_PREFIX = '/api/v1';
 
 /** Length-checked constant-time compare. Edge-safe: no Node APIs. */
 function safeEqual(a: string, b: string): boolean {
@@ -41,6 +42,10 @@ export function demoChallenge(
 ): { status: number; headers: Record<string, string> } | null {
   if (!password) return null;
   if (EXEMPT.includes(pathname)) return null;
+  // W-002 (API PRD §5): the public API carries its own credential in the SAME
+  // header, so it is exempt like /api/mcp (M-D15). A PREFIX, because every
+  // resource is its own path — and `/api/v1` itself, not `/api/v1x`.
+  if (pathname === API_PREFIX || pathname.startsWith(`${API_PREFIX}/`)) return null;
 
   const [scheme, encoded] = (authorization ?? '').split(' ');
   if (scheme?.toLowerCase() === 'basic' && encoded) {

@@ -6,7 +6,7 @@ import 'server-only';
  * This is the ONE place a cookie becomes an Actor, so there is one place to
  * audit rather than one per route.
  */
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
   ACT_TTL_MS,
@@ -21,6 +21,7 @@ import {
 import { instant, toDate } from '@bookable/core/time';
 import { findStaffById, type StaffIdentity } from '@bookable/db/auth';
 import { prisma } from '@bookable/db';
+import { kickWebhooks } from '../webhooks/kick';
 
 export const SESSION_COOKIE = 'bookable_staff_session';
 
@@ -86,6 +87,9 @@ async function readSession(now: number): Promise<SessionPayload | null> {
 async function readDesk(now: number): Promise<{ staff: StaffIdentity; isAccountHolder: boolean } | null> {
   const session = await readSession(now);
   if (!session) return null;
+  // W-009: every desk mutation is a server action that asks who is at the
+  // desk, so this is the one place the inline webhook carrier hooks them.
+  if ((await headers()).has('next-action')) kickWebhooks();
 
   // `(session.actExp ?? 0) > now` — an `act` with no timeout at all is a
   // cookie signed before A-044 and reads as lapsed, not as permanent.

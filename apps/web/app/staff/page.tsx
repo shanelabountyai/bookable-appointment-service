@@ -31,8 +31,13 @@ const SETUP = [
   { href: '/staff/settings', label: 'Settings', hint: 'Lead time, cancellation cutoff, horizon.' },
 ] as const;
 
+const INTEGRATIONS = { href: '/staff/integrations', label: 'Integrations', hint: 'API keys for other systems. Owner only.' } as const;
+
 export default async function StaffSetup() {
-  await requireStaff();
+  const staff = await requireStaff();
+  // W-001: Integrations is OWNER-ONLY (the route guards itself with
+  // `requireOwner`); listing it for a stylist would be a link to a redirect.
+  const items = staff.role === 'owner' ? [...SETUP, INTEGRATIONS] : SETUP;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
@@ -46,7 +51,7 @@ export default async function StaffSetup() {
       </div>
 
       <ul className="flex flex-col gap-2">
-        {SETUP.map((item) => (
+        {items.map((item) => (
           <li key={item.href}>
             <LinkButton
               href={item.href}

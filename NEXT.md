@@ -1,5 +1,7 @@
 # Next
 
+**2026-10-21: the W-track (public API + webhooks) is built on branch `w-track-wip-snapshot`, draft PR #2 — not merged, not deployed.** W-000..W-013 ✅, W-014 partial (the one-week Neon re-read waits on a deploy). Read `STATUS.md` (top section) for the hand steps in order, and the two open decisions: W-D1 (a write key has desk rights) and D-81 (retries ride the daily cron, your cost call). Next session: review PR #2's CI result and the PR body; nothing else is queued.
+
 **STATUS: CLOSED / DELIVERED (2026-10-12).** Code, demo script, exec briefs, LinkedIn drafts, cost review and screenshots are all done and recorded. Nothing below needs a session. The only work left is outside the repo: images for Ledger posts 49–53 and 109–113, set aside by the owner.
 
 **Bookable is closed (2026-10-05). The MCP track (M-000..M-016) is built and gated (2026-10-12). The Claude eval ran 2026-10-12: 9/9, $0.47.** `STATUS.md` is the handoff: done / not done / your hand steps. Nothing is queued for a session.

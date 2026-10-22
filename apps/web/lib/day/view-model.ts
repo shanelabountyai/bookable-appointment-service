@@ -654,7 +654,9 @@ function hourTicks(view: DayView, zone: ZoneId, from: number, total: number): { 
 const CANCELLED = new Set(['cancelled', 'cancelled_late']);
 
 /** D-9: a person where there is one — "the front desk" is four people. */
-function actorWord(c: { actor: string; actorRef: string | null }, staffNames: ReadonlyMap<string, string>): string {
+function actorWord(c: { actor: string; actorRef: string | null; channel?: string }, staffNames: ReadonlyMap<string, string>): string {
+  // W-001: an integration's ref is a key id — no roster name can match it.
+  if (c.channel === 'api') return 'API';
   if (c.actor === 'staff') return (c.actorRef && staffNames.get(c.actorRef)) || 'Staff';
   return c.actor === 'customer_token' ? 'Client' : 'System';
 }

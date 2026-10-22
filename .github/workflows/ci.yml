@@ -32,6 +32,10 @@ env:
   # above — a throwaway value, safe in the workflow file because it protects
   # nothing that outlives the job.
   CRON_SECRET: ci-only-cron-secret-not-used-anywhere-real
+  # W-D21: the webhook e2e registers the reference receiver on localhost,
+  # which is refused unless this is set. Test-only, as in .env.test; it must
+  # never be set on a deployment.
+  WEBHOOK_ALLOW_PRIVATE: '1'
 
 jobs:
   gate:

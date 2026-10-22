@@ -11,7 +11,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { channelOf, customerTokenActor, mcpActor, staffActor, systemActor } from '../core/auth';
+import { type Channel, apiActor, channelOf, customerTokenActor, mcpActor, staffActor, systemActor } from '../core/auth';
 
 const ROOT = __dirname;
 
@@ -51,11 +51,24 @@ describe('AppointmentEvent writers record the channel', () => {
 });
 
 describe('channelOf', () => {
-  it('maps each actor to one channel, with mcp set explicitly', () => {
+  it('maps each actor to one channel, with mcp and api set explicitly', () => {
     expect(channelOf(staffActor('s1'))).toBe('desk');
     expect(channelOf(mcpActor('s1'))).toBe('mcp');
     expect(mcpActor('s1')).toEqual({ type: 'staff', ref: 's1', channel: 'mcp' });
     expect(channelOf(customerTokenActor('t1'))).toBe('manage_link');
     expect(channelOf(systemActor)).toBe('system');
+    // W-001 / W-D1: an integration is the desk's rules with its own channel, and its ref is the KEY.
+    expect(channelOf(apiActor('k1'))).toBe('api');
+    expect(apiActor('k1')).toEqual({ type: 'staff', ref: 'k1', channel: 'api' });
+  });
+
+  it('the core Channel union and the database EventChannel enum hold the same values (W-001)', () => {
+    // A new channel is never one edit: the migration, the Prisma enum and this
+    // union must move together, and the compiler only sees one of the three.
+    const schema = readFileSync(join(ROOT, 'prisma/schema.prisma'), 'utf8');
+    const block = /enum EventChannel \{([^}]*)\}/.exec(schema)![1]!;
+    const values = block.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//'));
+    const union: Record<Channel, true> = { desk: true, manage_link: true, mcp: true, system: true, api: true };
+    expect(values.sort()).toEqual(Object.keys(union).sort());
   });
 });

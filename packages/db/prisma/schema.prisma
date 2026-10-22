@@ -116,6 +116,18 @@ enum EventChannel {
   manage_link
   mcp
   system
+  /// W-001 (API PRD §5, W-D1): an integration's write through /api/v1, by an `ApiKey`.
+  api
+}
+
+/// W-001 (API PRD §5). What an `ApiKey` may do. `read` gates every GET, `write`
+/// every POST; `prices` adds money to the service list (W-D2, D-36); `contacts`
+/// adds full phone and email to one client's detail (§6.8).
+enum ApiScope {
+  read
+  write
+  prices
+  contacts
 }
 
 enum NotificationChannel {
@@ -227,6 +239,11 @@ model Business {
   manageTokens  ManageToken[]
   mcpTokens     McpToken[]
   mcpProposals  McpProposal[]
+  apiKeys       ApiKey[]
+  idempotencyRecords IdempotencyRecord[]
+  eventSeq      BusinessEventSeq?
+  eventSnapshots EventSnapshot[]
+  webhookEndpoints WebhookEndpoint[]
   runningLate   ProviderRunningLate[]
   lateCalls     RunningLateTold[]
   sheetPrints   DaySheetPrint[]
@@ -270,6 +287,9 @@ model StaffUser {
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   mcpTokens    McpToken[]
   mcpProposals McpProposal[]
+  /// W-001: the keys this owner issued. A key belongs to an integration, not
+  /// to this person — deactivating them does not revoke it (§5).
+  apiKeysIssued ApiKey[]
 
   @@unique([businessId, email])
   @@index([businessId])
@@ -305,6 +325,70 @@ model McpToken {
 
   @@index([businessId])
   @@index([staffUserId])
+}
+
+/// W-001 (API PRD §5). A bearer credential for an INTEGRATION — a CRM sync, an
+/// n8n flow — not a person. Issued and revoked by an owner on
+/// /staff/integrations; shown once, stored as its SHA-256 (D-5's pattern).
+/// The business comes from HERE on every request, never from a parameter.
+/// Revoking a key touches nothing else: no person, no other key.
+model ApiKey {
+  id         String     @id @default(cuid())
+  businessId String
+  /// What the owner called it ("HubSpot sync"). Rendered in the audit line.
+  label      String
+  /// SHA-256 of the bearer (`bk_api_…`). The key itself is never stored.
+  keyHash    String     @unique
+  scopes     ApiScope[]
+  /// The owner who issued it (A-037: every credential names who handed it out).
+  issuedById String
+
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Restrict: staff are deactivated, never deleted.
+  issuedBy StaffUser @relation(fields: [issuedById], references: [id], onDelete: Restrict)
+
+  idempotencyRecords IdempotencyRecord[]
+
+  @@index([businessId])
+}
+
+/// W-006 (API PRD §6.6). Every API `POST` carries an `Idempotency-Key`
+/// (caller-chosen, ≤255 chars, scoped to the API key). The FIRST request with a
+/// key claims it with one `INSERT … ON CONFLICT DO NOTHING RETURNING` (A-048's
+/// outbox pattern) and runs the domain write; the response is stored here in
+/// the SAME transaction as that write, so a crash leaves either nothing or
+/// everything. A replay with the same `requestHash` gets the stored response
+/// byte-for-byte; a different hash is refused (422); a request that arrives
+/// while the first is still running sees `in_progress` (409).
+model IdempotencyRecord {
+  id             String            @id @default(cuid())
+  businessId     String
+  apiKeyId       String
+  idemKey        String
+  /// SHA-256 of method + path + canonical JSON body.
+  requestHash    String
+  status         IdempotencyStatus @default(in_progress)
+  responseStatus Int?
+  /// The exact bytes sent the first time, so a replay is byte-for-byte.
+  responseBody   String?
+  expiresAt      DateTime          @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  apiKey   ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@unique([apiKeyId, idemKey])
+  @@index([expiresAt])
+}
+
+enum IdempotencyStatus {
+  in_progress
+  done
 }
 
 /// M-009 (MCP PRD §8). Preview-then-commit: a `prepare_*` tool runs every
@@ -1083,12 +1167,41 @@ model AppointmentEvent {
   /// is in the log rather than in a dead row.
   payload   Json?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
+  /// W-008: per-business, gapless, in COMMIT order. Assigned at commit by a
+  /// deferred trigger (migration `event_seq`), never by application code, so
+  /// it is NULL only inside the writing transaction.
+  seq       Int?
 
   business    Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  snapshot    EventSnapshot?
+  deliveries  WebhookDelivery[]
 
+  @@unique([businessId, seq])
   @@index([appointmentId, createdAt])
   @@index([businessId, createdAt])
+}
+
+/// W-008: the last `AppointmentEvent.seq` handed out per business. Its row
+/// lock, taken at commit, is what serialises the sequence (W-D18).
+model BusinessEventSeq {
+  businessId String @id
+  last       Int
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+/// W-008: what the appointment looked like when the pipeline first saw an
+/// event — one body per event, shared by every endpoint and `/v1/events`, so a
+/// replay sends what was true then (W-D19).
+model EventSnapshot {
+  eventId    String   @id
+  businessId String
+  body       Json
+  capturedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  event    AppointmentEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  business Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
 }
 
 // ─────────────────────────── customer link & notifications ───────────────────────────
@@ -1485,4 +1598,84 @@ model RateLimitCounter {
   count       Int
 
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// ─────────────────────────── outbound webhooks (W-009) ───────────────────────────
+
+enum WebhookEndpointStatus {
+  active
+  /// 10 consecutive failed attempts (§8); the owner resumes it.
+  paused
+  /// The receiver answered 410 Gone.
+  disabled
+}
+
+enum WebhookDeliveryStatus {
+  pending
+  sending
+  succeeded
+  /// Attempted and scheduled again (`nextAttemptAt`).
+  failed
+  /// Six attempts spent (W-D20).
+  dead
+}
+
+/// W-009 (API PRD §8). Registered by the owner; receives every published
+/// event past `cursorSeq`, which starts at the business's sequence when the
+/// endpoint is created — the present, not the history.
+model WebhookEndpoint {
+  id                   String                @id @default(cuid())
+  businessId           String
+  url                  String
+  /// Stored, not hashed: the sender re-signs with it (W-D22).
+  secret               String
+  /// W-010: the secret before the last rotation, still signing until
+  /// `previousSecretExpiresAt` (24 h) so a receiver can switch without a gap.
+  previousSecret          String?
+  previousSecretExpiresAt DateTime? @db.Timestamptz(3)
+  /// Published type names; empty = all.
+  eventTypes           String[]
+  includeClientContact Boolean               @default(false)
+  status               WebhookEndpointStatus @default(active)
+  consecutiveFailures  Int                   @default(0)
+  disabledAt           DateTime?             @db.Timestamptz(3)
+  disabledReason       String?
+  /// The last `AppointmentEvent.seq` fanned out to this endpoint.
+  cursorSeq            Int                   @default(0)
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(3)
+
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([businessId])
+}
+
+/// W-009. One row per (endpoint, event) — the unique key is what makes a
+/// re-run fan-out harmless. The body is the event's `EventSnapshot` (W-D19).
+model WebhookDelivery {
+  id                  String                @id @default(cuid())
+  endpointId          String
+  eventId             String
+  seq                 Int
+  status              WebhookDeliveryStatus @default(pending)
+  attempts            Int                   @default(0)
+  nextAttemptAt       DateTime?             @db.Timestamptz(3)
+  lastResponseStatus  Int?
+  /// At most 1 KB of what the receiver answered.
+  lastResponseExcerpt String?
+  lastError           String?
+  firstAttemptAt      DateTime?             @db.Timestamptz(3)
+  succeededAt         DateTime?             @db.Timestamptz(3)
+  /// Set by a replay (W-011); travels in the body as `replayed`.
+  replayed            Boolean               @default(false)
+  createdAt           DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime              @default(now()) @db.Timestamptz(3)
+
+  endpoint WebhookEndpoint  @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event    AppointmentEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@unique([endpointId, eventId])
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, seq])
 }

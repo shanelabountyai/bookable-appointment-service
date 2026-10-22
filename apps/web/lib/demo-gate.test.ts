@@ -70,4 +70,13 @@ describe('demoChallenge', () => {
     const withColon = 'a:b:c';
     expect(demoChallenge('/book', basic('demo', withColon), withColon)).toBeNull();
   });
+
+  // W-002: the public API authenticates with its own bearer in the same header.
+  it('leaves the public API to its own auth, by prefix, and nothing that merely starts with the letters', () => {
+    expect(demoChallenge('/api/v1/services', null, PASSWORD)).toBeNull();
+    expect(demoChallenge('/api/v1/appointments/abc/cancel', 'Bearer bk_api_x', PASSWORD)).toBeNull();
+    expect(demoChallenge('/api/v1', null, PASSWORD)).toBeNull();
+    expect(demoChallenge('/api/v1x', null, PASSWORD)?.status).toBe(401);
+    expect(demoChallenge('/api/v2/services', null, PASSWORD)?.status).toBe(401);
+  });
 });
