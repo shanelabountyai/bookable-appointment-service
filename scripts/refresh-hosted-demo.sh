@@ -55,13 +55,19 @@ import { resetDatabase } from './packages/db/testing/reset';
 (async () => { const p = new PrismaClient(); await resetDatabase(p); await p.\$disconnect(); })()"
 
 echo "3/5 copying the book (derived tables regenerate by trigger)"
-pg_dump --data-only --no-owner --no-privileges \
-  --exclude-table='"_prisma_migrations"' \
-  --exclude-table='"AppointmentBlock"' \
-  --exclude-table='"AppointmentResourceHold"' \
-  "$SRC" 2> /dev/null \
-  | sed "/set_config('search_path', '', false)/d" \
-  | psql -q -v ON_ERROR_STOP=1 "$TARGET" > /dev/null
+# The copied events already carry their `seq` (and BusinessEventSeq its
+# `last`), so W-008's numbering trigger must not fire: it would try to number
+# each row again and the append-only guard refuses that. One transaction, so
+# a failed copy can never leave the trigger disabled.
+{ echo 'ALTER TABLE "AppointmentEvent" DISABLE TRIGGER "appointment_event_seq";'
+  pg_dump --data-only --no-owner --no-privileges \
+    --exclude-table='"_prisma_migrations"' \
+    --exclude-table='"AppointmentBlock"' \
+    --exclude-table='"AppointmentResourceHold"' \
+    "$SRC" 2> /dev/null \
+    | sed "/set_config('search_path', '', false)/d"
+  echo 'ALTER TABLE "AppointmentEvent" ENABLE TRIGGER "appointment_event_seq";'
+} | psql -1 -q -v ON_ERROR_STOP=1 "$TARGET" > /dev/null
 
 echo "4/5 proving the regenerated tables match the source"
 for t in AppointmentBlock AppointmentResourceHold; do
