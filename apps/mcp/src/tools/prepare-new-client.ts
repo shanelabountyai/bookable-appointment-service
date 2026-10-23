@@ -5,7 +5,7 @@
  * already has is refused with the existing record's id, so the model cannot
  * create a duplicate of somebody who is already a client.
  */
-import { findClientsByPhone } from '@bookable/db/clients';
+import { createClient, findClientsByPhone } from '@bookable/db/clients';
 import { z } from 'zod';
 import { ToolFailure, invalidArgument } from '../errors';
 import { defineWrite } from './proposals';
@@ -51,10 +51,8 @@ export const newClientAction = defineWrite({
     return { canonical, summary: `Add client ${name}, phone ending ${last4(args.phone)}.` };
   },
   async commit(ctx, c, deps) {
-    const row = await deps.prisma.client.create({
-      data: { businessId: ctx.businessId, name: c.name, phone: c.phone },
-      select: { id: true, name: true, phone: true },
-    });
+    // W-006: the ONE client insert desk, MCP and API share.
+    const row = await createClient(deps.prisma, { businessId: ctx.businessId, name: c.name, phone: c.phone });
     return {
       summary: `added ${row.name} (client_id ${row.id}).`,
       data: { client_id: row.id, name: row.name ?? c.name, phone_last4: last4(row.phone ?? c.phone) },

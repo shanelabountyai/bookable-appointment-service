@@ -22,6 +22,8 @@ import { prisma } from '@bookable/db';
 import { constantTimeEqual } from '@bookable/core/auth';
 import { dispatchPendingNotifications, notificationAdapter, sendDueReminders } from '@bookable/db/notifications';
 import { pruneRateLimits } from '@bookable/db/rate-limit';
+import { pruneIdempotencyRecords } from '@bookable/db/api';
+import { sweepWebhooks } from '@/lib/api/webhooks';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +49,12 @@ export async function GET(request: Request) {
   // A-141 — rides the one scheduled route rather than adding a second cron;
   // one statement, over a table this keeps down to the last day of callers.
   const prunedRateLimits = await pruneRateLimits(prisma, new Date());
+  // W-D23 (owner, 2026-10-21: "I don't want to raise costs"): the webhook
+  // retry sweep and the idempotency prune ride THIS daily cron instead of an
+  // hourly one, so Neon is woken no more often than D-78 left it. Inline
+  // delivery after each write is the happy path; retries are at most daily.
+  const webhooks = await sweepWebhooks({ prisma, now: () => new Date() });
+  const prunedIdempotency = await pruneIdempotencyRecords(prisma, new Date());
 
-  return NextResponse.json({ reminders, dispatch, prunedRateLimits });
+  return NextResponse.json({ reminders, dispatch, prunedRateLimits, webhooks, prunedIdempotency });
 }

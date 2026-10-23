@@ -1101,3 +1101,52 @@ test.describe('a gap too short for its label (A-121)', () => {
     await expectNoAxeViolations(page);
   });
 });
+
+test.describe('a click books the time under the pointer (A-162)', () => {
+  /**
+   * Outlook's gesture: click 15:35 in a free afternoon and the booking opens
+   * at 15:30, not at whenever the gap began. A real mouse click is the only
+   * thing that can fail here — `goto` and the href both still name the gap's
+   * start, which is exactly what the keyboard should keep getting.
+   */
+  test('opens the booking at the quarter hour clicked, and the keyboard still gets the gap start', async ({ page }) => {
+    await seedAppointment({ start: '2026-06-09T10:00:00-05:00', end: '2026-06-09T10:45:00-05:00' });
+    await page.goto(`/staff/day?day=${DAY}`);
+
+    const column = page.getByRole('region', { name: /Dana/ });
+    const links = column.getByRole('link', { name: /^\d+ min free, \d\d:\d\d–\d\d:\d\d/ });
+    const labels = await links.evaluateAll((all) => all.map((a) => a.getAttribute('aria-label')!));
+    const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+    const target = minutesOf('15:35');
+    const index = labels.findIndex((label) => {
+      const [, from, to] = /, (\d\d:\d\d)–(\d\d:\d\d)/.exec(label)!;
+      return minutesOf(from!) <= target - 20 && target < minutesOf(to!);
+    });
+    // The premise: a free gap that STARTS well before 15:35, or the click and
+    // the gap start agree and this proves nothing.
+    expect(index, `no free gap around 15:35 in ${JSON.stringify(labels)}`).toBeGreaterThanOrEqual(0);
+    const gap = links.nth(index);
+    const gapStart = minutesOf(/, (\d\d:\d\d)–/.exec(labels[index]!)![1]!);
+    const hrefBefore = await gap.getAttribute('href');
+
+    // Positioned against the CHIP, whose top edge is the gap's start.
+    const chip = gap.locator('xpath=..');
+    const y = (target - gapStart) * 1.5;
+    await chip.hover({ position: { x: 20, y } });
+    await expect(chip.getByTestId('gap-click-band')).toBeVisible();
+    await chip.click({ position: { x: 20, y } });
+
+    await expect(page).toHaveURL(/\/staff\/book\?/);
+    // 15:30 CDT on 9 June is 20:30Z — the instant, never a wall label (D-4).
+    expect(new URL(page.url()).searchParams.get('at')).toBe('2026-06-09T20:30:00.000Z');
+    await expect(page.getByText(/Starting from Tuesday 9 June at 15:30/)).toBeVisible();
+
+    // Keyboard: one Tab stop per gap, and Enter books its start as before.
+    await page.goBack();
+    await expect(gap).toHaveAttribute('href', hrefBefore!);
+    await gap.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/staff\/book\?/);
+    expect(new URL(page.url()).searchParams.get('at')).toBe(new URLSearchParams(hrefBefore!.split('?')[1]).get('at'));
+  });
+});

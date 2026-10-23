@@ -39,7 +39,8 @@
     "db:seed:test": "dotenv -e .env.test -e .env.local -- tsx packages/db/seed.ts",
     "db:seed:dev": "dotenv -e .env.local -- tsx packages/db/seed.ts",
     "eval:dry": "dotenv -e .env.test -e .env.local -- npm run eval:dry -w apps/mcp",
-    "eval": "dotenv -e .env.test -e .env.local -- npm run eval -w apps/mcp"
+    "eval": "dotenv -e .env.test -e .env.local -- npm run eval -w apps/mcp",
+    "openapi:write": "UPDATE_OPENAPI=1 vitest run apps/web/lib/api/openapi.test.ts"
   },
   "devDependencies": {
     "@types/pg": "^8.21.0",

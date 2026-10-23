@@ -329,7 +329,7 @@ async function loadColumn(
         events: {
           where: { type: { in: [...CHANGE_TYPES] }, createdAt: { gte: changesSince } },
           orderBy: { createdAt: 'desc' },
-          select: { type: true, createdAt: true, actor: true, actorRef: true, payload: true },
+          select: { type: true, createdAt: true, actor: true, actorRef: true, channel: true, payload: true },
         },
       },
     }),

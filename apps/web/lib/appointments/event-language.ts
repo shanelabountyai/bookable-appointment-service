@@ -91,7 +91,13 @@ export function toReadableEvent(event: AppointmentEventRow, zone: ZoneId): Reada
   // the answer; "by the front desk" was four people and a shrug.
   // M-016 (MCP PRD §5): the same person, through an AI client, reads
   // "by Sam via the assistant" — the channel is a stored fact (D-79), not a guess.
-  const who = `${actorWord(event.actor, event.actorName) ?? event.actor}${event.channel === 'mcp' ? ' via the assistant' : ''}`;
+  // W-001 (API PRD §5, W-D1): an integration is not a person — its row names
+  // the KEY: "Booked by HubSpot sync via the API". A revoked-then-deleted key
+  // cannot happen (keys are revoked, never deleted), but the fallback is honest.
+  const who =
+    event.channel === 'api'
+      ? `${event.apiKeyLabel ?? 'an integration'} via the API`
+      : `${actorWord(event.actor, event.actorName) ?? event.actor}${event.channel === 'mcp' ? ' via the assistant' : ''}`;
   const payload = (event.payload ?? {}) as Record<string, unknown>;
 
   return {

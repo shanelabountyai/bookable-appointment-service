@@ -148,6 +148,33 @@ claude mcp add --transport http bookable-http http://localhost:3300/api/mcp --he
 
 Pictures if the live connection will not co-operate: `docs/screenshots/14-ai-access.png` (the token list) and `15-assistant-exchange.png` (one refused-then-recovered booking, propose then commit).
 
+### 14. The public API and webhooks (optional, ~4 min)
+*Commands run 2026-10-21 against the production build on :3300 (key and endpoint created through the same functions the page calls; the booking made through the API, whose inline carrier is the same `after()` sweep the desk's uses — the receiver printed `VERIFIED #1255 appointment.booked …` and the server log `[webhooks] inline sweep {"queued":1,"succeeded":1,…}`). The page steps are covered by `e2e/integrations.spec.ts`.*
+
+Locally, start the server with `export WEBHOOK_ALLOW_PRIVATE=1` set as well, so a `localhost` receiver can be registered (W-D21; never on a deployment). As the owner, open **Setup → Integrations**:
+
+1. **Issue a key** labelled `Demo sync`, with **Read** and **Write**. Copy it; it is shown once.
+2. In a terminal, check the key works:
+   ```bash
+   KEY=<paste bk_api_…>
+   curl -s -H "Authorization: Bearer $KEY" localhost:3300/api/v1/services | head -c 300; echo
+   curl -s -o /dev/null -w '%{http_code}\n' localhost:3300/api/v1/services        # 401 without the key
+   ```
+3. **Register an endpoint** under Webhooks: URL `http://localhost:3310/`, leave every event unticked (= all). Copy the `whsec_…` secret, then:
+   ```bash
+   WEBHOOK_SECRET=<paste whsec_…> npx tsx scripts/webhook-receiver.ts
+   # webhook receiver listening on http://localhost:3310/
+   ```
+4. **Book at the desk** (`/staff/book`, any client, any open time). Within a few seconds the receiver prints `VERIFIED #<n> appointment.booked appointment=… start=…`, with no scheduled job involved. **Say:** nothing that writes an appointment knows webhooks exist; the sender reads the append-only history, numbered by the database at commit.
+5. **Back on Integrations**, the delivery log shows it `succeeded`. Press **Replay**: the receiver prints `duplicate … (attempt 1)`, because delivery is at-least-once and the receiver dedupes on the event id. Open **Details** to see what was sent, with the signature redacted.
+6. The catch-up door and the contract:
+   ```bash
+   curl -s -H "Authorization: Bearer $KEY" "localhost:3300/api/v1/events?since=0&limit=3" | head -c 400; echo
+   curl -s localhost:3300/api/v1/openapi.json | head -c 200; echo
+   ```
+
+**Concede first:** retries run when the next write happens or on the daily job, whichever comes first (D-81, so the hosted database can sleep). A receiver that is down on a quiet day can wait up to a day, and `GET /v1/events?since=` is the immediate catch-up. The hosted copy has no endpoint registered and will not send to `localhost`. The walkthrough for a reviewer is `docs/api/README.md`.
+
 ## Screenshots
 
 Fifteen shots in `docs/screenshots/`, taken from this same seeded book at 1440×900 (@2x, light scheme). Shot 15 is not a screen: it is `15-assistant-exchange.txt` drawn as a terminal — the eval harness's own log of one scenario, the scripted stand-in model calling the real server (regenerate the text with the command on its first line). On a day the salon is closed (Sun/Mon) the running-late shot is skipped; retake from Tuesday. To retake them after a re-seed, with the server up:
@@ -186,6 +213,7 @@ Against the hosted copy: `BASE=https://appt.labintelligence.co DEMO_ACCESS_PASSW
 7. **A gap client's block is not checked against a colour's projected second block** — needs a delta larger than the gap; bounded by D-62 (A-134).
 8. **Waitlist matching is oldest-first**, and **D-54 widens a column on heavy cancellation days.** Both open since Phase 15; not built.
 9. **The MCP server's model eval has been run against Claude once** (2026-10-12, `claude-opus-5-5`, 9/9) — a baseline on one model, not a guarantee. And the hosted Claude apps need OAuth for a custom connector; Claude Code is the HTTP client today (`DECISIONS.md` M-D15, M-D17).
+9. **Webhooks are at-least-once, and retries can wait a day.** Retries ride the next write or the daily cron (D-81, the owner's cost call), and `waitUntil` on the hosted plan was never spike-tested (W-D8), so inline delivery there is unverified until a deploy shows the `[webhooks] inline sweep` log line. An API key with `write` has the desk's rights: cancel, reschedule and check in, client messages included (W-D1).
 9. **Deliberately not built:** holds, automated offers (OQ-4), a staleness alarm, a per-client stored delay.
 10. **A demo deployment, not production.** The hosted copy has no backups, monitoring or on-call, and sits behind one shared password. There is no real client data; every name, phone number and dollar figure is synthetic.
 11. **Reminders:** one of the seeded reminders is left by the skipped band on purpose — the never-reminded screen is not empty on a fresh install.

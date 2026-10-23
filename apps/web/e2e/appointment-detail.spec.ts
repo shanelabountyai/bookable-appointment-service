@@ -12,7 +12,7 @@ import { seedSetup } from '@bookable/db/settings';
 import { bookAppointment } from '@bookable/db/booking';
 import { staffActor } from '@bookable/core/auth';
 import { addDays, calendarDay, fromDate, instant, resolve, toDate, toLabel, wallTime, weekdayOf, zoneId } from '@bookable/core/time';
-import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, test } from './fixtures';
+import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, skipInSalonsLastHour, test } from './fixtures';
 
 let DAY: string;
 let ZONE: string;
@@ -976,6 +976,7 @@ test.describe("a no-show's time, given back (A-069)", () => {
     const prisma = new PrismaClient();
     try {
       const business = await prisma.business.findFirstOrThrow();
+      skipInSalonsLastHour(business.timezone);
       const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
       const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
       const client = await prisma.client.create({

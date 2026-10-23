@@ -21,7 +21,7 @@ import type { Page } from '@playwright/test';
 import { PrismaClient } from '@bookable/db';
 import { seedSetup } from '@bookable/db/settings';
 import { fromDate, instant, toDate, toLabel, zoneId } from '@bookable/core/time';
-import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, test } from './fixtures';
+import { STAFF_EMAIL, STAFF_PASSWORD, expect, openAllDay, skipInSalonsLastHour, test } from './fixtures';
 
 const MIN = 60_000;
 
@@ -51,6 +51,7 @@ async function noShowRunningNow(): Promise<{ minutes: number; startedAt: string 
   const prisma = new PrismaClient();
   try {
     const business = await prisma.business.findFirstOrThrow();
+    skipInSalonsLastHour(business.timezone);
     const dana = await prisma.provider.findFirstOrThrow({ where: { displayName: 'Dana' } });
     const service = await prisma.service.findFirstOrThrow({ where: { name: 'Cut' } });
     const client = await prisma.client.create({
@@ -130,12 +131,15 @@ test.describe('a no-show nobody has given back (A-102)', () => {
     await expect(page).toHaveURL(/\/staff\/opened$/);
 
     await expect(page.getByRole('heading', { name: 'Nobody came — still blocked' })).toBeVisible();
-    await expect(page.getByText(new RegExp(`${startedAt} · ${minutes} min still blocked`))).toBeVisible();
+    // `releasableAt` counts from the PAGE's floored minute, not the fixture's:
+    // a minute that rolls over between the two reads one less. Either is right.
+    const counted = `(${minutes}|${minutes - 1})`;
+    await expect(page.getByText(new RegExp(`${startedAt} · ${counted} min still blocked`))).toBeVisible();
     await expect(page.getByText('Ada Chen never came, and the rest of the slot is still on the book')).toBeVisible();
     // The reason D-44 refused a timer: one more ring before anybody gives it up.
     await expect(page.getByRole('link', { name: '+15125550101' })).toHaveAttribute('href', 'tel:+15125550101');
 
-    await page.getByRole('button', { name: `Put ${minutes} min back on the market` }).click();
+    await page.getByRole('button', { name: new RegExp(`^Put ${counted} min back on the market$`) }).click();
 
     // THE ROW MOVES BETWEEN THE TWO LISTS, which is the whole shape of the
     // screen: the decision is taken, so it stops being a decision and becomes

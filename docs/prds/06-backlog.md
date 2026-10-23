@@ -393,6 +393,7 @@ Multi-**provider** chains → real Resend/Twilio adapters behind the existing se
 | 161 | ✅ A-159 | **C16. "Book with *name*" copy.** The CTA reads "Book an appointment", and the line below says "Ask for {name} on the next step." Prefill stays deleted (A-054). | A-054; D-76 | XS | — | 23 |
 | 162 | ✅ A-160 | **C12 (D-77). Undo a mis-tapped forward status move.** Amends §7's transition table. The undo names who made the tap and clears the timestamp it set, so a wrong Finish stops seeding the D-64 cascade. | APPT-06, §7, D-46, D-53, D-64; D-76 | M | — | 23 |
 | 163 | ✅ A-161 | **Barrier-based check-in race test.** `packages/db/appointments/transition.test.ts` › "lets exactly one of two simultaneous check-ins win" is not barrier-based and failed 2/6 under load on 2026-09-28 (A-143's PROGRESS entry). Rewrite to spec §4.5. | A-143; D-76 | S | — | 23 |
+| 164 | ✅ A-162 | **Click a time on the day grid to book it, like a calendar.** A free gap books the quarter hour under the pointer, not its first minute; a hover band shows where. The keyboard path is unchanged. Spec: `docs/prds/click-to-book/00-click-to-book-prd.md`. | A-017; D-4, D-82 | S | — | post-close |
 
 
 

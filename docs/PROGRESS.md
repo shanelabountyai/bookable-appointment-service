@@ -6570,6 +6570,172 @@ later day is the first ask, so the link names them again.
 asserts `provider=any`, that no offered row names Dana, and that a time is
 listed when the page arrives.
 
+## W-track restart baseline — 2026-10-21, on the owner's machine (native Prisma engine)
+
+W-000..W-007 were committed as `(wip-gate)`: their gate ran on the overnight stand-in (W-D9: WASM engine behind a driver adapter, Postgres on :5434), never on the native engine, and CI was never observed. Re-run here before any W-008 code, on branch `w-track-wip-snapshot` at `909c077` ("W-007 (wip-gate)"), Node 26.3.1, Postgres on :5432 (`bookable_test`), `npm ci` + `db:migrate:test` first:
+
+- `npm run lint` — **pass** (exit 0).
+- `npm run typecheck` — **pass** (exit 0).
+- `TZ=UTC npm test` — **pass: Test Files 112 passed (112); Tests 2077 passed | 1 skipped (2078)**; 475 s. This includes the W-007 parity test (`apps/web/lib/api/moves.test.ts`) and every W-001..W-007 file. The 10 stand-in failures W-D9 listed (`constraint.test.ts` deferred-through-Prisma, `density-seed.test.ts` › determinism) **do not occur on the native engine** — they were the adapter, as W-D9 said.
+- `TZ=Pacific/Kiritimati` and e2e were NOT run at baseline (a 475 s unit pass per zone on a loaded machine); both run in the final gate of this session.
+- The W-000 `waitUntil` spike has **no result** in `DECISIONS.md` (W-D8: deferred to the owner, needs a preview deploy). Not run here: this session may not deploy. W-009 is built so the hourly sweep is the carrier (W-D20).
+
+## W-014 — closure docs (API PRD §10) — PARTIAL
+
+Commit `4803938`.
+
+**What it built.** `docs/DEMO.md` §14 (the API and webhooks walk; every command run 2026-10-21 against the production build on :3300 — the receiver printed `VERIFIED #1255 appointment.booked …`, the server logged `[webhooks] inline sweep {"queued":1,"succeeded":1,…}`) and a new concession (at-least-once, retries up to a day, `waitUntil` unverified, a write key has desk rights); `STATUS.md` gains a W-track section on top (done / not done / open decisions / hand steps); `RELEASE_NOTES.md` W-008..W-014.
+
+**What it left behind — why the row stays unticked.** The PRD's W-014 includes "cost re-read against D-78 after a week": that needs a deploy (forbidden this session) and a week. It is hand step 6 in `STATUS.md`. The exec brief and posts are the owner's (they publish).
+
+## W-013 — e2e: the API golden path, webhooks verified, replay, PII sweep, owner page at phone width (API PRD §9)
+
+Commit `3c3d9dd`.
+
+**What it built.** `apps/web/e2e/api-golden-path.spec.ts`, against the production build at 390 × 844 with the REFERENCE receiver on a real port: the owner registers the endpoint on `/staff/integrations` → a key reads `/v1/availability` (any stylist, the next 12 salon days) → `POST /v1/clients` → `POST /v1/appointments` → the receiver prints `VERIFIED … appointment.booked` **within 15 s with no cron call anywhere (the API adapter's inline `after()` carrier)** → `POST …/reschedule` → `VERIFIED … appointment.rescheduled` with the new start → `GET /v1/events?since=0` lists exactly those two for the appointment → the owner page filtered to `appointment.booked` (axe clean, **no horizontal scroll at 390 px**, `scrollWidth − clientWidth ≤ 0`) → Replay → the receiver logs a duplicate (attempt 1) → **PII sweep**: every webhook body and every API response read contains neither the client's phone digits nor her email (endpoint without contacts, key without `contacts`). With W-011's `integrations.spec.ts` › *webhooks*, the e2e now covers registration, the sweep route, the desk-action carrier and the API carrier.
+
+**What it decided.** Nothing new.
+
+**Tests.** The spec above: 1 passed (first run).
+
+**CI found one thing the local gate could not:** the first CI run on the final head failed exactly these two webhook e2e tests (381 passed, 2 failed) — CI builds its own environment, and `WEBHOOK_ALLOW_PRIVATE=1` lived only in the gitignored `.env.test`, so registering the `localhost` receiver was refused and no secret appeared. `.github/workflows/ci.yml` now sets it in the job env with the same test-only comment (W-D21). The local `.env.test` hid it, which is the CLAUDE.md lesson about generated artifacts in a new form: a local gate is not the gate.
+
+**What it left behind.** The manage-link and public-booking carriers are exercised only by code reading here (their hooks are one line each, W-D23); the e2e sweep (`e2e/**`) runs them at the final gate as part of the existing manage/booking specs, which would surface an error thrown by the hook.
+
+## W-012 — OpenAPI generated from the zod schemas + drift check; `docs/api/README.md` (API PRD §6.9, §9.12)
+
+Commit `8ebbd58`.
+
+**What it built.** `apps/web/lib/api/openapi.ts`: an `OPERATIONS` table (method, path, scope, summary) whose query and body schemas are the handlers' own zod schemas (now exported), turned into OpenAPI 3.1 with zod 4's built-in `z.toJSONSchema` (`io: 'input'`) — no new dependency. `Idempotency-Key` on every POST, optional `If-Match` on reschedule/status, bearer security, the problem+json envelope, and in `info.description` the published event types, the NOT-published ones (OQ-W6), delivery semantics, the signature scheme and a CHANGELOG. Served PUBLIC at `GET /api/v1/openapi.json`; committed at `docs/api/openapi.json`; `npm run openapi:write` regenerates. `docs/api/README.md` for a hiring manager: what is worth looking at, get a key, the curl golden path, verify a webhook with the reference receiver, honest limits.
+
+**What it decided.** Responses are described in prose plus the problem envelope, not schema'd: they are TypeScript interfaces, and a hand-written response schema would be a second source that drifts. The drift check is a unit test rather than a new CI step: CI already runs the unit suite, so the workflow is unchanged.
+
+**Tests.** `openapi.test.ts` (3): the committed file equals the generated one byte for byte (CI fails on a schema change without `openapi:write`); `OPERATIONS` equals the set of `GET`/`POST` exports found in `app/api/v1/**/route.ts` on disk (a new route without documentation fails); a query schema's fields and the POST idempotency header reach the document.
+
+**What it left behind.** Response bodies are documented by example in the README rather than by schema.
+
+## W-011 — `/staff/integrations`: endpoints, delivery log, replay (API PRD §7 "Owner UI", §9.11)
+
+Commit `409ed86`.
+
+**What it built.** `webhook-endpoints.ts` gains the owner's operations: `listWebhookEndpoints`; `updateWebhookEndpoint` (url/eventTypes/contacts, validated exactly as registration; secret and cursor untouched); `setWebhookEndpointStatus` (`active` resumes — failure count and reason cleared, backlog delivered; `disabled` = "Switched off by the owner."); `replayDelivery` (`pending`, `replayed: true`, attempts back to 0 so `Bookable-Attempt` starts again with six fresh tries; never a row mid-send; business-scoped); `replayFromSeq` (re-queues the rows it had from that seq AND winds the cursor back so events it never had a row for are fanned out); `listWebhookDeliveries` (newest first; filters by endpoint, status and published type). `lib/webhooks/actions.ts` — owner-only server actions (`requireOwner` at every entry, D-36); secrets appear once, on registration and rotation. `app/staff/integrations/webhooks.tsx` + the page: register form (URL, event types, contacts off by default), per-endpoint status/failures/reason, Switch off/Resume, Rotate secret, Replay from #, Edit; the delivery log as a plain GET filter form (a filtered view is a link), each row expandable to the headers sent (signature redacted), first try, delivered/next try, last answer, error and body excerpt, with a Replay button.
+
+**What it decided.** No new W-D. One ceiling, marked `ponytail:` in `listWebhookDeliveries`: the type filter runs over the newest 200 matching rows in memory. The log keeps the LAST attempt's response, not a per-attempt history — the attempt count, first try and next try are on the row (§7 says "attempt history"; a per-attempt table is the upgrade if an integration needs it).
+
+**Tests.** `webhook-admin.test.ts` (6): **SNAPSHOT HONESTY (§9.11)** — the `booked` delivery replayed after a reschedule sends the booked time with `replayed: true` and attempt 1; a `dead` delivery revived (and another business cannot replay it); replay-from-seq re-sends the row it had and fans out the event from before registration (a first delivery, `replayed: false`), refused across businesses; switch off stops sending, resume clears the count and delivers the backlog; edit validates and keeps the secret, refused across businesses; the log's order and three filters, business-scoped. e2e `integrations.spec.ts` › *webhooks* against the reference receiver on a real port: register → secret shown once (and absent from the page after) → axe clean → a booking delivered by `/api/jobs/webhooks` arrives `VERIFIED` → the log shows it `succeeded` → **Replay, with no cron call, arrives as a duplicate within 15 s — the inline `after()` carrier proven in the production build** → Switch off. Spec: 6 passed.
+
+**What it left behind.** The owner page at phone width is W-013.
+
+## W-010 — signing + rotation; `scripts/webhook-receiver.ts`; signature tests (API PRD §8 "Signature", §9.9)
+
+Commit `a394ea7`.
+
+**What it built.** Migration `20261021140000_webhook_secret_rotation` (`previousSecret`, `previousSecretExpiresAt`). `rotateWebhookSecret` (business-scoped; the new secret returned once; the old one keeps signing 24 h; one previous kept). The dispatcher signs with every live secret, so a delivery in the overlap carries two `v1=`. `scripts/webhook-receiver.ts` — the REFERENCE receiver, Node standard library only and deliberately not importing the app: raw body, `t=…,v1=…[,v1=…]`, ±300 s, constant-time compare over every (secret, v1) pair, dedupe on the event id, `401` with the reason on a bad signature; `WEBHOOK_SECRET` may be a comma list during a rotation; port `WEBHOOK_RECEIVER_PORT`, default 3310. `scripts/**` added to the root `tsconfig.json` include so the gate typechecks it.
+
+**What it decided.** Nothing new beyond W-D22.
+
+**Tests.** `webhook-signature.test.ts` (9), the SENDER's signer against the independent RECEIVER over real HTTP on localhost: **demo checkpoint 3 as an assertion** — a desk booking, then the same sweep the inline carrier runs, and the receiver prints `VERIFIED #<seq> appointment.booked appointment=<id> …` within 5 s with the delivery `succeeded`; a wrong secret → the receiver's `401 no signature matches` recorded as a failed attempt; **rotation** — during the overlap a receiver holding only the OLD secret and one holding only the NEW one both verify, and after 24 h the header carries one `v1`; a redelivered event is a `duplicate … (attempt 2)` to the receiver, processed once. Pure: genuine accepted; tampered body, wrong secret, missing and malformed header refused; ±360 s refused, exactly 300 s accepted; moving `t` to dodge the window breaks the MAC; two-signature header verifies with either secret. With `webhooks.test.ts`: 25 passed.
+
+**What it left behind.** Demo checkpoint 3 is proven at the function level (the sweep called directly); the `after()` hook firing it from a real desk click in the built app is W-013's e2e. The owner page's "rotate" button is W-011.
+
+## W-009 — webhook endpoints, deliveries, snapshot capture, the claim, inline + daily sweep, backoff, dead-letter, pause/disable (API PRD §8, §9.8, §9.10, §9.13)
+
+Commit `49fd481`.
+
+**What it built.** Migration `20261021130000_webhooks`: `WebhookEndpoint` (`url`, `secret`, `eventTypes[]`, `includeClientContact`, `status active|paused|disabled`, `consecutiveFailures`, `disabledAt/Reason`, `cursorSeq`) and `WebhookDelivery` (unique `(endpointId, eventId)`, `status pending|sending|succeeded|failed|dead`, `attempts`, `nextAttemptAt`, last response status/excerpt ≤ 1 KB/error, first-attempt/succeeded times, `replayed`). `apps/web/lib/api/webhooks.ts`: `fanOut` (per active endpoint, under `FOR UPDATE SKIP LOCKED`: published events past `cursorSeq`, filtered by `eventTypes`, snapshots captured, `createMany … skipDuplicates`, cursor advanced); `claimDelivery` (one `UPDATE … WHERE id = (SELECT … FOR UPDATE OF c SKIP LOCKED) RETURNING`, lowest seq first, only active endpoints, `sending` older than 15 min reclaimed); `deliver` (the stored body + contacts only if the endpoint asked, `Bookable-Signature`/`-Event-Id`/`-Event-Type`/`-Delivery-Id`/`-Attempt`, 10 s timeout, redirects not followed, 2xx = success; else backoff `1m,5m,30m,2h,6h` then `dead` at 6; 410 disables the endpoint; 10 consecutive failures pause it with a reason); `sweepWebhooks` (fan out, then send up to 50, skipping an endpoint for the rest of the sweep once it fails). `webhook-url.ts`: https only, no credentials, no private/loopback/link-local/CGNAT/ULA — at registration and again at send by resolving the name; `WEBHOOK_ALLOW_PRIVATE=1` (`.env.test` only) for a local receiver. `webhook-endpoints.ts`: `createWebhookEndpoint` (owner registration, secret shown once, cursor starts at the business's current seq). `webhook-signature.ts`: the signer. Carriers: `lib/webhooks/kick.ts` runs one sweep in Next's `after()` (= `waitUntil` on Vercel), hooked in the API write adapter, the MCP route, `readDesk` on a server action (every desk mutation), the manage link's gate on a server action, and the public booking's confirm; the daily reminders cron (`/api/jobs/reminders`) now also sweeps webhooks and prunes idempotency records. `/api/jobs/webhooks` exists unscheduled (local trigger; restoring an hourly cadence is one `vercel.json` line).
+
+**What it decided.** W-D20 (carriers; 6 attempts — the PRD's trailing `24h` would be a 7th; `failed` = scheduled again; one failure benches an endpoint for the sweep; a paused endpoint keeps its cursor), W-D21 (`WEBHOOK_ALLOW_PRIVATE`), W-D22 (secret stored, rotation keeps the old one 24 h), and **W-D23 — the OWNER's answer to OQ-W4 given mid-session ("I don't want to raise costs"): no hourly cron; the sweep rides the existing daily cron, `vercel.json` unchanged**, which supersedes W-D4. Cross-referenced as D-81.
+
+**Tests.** `webhooks.test.ts` (16), against a scripted `fetch` and a hand-advanced clock: a desk booking reaches the endpoint once with every §8 header and a 64-hex `v1`, and a second sweep sends nothing; a new endpoint is not sent the salon's history; **COVERAGE BY DERIVATION (§9.13)** — an event inserted by raw SQL by no known writer is delivered with no pipeline change; `eventTypes` honoured and unpublished types never sent; fan-out run twice (two concurrent + one more) leaves one row; tenancy (B's endpoint never gets an A event); **500, 500, 200 → one `succeeded` delivery with `attempts = 3`**, each retry exactly "not before" its backoff (one millisecond early sends nothing), attempts 1/2/3 on one event id; **always 503 → `dead` after 6**, endpoint still active at 6 consecutive, **paused at 10** with "10 deliveries in a row failed; last: HTTP 503" and sent nothing after; **a 410 disables at once**; a failing endpoint is tried once per sweep and does not hold up another; **the claim** — a row held and marked `sending` by another session is skipped (SKIP LOCKED) and then not reclaimable while fresh; **the double-send door** — the same row reclaimed at 15 min + 1 ms (not at 15 min − 1 ms) and sent as attempt 2; PII — no phone/email without `includeClientContact`, both with it; http/credentials/127.0.0.1/10.x/169.254.169.254/localhost/[::1]/junk refused at registration; an endpoint re-pointed at 192.168.1.1 is a failed attempt, never a request; the address classifier. Full suite `TZ=UTC` (`--hookTimeout/--testTimeout=60000`, W-008's environment note): **Test Files 114 passed (114); Tests 2104 passed | 1 skipped (2105)** (+16). Drift: "No difference detected." These were written before `webhooks.ts` compiled, but their first run was against the finished code (not shown red). The `after()` hooks need the Next runtime and are exercised by W-013's e2e, not here.
+
+**What it left behind.** Replay (per delivery and from a seq) and the owner UI are W-011; rotation is W-010. A paused/disabled endpoint resumes only through W-011's page.
+
+## W-008 — `AppointmentEvent.seq` + lock audit; `GET /v1/events` (API PRD §8, §9.7)
+
+Commit `b3de4d5`.
+
+**What it built.** Migration `20261021120000_event_seq`: `AppointmentEvent.seq` (unique per business), `BusinessEventSeq` (the last number per business), `EventSnapshot` (one body per event), and a DEFERRED constraint trigger that numbers each event at COMMIT from the `BusinessEventSeq` row (`INSERT … ON CONFLICT DO UPDATE … RETURNING`, a row lock held to the end of the commit). The append-only trigger now allows exactly one update — `seq` from NULL, every other column unchanged — and the migration backfills history in `(createdAt, id)` order with the trigger lifted for that one statement. `apps/web/lib/api/events.ts`: the closed map of published types (`booked` → `appointment.booked`, `rescheduled`, `provider_changed` → `reassigned`, `status_changed` → `cancelled` when `to` is a cancellation else `status_changed`, `status_corrected`), a curated `change` per type, `snapshotsFor` (capture once, `skipDuplicates`, read back the winner), `eventBodies` (the webhook body W-009 sends), and `GET /v1/events?since=&cursor=&limit=` with route `app/api/v1/events/route.ts`.
+
+**What it decided.** W-D18 (the lock audit found no business-wide lock on the 13 writer sites; `BusinessEventSeq` locked at commit by a deferred trigger — commit order, gapless, no new deadlock, every writer covered without participating), W-D19 (the snapshot is per EVENT and shared, captured on first read; `change` instead of `previous`).
+
+**Tests.** `events.test.ts` (14 with `event-channel.test.ts`), written first and red against the unmigrated database (10 of 11 failed: `column AppointmentEvent.seq does not exist`): seq is 1..n per business with B counting separately; **commit order** — two connections, the first to insert commits second and gets the higher number, and a reader between the commits sees only the committed one, already numbered; **a committer blocks** on a held `BusinessEventSeq` row (the `pg_locks` barrier, never a timer) and the sequence stays gapless; a rollback leaves no gap; the log stays append-only (`seq` cannot be rewritten, no other column, no delete). The endpoint: the body shape; every published type mapped from real API/desk writes and an unpublished one absent; `?since=` returns exactly the later events and the cursor visits each event once; **the snapshot is taken once** — after a reschedule the `booked` event still shows the booked time; tenancy and a phone/email sweep; VALIDATION for a bad `since`, junk cursor, `limit=101`. Drift check: "No difference detected." Full suite `TZ=UTC`: **Test Files 113 passed (113); Tests 2088 passed | 1 skipped (2089)** (baseline + 11). Two existing PARITY tests (`apps/web/lib/api/moves.test.ts`, `apps/mcp/src/tools/race-parity.test.ts`) compare whole event rows and now skip `seq` too — the per-business commit order differs by design between the API row and the desk row. **Environment note:** the first full run timed out in `beforeEach` (`Hook timed out in 10000ms`, and one `40P01` between two TRUNCATEs) on this machine, whose disk sync was measured at 150–800 ms per trivial commit (load average 30–50 from other apps); the same files took the same time with the seq trigger dropped (87 s vs 75 s with it), so it is not W-008. The gate run above used `--hookTimeout=60000 --testTimeout=60000` on the command line; the config is unchanged, and CI runs the defaults.
+
+**What it left behind.** `EventSnapshot` is written by `/v1/events` today and by W-009's fan-out next. Events are numbered from the moment the migration runs on Neon; the backfill orders history by `createdAt`, the best order the log can reconstruct.
+
+## W-007 — `POST …/reschedule` (reassign routing, `If-Match`), `/cancel`, `/status`, `/waitlist`; parity (API PRD §7, §9.5)
+
+**What it built.** `apps/web/lib/api/moves.ts` and four idempotent routes. Every write first takes the appointment's row lock (`SELECT … FOR UPDATE`, inside the work transaction) and then honours `If-Match` against its `version` (W-D3: optional, `*` allowed; stale → 412, nothing written) — checked under the lock, never check-then-write. Reschedule: the same instant + a different provider routes to `reassignAppointment` (the desk's sick-stylist path, M-D16), anything else to `rescheduleAppointment` (D-6 same-row UPDATE, D-31 provider change, `audience: 'staff'`), after asking `offeredSlot` with `excludeAppointmentId` so a refusal names its reason; reassign failures are mapped to SLOT_TAKEN / NOT_QUALIFIED / NOT_FOUND / INVALID_TRANSITION. Cancel: `transitionAppointment` with `cancellation: 'derive'` (the machine picks `cancelled` vs `cancelled_late`, A-060), a reason required, `tellClient` default TRUE (D-32), `expectedFrom` = the locked status. Status: `to` ∈ `checked_in | in_progress | completed | no_show`, optional reason, `expectedFrom`. Waitlist: `createWaitlistEntry` with `dayRange {from,to}`, optional provider and day-parts. Each answers with the fresh appointment view and its `ETag`.
+
+**What it decided.** Nothing new beyond W-D1 (the desk's rules, by actor type) and W-D3.
+
+**Tests.** `moves.test.ts`: reschedule moves the same row (no second appointment) with `channel: api` on the event; same time + new provider is a REASSIGN with `provider_changed`; `If-Match` current → 200, stale (the desk confirmed it meanwhile) → 412 with the time unchanged; SLOT_TAKEN, OUTSIDE_HOURS, NOT_QUALIFIED; cancel requires a reason, tells the client by default (an outbox row), is `cancelled_late` inside the cutoff by the domain's decision; a replayed cancel is the first answer, a second cancel INVALID_TRANSITION; the status walk booked → checked_in → in_progress → completed all on channel `api`; no-show before the start is INVALID_TRANSITION, `cancelled` via `/status` is VALIDATION, business B's appointment is NOT_FOUND and unchanged; waitlist add, tenancy, backwards range. **PARITY (§9.5):** a booking and a cancellation through the API and the same pair at the desk produce identical appointment rows and identical event rows except `channel`/`actorRef`, and the same outbox templates — the M-013 parity test, extended to the API.
+
+**What it left behind.** Milestone 3 (writes) complete — demo checkpoint 2 ("an n8n flow books through the API and the desk shows 'via API'") is reachable: the booking path, the audit line (W-001) and these moves are in. Not exercised end-to-end over HTTP from a real n8n flow here; the route adapters are thin and the e2e golden path is W-013.
+
+## W-006 — `IdempotencyRecord` + claim; `POST /v1/appointments`, `POST /v1/clients`; barrier race; crash test (API PRD §6.6, §7, §9.3–9.4)
+
+**What it built.** Migration `20261020130000_idempotency_record` (`apiKeyId`, `idemKey`, `requestHash`, `status in_progress|done`, `responseStatus`, `responseBody`, `expiresAt` 24 h; unique `(apiKeyId, idemKey)`). `packages/db/api/idempotency.ts`: `claimIdempotencyKey` — ONE `INSERT … ON CONFLICT DO UPDATE … WHERE expired OR abandoned RETURNING` (A-048's pattern), committed on its own before the work; `finishClaim` (with the work's transaction); `releaseClaim`; `requestHashOf` (method + path + canonical JSON, so key order does not matter); `pruneIdempotencyRecords` for the hourly job (W-009). `packages/db/api/join-transaction.ts`: `joinTransaction(tx)` — a client that IS the outer transaction and turns each domain function's own `$transaction` into a SAVEPOINT (rolled back before rethrow). `apps/web/lib/api/idempotent.ts`: header required (400) and ≤ 255; replay = stored bytes + `Idempotent-Replayed: true`; different hash = 422; live `in_progress` = 409 + `Retry-After: 1`; domain refusals stored and replayed like successes; a bug releases the key. `packages/db/clients/create.ts`: `createClient`, the ONE client insert, now used by the desk's `createClientForBooking`, MCP's `prepare_new_client` and the API (§7's extraction). `writes.ts`: `POST /v1/appointments` (`bookAppointment` with `apiActor`, `audience: 'staff'`, the engine asked first via MCP's `offeredSlot` so a refusal names its reason, `api:<claim id>` as the domain's own idempotency key, 201 + `Location` + the appointment view) and `POST /v1/clients` (`findClientsByPhone` first → 409 `AMBIGUOUS_CLIENT` naming the matches by id and name, unless `allowDuplicate: true`; contacts in the response only with the `contacts` scope).
+
+**What it decided.** W-D16 (one transaction via savepoints; the claim commits first; abandoned claims reclaimable after 10 minutes because `in_progress` proves nothing was written; refusals replayed, bugs released), W-D17 (`providerId: "any"` refused on a write in v1).
+
+**Tests.** `writes.test.ts`: 201 with channel `api` and `actorRef` = the key on the event and the confirmation queued; required/oversized header; **replay byte-for-byte** (and a reordered body is the same request); mismatch 422; keys scoped per API key; a SLOT_TAKEN replays as SLOT_TAKEN after the slot frees; **the barrier race** — the claiming request is held inside its work transaction by a test seam until the second request has been answered: exactly one appointment, one 201, one 409, and the loser's retry replays the winner; **the crash** — a throw after the domain write: no appointment, no event, no outbox row, no record, and the key then runs; an abandoned claim reclaimed at 10 minutes and not before; **both shapes of the exclusion constraint** provoked for real (statement-time through Prisma, commit-time through node-postgres) plus the native engine's name-only shape → SLOT_TAKEN; tenancy on every id, read-only and revoked keys write nothing; OUTSIDE_HOURS, NOT_QUALIFIED, AMBIGUOUS_TIME, `any`. Clients: canonical phone, AMBIGUOUS_CLIENT with matches and no digits, `allowDuplicate`, another business's number is not a duplicate, validation, replay. `packages/db/clients/create.test.ts`.
+
+**What it left behind.** Expired records are pruned by W-009's hourly job. One environment note (W-D9): under the local WASM-engine adapter, a COMMIT-time constraint failure inside a Prisma interactive transaction hangs rather than throwing (the same defect behind the baseline's `constraint.test.ts` failure), so the deferred shape is provoked through node-postgres here; the native engine's shape is the one A-078 verified.
+
+## W-005 — `GET /v1/clients?q=`, `/clients/{id}`, `/waitlist` under the PII rules (API PRD §6.8, §7)
+
+**What it built.** `apps/web/lib/api/clients.ts` and three routes. Search (`searchClients`, the desk's folded-name/digits search): at most five, each `{ id, name, phoneLast4, reliability }`, `truncated` when more matched. Detail: name, `phoneLast4`, reliability and `noShowCount`, upcoming (soonest first) and past (newest first) visits with both time forms; the full `phone` and `email` ONLY with the `contacts` scope (absent, not null, without it); notes NEVER (OQ-M3). Waitlist: active entries (`listWaitlistEntries`, lapsed ones excluded as the desk does), `?day=` to keep those whose range includes it; client id + name, never a phone.
+
+**What it decided.** Nothing new; §6.8 and M-D10 applied as written.
+
+**Tests.** `clients.test.ts` — every PII assertion is a SWEEP of the serialized body for the raw digits, the email and the notes (seeded as a prompt-injection string), not a field check, so a leak through a field the test did not think of still fails: search; detail without and with `contacts` (notes absent either way); five-cap + `truncated`; business B's "Alex" never appears; B's client id is `NOT_FOUND` → `GET /v1/clients`; the waitlist's tenancy, day filter and phone sweep.
+
+**What it left behind.** Milestone 2 (reads) complete.
+
+## W-004 — `GET /v1/days/{day}`, `/appointments`, `/appointments/{id}`, cursor pagination (API PRD §6.4, §7)
+
+**What it built.** `apps/web/lib/api/appointments.ts`. ONE appointment view (`appointmentView`) — both time forms, provider, client id + name only, services, the booking note (as data), `isOverride`, `allowedActions` and `version` — used by the detail and every write's response, and by W-009's snapshot (§8: "what `GET /v1/appointments/{id}` returned at that moment"). `allowedActions` asks `availableTransitions` / `canCancel` + `staffCancellationStatus` / `canReschedule` with the staff detail page's context, line for line (M-D10's rule), each with its endpoint and target status. `version` = the row's `updatedAt`, opaque, also sent as `ETag`. The list: `from`/`to` (instant or wall time, ≤ 62 days), `status=` (comma list, validated against the one status module), `providerId`, keyset cursor on (start of occupied range, id) — `cursor.ts`: `limit` ≤ 100 default 25, `limit+1` fetch, opaque base64url cursor, a junk cursor is VALIDATION, never a restart. The day: `[startOfDay(d), startOfDay(d+1))` in the salon's zone (23/25 h on DST days), every status.
+
+**What it decided.** W-D15: "in the window" means the time the appointment OCCUPIES, asked the busy set's way (`overriddenFromRange` → blocked range → body), as an instant overlap. The first version used `blockedStart/blockedEnd` and its own override test caught that a D-8 override (zero-width blocked range) vanished from the list.
+
+**Tests.** `appointments.test.ts`: detail shape + `allowedActions` (booked tomorrow: cancel-on-time, reschedule, check-in, never complete) and a completed visit offering only APPT-06's correction; the version moves when the row does; a business-B id is byte-identical to a made-up id's 404; a 23:30 visit (an override) is on BOTH days, the seed's 09:00 on only one; a buffer-only window finds its visit; cursor pages visit every row exactly once with a row inserted mid-paging; status filter; the 62-day cap, empty window, junk cursor, `limit=101`; an override listed by the time it really occupies, with the zero-width premise asserted; a business-B key lists only B.
+
+**What it left behind.** `allowedActions` names the status moves `POST …/status` accepts (W-007); the `version`/`If-Match` loop closes there.
+
+## W-003 — `GET /v1/services`, `/providers`, `/availability`, with the equality test (API PRD §7, §9.6)
+
+**What it built.** `apps/web/lib/api/catalog.ts` and three routes. Services: active, with duration, the D-29 worked/developing segments and `bookableOnline`; `priceCents` + `currency` only with the `prices` scope (W-D2, W-D14). Providers: each with the service ids they can do, or `?serviceIds=` for only those qualified for the WHOLE visit (SVC-02, `providersForVisit`). Availability: `serviceIds`, `providerId=any|<id>`, `from`/`to` (≤ 14 days), optional `clientId`; the desk's two offer paths exactly — `computeDaySlots` for a named provider, `anyProviderTimes` for `any` (each instant once, under the provider the desk would assign, with `freeCount`) — with `audience: 'staff'` (no lead time D-25, no horizon D-21) and the client as `holderKey` (A-082/A-083). Every start carries the instant with its offset and the local wall time + zone; no exclusion reason ever leaves. `ids.ts`: every id checked against the key's business first; foreign or inactive = `NOT_FOUND` with `next`.
+
+**What it decided.** W-D14 (USD constant).
+
+**Tests.** `catalog.test.ts`: prices withheld/added by scope; providers narrowed by visit; `NOT_FOUND` for a business-B id on every parameter; an unknown query parameter is VALIDATION (strict schemas); availability's shape and DST-safe ISO; the 14-day cap, an inverted range, a malformed day; NOT_QUALIFIED; and **AVAILABILITY EQUALITY** — in A-083's two-chair room (one chair hers, one a stranger's), the API's set equals `computeDaySlots` (named) and `anyProviderTimes` (`any`, including provider and `freeCount`) for the same holder, with and without the client — and the PREMISE (the two holders differ at 13:45) is asserted so the fixture cannot silently stop binding.
+
+**What it left behind.** Demo checkpoint 1 ("a `curl` with a key returns tomorrow's open times") is reachable from here: `curl -H "Authorization: Bearer bk_api_…" ".../api/v1/availability?serviceIds=…&from=…&to=…"`.
+
+## W-002 — problem+json, one error mapper, zod validation, per-key rate limit, Basic-gate exemption (API PRD §5, §6)
+
+**What it built.** `apps/web/lib/api/http.ts` — the one shape every `/api/v1` route is written in: bearer → key (401 + `WWW-Authenticate: Bearer`) → scope (403 naming the scope) → per-key rate limit through `consumeRateLimit` (`api:<scope>:<keyId>`, 120 reads / 20 writes a minute, 429 + `Retry-After`) → handler, with every thrown value mapped once; `Cache-Control: no-store` on every answer (§6.7); `parseWith(zod)` turning issues into `errors[]`; `bodyOf` refusing malformed JSON as VALIDATION. `problem.ts` — RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`, `code`, `next: { endpoint, why }`, and `errors[]`/`alternatives`/`matches` where they apply; domain errors classified by the MCP server's own `mapDomainError` and re-spoken for HTTP (W-D12). `time.ts` — wall time in the salon's zone or ISO-with-offset in, `{at, local:{date,time,zone}}` out, through MCP's parsers (DST gap/overlap → `AMBIGUOUS_TIME` naming both readings). Route adapter `api(spec, handler, request, context)` keeps route files to two lines. The demo Basic gate exempts `/api/v1` and everything under it, and nothing that merely starts with the letters (`/api/v1x` stays gated). `zod` added to `apps/web` (already hoisted for `apps/mcp`; lockfile edited by hand to keep npm 11's format).
+
+**What it decided.** W-D12 (one classifier; `CONFLICT` for a row that moved mid-request), W-D13 (409 = state conflict, 422 = never succeeds as sent).
+
+**Tests.** `http.test.ts`: one test per §6 code asserting status, code and `next`, with the domain codes provoked through the REAL domain (a real booking refused by the engine, a Sunday asked of `offeredSlot`, a real transition refused by the table, a real `expectedFrom` mismatch, real DST instants for both ambiguity kinds); scopes both ways; revocation of one key leaves the other working; the business comes from the key even when a `businessId` is smuggled in; the rate limit's window, per-scope and per-key budgets; `Cache-Control` on success and on a problem; a non-domain error is a 500, never an envelope. `demo-gate.test.ts`: the prefix exemption.
+
+**What it left behind.** `IDEMPOTENCY_*` and `PRECONDITION_FAILED` are asserted here as envelopes and provoked for real by W-006/W-007, as noted in the test's name.
+
+## W-001 — `ApiKey`, bearer resolution, `EventChannel.api`, `/staff/integrations` (API PRD §5)
+
+Built 2026-10-20 (unattended, branch `w-track`). Includes W-000 (the §11 defaults as `DECISIONS.md` W-D1..W-D11).
+
+**What it built.** Migration `20261020120000_api_key`: `ApiKey` (`label`, `keyHash` SHA-256, `scopes ApiScope[]` of `read | write | prices | contacts`, `issuedById`, `lastUsedAt`, `revokedAt`) and `EventChannel` + `api`. `packages/db/api/keys.ts`: `issueApiKey` (owner-only, active, scopes validated and canonicalised, a key needs `read` or `write`; `prices`/`contacts` only widen a read), `revokeApiKey` (business-scoped, idempotent, keeps the first time), `listApiKeys`, `resolveApiKey` (malformed / unknown / revoked → null; touches `lastUsedAt`), `apiKeyLabels`. `packages/core/auth`: `apiActor(keyId)` = `{ type: 'staff', ref: keyId, channel: 'api' }`. `apps/web/lib/api/auth.ts`: `Authorization: Bearer` → key → business + scopes + the salon's zone, on every request. Readers of `actorRef` taught the channel: the detail page's `withActorNames` resolves an `api` row to its KEY's label, never a roster name, and the event log reads "Booked by HubSpot sync via the API"; the day grid's change mark says "API". `/staff/integrations` (owner-only by `requireOwner`, linked from Setup for owners only): issue with label + scope checkboxes, the key shown once, revoke per row.
+
+**What it decided.** W-D1 (revised: the PRD's `system` actor would have made every API cancel and status move refused by the transition table — so `staff`-typed with `channel: api`; D-80 in `07-decisions.md`), W-D2..W-D7 (PRD defaults), W-D8 (`waitUntil` spike deferred to the owner), W-D9 (how the gate was run on this machine), W-D10 (code lives in `apps/web/lib/api`), W-D11 (W- items are ticked in the PRD's §10, as the M-track was).
+
+**Tests.** `packages/db/api/keys.test.ts` (hash only, scope rules, owner-only issue, revoke scoped/idempotent/touching no other key or MCP token, a key outlives its issuer's deactivation, labels resolve revoked keys, list order live-first); `event-channel.test.ts` (`apiActor` → `api`, and the core `Channel` union equals the Prisma `EventChannel` enum — a new channel is never one edit); `apps/web/lib/api/auth.test.ts`; `e2e/integrations.spec.ts` (issue once + axe both schemes, label refusal, revoke, stylist redirected and link absent, the audit line on an API booking vs a desk one).
+
+**The local gate on this machine (W-D9), and its baseline.** Unmodified `main` (`cdc473a`) under the stand-in: lint ✔, typecheck ✔, unit TZ=UTC 1987 passed / 4 failed / 1 skipped of 1992, TZ=Pacific/Kiritimati 1980 / 11 / 1 of 1992, e2e 376 / 376 passed (`--list` total 376). Every baseline failure is in two files and is the WASM-engine driver adapter, not the product: `constraint.test.ts` › *isSlotTakenError recognises a DEFERRED violation through PRISMA* (the adapter hangs on a commit-time failure in an interactive transaction) and `density-seed.test.ts` › *determinism and safety* (its re-seed under the adapter; 3 tests under UTC, 10 under Kiritimati, all in that one describe). Each W- item's gate = no baseline-passing test fails, every new test passes, e2e reconciles with `--list`.
+
+**What it left behind.** Endpoints, delivery log and replay join the page with W-009/W-011. The 13-writer source scan needed no change: every writer already stamps `channelOf(actor)`, and `apiActor` sets the channel. One trap found and fixed on the way: `orderBy revokedAt asc` puts NULLs LAST in Postgres, so "live keys first" needs `nulls: 'first'` — the MCP token list has the same ordering and the same (cosmetic) bug, left alone as out of scope.
+
 ## M-016 — closure: README for a hiring manager, DEMO.md §13, STATUS.md, the audit line (MCP PRD)
 
 Commit `87e5786`.
@@ -6958,6 +7124,38 @@ client sees — listing, annotations, schema-validated `structuredContent`.
 Smoke-tested over stdio against the seeded test DB: `initialize` then
 `tools/call list_services` returned 8 services. Pricing for the role split
 and the error envelope are M-003/M-004.
+
+## A-162 — click a time on the day grid to book it (D-82)
+
+Commit `fc8a3cc`.
+
+Owner request 2026-10-22, after the close: *"click in a time frame like Outlook
+and open an appointment I can select."* Spec:
+`docs/prds/click-to-book/00-click-to-book-prd.md`.
+
+**What it built.** A free gap on `/staff/day` was already a link to
+`/staff/book`, but it always carried the gap's first instant. A pointer click
+now books the quarter hour under the pointer, and a hover band shows where.
+`clickedStartMs` and `bookHrefAt` (`lib/day/scale.ts`) turn a pixel offset into
+an instant. The pixel offset is a duration on the grid's physical axis added to
+the gap's instant, so no wall time is ever composed on the client (D-4).
+`GapLink` in `day-grid.tsx` uses them; the grid file still has no `Date` in it.
+The booking panel needed no change: it already reads "Starting from … at 15:30"
+and preselects the first bookable time at or after `at`.
+
+**What it decided (D-82).** Snap down to 15 minutes on the epoch and clamp into
+the gap, with the gap's end exclusive. A colour's processing gap is left out
+and still books its start: the first sweep failed `segments.spec.ts` › A-030,
+because a click in the middle of the developing time preselected a slot after
+the colour resumes. Keyboard and modified clicks keep the
+href, which is the gap's start, so each gap is still one Tab stop. The snap is a
+constant, not `business.slotIntervalMinutes`.
+
+**What it left behind.** Unit tests in `scale.test.ts`, including the snap
+across the 2026-03-08 jump. An e2e in `day-grid.spec.ts` › A-162 clicks 15:35
+for real and asserts `at=…T20:30:00.000Z` and the panel heading. The same test
+asserts that Enter on the focused gap still books its start. Before this change
+the click landed on the gap start, so the test fails against it.
 
 ## A-161 — barrier-based check-in race test (D-76)
 

@@ -1,5 +1,9 @@
 # Next
 
+**2026-10-22: A-162 shipped to `main` (`fc8a3cc`, CI green): click a time on `/staff/day` to book it (D-82). Not deployed; it rides the next `main-manual` hook with the W-track steps below.**
+
+**2026-10-21: the W-track (public API + webhooks) is MERGED to `main` (PR #2, `2660a7e`) — not deployed.** W-000..W-013 ✅, W-014 partial (the one-week Neon re-read waits on a deploy). W-D1 answered: write keys keep desk rights (W-D24). Nothing is queued for a session. Owner hand steps, in order (PR #2's checklist): `migrate:deploy` the five W migrations against Neon → trigger the `main-manual` Deploy Hook → `./scripts/refresh-hosted-demo.sh` → W-D8 spike (book once with an endpoint registered, look for `[webhooks] inline sweep` in the function log) → a week later, Neon `compute_time_seconds` vs 407174, recorded under D-81.
+
 **STATUS: CLOSED / DELIVERED (2026-10-12).** Code, demo script, exec briefs, LinkedIn drafts, cost review and screenshots are all done and recorded. Nothing below needs a session. The only work left is outside the repo: images for Ledger posts 49–53 and 109–113, set aside by the owner.
 
 **Bookable is closed (2026-10-05). The MCP track (M-000..M-016) is built and gated (2026-10-12). The Claude eval ran 2026-10-12: 9/9, $0.47.** `STATUS.md` is the handoff: done / not done / your hand steps. Nothing is queued for a session.

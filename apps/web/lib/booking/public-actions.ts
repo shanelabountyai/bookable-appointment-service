@@ -34,6 +34,7 @@ import { isPlausiblePhone } from '@bookable/core/clients';
 import { findReturningClient } from '@bookable/db/clients';
 import { consumeRateLimit } from '@bookable/db/rate-limit';
 import { callerKey } from '@/lib/manage/token-gate';
+import { kickWebhooks } from '@/lib/webhooks/kick';
 
 export interface OfferedTime {
   /** The appointment's identity is its INSTANT (D-4). An offset-bearing ISO
@@ -423,6 +424,8 @@ export async function confirmAppointment(input: {
   phone: string;
   email?: string;
 }): Promise<ConfirmResult> {
+  // W-009: an online booking's webhook goes out inline, after the response (W-D23).
+  kickWebhooks();
   const fieldErrors: Record<string, string> = {};
   const name = input.name.trim();
   const phone = input.phone.trim();

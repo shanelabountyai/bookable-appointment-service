@@ -15,6 +15,7 @@
  */
 import { patternGapSpans, worstCutoff } from '../../core/settings';
 import { ACTIVE_STATUSES } from '../../core/scheduling';
+import { apiKeyLabels } from '../api/keys';
 import { resolveStaffNames } from '../auth';
 import { latestClientNoteVersion } from '../clients';
 import type { Prisma, PrismaClient } from '../generated/client/index.js';
@@ -39,6 +40,12 @@ export interface AppointmentEventRow {
    * relation for a select to follow.
    */
   actorName: string | null;
+  /**
+   * W-001 (W-D1): for a `channel: api` row, the LABEL of the key that wrote it
+   * ("HubSpot sync") — `actorRef` is then a key id, never a person, so
+   * `actorName` is null. Revoked keys still resolve: the history outlives the key.
+   */
+  apiKeyLabel: string | null;
   reason: string | null;
   payload: unknown;
   createdAt: Date;
@@ -304,19 +311,22 @@ export async function loadAppointmentDetail(
  */
 async function withActorNames(
   db: Db,
-  events: Omit<AppointmentEventRow, 'actorName'>[],
+  events: Omit<AppointmentEventRow, 'actorName' | 'apiKeyLabel'>[],
 ): Promise<AppointmentEventRow[]> {
   // `db` may be a transaction client mid-write; `resolveStaffNames` wants a
   // full PrismaClient. Every caller of `loadAppointmentDetail` reads outside
   // any transaction (it is a read model), so the cast is a type gap, not a
   // behavioural one — this file has always queried `db.staffUser` directly.
-  const names = await resolveStaffNames(
-    db as PrismaClient,
-    events.filter((e) => e.actor === 'staff' && e.actorRef).map((e) => e.actorRef!),
-  );
+  // W-001: an `api` row's ref is a KEY id — asked of the key table, never of the roster.
+  const isPerson = (e: { actor: string; actorRef: string | null; channel: string }) => e.actor === 'staff' && e.channel !== 'api' && !!e.actorRef;
+  const [names, labels] = await Promise.all([
+    resolveStaffNames(db as PrismaClient, events.filter(isPerson).map((e) => e.actorRef!)),
+    apiKeyLabels(db, events.filter((e) => e.channel === 'api' && e.actorRef).map((e) => e.actorRef!)),
+  ]);
   return events.map((event) => ({
     ...event,
-    actorName: (event.actor === 'staff' && event.actorRef ? names.get(event.actorRef) : undefined) ?? null,
+    actorName: (isPerson(event) ? names.get(event.actorRef!) : undefined) ?? null,
+    apiKeyLabel: event.channel === 'api' && event.actorRef ? (labels.get(event.actorRef) ?? null) : null,
   }));
 }
 
