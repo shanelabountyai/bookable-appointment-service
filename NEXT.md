@@ -1,5 +1,9 @@
 # Next
 
+**2026-10-23: DEPLOYED.** Neon already held all 40 migrations (the W ones too); production was already on the W-track build from 2026-10-22 10:02. The `main-manual` hook shipped A-162 (Ready, 26 s), and `refresh-hosted-demo.sh` refreshed the book (599 appointments, 1159 events numbered 1..1159 with no gaps, derived tables identical). The refresh had been broken since W-008: the copy tripped the seq trigger AFTER step 2 had emptied the hosted book. Fixed in `ec984e7`.
+
+**Left for the owner:** (1) the W-D8 spike: issue a write key on hosted `/staff/integrations`, register an endpoint, book once, then look for `[webhooks] inline sweep` in the Vercel function log. The agent was refused issuing a production key. (2) 2026-10-30: re-read Neon `compute_time_seconds` against 407174 and record it under D-81.
+
 **2026-10-22: A-162 shipped to `main` (`fc8a3cc`, CI green): click a time on `/staff/day` to book it (D-82). Not deployed; it rides the next `main-manual` hook with the W-track steps below.**
 
 **2026-10-21: the W-track (public API + webhooks) is MERGED to `main` (PR #2, `2660a7e`) — not deployed.** W-000..W-013 ✅, W-014 partial (the one-week Neon re-read waits on a deploy). W-D1 answered: write keys keep desk rights (W-D24). Nothing is queued for a session. Owner hand steps, in order (PR #2's checklist): `migrate:deploy` the five W migrations against Neon → trigger the `main-manual` Deploy Hook → `./scripts/refresh-hosted-demo.sh` → W-D8 spike (book once with an endpoint registered, look for `[webhooks] inline sweep` in the function log) → a week later, Neon `compute_time_seconds` vs 407174, recorded under D-81.
