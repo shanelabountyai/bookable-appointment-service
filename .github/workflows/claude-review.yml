@@ -1,0 +1,229 @@
+name: Claude review
+
+# Headless Claude Code reviews each pull request and posts ONE sticky comment.
+# Advisory: it never fails a pull request. See docs/CI-CLAUDE.md.
+#
+# Security model (this repository is public):
+# - Trigger is `pull_request`, never `pull_request_target`, so a fork's code
+#   never runs with this repository's secrets. GitHub withholds secrets from
+#   fork-triggered runs anyway; the job-level `if` below skips forks outright.
+# - Two jobs, two privileges. `review` holds the Claude token and only
+#   `contents: read`; `comment` holds `pull-requests: write` and never sees the
+#   Claude token or calls a model. Only a validated JSON summary crosses over.
+# - The model gets Read/Grep/Glob only: no shell, no network, no MCP, no write
+#   tools, and nothing from the pull request's own CLAUDE.md, .claude/ or
+#   .mcp.json is loaded (--safe-mode --restricted). The diff and the files are
+#   untrusted input; the prompt says so and the tool set enforces it.
+# - Nothing from the pull request is executed: no install, no build, no tests.
+# - Without the CLAUDE_CODE_OAUTH_TOKEN secret the review skips cleanly (green).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+# A new push to the same pull request cancels the review of the old one.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # Pinned. Bump deliberately: https://code.claude.com/docs/en/setup#install-a-specific-version
+  CLAUDE_CODE_VERSION: 2.1.292
+  REVIEW_MODEL: claude-sonnet-5
+  MAX_TURNS: '12'
+  MAX_BUDGET_USD: '0.50'
+  MAX_CHANGED_LINES: '3000'
+
+jobs:
+  review:
+    # Same-repository, non-draft pull requests only. Fork PRs never reach a step.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      ran: ${{ steps.gate.outputs.run }}
+      result: ${{ steps.claude.outputs.result }}
+    steps:
+      - name: Decide whether to review
+        id: gate
+        env:
+          HAS_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
+        run: |
+          changed=$(( ADDITIONS + DELETIONS ))
+          if [ "$HAS_TOKEN" != "true" ]; then
+            reason="CLAUDE_CODE_OAUTH_TOKEN is not set for this repository, so the review is skipped. See docs/CI-CLAUDE.md to enable it."
+            run=false
+          elif [ "$changed" -gt "$MAX_CHANGED_LINES" ]; then
+            reason="The diff changes ${changed} lines (limit ${MAX_CHANGED_LINES}), so the review is skipped."
+            run=false
+          else
+            reason="Reviewing ${changed} changed lines."
+            run=true
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Claude review::$reason"
+          echo "**Claude review:** $reason" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out the pull request head (read-only, no credentials kept)
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fetch the diff
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR" -H "Accept: application/vnd.github.v3.diff" > "$RUNNER_TEMP/pr.diff"
+          echo "diff bytes: $(wc -c < "$RUNNER_TEMP/pr.diff")"
+
+      - name: Install Claude Code (pinned)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          DISABLE_AUTOUPDATER: '1'
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Review (headless, read-only tools)
+        id: claude
+        if: steps.gate.outputs.run == 'true'
+        env:
+          # The only step that holds the Claude credential. No GitHub token here.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DISABLE_AUTOUPDATER: '1'
+          PR_DIR: ${{ github.workspace }}/pr-head
+        run: |
+          set -uo pipefail
+          work="$RUNNER_TEMP/claude-review"
+          mkdir -p "$work" && cd "$work"
+          # Prompt, schema and system prompt are read before the model runs.
+          schema="$(cat "$PR_DIR/.github/claude-review/review.schema.json")"
+          settings='{"permissions":{"deny":["Read(//**/.env*)","Read(//**/*.pem)","Read(//**/*.key)","Read(//**/.git/**)","WebFetch","WebSearch","Bash","Edit","Write"]}}'
+          prompt="Review the pull request diff given on stdin. The pull request's files are under ${PR_DIR} and you may read them for context. Return only the JSON the schema asks for."
+          claude --version
+          set +e
+          timeout --signal=INT 480 claude --safe-mode --restricted -p "$prompt" \
+            --add-dir "$PR_DIR" \
+            --tools "Read,Grep,Glob" \
+            --disallowedTools "mcp__*" \
+            --strict-mcp-config \
+            --permission-mode dontAsk \
+            --permission-prompts none \
+            --settings "$settings" \
+            --append-system-prompt-file "$PR_DIR/.github/claude-review/system-prompt.md" \
+            --output-format json \
+            --json-schema "$schema" \
+            --max-turns "$MAX_TURNS" \
+            --max-budget-usd "$MAX_BUDGET_USD" \
+            --model "$REVIEW_MODEL" \
+            --no-session-persistence \
+            < "$RUNNER_TEMP/pr.diff" > raw.json 2> stderr.log
+          code=$?
+          set -e
+          # Reduce the CLI output to a capped, typed summary. The raw output is
+          # never printed: workflow logs on a public repository are public.
+          jq -c --argjson code "$code" '
+            def s($n): tostring | .[0:$n];
+            if $code == 0 and (.is_error | not) and (.structured_output | type) == "object" then
+              { status: "ok",
+                summary: ((.structured_output.summary // "") | s(1200)),
+                findings: [ (.structured_output.findings // [])[] | select(type == "object") | {
+                  file: ((.file // "") | s(300)),
+                  line: ((.line // 0) | if type == "number" and . >= 0 then floor else 0 end),
+                  severity: (if (.severity | IN("blocker","major","minor","nit")) then .severity else "minor" end),
+                  title: ((.title // "") | s(200)),
+                  detail: ((.detail // "") | s(600)) } ][0:20] }
+            else
+              { status: "error", reason: ((.subtype // "no structured output") | s(100)) }
+            end
+            + { turns: (.num_turns // 0), cost_usd: ((.total_cost_usd // 0) * 10000 | round / 10000),
+                denials: ((.permission_denials // []) | length), exit_code: $code }
+          ' raw.json > result.json 2>/dev/null || true
+          if [ ! -s result.json ]; then
+            jq -nc --argjson code "$code" '{status:"error", reason:"CLI produced no JSON", turns:0, cost_usd:0, denials:0, exit_code:$code}' > result.json
+          fi
+          jq -r '"status=\(.status) turns=\(.turns) est_cost_usd=\(.cost_usd) denials=\(.denials) exit=\(.exit_code)"' result.json
+          {
+            echo "### Claude review run"
+            jq -r '"- status: \(.status)\n- turns: \(.turns) (cap '"$MAX_TURNS"')\n- estimated cost: $\(.cost_usd) (cap $'"$MAX_BUDGET_USD"')\n- permission denials: \(.denials)"' result.json
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(jq '.denials' result.json)" != "0" ]; then
+            echo "::warning title=Claude review::The reviewer attempted a tool call that was denied. Look at this run."
+          fi
+          echo "result=$(base64 -w0 result.json)" >> "$GITHUB_OUTPUT"
+
+  comment:
+    needs: review
+    if: needs.review.outputs.ran == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Validate and post one sticky comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RESULT_B64: ${{ needs.review.outputs.result }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$RESULT_B64" | base64 -d > result.json
+          # Validate again on this side of the trust boundary.
+          jq -e '
+            (.status == "ok" or .status == "error")
+            and ((.findings // []) | type == "array" and length <= 20)
+            and all((.findings // [])[]; (.severity | IN("blocker","major","minor","nit"))
+                                         and (.file | type == "string") and (.line | type == "number")
+                                         and (.title | type == "string") and (.detail | type == "string"))
+          ' result.json > /dev/null
+          marker='<!-- claude-review -->'
+          # Render from validated fields only. Model text is escaped: HTML is
+          # neutralised, @mentions cannot ping anyone, control chars and
+          # newlines are flattened, and every field is length-capped again.
+          jq -r --arg marker "$marker" --arg sha "${HEAD_SHA:0:7}" '
+            def clean($n): tostring | .[0:$n]
+              | gsub("[\\p{Cc}]"; " ") | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")
+              | gsub("@"; "@​") | gsub("`"; "'"'"'");
+            def icon: {"blocker":"🔴","major":"🟠","minor":"🟡","nit":"⚪"}[.];
+            $marker,
+            "### Claude review (advisory) for `\($sha)`",
+            "",
+            ( if .status == "ok" then
+                ( .summary | clean(1200) ),
+                "",
+                ( if (.findings | length) == 0 then "No findings."
+                  else (.findings[] | "- \(.severity | icon) **\(.severity)** `\(.file | clean(300))`\(if .line > 0 then ":\(.line)" else "" end) — **\(.title | clean(200))**: \(.detail | clean(600))")
+                  end )
+              else
+                "The review did not finish (\(.reason | clean(100))). Nothing was checked; this does not block the pull request."
+              end ),
+            "",
+            "<sub>Headless Claude Code, read-only tools, \(.turns) turns, estimated $\(.cost_usd). Advisory only: findings are model output and may be wrong. Rendered from validated JSON by the workflow, not posted by the model. See docs/CI-CLAUDE.md.</sub>"
+          ' result.json > body.md
+          existing=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@body.md > /dev/null
+            echo "Updated comment $existing"
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@body.md > /dev/null
+            echo "Posted a new comment"
+          fi
