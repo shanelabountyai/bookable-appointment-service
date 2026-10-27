@@ -1,6 +1,6 @@
 # STATUS — Bookable public API + webhooks (W-track)
 
-**BUILT ON A BRANCH, NOT MERGED, NOT DEPLOYED (2026-10-21).** Branch `w-track-wip-snapshot`, draft PR #2. W-000..W-013 ✅ in `docs/prds/api/00-api-webhooks-prd.md` §10; W-014 partial (this file, DEMO §14, release notes done; the one-week cost re-read needs a deploy first). Decisions: `DECISIONS.md` W-D1..W-D23 (D-80, D-81 in `07-decisions.md`). Per-item notes: `docs/PROGRESS.md`. Reviewer guide: `docs/api/README.md`.
+**MERGED (PR #2, 2026-10-21) AND DEPLOYED (2026-10-23).** W-000..W-013 ✅ in `docs/prds/api/00-api-webhooks-prd.md` §10; W-014 partial (only the one-week Neon re-read is left, due 2026-10-30). Inline delivery verified on production 2026-10-27 (W-D8). Decisions: `DECISIONS.md` W-D1..W-D24 (D-80, D-81 in `07-decisions.md`). Per-item notes: `docs/PROGRESS.md`. Reviewer guide: `docs/api/README.md`.
 
 ## Done
 
@@ -10,24 +10,13 @@
 
 ## Not done
 
-- **Not merged, not deployed.** No `migrate:deploy` against Neon, no hook, no refresh: the session brief forbade them. Three migrations wait: `20261021120000_event_seq`, `20261021130000_webhooks`, `20261021140000_webhook_secret_rotation` (plus the overnight `20261020120000_api_key`, `20261020130000_idempotency_record`).
-- ~~**`waitUntil` / `after()` on the Vercel plan is unverified (W-D8).**~~ Verified on production 2026-10-27: inline delivery runs (W-D8).
-- **The one-week Neon re-read (W-014, D-78's method)** — after the deploy.
-- **Exec brief and LinkedIn posts** — owner hand steps (they publish).
+- **The one-week Neon re-read (W-014, D-78's method), due 2026-10-30:** `neonctl projects get <id> --org-id <org> --output json` → `compute_time_seconds`; compare with 407174 (2026-10-12) and record the delta under D-81.
+- **Exec brief and LinkedIn posts for the W-track** — not made; owner hand steps (they publish).
 
-## Open decisions
+## Settled decisions (were open)
 
-1. **W-D1 — an API key with `write` has the front desk's rights** (cancel, reschedule, status moves, client messages), recorded as `staff`-typed actor with `channel = api`. Keep, or hold integrations below the desk (needs an `integration` actor and transition-table rows)?
-2. **D-81 / W-D23 — retries ride the daily cron** (your cost call). Restore an hourly sweep only if an integration needs retries within the hour.
-
-## Exact steps for you to do by hand (in order, when you choose to ship)
-
-1. Review and merge PR #2 (never merged from a session).
-2. `migrate:deploy` against the Neon demo DB (the five migrations above; `event_seq` backfills history).
-3. Trigger the `main-manual` Deploy Hook (D-71) — nothing new to set in Vercel; `WEBHOOK_ALLOW_PRIVATE` must stay UNSET there.
-4. `./scripts/refresh-hosted-demo.sh`. Demo from Tuesday (salon closed Sun/Mon).
-5. ~~Spike W-D8~~ — done 2026-10-27, inline delivery verified on production. Was: book once on the hosted desk with an endpoint registered, and look for `[webhooks] inline sweep` in the function log.
-6. A week later: `neonctl projects get <id> --org-id <org> --output json` → `compute_time_seconds`; compare with 407174 (2026-10-12) and record the delta under D-81.
+- **W-D1 → W-D24:** write keys keep desk rights (owner, 2026-10-21).
+- **D-81 / W-D23:** retries ride the daily cron. Restore an hourly sweep only if an integration needs retries within the hour.
 
 ---
 
