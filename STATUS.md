@@ -11,7 +11,7 @@
 ## Not done
 
 - **Not merged, not deployed.** No `migrate:deploy` against Neon, no hook, no refresh: the session brief forbade them. Three migrations wait: `20261021120000_event_seq`, `20261021130000_webhooks`, `20261021140000_webhook_secret_rotation` (plus the overnight `20261020120000_api_key`, `20261020130000_idempotency_record`).
-- **`waitUntil` / `after()` on the Vercel plan is unverified (W-D8).** Proven locally in the production build (e2e + DEMO §14 log line). The daily sweep is the carrier of record if it does not run there.
+- ~~**`waitUntil` / `after()` on the Vercel plan is unverified (W-D8).**~~ Verified on production 2026-10-27: inline delivery runs (W-D8).
 - **The one-week Neon re-read (W-014, D-78's method)** — after the deploy.
 - **Exec brief and LinkedIn posts** — owner hand steps (they publish).
 
@@ -26,7 +26,7 @@
 2. `migrate:deploy` against the Neon demo DB (the five migrations above; `event_seq` backfills history).
 3. Trigger the `main-manual` Deploy Hook (D-71) — nothing new to set in Vercel; `WEBHOOK_ALLOW_PRIVATE` must stay UNSET there.
 4. `./scripts/refresh-hosted-demo.sh`. Demo from Tuesday (salon closed Sun/Mon).
-5. Spike W-D8: book once on the hosted desk with an endpoint registered, and look for `[webhooks] inline sweep` in the function log.
+5. ~~Spike W-D8~~ — done 2026-10-27, inline delivery verified on production. Was: book once on the hosted desk with an endpoint registered, and look for `[webhooks] inline sweep` in the function log.
 6. A week later: `neonctl projects get <id> --org-id <org> --output json` → `compute_time_seconds`; compare with 407174 (2026-10-12) and record the delta under D-81.
 
 ---
