@@ -37,9 +37,15 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders },
       // Listed AFTER the global block, so its Referrer-Policy wins on /manage.
+      // K6: the page is already noindex (metadata) and dynamic; these say the
+      // same thing as headers, so no crawler or shared cache keeps a live link.
       {
         source: "/manage/:token*",
-        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Cache-Control", value: "private, no-store, max-age=0" },
+        ],
       },
     ];
   },

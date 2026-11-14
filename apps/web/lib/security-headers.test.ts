@@ -31,3 +31,14 @@ describe('security headers (K7)', () => {
     expect(valueOf(all[manageAt]!.headers, 'Referrer-Policy')).toBe('no-referrer');
   });
 });
+
+describe('manage-link headers (K6)', () => {
+  it('sends no-referrer, noindex and no-store on /manage/<token>', async () => {
+    const manage = (await rules()).find((r) => r.source === '/manage/:token*');
+    expect(manage).toBeDefined();
+    const h = manage!.headers;
+    expect(valueOf(h, 'Referrer-Policy')).toBe('no-referrer');
+    expect(valueOf(h, 'X-Robots-Tag')).toContain('noindex');
+    expect(valueOf(h, 'Cache-Control')).toContain('no-store');
+  });
+});
