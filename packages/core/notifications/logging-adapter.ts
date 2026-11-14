@@ -20,8 +20,27 @@ import type { ChannelAdapter, NotificationChannel, OutboundMessage, SendResult }
  * `notificationAdapter` in packages/db/notifications/provider.ts and nothing
  * else.
  */
+const payloadKeys = (payload: unknown): string[] =>
+  payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? Object.keys(payload) : [];
+
+export interface LoggingAdapterOptions {
+  /**
+   * K10 (INV-13). Print payload VALUES, or only their keys. The payload carries
+   * `manageUrl` — a live bearer link (D-5) — so a full payload in a production
+   * log is a folder of working links for anyone who can read the log.
+   * Defaults to keys only; provider.ts turns values on outside production so a
+   * developer can still click the link from the dev server's console.
+   */
+  logPayloadValues?: boolean;
+}
+
 export class LoggingChannelAdapter implements ChannelAdapter {
   readonly id = LOGGING_ADAPTER_ID;
+  private readonly logPayloadValues: boolean;
+
+  constructor(options: LoggingAdapterOptions = {}) {
+    this.logPayloadValues = options.logPayloadValues ?? false;
+  }
 
   supports(_channel?: NotificationChannel): boolean {
     return true;
@@ -29,9 +48,10 @@ export class LoggingChannelAdapter implements ChannelAdapter {
 
   async send(message: OutboundMessage): Promise<SendResult> {
     const externalId = `log_${randomUUID()}`;
-    console.info(
-      `[notifications] ${message.channel} -> ${message.to} | template=${message.template} | payload=${JSON.stringify(message.payload)}`,
-    );
+    const payload = this.logPayloadValues
+      ? `payload=${JSON.stringify(message.payload)}`
+      : `payloadKeys=${payloadKeys(message.payload).join(',')}`;
+    console.info(`[notifications] ${message.channel} -> ${message.to} | template=${message.template} | ${payload}`);
     return { externalId };
   }
 }
