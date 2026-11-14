@@ -1,5 +1,17 @@
 import type { NextConfig } from "next";
 
+// K7 (INV-15): on every response. HSTS is ignored by browsers over http
+// (localhost, the e2e server) and enforced on the deployed https origin.
+// frame-ancestors 'none' plus X-Frame-Options for older agents: no page here
+// is meant to be framed, and the staff screens are clickjacking targets.
+export const securityHeaders = [
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+];
+
 const nextConfig: NextConfig = {
   // The workspace packages ship TypeScript SOURCE, not a build output — there
   // is no compile step for them, which is what keeps `packages/core` directly
@@ -19,8 +31,12 @@ const nextConfig: NextConfig = {
     "/**": ["../../packages/db/generated/client/libquery_engine-rhel-openssl-3.0.x.so.node"],
   },
 
+  poweredByHeader: false,
+
   async headers() {
     return [
+      { source: "/:path*", headers: securityHeaders },
+      // Listed AFTER the global block, so its Referrer-Policy wins on /manage.
       {
         source: "/manage/:token*",
         headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
