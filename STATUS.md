@@ -1,6 +1,6 @@
 # STATUS — Bookable public API + webhooks (W-track)
 
-**MERGED (PR #2, 2026-10-21) AND DEPLOYED (2026-10-23).** W-000..W-013 ✅ in `docs/prds/api/00-api-webhooks-prd.md` §10; W-014 partial (only the one-week Neon re-read is left, due 2026-10-30). Inline delivery verified on production 2026-10-27 (W-D8). Decisions: `DECISIONS.md` W-D1..W-D24 (D-80, D-81 in `07-decisions.md`). Per-item notes: `docs/PROGRESS.md`. Reviewer guide: `docs/api/README.md`.
+**MERGED (PR #2, 2026-10-21) AND DEPLOYED (2026-10-23).** W-000..W-013 ✅ in `docs/prds/api/00-api-webhooks-prd.md` §10; W-014 done (Neon re-read 2026-11-17, D-81). Inline delivery verified on production 2026-10-27 (W-D8). Decisions: `DECISIONS.md` W-D1..W-D24 (D-80, D-81 in `07-decisions.md`). Per-item notes: `docs/PROGRESS.md`. Reviewer guide: `docs/api/README.md`.
 
 ## Done
 
@@ -10,7 +10,7 @@
 
 ## Not done
 
-- **The one-week Neon re-read (W-014, D-78's method), due 2026-10-30:** `neonctl projects get <id> --org-id <org> --output json` → `compute_time_seconds`; compare with 407174 (2026-10-12) and record the delta under D-81.
+- ~~**The one-week Neon re-read (W-014)**~~ — done 2026-11-17: ≈870 s/week in November, below the 10-12 baseline; recorded under D-81.
 - **Exec brief and LinkedIn posts for the W-track** — not made; owner hand steps (they publish).
 
 ## Settled decisions (were open)
