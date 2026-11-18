@@ -18,6 +18,7 @@
  * no caller has to know the foreign-key graph or what ran before it.
  */
 import type { PrismaClient } from '../generated/client/index.js';
+import { assertLocalDatabase } from './local-guard';
 
 /**
  * Every table, in one statement. CASCADE handles the dependency order.
@@ -87,6 +88,8 @@ const TABLES = [
 ] as const;
 
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
+  // K12: a TRUNCATE CASCADE of every table must never reach a deployed database.
+  assertLocalDatabase(process.env.DATABASE_URL);
   const list = TABLES.map((t) => `"${t}"`).join(', ');
   await prisma.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
 }

@@ -9,7 +9,11 @@
 import { LOGGING_ADAPTER_ID, LoggingChannelAdapter } from '../../core/notifications';
 import type { ChannelAdapter } from '../../core/notifications';
 
-export const notificationAdapter: ChannelAdapter = new LoggingChannelAdapter();
+// K10: payload values (which include the manage link) are printed only
+// outside production; a production log gets the payload's keys.
+export const notificationAdapter: ChannelAdapter = new LoggingChannelAdapter({
+  logPayloadValues: process.env.NODE_ENV !== 'production',
+});
 
 /**
  * Did anybody actually get this? (A-044, made per-ROW by A-048)

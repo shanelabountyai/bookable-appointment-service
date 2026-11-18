@@ -23,5 +23,7 @@ export default defineConfig({
     // and it removes the race class outright rather than requiring every
     // future DB test file to remember to scope its cleanup narrowly.
     fileParallelism: false,
+    // K12: refuses a non-local DATABASE_URL before any test file runs.
+    setupFiles: ['./vitest.setup.ts'],
   },
 });
